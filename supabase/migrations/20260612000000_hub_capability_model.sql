@@ -39,6 +39,7 @@ INSERT INTO public.capabilities (key, module, description) VALUES
   ('mrp.view',       'mrp',             'View the MRP reorder/manufacturing dashboard'),
   ('stock.edit',     'mrp',             'Override warehouse stock levels (the dummy-stock override path)'),
   ('weeklies.view',  'weeklies',        'View the Mondays/Tuesdays/Wednesdays tracker'),
+  ('weeklies.edit',  'weeklies',        'Add and update items on the weekly tracker'),
   ('admin',          'admin',           'Full administrative access (implies all capabilities)')
 ON CONFLICT (key) DO UPDATE
   SET module = EXCLUDED.module, description = EXCLUDED.description;

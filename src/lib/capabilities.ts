@@ -24,6 +24,7 @@ export const CAPABILITY_KEYS = [
   'mrp.view',
   'stock.edit',
   'weeklies.view',
+  'weeklies.edit',
   'admin',
 ] as const
 
@@ -47,6 +48,7 @@ export const CAPABILITIES: CapabilityMeta[] = [
   { key: 'mrp.view', module: 'mrp', description: 'View the MRP reorder/manufacturing dashboard' },
   { key: 'stock.edit', module: 'mrp', description: 'Override warehouse stock levels (the dummy-stock override path)' },
   { key: 'weeklies.view', module: 'weeklies', description: 'View the Mondays/Tuesdays/Wednesdays tracker' },
+  { key: 'weeklies.edit', module: 'weeklies', description: 'Add and update items on the weekly tracker' },
   { key: 'admin', module: 'admin', description: 'Full administrative access (implies all capabilities)' },
 ]
 
