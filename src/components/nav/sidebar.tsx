@@ -9,6 +9,7 @@ import {
   ShoppingCart,
   Layers,
   Truck,
+  Gauge,
   CalendarCheck,
   LogOut,
   type LucideIcon,
@@ -23,6 +24,7 @@ const ICONS: Record<string, LucideIcon> = {
   ShoppingCart,
   Layers,
   Truck,
+  Gauge,
   CalendarCheck,
 }
 

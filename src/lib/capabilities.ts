@@ -21,6 +21,8 @@ export const CAPABILITY_KEYS = [
   'po.approve',
   'bom.view',
   'transport.view',
+  'mrp.view',
+  'stock.edit',
   'weeklies.view',
   'admin',
 ] as const
@@ -42,6 +44,8 @@ export const CAPABILITIES: CapabilityMeta[] = [
   { key: 'po.approve', module: 'purchase-orders', description: 'Approve / authorise purchase orders' },
   { key: 'bom.view', module: 'bom', description: 'View the bill of materials and pricing' },
   { key: 'transport.view', module: 'transport', description: 'View shipments and transport tracking' },
+  { key: 'mrp.view', module: 'mrp', description: 'View the MRP reorder/manufacturing dashboard' },
+  { key: 'stock.edit', module: 'mrp', description: 'Override warehouse stock levels (the dummy-stock override path)' },
   { key: 'weeklies.view', module: 'weeklies', description: 'View the Mondays/Tuesdays/Wednesdays tracker' },
   { key: 'admin', module: 'admin', description: 'Full administrative access (implies all capabilities)' },
 ]
@@ -62,6 +66,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Purchase Orders', href: '/purchase-orders', icon: 'ShoppingCart', requires: ['po.view', 'po.create', 'po.approve'] },
   { label: 'Bill of Materials', href: '/bom', icon: 'Layers', requires: ['bom.view'] },
   { label: 'Transport', href: '/transport', icon: 'Truck', requires: ['transport.view'] },
+  { label: 'MRP', href: '/mrp', icon: 'Gauge', requires: ['mrp.view'] },
   { label: 'Weeklies', href: '/weeklies', icon: 'CalendarCheck', requires: ['weeklies.view'] },
 ]
 

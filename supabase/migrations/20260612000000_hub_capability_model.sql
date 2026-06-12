@@ -36,6 +36,8 @@ INSERT INTO public.capabilities (key, module, description) VALUES
   ('po.approve',     'purchase-orders', 'Approve / authorise purchase orders'),
   ('bom.view',       'bom',             'View the bill of materials and pricing'),
   ('transport.view', 'transport',       'View shipments and transport tracking'),
+  ('mrp.view',       'mrp',             'View the MRP reorder/manufacturing dashboard'),
+  ('stock.edit',     'mrp',             'Override warehouse stock levels (the dummy-stock override path)'),
   ('weeklies.view',  'weeklies',        'View the Mondays/Tuesdays/Wednesdays tracker'),
   ('admin',          'admin',           'Full administrative access (implies all capabilities)')
 ON CONFLICT (key) DO UPDATE
