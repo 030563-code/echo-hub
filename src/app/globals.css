@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-echo-yellow: var(--echo-orange);
+  --color-echo-orange: var(--echo-orange);
+  --color-echo-orange-hover: var(--echo-orange-hover);
+  --color-echo-black: var(--echo-black);
+  --color-echo-dark: var(--echo-dark);
+  --color-echo-border: var(--echo-border);
+
+  --font-sans: var(--font-roboto), Roboto, sans-serif;
+  --font-heading: var(--font-varela-round), 'Varela Round', sans-serif;
+  --font-mono: monospace;
+}
+
+:root {
+  /* Echo Barrier Brand Identity — matches echobarrier.com */
+  --echo-orange: #FF7026;
+  --echo-orange-hover: #f2641b;
+  --echo-black: #000000;
+  --echo-dark: #353433;
+  --echo-border: #d1d1d1;
+
+  --background: #ffffff;
+  --foreground: #353433;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-roboto), Roboto, sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-varela-round), 'Varela Round', sans-serif;
+}
