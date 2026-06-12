@@ -102,6 +102,12 @@ export async function hasCapability(capability: CapabilityKey): Promise<boolean>
   return caps.has(capability)
 }
 
+/** True if the current user holds at least one of `capabilities`. */
+export async function hasAnyCapability(capabilities: CapabilityKey[]): Promise<boolean> {
+  const caps = await getCapabilities()
+  return capabilities.some((c) => caps.has(c))
+}
+
 /**
  * Page/layout guard: redirect to `/` unless the user holds at least one of
  * `required`. Returns the authorized context for the caller to reuse. Call at the
