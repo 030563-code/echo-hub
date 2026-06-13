@@ -13,6 +13,12 @@ test.describe('Negative capability gating (scoped user)', () => {
 
   test.beforeEach(async ({ page }) => {
     await login(page, limited.email!, limited.password!)
+    // Guard: negative-gating is only meaningful for a SCOPED user. If the
+    // configured "limited" user can see MRP, it's actually privileged (e.g. the
+    // super-admin) — skip rather than false-fail. Provide a quotes-only user.
+    const privileged =
+      (await page.locator('aside').getByRole('link', { name: 'MRP', exact: true }).count()) > 0
+    test.skip(privileged, 'E2E_LIMITED_* is a privileged user (sees MRP) — supply a quotes-only user')
   })
 
   test('scoped user sees Quotes but NOT the ops boards', async ({ page }) => {

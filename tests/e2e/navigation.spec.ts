@@ -10,11 +10,13 @@ test.describe('Navigation + RBAC (super-admin)', () => {
     await login(page)
   })
 
-  test('sidebar shows every workstream', async ({ page }) => {
+  test('sidebar shows every workstream — and no Weeklies', async ({ page }) => {
     const nav = page.locator('aside')
     for (const label of ['Dashboard', 'Quotes', 'Purchase Orders', 'Bill of Materials', 'Transport', 'MRP']) {
       await expect(nav.getByRole('link', { name: label })).toBeVisible()
     }
+    // Regression guard: the standalone Weeklies tracker was removed.
+    await expect(nav.getByRole('link', { name: 'Weeklies', exact: true })).toHaveCount(0)
   })
 
   test('dashboard lists the accessible module cards', async ({ page }) => {

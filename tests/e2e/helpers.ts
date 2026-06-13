@@ -1,10 +1,12 @@
 import { expect, type Page } from '@playwright/test'
 
 export function creds() {
-  const email = process.env.E2E_USERNAME
-  const password = process.env.E2E_PASSWORD
+  // Fall back to the limited creds — in this deployment there's a single real
+  // login (the super-admin), so E2E_LIMITED_* may be the only pair set.
+  const email = process.env.E2E_USERNAME || process.env.E2E_LIMITED_USERNAME
+  const password = process.env.E2E_PASSWORD || process.env.E2E_LIMITED_PASSWORD
   if (!email || !password) {
-    throw new Error('E2E_USERNAME / E2E_PASSWORD not set in .env.local')
+    throw new Error('Set E2E_USERNAME/E2E_PASSWORD (or E2E_LIMITED_*) in .env.local')
   }
   return { email, password }
 }
