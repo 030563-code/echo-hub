@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { FileText, ShoppingCart, Layers, Truck, CalendarCheck, ArrowRight, type LucideIcon } from 'lucide-react'
+import { FileText, ShoppingCart, Layers, Truck, Gauge, ArrowRight, type LucideIcon } from 'lucide-react'
 import { getAuthorizedUser } from '@/lib/authz'
 import { NAV_ITEMS, satisfiesRequirement, type CapabilityKey } from '@/lib/capabilities'
 
@@ -8,7 +8,7 @@ const ICONS: Record<string, LucideIcon> = {
   ShoppingCart,
   Layers,
   Truck,
-  CalendarCheck,
+  Gauge,
 }
 
 export default async function DashboardHome() {

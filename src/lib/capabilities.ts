@@ -23,8 +23,6 @@ export const CAPABILITY_KEYS = [
   'transport.view',
   'mrp.view',
   'stock.edit',
-  'weeklies.view',
-  'weeklies.edit',
   'admin',
 ] as const
 
@@ -47,8 +45,6 @@ export const CAPABILITIES: CapabilityMeta[] = [
   { key: 'transport.view', module: 'transport', description: 'View shipments and transport tracking' },
   { key: 'mrp.view', module: 'mrp', description: 'View the MRP reorder/manufacturing dashboard' },
   { key: 'stock.edit', module: 'mrp', description: 'Override warehouse stock levels (the dummy-stock override path)' },
-  { key: 'weeklies.view', module: 'weeklies', description: 'View the Mondays/Tuesdays/Wednesdays tracker' },
-  { key: 'weeklies.edit', module: 'weeklies', description: 'Add and update items on the weekly tracker' },
   { key: 'admin', module: 'admin', description: 'Full administrative access (implies all capabilities)' },
 ]
 
@@ -69,7 +65,6 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Bill of Materials', href: '/bom', icon: 'Layers', requires: ['bom.view'] },
   { label: 'Transport', href: '/transport', icon: 'Truck', requires: ['transport.view'] },
   { label: 'MRP', href: '/mrp', icon: 'Gauge', requires: ['mrp.view'] },
-  { label: 'Weeklies', href: '/weeklies', icon: 'CalendarCheck', requires: ['weeklies.view'] },
 ]
 
 /** True if `caps` satisfies the requirement list (empty list = always visible). */

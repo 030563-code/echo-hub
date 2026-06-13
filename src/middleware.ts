@@ -54,7 +54,9 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    // Match all paths except Next internals + the favicon.
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    // Run on everything EXCEPT Next internals, the favicon, and static asset
+    // files (any path containing a "." — e.g. /logo.jpg). Without the dotted-path
+    // exclusion the session gate 307-redirects public assets and breaks <Image>.
+    '/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)',
   ],
 }
