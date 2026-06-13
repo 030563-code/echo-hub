@@ -1,16 +1,20 @@
 import { test, expect } from '@playwright/test'
-import { login } from './helpers'
+import { login, anyCreds } from './helpers'
 
 // HubSpot-backed Quotes specs. READ-ONLY by design: they load pages and assert
 // the mandatory probability-of-close field RENDERS. They deliberately NEVER click
 // "Start Quote" or submit — those write win_probability to HubSpot + upsert
-// deals_registry.
+// deals_registry. Runs as any usable persona (prefers admin; Jillian also has
+// quotes access and owns the deals).
 const hasToken = !!process.env.HUBSPOT_ACCESS_TOKEN
 const dealId = process.env.E2E_DEAL_ID
+const c = anyCreds()
 
 test.describe('Quotes — read-only, HubSpot-backed', () => {
+  test.skip(!c, 'Set E2E_USERNAME/PASSWORD or E2E_LIMITED_USERNAME/PASSWORD')
+
   test.beforeEach(async ({ page }) => {
-    await login(page)
+    await login(page, c!)
   })
 
   test('the quote requests queue loads', async ({ page }) => {

@@ -1,24 +1,17 @@
 import { test, expect } from '@playwright/test'
-import { login, limitedCreds } from './helpers'
+import { login, limitedCreds, canSeeMrp } from './helpers'
 
-// Negative capability gating: a SCOPED user must NOT see modules they lack the
-// capability for, and must be redirected away from those routes. Supply a
-// quotes-only user via E2E_LIMITED_USERNAME / E2E_LIMITED_PASSWORD (your existing
-// non-admin already fits — quotes.view + quotes.create, no ops modules). No user
-// is created by the test — bring your own creds.
+// Negative capability gating — requires the SCOPED persona (e.g. Jillian:
+// quotes-only). Configure via E2E_LIMITED_USERNAME / E2E_LIMITED_PASSWORD.
+// Self-skips if not configured, or if that user turns out to be privileged.
 const limited = limitedCreds()
 
 test.describe('Negative capability gating (scoped user)', () => {
-  test.skip(!limited.email || !limited.password, 'Set E2E_LIMITED_USERNAME/PASSWORD (a quotes-only user) to run')
+  test.skip(!limited, 'Set E2E_LIMITED_USERNAME/PASSWORD (a quotes-only user, e.g. Jillian)')
 
   test.beforeEach(async ({ page }) => {
-    await login(page, limited.email!, limited.password!)
-    // Guard: negative-gating is only meaningful for a SCOPED user. If the
-    // configured "limited" user can see MRP, it's actually privileged (e.g. the
-    // super-admin) — skip rather than false-fail. Provide a quotes-only user.
-    const privileged =
-      (await page.locator('aside').getByRole('link', { name: 'MRP', exact: true }).count()) > 0
-    test.skip(privileged, 'E2E_LIMITED_* is a privileged user (sees MRP) — supply a quotes-only user')
+    await login(page, limited!)
+    test.skip(await canSeeMrp(page), 'E2E_LIMITED_* is privileged (sees MRP) — supply a quotes-only user')
   })
 
   test('scoped user sees Quotes but NOT the ops boards', async ({ page }) => {
@@ -41,7 +34,7 @@ test.describe('Negative capability gating (scoped user)', () => {
     await expect(page).toHaveURL('http://localhost:3000/')
   })
 
-  test('visiting Quotes (allowed) is NOT redirected to the dashboard or login', async ({ page }) => {
+  test('visiting Quotes (allowed) is NOT redirected away', async ({ page }) => {
     await page.goto('/quotes')
     await expect(page).toHaveURL(/\/quotes(\/requests)?$/)
   })
