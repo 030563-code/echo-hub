@@ -1,6 +1,7 @@
 'use server'
 
 import { createServerClient } from '@/lib/supabase/server'
+import { hasAnyCapability } from '@/lib/authz'
 
 interface CompanySearchResult {
   id: string
@@ -16,9 +17,13 @@ export async function searchCompanies(query: string): Promise<{ success: boolean
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) return { success: false, error: 'Unauthorized' }
+  // APP-3: CRM-proxy read requires quotes access (closes object-level confidentiality IDOR).
+  if (!(await hasAnyCapability(['quotes.view', 'quotes.create']))) {
+    return { success: false, error: 'Forbidden: missing quotes capability' }
+  }
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
-  
+
   try {
     // 1. Search Supabase (Account Registry) - Fuzzy Search
     // Using ilike for simple fuzzy matching. For advanced fuzzy, we'd need pg_trgm extension.

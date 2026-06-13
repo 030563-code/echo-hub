@@ -54,9 +54,11 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    // Run on everything EXCEPT Next internals, the favicon, and static asset
-    // files (any path containing a "." — e.g. /logo.jpg). Without the dotted-path
-    // exclusion the session gate 307-redirects public assets and breaks <Image>.
-    '/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)',
+    // Run on everything EXCEPT Next internals, the favicon, and static ASSET
+    // FILES matched by extension. An explicit extension allowlist (not a blanket
+    // "any dotted path") means a route slug containing a "." still gets the
+    // session gate — closes the latent matcher-bypass (review APP-4) while still
+    // letting /logo.jpg etc. through (the static-asset 307 fix).
+    '/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|css|js|map|woff2?|ttf|otf|txt|xml|json|webmanifest)$).*)',
   ],
 }

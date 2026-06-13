@@ -1,6 +1,7 @@
 'use server'
 
 import { createServerClient } from '@/lib/supabase/server'
+import { hasCapability } from '@/lib/authz'
 
 interface CreateContactParams {
   firstname: string
@@ -15,6 +16,10 @@ export async function createHubSpotContact(params: CreateContactParams): Promise
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) return { success: false, error: 'Unauthorized' }
+  // APP-2: minting CRM objects in the shared portal requires quotes.create.
+  if (!(await hasCapability('quotes.create'))) {
+    return { success: false, error: 'Forbidden: missing quotes.create capability' }
+  }
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
   if (!accessToken) return { success: false, error: 'Token Missing' }

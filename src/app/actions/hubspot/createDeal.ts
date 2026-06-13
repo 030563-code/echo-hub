@@ -1,6 +1,6 @@
 'use server'
 
-import { createServerClient } from '@/lib/supabase/server'
+import { getAuthorizedUser } from '@/lib/authz'
 import { HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
 
 interface CreateDealParams {
@@ -14,35 +14,28 @@ interface CreateDealParams {
 }
 
 export async function createHubSpotDeal(params: CreateDealParams): Promise<{ success: boolean; dealId?: string; error?: string }> {
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) return { success: false, error: 'Unauthorized' }
+  // APP-1: require quotes.create, and never trust a client-supplied pipelineId —
+  // a non-admin may only create deals in their OWN region (super-admins may target one).
+  const auth = await getAuthorizedUser()
+  if (!auth.ok) return { success: false, error: auth.error }
+  if (!auth.capabilities.has('quotes.create')) {
+    return { success: false, error: 'Forbidden: missing quotes.create capability' }
+  }
+  const { user, profile } = auth
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
   if (!accessToken) return { success: false, error: 'Token Missing' }
 
   try {
-    // 1. Get User's Default Pipeline and Team from Profile
-    let pipelineId = params.pipelineId
-    let hubspotTeamId = ''
-    
-    if (!pipelineId) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('pipeline_id, hubspot_team_id')
-        .eq('id', user.id)
-        .maybeSingle()
-      pipelineId = profile?.pipeline_id
-      hubspotTeamId = profile?.hubspot_team_id
+    // 1. Resolve the pipeline server-side from the caller's profile.
+    let pipelineId: string | undefined
+    if (profile.is_super_admin) {
+      pipelineId = params.pipelineId || profile.pipeline_id || undefined
     } else {
-       // If pipelineId was passed, we still need to fetch team ID
-       const { data: profile } = await supabase
-        .from('profiles')
-        .select('hubspot_team_id')
-        .eq('id', user.id)
-        .maybeSingle()
-       hubspotTeamId = profile?.hubspot_team_id
+      if (params.pipelineId && params.pipelineId !== profile.pipeline_id) {
+        return { success: false, error: 'Forbidden: cannot create a deal outside your region' }
+      }
+      pipelineId = profile.pipeline_id ?? undefined
     }
 
     if (!pipelineId) {
@@ -71,11 +64,9 @@ export async function createHubSpotDeal(params: CreateDealParams): Promise<{ suc
     }
 
     // Try to find the correct Quote Request stage for the pipeline from constants
-    let pipelineFound = false
     for (const key in HUBSPOT_PIPELINES) {
       const pipeline = HUBSPOT_PIPELINES[key as keyof typeof HUBSPOT_PIPELINES]
       if (pipeline.id === pipelineId) {
-        pipelineFound = true
         // Look for a stage key that indicates a quote request or initial stage
         const stageKey = Object.keys(pipeline.stages).find(k => 
           k.includes('QUOTE_REQUEST') || 

@@ -1,6 +1,7 @@
 'use server'
 
 import { createServerClient } from '@/lib/supabase/server'
+import { hasAnyCapability } from '@/lib/authz'
 
 interface HubSpotProduct {
   id: string
@@ -18,6 +19,10 @@ export async function getHubSpotProducts(): Promise<{ success: boolean; data?: H
 
   if (!user) {
     return { success: false, error: 'User not authenticated' }
+  }
+  // APP-3: CRM-proxy read requires quotes access.
+  if (!(await hasAnyCapability(['quotes.view', 'quotes.create']))) {
+    return { success: false, error: 'Forbidden: missing quotes capability' }
   }
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
