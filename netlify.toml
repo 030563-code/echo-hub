@@ -9,3 +9,9 @@
 [build.environment]
   # Next.js 16 requires Node >= 20.9.
   NODE_VERSION = "20"
+  # NEXT_PUBLIC_* vars are inlined into the browser bundle BY DESIGN (the anon key
+  # is RLS-bound + the URL is public), so exclude them from Netlify's secrets
+  # scanner — otherwise it fails the build on finding them in the client output.
+  # The real secrets (SUPABASE_SERVICE_ROLE_KEY, HUBSPOT_ACCESS_TOKEN, MFG_*,
+  # CARGO_PARTNER_*) are NOT omitted and stay scanned.
+  SECRETS_SCAN_OMIT_KEYS = "NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,NEXT_PUBLIC_HUBSPOT_PORTAL_ID"
