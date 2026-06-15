@@ -11,8 +11,8 @@ Branch (US / Canada) raises a PO in the Hub
    → status 'requested'  (source='hub', leg=DEPOT_TO_EB_GROUP)
    → EB-Group approver Approves (admin-gated)
        → parent → 'approved'
-       → Hub creates the EB_GROUP_TO_SRO child row ('sro_evaluating')   ← "sent to SRO", saved in the Hub
-       → Hub POSTs the n8n handoff webhook (credentialed side-effects)
+       → Hub RAISES + APPROVES the EB_GROUP_TO_SRO child ('approved')   ← the EB Group → SRO PO, saved in the Hub (no n8n needed)
+       → Hub POSTs the n8n handoff webhook (credentialed side-effects only)
            → n8n creates + authorises the EB-Group Xero PO, writes its id back,
              emails EB SRO, posts a Slack notice
    → (or Reject → 'rejected', no SRO leg)
