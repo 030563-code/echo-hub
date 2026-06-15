@@ -18,9 +18,15 @@ export interface PurchaseOrder {
     | "cancelled";
   fulfilment_type: "stock" | "manufacture" | null;
   notes: string | null;
+  /** Origin marker. 'hub' = raised/approved in the Hub; 'n8n' = the legacy Xero-poll flow. */
+  source: "hub" | "n8n";
+  delivery_address: string | null;
   requested_by: string | null;
   approved_by: string | null;
   decided_by: string | null;
+  /** auth.users id of the raiser/approver (the real Hub identity trail). */
+  requested_by_uid: string | null;
+  approved_by_uid: string | null;
   created_at: string;
   updated_at: string;
   approved_at: string | null;
@@ -39,8 +45,33 @@ export interface PurchaseOrderLine {
   quantity: number;
   sku_suffix: "S" | "M" | null;
   stock_available: number | null;
+  hs_code: string | null;
+  unit_price: number | null;
   created_at: string;
   updated_at: string;
+}
+
+// Hub-owned PO picklists (seeded in 20260615000000_hub_po_write_flow.sql).
+export interface PoProductCatalogItem {
+  sku: string;
+  product_name: string | null;
+  product_family: string | null;
+  region: string;
+  active: boolean;
+}
+
+export interface PoDeliveryAddress {
+  id: string;
+  entity: string;
+  label: string;
+  address: string | null;
+  active: boolean;
+}
+
+export interface PoHsCode {
+  code: string;
+  description: string | null;
+  active: boolean;
 }
 
 export interface Deal {
