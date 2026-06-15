@@ -13,12 +13,15 @@ const selectCls = inputCls;
 
 interface LineRow {
   sku: string;
-  quantity: number;
+  // Held as a free-text string so the field can be cleared/retyped; coerced to a
+  // number only at submit. (Storing it as a number + `parseInt || 1` traps the
+  // input on 1 — you can never delete the 1.)
+  quantity: string;
   hs_code: string;
   unit_price: string;
 }
 
-const emptyLine = (): LineRow => ({ sku: "", quantity: 1, hs_code: "", unit_price: "" });
+const emptyLine = (): LineRow => ({ sku: "", quantity: "1", hs_code: "", unit_price: "" });
 
 interface Props {
   depots: string[];
@@ -70,7 +73,7 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes }: Pro
       setError("Every line needs a product.");
       return;
     }
-    if (lines.some((l) => !l.quantity || l.quantity < 1)) {
+    if (lines.some((l) => !Number.isFinite(Number(l.quantity)) || Number(l.quantity) < 1)) {
       setError("Every line needs a quantity of at least 1.");
       return;
     }
@@ -227,8 +230,13 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes }: Pro
               <input
                 type="number"
                 min={1}
+                inputMode="numeric"
                 value={line.quantity}
-                onChange={(e) => updateLine(i, { quantity: parseInt(e.target.value, 10) || 1 })}
+                onChange={(e) => updateLine(i, { quantity: e.target.value })}
+                onBlur={(e) => {
+                  // Normalise a left-empty field back to "1" so it never submits blank.
+                  if (e.target.value.trim() === "") updateLine(i, { quantity: "1" });
+                }}
                 className={inputCls + " tabular-nums"}
                 aria-label="Quantity"
               />
