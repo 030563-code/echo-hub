@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
-import { Check, X, Loader2, Inbox, AlertTriangle } from "lucide-react";
+import { Check, X, Loader2, Inbox, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { formatRelative } from "@/lib/utils";
 import { decidePurchaseOrder } from "@/app/actions/purchase-orders/decide-po";
 import type { PurchaseOrder } from "@/lib/erp-types";
@@ -15,7 +15,7 @@ export default function ApprovalsClient({ orders }: { orders: PurchaseOrder[] })
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
-  const [notice, setNotice] = useState<{ kind: "warn" | "error"; text: string } | null>(null);
+  const [notice, setNotice] = useState<{ kind: "success" | "warn" | "error"; text: string } | null>(null);
   const [rejectTarget, setRejectTarget] = useState<PurchaseOrder | null>(null);
   const [rejectNote, setRejectNote] = useState("");
 
@@ -27,6 +27,11 @@ export default function ApprovalsClient({ orders }: { orders: PurchaseOrder[] })
       setBusyId(null);
       if (!res.success) setNotice({ kind: "error", text: res.error });
       else if (res.warning) setNotice({ kind: "warn", text: res.warning });
+      else
+        setNotice({
+          kind: "success",
+          text: `Approved — raised ${res.childPoNumber ?? "the EB Group → SRO PO"} from EB Group to EB SRO.`,
+        });
       router.refresh();
     });
   }
@@ -68,10 +73,16 @@ export default function ApprovalsClient({ orders }: { orders: PurchaseOrder[] })
             "flex items-start gap-2 text-sm rounded-lg px-3 py-2 border " +
             (notice.kind === "error"
               ? "text-red-400 bg-red-900/20 border-red-800/30"
-              : "text-yellow-300 bg-yellow-900/20 border-yellow-800/30")
+              : notice.kind === "warn"
+                ? "text-yellow-300 bg-yellow-900/20 border-yellow-800/30"
+                : "text-green-300 bg-green-900/20 border-green-800/30")
           }
         >
-          <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          {notice.kind === "success" ? (
+            <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          ) : (
+            <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          )}
           {notice.text}
         </p>
       )}

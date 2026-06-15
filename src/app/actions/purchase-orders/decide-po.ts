@@ -13,9 +13,11 @@ import type { PurchaseOrderLine } from "@/lib/erp-types";
 // `po.approve` flips a Hub-raised, still-`requested` DEPOT_TO_EB_GROUP row to
 // approved or rejected. On APPROVE the Hub:
 //   1. marks the parent approved (+ the real approver identity in approved_by_uid),
-//   2. creates the EB_GROUP_TO_SRO child row (`sro_evaluating`) — the "sent to SRO"
-//      record of truth — via the service-role client (an intercompany write, gated
-//      above by po.approve; mirrors the admin.ts privileged-write pattern),
+//   2. RAISES + APPROVES the EB_GROUP_TO_SRO leg as a new `approved` child row (the
+//      EB Group → SRO purchase order, stamped with the same approver) — via the
+//      service-role client (an intercompany write, gated above by po.approve;
+//      mirrors the admin.ts privileged-write pattern). This row is the Hub's record
+//      of the PO raised to SRO and exists WITHOUT any n8n involvement.
 //   3. hands off the CREDENTIALED side-effects to n8n (create the EB-Group Xero PO,
 //      email SRO, post the Slack notice) — per the Xero-via-n8n decision, so no Xero
 //      or Slack credentials ever live in the (public) Hub repo.
@@ -33,7 +35,7 @@ const DecideSchema = z.object({
 export type DecidePOInput = z.infer<typeof DecideSchema>;
 
 export type DecidePOResult =
-  | { success: true; status: "approved" | "rejected"; warning?: string }
+  | { success: true; status: "approved" | "rejected"; warning?: string; childPoNumber?: string }
   | { success: false; error: string };
 
 interface POForDecision {
@@ -126,8 +128,10 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
     return { success: false, error: "Failed to approve the purchase order." };
   }
 
-  // Create the EB_GROUP_TO_SRO child (sro_evaluating) — intercompany row via
-  // service role. The trigger mints the child po_number + inherits master_ref.
+  // Raise + approve the EB_GROUP_TO_SRO leg — the EB Group → SRO purchase order,
+  // created already-`approved` and stamped with the same approver (EB Group has
+  // approved and raised it to SRO). Intercompany write via service role; the
+  // trigger mints the child po_number + inherits master_ref.
   const admin = createAdminClient();
   let warning: string | undefined;
 
@@ -138,9 +142,12 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
       leg: "EB_GROUP_TO_SRO",
       from_entity: "EB-GROUP",
       to_entity: "EB-SRO",
-      status: "sro_evaluating",
+      status: "approved",
       source: "hub",
       requested_by: label,
+      approved_by: label,
+      approved_by_uid: user.id,
+      approved_at: nowIso,
       delivery_address: po.delivery_address,
       notes: po.notes,
     })
@@ -207,11 +214,12 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
     } catch {
       warning = warning ?? "Approved + saved, but the Xero/SRO hand-off (n8n) could not be reached.";
     }
-  } else if (!webhookUrl) {
-    warning = warning ?? "Approved + saved. The Xero/SRO hand-off webhook is not configured yet.";
   }
+  // If the webhook isn't configured yet, that's expected (n8n not wired) — NOT a
+  // warning. The parent approval + the raised+approved SRO leg are saved either way;
+  // only the Xero PO / SRO email / Slack side-effects wait on n8n.
 
   revalidatePath("/purchase-orders");
   revalidatePath("/purchase-orders/approvals");
-  return { success: true, status: "approved", warning };
+  return { success: true, status: "approved", warning, childPoNumber: child?.po_number };
 }
