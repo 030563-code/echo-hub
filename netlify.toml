@@ -1,0 +1,11 @@
+# Netlify build config for the Echo Barrier Hub (Next.js 16).
+# The @netlify/plugin-nextjs runtime is auto-installed when Netlify detects Next
+# (provides SSR, middleware as edge functions, and next/image). Env vars are set
+# in the Netlify UI (Site settings → Environment variables), never committed.
+
+[build]
+  command = "npm run build"
+
+[build.environment]
+  # Next.js 16 requires Node >= 20.9.
+  NODE_VERSION = "20"
