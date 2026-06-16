@@ -74,6 +74,68 @@ export interface PoHsCode {
   active: boolean;
 }
 
+// --- BOM explosion (live read of mfg bom_weekly_snapshot.component_detail) -----
+
+/** One component_detail entry from the mfg snapshot. */
+export interface BomComponent {
+  code: string;
+  desc: string | null;
+  qty: number;
+  currency: string | null;
+  dutiable: boolean;
+  unit_cost_eur: number;
+  extended_eur: number;
+}
+
+/** An editable master BOM row (mfg.bom_weekly_snapshot, latest week). */
+export interface BomMasterRow {
+  model_code: string;
+  product_line: string | null;
+  week_start_date: string;
+  bamida_man_eur: number | null;
+  bamida_print_eur: number | null;
+  bamida_total_eur: number | null;
+  sro_components_eur: number | null;
+  sro_duty_8pct_eur: number | null;
+  sro_admin_eur: number | null;
+  sro_total_eur: number | null;
+  bom_total_eur: number | null;
+  fx_gbp_eur: number | null;
+  bom_change_pct: number | null;
+  component_detail: BomComponent[];
+}
+
+/** One SRO-PO line, exploded into its BOM (component qty/cost × the line qty). */
+export interface SroPoBomLine {
+  sku: string;
+  product_name: string | null;
+  quantity: number;
+  model_code: string | null;
+  has_bom: boolean;
+  components: (BomComponent & { line_qty: number; line_extended_eur: number })[];
+  bamida_man_eur: number;
+  bamida_print_eur: number;
+  components_eur_unit: number;
+  /** Bamida draft-PO total for the line = (components + man + print) × qty. */
+  bamida_total_line: number;
+  /** SRO costs for the line (recorded, NOT in the Bamida PO) = (components+duty+admin) × qty. */
+  sro_total_line: number;
+}
+
+/** An approved EB_GROUP_TO_SRO PO with its exploded BOM. */
+export interface SroPoBom {
+  id: string;
+  po_number: string;
+  master_ref: string | null;
+  from_entity: string;
+  to_entity: string;
+  approved_at: string | null;
+  created_at: string;
+  lines: SroPoBomLine[];
+  bamida_total: number;
+  sro_total: number;
+}
+
 export interface Deal {
   id: number;
   hubspot_deal_id: string;
