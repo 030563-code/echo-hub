@@ -11,13 +11,13 @@ export default async function ApprovalsPage() {
   await requireCapability("po.approve");
   const supabase = await createServerClient();
 
-  // Only Hub-raised depot→Group POs still awaiting approval. n8n-raised rows
-  // (source='n8n') keep their own Slack gate and never appear here.
+  // All Hub-raised legs still awaiting approval, across the three tiers
+  // (Depot → Group → SRO). n8n-raised rows (source='n8n') keep their own Slack
+  // gate and never appear here.
   const { data: pending } = await supabase
     .from("purchase_orders")
     .select("*, lines:purchase_order_lines(*)")
     .eq("source", "hub")
-    .eq("leg", "DEPOT_TO_EB_GROUP")
     .eq("status", "requested")
     .order("created_at", { ascending: true });
 
@@ -38,7 +38,7 @@ export default async function ApprovalsPage() {
           PO Approvals
         </h1>
         <p className="text-[#6b7280] text-sm mt-1">
-          EB Group review of branch-raised purchase orders. Approving sends the PO to EB&nbsp;SRO.
+          Three-tier approval — Depot → Group → SRO. Each approval authorises that tier&apos;s Xero PO and raises the next.
         </p>
       </div>
 

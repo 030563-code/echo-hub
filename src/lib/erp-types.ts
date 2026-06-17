@@ -3,9 +3,11 @@ export interface PurchaseOrder {
   po_number: string;
   parent_po_id: string | null;
   master_ref: string | null;
-  leg: "DEPOT_TO_EB_GROUP" | "EB_GROUP_TO_SRO";
+  leg: "DEPOT_TO_EB_GROUP" | "EB_GROUP_TO_SRO" | "SRO_TO_SUPPLIER";
   from_entity: string;
   to_entity: string;
+  /** Cross-reference to the parent leg's PO# (group → master depot#, sro → EBG#). */
+  reference_po_number: string | null;
   status:
     | "requested"
     | "approved"
@@ -58,6 +60,18 @@ export interface PoProductCatalogItem {
   product_family: string | null;
   region: string;
   active: boolean;
+  /** product_code_master key → resolves the per-entity Xero product code. */
+  internal_sku: string | null;
+}
+
+/** Per-entity Xero product codes for one product (from product_code_master). */
+export interface ProductEntityCodes {
+  internal_sku: string;
+  code_usa_balt: string | null;
+  code_usa_sb: string | null;
+  code_canada: string | null;
+  code_grp: string | null;
+  code_sro: string | null;
 }
 
 export interface PoDeliveryAddress {

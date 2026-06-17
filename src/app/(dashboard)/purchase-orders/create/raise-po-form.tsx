@@ -5,7 +5,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2, Loader2, CheckCircle2 } from "lucide-react";
 import { createPurchaseOrder } from "@/app/actions/purchase-orders/create-po";
-import type { PoProductCatalogItem, PoDeliveryAddress, PoHsCode } from "@/lib/erp-types";
+import type { PoProductCatalogItem, PoDeliveryAddress, PoHsCode, ProductEntityCodes } from "@/lib/erp-types";
+
+// Which product_code_master column holds the Xero product code for each depot.
+const DEPOT_CODE_COL: Record<string, keyof ProductEntityCodes> = {
+  "US-BAL": "code_usa_balt",
+  "US-SBD": "code_usa_sb",
+  "CA-HAM": "code_canada",
+};
 
 const inputCls =
   "w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-sm text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026] transition-colors";
@@ -28,9 +35,10 @@ interface Props {
   catalog: PoProductCatalogItem[];
   addresses: PoDeliveryAddress[];
   hsCodes: PoHsCode[];
+  entityCodes: ProductEntityCodes[];
 }
 
-export default function RaisePOForm({ depots, catalog, addresses, hsCodes }: Props) {
+export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entityCodes }: Props) {
   const router = useRouter();
   const [fromEntity, setFromEntity] = useState(depots[0] ?? "");
   const [deliveryAddress, setDeliveryAddress] = useState("");
@@ -50,6 +58,18 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes }: Pro
     }
     return [...map.entries()];
   }, [catalog]);
+
+  // Resolve the selected depot's Xero product code for a catalogue SKU
+  // (sku → internal_sku → product_code_master.code_<depot>).
+  const skuToInternal = useMemo(() => new Map(catalog.map((c) => [c.sku, c.internal_sku])), [catalog]);
+  const internalToCodes = useMemo(() => new Map(entityCodes.map((e) => [e.internal_sku, e])), [entityCodes]);
+  const codeCol = DEPOT_CODE_COL[fromEntity];
+  function depotCode(sku: string): string | null {
+    const internal = skuToInternal.get(sku);
+    if (!internal || !codeCol) return null;
+    const v = internalToCodes.get(internal)?.[codeCol];
+    return v ? String(v).trim() : null;
+  }
 
   function updateLine(i: number, patch: Partial<LineRow>) {
     setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
@@ -210,7 +230,8 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes }: Pro
 
         <div className="space-y-2">
           {lines.map((line, i) => (
-            <div key={i} className="grid grid-cols-2 sm:grid-cols-[1fr_90px_120px_110px_36px] gap-2">
+            <div key={i}>
+              <div className="grid grid-cols-2 sm:grid-cols-[1fr_90px_120px_110px_36px] gap-2">
               <select
                 value={line.sku}
                 onChange={(e) => updateLine(i, { sku: e.target.value })}
@@ -268,6 +289,17 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes }: Pro
               >
                 <Trash2 className="w-4 h-4" />
               </button>
+              </div>
+              {line.sku && codeCol && (
+                <p className="text-[10px] text-[#4b5563] mt-1 pl-1">
+                  {fromEntity} Xero code:{" "}
+                  {depotCode(line.sku) ? (
+                    <span className="font-mono text-[#9ca3af]">{depotCode(line.sku)}</span>
+                  ) : (
+                    <span className="text-yellow-600/80">none mapped for {fromEntity}</span>
+                  )}
+                </p>
+              )}
             </div>
           ))}
         </div>

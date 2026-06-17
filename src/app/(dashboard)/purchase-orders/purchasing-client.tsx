@@ -9,6 +9,13 @@ import { cn, formatRelative } from "@/lib/utils";
 import type { PurchaseOrder } from "@/lib/erp-types";
 import type { ColumnDef } from "@tanstack/react-table";
 
+function legLabel(leg: string): string {
+  if (leg === "DEPOT_TO_EB_GROUP") return "Depot → Group";
+  if (leg === "EB_GROUP_TO_SRO") return "Group → SRO";
+  if (leg === "SRO_TO_SUPPLIER") return "SRO → Supplier";
+  return leg;
+}
+
 const TABLE_COLUMNS: ColumnDef<PurchaseOrder, unknown>[] = [
   {
     accessorKey: "po_number",
@@ -32,7 +39,7 @@ const TABLE_COLUMNS: ColumnDef<PurchaseOrder, unknown>[] = [
     header: "Leg",
     cell: ({ getValue }) => (
       <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#2a2a2a] text-[#6b7280]">
-        {getValue() === "DEPOT_TO_EB_GROUP" ? "Depot → Group" : "Group → SRO"}
+        {legLabel(getValue() as string)}
       </span>
     ),
   },
@@ -131,9 +138,15 @@ export default function PurchasingClient({ orders }: Props) {
 
             <DetailSection label="Route">
               <p className="text-sm text-[#e5e5e5]">{selected.from_entity}</p>
-              <p className="text-xs text-[#4b5563]">↓</p>
+              <p className="text-xs text-[#4b5563]">↓ {legLabel(selected.leg)}</p>
               <p className="text-sm text-[#e5e5e5]">{selected.to_entity}</p>
             </DetailSection>
+
+            {selected.reference_po_number && (
+              <DetailSection label="Reference PO">
+                <p className="text-sm font-mono text-[#9ca3af]">{selected.reference_po_number}</p>
+              </DetailSection>
+            )}
 
             {selected.fulfilment_type && (
               <DetailSection label="Fulfilment Type">

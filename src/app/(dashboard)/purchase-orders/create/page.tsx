@@ -3,7 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { requireCapability } from "@/lib/authz";
 import { createServerClient } from "@/lib/supabase/server";
 import RaisePOForm from "./raise-po-form";
-import type { PoProductCatalogItem, PoDeliveryAddress, PoHsCode } from "@/lib/erp-types";
+import type { PoProductCatalogItem, PoDeliveryAddress, PoHsCode, ProductEntityCodes } from "@/lib/erp-types";
 
 export const dynamic = "force-dynamic";
 
@@ -14,10 +14,14 @@ export default async function RaisePOPage() {
   const auth = await requireCapability("po.create");
   const supabase = await createServerClient();
 
-  const [{ data: catalog }, { data: addresses }, { data: hsCodes }] = await Promise.all([
+  const [{ data: catalog }, { data: addresses }, { data: hsCodes }, { data: codes }] = await Promise.all([
     supabase.from("po_product_catalog").select("*").eq("active", true).order("product_family").order("sku"),
     supabase.from("po_delivery_addresses").select("*").eq("active", true).order("entity"),
     supabase.from("po_hs_codes").select("*").eq("active", true).order("code"),
+    supabase
+      .from("product_code_master")
+      .select("internal_sku, code_usa_balt, code_usa_sb, code_canada, code_grp, code_sro")
+      .eq("is_active", true),
   ]);
 
   // The raising depot must be one of the caller's own (super-admin / ALL → all v1).
@@ -51,6 +55,7 @@ export default async function RaisePOPage() {
         catalog={(catalog ?? []) as PoProductCatalogItem[]}
         addresses={(addresses ?? []) as PoDeliveryAddress[]}
         hsCodes={(hsCodes ?? []) as PoHsCode[]}
+        entityCodes={(codes ?? []) as ProductEntityCodes[]}
       />
     </div>
   );
