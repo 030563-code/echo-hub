@@ -38,7 +38,7 @@ export function Sidebar({ capabilities, displayName }: SidebarProps) {
   const visible = NAV_ITEMS.filter((item) => satisfiesRequirement(caps, item.requires))
 
   return (
-    <aside className="w-64 bg-black text-white flex flex-col fixed h-full">
+    <aside className="w-64 bg-black text-white flex flex-col fixed h-full z-30">
       <div className="p-5 border-b border-gray-800">
         <Link href="/">
           <Image
