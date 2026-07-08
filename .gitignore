@@ -43,3 +43,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# E2E ephemeral fixtures
+tests/e2e/.e2e-state.json
+
+# LaTeX build artifacts (docs/po-flow.*)
+*.fdb_latexmk
+*.fls
+*.aux
+*.synctex.gz

@@ -1,6 +1,7 @@
 'use server'
 
 import { assertDealAccess } from '@/lib/authz'
+import { externalCallsDisabled, STAGING_SKIP_NOTE } from '@/lib/env'
 import { HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
 import { DEPOT_MAPPING } from '@/lib/depot-constants'
 
@@ -22,6 +23,8 @@ export async function updateDealStage(dealId: string, pipelineId: string, stageI
       return { success: false, error: 'You are not permitted to use this depot' }
     }
   }
+
+  if (externalCallsDisabled()) return { success: false, error: STAGING_SKIP_NOTE }
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
   if (!accessToken) {

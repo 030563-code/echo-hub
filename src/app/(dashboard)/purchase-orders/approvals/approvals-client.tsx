@@ -6,6 +6,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { Check, X, Loader2, Inbox, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { formatRelative } from "@/lib/utils";
 import { decidePurchaseOrder } from "@/app/actions/purchase-orders/decide-po";
+import { chainNumber } from "@/lib/po-number";
 import type { PurchaseOrder } from "@/lib/erp-types";
 
 const inputCls =
@@ -17,7 +18,7 @@ const TIERS: { leg: PurchaseOrder["leg"]; n: number; title: string; route: strin
   { leg: "SRO_TO_SUPPLIER", n: 3, title: "SRO", route: "EB SRO → Supplier" },
 ];
 
-export default function ApprovalsClient({ orders }: { orders: PurchaseOrder[] }) {
+export default function ApprovalsClient({ orders, canViewCost }: { orders: PurchaseOrder[]; canViewCost: boolean }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -116,7 +117,8 @@ export default function ApprovalsClient({ orders }: { orders: PurchaseOrder[] })
                 <div key={po.id} className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-5">
                   <div className="flex items-start justify-between gap-4 mb-3">
                     <div>
-                      <p className="font-mono text-[#FF7026] font-medium">{po.po_number}</p>
+                      <p className="font-mono text-[#FF7026] font-medium">{chainNumber(po)}</p>
+                      <p className="text-[10px] text-[#4b5563] font-mono">{po.po_number}</p>
                       <p className="text-xs text-[#6b7280] mt-0.5">
                         <span className="font-mono">{po.from_entity}</span> →{" "}
                         <span className="font-mono">{po.to_entity}</span>
@@ -156,7 +158,7 @@ export default function ApprovalsClient({ orders }: { orders: PurchaseOrder[] })
                           <th className="text-left font-medium px-3 py-1.5">Product</th>
                           <th className="text-right font-medium px-3 py-1.5">Qty</th>
                           <th className="text-left font-medium px-3 py-1.5">HS code</th>
-                          <th className="text-right font-medium px-3 py-1.5">Unit price</th>
+                          {canViewCost && <th className="text-right font-medium px-3 py-1.5">Unit price</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -168,9 +170,11 @@ export default function ApprovalsClient({ orders }: { orders: PurchaseOrder[] })
                             </td>
                             <td className="px-3 py-1.5 text-right tabular-nums text-[#e5e5e5]">{l.quantity}</td>
                             <td className="px-3 py-1.5 font-mono text-xs text-[#9ca3af]">{l.hs_code ?? "—"}</td>
-                            <td className="px-3 py-1.5 text-right tabular-nums text-[#9ca3af]">
-                              {l.unit_price != null ? l.unit_price.toLocaleString() : "—"}
-                            </td>
+                            {canViewCost && (
+                              <td className="px-3 py-1.5 text-right tabular-nums text-[#9ca3af]">
+                                {l.unit_price != null ? l.unit_price.toLocaleString() : "—"}
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>

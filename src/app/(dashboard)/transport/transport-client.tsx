@@ -187,6 +187,7 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
   const [form, setForm] = useState<AddShipmentInput>(EMPTY_FORM);
   const [lookupRef, setLookupRef] = useState("");
   const [lookupStatus, setLookupStatus] = useState<"idle" | "loading" | "found" | "not_found">("idle");
+  const [lookupInfo, setLookupInfo] = useState<{ spot_id?: string; vessel?: string; count?: number } | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
@@ -198,6 +199,7 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
     setForm(EMPTY_FORM);
     setLookupRef("");
     setLookupStatus("idle");
+    setLookupInfo(null);
     setSubmitError(null);
     setOpen(true);
   }
@@ -205,19 +207,24 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
   async function handleLookup() {
     if (!lookupRef.trim()) return;
     setLookupStatus("loading");
+    setLookupInfo(null);
     const result = await lookupCargoPartnerShipment(lookupRef.trim());
-    if (result.found) {
+    if (result.found && result.spot_id) {
       setLookupStatus("found");
+      setLookupInfo({ spot_id: result.spot_id, vessel: result.vessel, count: result.match_count });
       setForm((prev) => ({
         ...prev,
-        spot_id: lookupRef.trim(),
+        spot_id: result.spot_id!, // the REAL SPOT ID auto-retrieved from the PO
+        po_reference: lookupRef.trim(), // link the shipment back to the PO
         container_ref: result.container_ref ?? prev.container_ref,
         eta: result.eta ?? prev.eta,
         shipped_at: result.shipped_at ?? prev.shipped_at,
       }));
     } else {
       setLookupStatus("not_found");
-      setForm((prev) => ({ ...prev, spot_id: lookupRef.trim() }));
+      // The reference is a PO, not a SPOT ID — keep it as po_reference; leave the
+      // SPOT ID for manual entry.
+      setForm((prev) => ({ ...prev, po_reference: lookupRef.trim() }));
     }
   }
 
@@ -228,6 +235,11 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
       const result = await addShipment(form);
       if ("error" in result) {
         setSubmitError(result.error);
+      } else if (result.warning) {
+        // Saved, but the reference didn't link to a PO — keep the dialog open so
+        // the user sees the note (they can correct the reference or close).
+        setSubmitError(`Saved. ${result.warning}`);
+        router.refresh();
       } else {
         setOpen(false);
         router.refresh();
@@ -259,7 +271,7 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
         <div className="border border-dashed border-[#2a2a2a] rounded-xl p-16 text-center">
           <p className="text-[#4b5563] mb-2">No shipments tracked yet</p>
           <p className="text-xs text-[#3a3a3a]">
-            Add a shipment above using a SPOT ID or reference number
+            Add a shipment above — enter a PO number to auto-retrieve its SPOT ID
           </p>
         </div>
       )}
@@ -277,11 +289,11 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
               </Dialog.Close>
             </div>
 
-            {/* Cargo Partner lookup */}
+            {/* Cargo Partner SPOT-ID auto-retrieve by PO number */}
             <div className="bg-[#1a1a2e] border border-blue-900/30 rounded-xl p-4 mb-5">
-              <p className="text-xs text-blue-300 font-medium mb-2">Cargo Partner Lookup (optional)</p>
+              <p className="text-xs text-blue-300 font-medium mb-2">Find shipment by PO number</p>
               <p className="text-[10px] text-[#4b5563] mb-3">
-                Enter a SPOT ID or reference number to auto-fill container and ETA details.
+                Enter the PO number (general reference) — Cargo Partner&apos;s SPOT ID, container and ETA are retrieved automatically.
               </p>
               <div className="flex gap-2">
                 <input
@@ -289,7 +301,8 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
                   value={lookupRef}
                   onChange={(e) => setLookupRef(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleLookup(); } }}
-                  placeholder="e.g. SN24090000233"
+                  placeholder="e.g. PO-00001364"
+                  aria-label="PO number"
                   className={inputCls + " flex-1"}
                 />
                 <button
@@ -303,14 +316,22 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
                   ) : (
                     <Search className="w-3.5 h-3.5" />
                   )}
-                  Look Up
+                  Retrieve
                 </button>
               </div>
               {lookupStatus === "found" && (
-                <p className="text-[10px] text-emerald-400 mt-2">Found — container and ETA pre-filled below.</p>
+                <p className="text-[10px] text-emerald-400 mt-2">
+                  Found — SPOT ID <span className="font-mono">{lookupInfo?.spot_id}</span> retrieved
+                  {lookupInfo?.vessel ? `, vessel ${lookupInfo.vessel}` : ""}; container + ETA pre-filled below.
+                </p>
+              )}
+              {lookupStatus === "found" && (lookupInfo?.count ?? 1) > 1 && (
+                <p className="text-[10px] text-yellow-400 mt-1">
+                  {lookupInfo?.count} shipments matched this PO — showing the first; verify it&apos;s the right one.
+                </p>
               )}
               {lookupStatus === "not_found" && (
-                <p className="text-[10px] text-yellow-400 mt-2">Not found via API — fill in the details manually.</p>
+                <p className="text-[10px] text-yellow-400 mt-2">No Cargo Partner shipment for that PO yet — enter the SPOT ID manually.</p>
               )}
             </div>
 
@@ -322,7 +343,8 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
                     type="text"
                     value={form.spot_id}
                     onChange={(e) => set("spot_id", e.target.value)}
-                    placeholder="SN24090000233"
+                    placeholder="auto-filled from the PO lookup"
+                    aria-label="SPOT ID"
                     className={inputCls}
                   />
                 </Field>

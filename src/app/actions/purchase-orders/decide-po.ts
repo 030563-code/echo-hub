@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
+import { externalCallsDisabled } from "@/lib/env";
+import { snapshotSroPoCost } from "@/lib/bom";
 import type { PurchaseOrderLine } from "@/lib/erp-types";
 
 // ---------------------------------------------------------------------------
@@ -54,6 +56,8 @@ interface POForDecision {
   id: string;
   po_number: string;
   master_ref: string | null;
+  parent_po_id: string | null;
+  reference_po_number: string | null;
   leg: Leg;
   status: string;
   source: string;
@@ -83,7 +87,7 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
   const { data: po } = await supabase
     .from("purchase_orders")
     .select(
-      "id, po_number, master_ref, leg, status, source, from_entity, to_entity, delivery_address, notes, lines:purchase_order_lines(*)"
+      "id, po_number, master_ref, parent_po_id, reference_po_number, leg, status, source, from_entity, to_entity, delivery_address, notes, lines:purchase_order_lines(*)"
     )
     .eq("id", poId)
     .maybeSingle<POForDecision>();
@@ -135,6 +139,12 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
     return { success: false, error: "Failed to approve the purchase order." };
   }
 
+  // Freeze the SRO/BOM cost at approval — from here it's authoritative and no
+  // longer floats with later material-price edits. Best-effort (won't block).
+  if (po.leg === "EB_GROUP_TO_SRO") {
+    await snapshotSroPoCost(po.id);
+  }
+
   const admin = createAdminClient();
   let warning: string | undefined;
   let nextPoNumber: string | undefined;
@@ -183,7 +193,10 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
   // Fire n8n for the APPROVED leg → create its Xero PO in that tier's account and
   // write the real Xero PO# back. Best-effort (the Hub record is already saved).
   const webhookUrl = process.env.N8N_PO_APPROVED_WEBHOOK_URL;
-  if (webhookUrl) {
+  if (externalCallsDisabled()) {
+    // Staging sandbox: never hand off to n8n/Xero, even if a URL is configured.
+    warning = warning ?? `Sandbox: ${tier} PO approved and saved in the Hub — the Xero hand-off is disabled in staging.`;
+  } else if (webhookUrl) {
     try {
       const res = await fetch(webhookUrl, {
         method: "POST",
@@ -195,11 +208,14 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
         },
         body: JSON.stringify({
           po_id: po.id,
+          po_number: po.po_number,
+          master_ref: po.master_ref,
+          reference_po_number: po.reference_po_number,
           leg: po.leg,
           tier,
           from_entity: po.from_entity,
           to_entity: po.to_entity,
-          parent_po_id: null,
+          parent_po_id: po.parent_po_id,
           delivery_address: po.delivery_address,
           approved_by: label,
           approved_by_uid: user.id,

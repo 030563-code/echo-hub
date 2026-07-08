@@ -10,6 +10,7 @@ import {
   Layers,
   Truck,
   Gauge,
+  Receipt,
   LogOut,
   type LucideIcon,
 } from 'lucide-react'
@@ -24,6 +25,7 @@ const ICONS: Record<string, LucideIcon> = {
   Layers,
   Truck,
   Gauge,
+  Receipt,
 }
 
 interface SidebarProps {

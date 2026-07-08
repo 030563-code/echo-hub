@@ -1,6 +1,7 @@
 'use server'
 
 import { assertDealAccess } from '@/lib/authz'
+import { externalCallsDisabled, STAGING_SKIP_NOTE } from '@/lib/env'
 
 // Properties an agent must never set directly via this generic action.
 // dealstage/pipeline go through updateDealStage; ownership/amount are not
@@ -24,6 +25,8 @@ export async function updateDealProperties(
   if (blocked.length > 0) {
     return { success: false, error: `Cannot update protected properties: ${blocked.join(', ')}` }
   }
+
+  if (externalCallsDisabled()) return { success: false, error: STAGING_SKIP_NOTE }
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
   if (!accessToken) return { success: false, error: 'Token Missing' }

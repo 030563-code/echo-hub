@@ -1,10 +1,13 @@
 'use server'
 
 import { getAuthorizedUser, assertDealAccess } from '@/lib/authz'
+import { externalCallsDisabled, STAGING_SKIP_NOTE } from '@/lib/env'
 
 export async function uploadFileToHubSpot(formData: FormData): Promise<{ success: boolean; fileId?: string; error?: string }> {
   const auth = await getAuthorizedUser()
   if (!auth.ok) return { success: false, error: auth.error }
+
+  if (externalCallsDisabled()) return { success: false, error: STAGING_SKIP_NOTE }
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
   if (!accessToken) return { success: false, error: 'Token Missing' }
@@ -66,6 +69,8 @@ export async function createNoteWithAttachment(dealId: string, fileId: string) {
   const access = await assertDealAccess(dealId)
   if (!access.ok) return { success: false, error: access.error }
 
+  if (externalCallsDisabled()) return { success: false, error: STAGING_SKIP_NOTE }
+
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
   if (!accessToken) return { success: false, error: 'Token Missing' }
 
@@ -117,6 +122,8 @@ export async function createEmailDraftWithAttachment(dealId: string, fileId: str
   // IDOR guard (finding #5): these actions previously had NO auth check at all.
   const access = await assertDealAccess(dealId)
   if (!access.ok) return { success: false, error: access.error }
+
+  if (externalCallsDisabled()) return { success: false, error: STAGING_SKIP_NOTE }
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
   if (!accessToken) return { success: false, error: 'Token Missing' }

@@ -1,11 +1,14 @@
 import { createServerClient } from "@/lib/supabase/server";
+import { getCapabilities } from "@/lib/authz";
 import ShippingClient from "./transport-client";
+import CommercialInvoicePanel from "./CommercialInvoicePanel";
 import type { ShipmentContent } from "@/lib/erp-types";
 
 export const dynamic = "force-dynamic";
 
 export default async function ShippingPage() {
   const supabase = await createServerClient();
+  const caps = await getCapabilities();
 
   const { data: shipments } = await supabase
     .from("shipment_contents")
@@ -13,6 +16,8 @@ export default async function ShippingPage() {
     .order("eta", { ascending: true });
 
   const items = (shipments ?? []) as ShipmentContent[];
+  const canViewInvoice = caps.has("invoice.view") || caps.has("invoice.create");
+  const canCreateInvoice = caps.has("invoice.create") && caps.has("cost.view");
   const onWater = items.filter((i) => i.status === "on_water").length;
   const atPort = items.filter((i) => i.status === "at_port").length;
   const customs = items.filter((i) => i.status === "customs").length;
@@ -42,6 +47,8 @@ export default async function ShippingPage() {
       </div>
 
       <ShippingClient items={items} />
+
+      {canViewInvoice && <CommercialInvoicePanel items={items} canCreate={canCreateInvoice} />}
     </div>
   );
 }

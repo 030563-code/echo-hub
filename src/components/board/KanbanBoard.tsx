@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronUp, Package, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import StatusBadge from "./StatusBadge";
+import { chainNumber, legLabel } from "@/lib/po-number";
 import type { PurchaseOrder } from "@/lib/erp-types";
 import { formatRelative } from "@/lib/utils";
 
@@ -69,13 +70,11 @@ function POCard({ order, onClick }: { order: PurchaseOrder; onClick: () => void 
       {/* PO number + leg badge */}
       <div className="flex items-start justify-between gap-2 mb-2">
         <div>
-          <p className="text-xs font-mono text-[#FF7026] font-medium">{order.po_number}</p>
-          {order.master_ref && order.master_ref !== order.po_number && (
-            <p className="text-[10px] text-[#4b5563] font-mono">ref: {order.master_ref}</p>
-          )}
+          <p className="text-xs font-mono text-[#FF7026] font-medium">{chainNumber(order)}</p>
+          <p className="text-[10px] text-[#4b5563] font-mono">{order.po_number}</p>
         </div>
         <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#2a2a2a] text-[#6b7280] whitespace-nowrap flex-shrink-0">
-          {order.leg === "DEPOT_TO_EB_GROUP" ? "Depot → Group" : "Group → SRO"}
+          {legLabel(order.leg)}
         </span>
       </div>
 

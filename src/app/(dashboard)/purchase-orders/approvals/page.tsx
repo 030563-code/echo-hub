@@ -2,13 +2,15 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { requireCapability } from "@/lib/authz";
 import { createServerClient } from "@/lib/supabase/server";
+import { stripPurchaseOrderCosts } from "@/lib/price-visibility";
 import ApprovalsClient from "./approvals-client";
 import type { PurchaseOrder } from "@/lib/erp-types";
 
 export const dynamic = "force-dynamic";
 
 export default async function ApprovalsPage() {
-  await requireCapability("po.approve");
+  const auth = await requireCapability("po.approve");
+  const canViewCost = auth.capabilities.has("cost.view");
   const supabase = await createServerClient();
 
   // All Hub-raised legs still awaiting approval, across the three tiers
@@ -21,7 +23,7 @@ export default async function ApprovalsPage() {
     .eq("status", "requested")
     .order("created_at", { ascending: true });
 
-  const orders = (pending ?? []) as PurchaseOrder[];
+  const orders = stripPurchaseOrderCosts((pending ?? []) as PurchaseOrder[], canViewCost);
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -42,7 +44,7 @@ export default async function ApprovalsPage() {
         </p>
       </div>
 
-      <ApprovalsClient orders={orders} />
+      <ApprovalsClient orders={orders} canViewCost={canViewCost} />
     </div>
   );
 }

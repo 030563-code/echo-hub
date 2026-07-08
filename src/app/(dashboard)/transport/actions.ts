@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createServerClient } from "@/lib/supabase/server";
 import { hasCapability } from "@/lib/authz";
 import { revalidatePath } from "next/cache";
+import { getCargoToken, fetchSpotIds, fetchShipmentDetail } from "@/lib/cargo-client";
 
 const SKU_NAMES: Record<string, string> = {
   // NA — North America-facing
@@ -27,89 +28,45 @@ const SKU_NAMES: Record<string, string> = {
   V2SK: "Echo Barrier V2", M1SK: "M1 Mini Gen Set", GENEXTSK: "Generator Extension Cable",
 };
 
-async function getCargoPartnerToken(): Promise<string> {
-  const res = await fetch("https://auth.cargo-partner.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      username: process.env.CARGO_PARTNER_USERNAME!,
-      password: process.env.CARGO_PARTNER_PASSWORD!,
-      grant_type: "password",
-      client_id: process.env.CARGO_PARTNER_CLIENT_ID!,
-      client_secret: process.env.CARGO_PARTNER_CLIENT_SECRET!,
-    }),
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error("Cargo Partner auth failed");
-  const data = await res.json() as { access_token: string };
-  return data.access_token;
-}
-
 export interface CargoPartnerLookupResult {
   found: boolean;
+  /** The Cargo Partner SPOT ID auto-retrieved from the PO / general reference. */
+  spot_id?: string;
+  /** How many shipments matched the reference (>1 → we returned the first). */
+  match_count?: number;
   container_ref?: string;
   eta?: string;
   shipped_at?: string;
+  vessel?: string;
+  carrier?: string;
   error?: string;
 }
 
+/**
+ * Resolve a PO / general reference → the Cargo Partner SPOT ID (+ container/ETA/
+ * vessel) — eliminating manual SPOT-ID entry. Lookup returns an ARRAY of SPOT IDs;
+ * we take the first and fetch its detail.
+ */
 export async function lookupCargoPartnerShipment(
   reference: string
 ): Promise<CargoPartnerLookupResult> {
   // Capability gate — this is a credentialed proxy to Cargo Partner; don't let an
   // unauthorized user enumerate shipments against Echo Barrier's account.
-  if (!(await hasCapability('transport.view'))) {
-    return { found: false, error: 'Forbidden: missing transport capability' };
+  if (!(await hasCapability("transport.view"))) {
+    return { found: false, error: "Forbidden: missing transport capability" };
   }
   if (!reference.trim()) return { found: false };
 
   try {
-    const token = await getCargoPartnerToken();
-
-    const res = await fetch(
-      "https://api.cargo-partner.com/transport/v1/shipments/lookup",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          reference: {
-            referenceType: "GENERAL_REFERENCE",
-            referenceNumber: reference.trim(),
-          },
-        }),
-        cache: "no-store",
-      }
-    );
-
-    if (!res.ok) return { found: false };
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data = await res.json() as Record<string, any>;
-
-    // Extract fields from common response shapes
-    const container_ref =
-      data?.containers?.[0]?.containerNumber ??
-      data?.containerNumber ??
-      data?.container?.containerNumber ??
-      undefined;
-
-    const eta =
-      data?.routing?.delivery?.estimatedDelivery?.date ??
-      data?.estimatedDelivery ??
-      data?.routingInformation?.delivery?.estimatedDelivery?.date ??
-      undefined;
-
-    const shipped_at =
-      data?.routing?.pickup?.actualCargoReadiness?.date ??
-      data?.routingInformation?.pickup?.estimatedCargoReadiness?.date ??
-      undefined;
-
-    return { found: true, container_ref, eta, shipped_at };
+    const token = await getCargoToken();
+    const spotIds = await fetchSpotIds(token, reference);
+    if (!spotIds.length) return { found: false };
+    const detail = await fetchShipmentDetail(token, spotIds[0]);
+    return { found: true, spot_id: spotIds[0], match_count: spotIds.length, ...detail };
   } catch {
-    return { found: false, error: "Lookup failed — check the reference and try again" };
+    // 404 is returned above as a clean { found:false } (no shipment); this catch
+    // is the transient-5xx / network path — retryable, not "no shipment".
+    return { found: false, error: "Couldn't reach Cargo Partner — please try again." };
   }
 }
 
@@ -129,7 +86,7 @@ export type AddShipmentInput = z.infer<typeof AddShipmentSchema>;
 
 export async function addShipment(
   input: AddShipmentInput
-): Promise<{ success: true } | { error: string }> {
+): Promise<{ success: true; warning?: string } | { error: string }> {
   if (!(await hasCapability('transport.view'))) {
     return { error: 'Forbidden: missing transport capability' };
   }
@@ -138,6 +95,17 @@ export async function addShipment(
 
   const d = parsed.data;
   const supabase = await createServerClient();
+
+  // Resolve the reference to a real PO so the shipment structurally links back to
+  // its order (not just a text match). Null if it doesn't match a Hub PO#.
+  let poId: string | null = null;
+  let warning: string | undefined;
+  const ref = d.po_reference?.trim();
+  if (ref) {
+    const { data: match } = await supabase.from("purchase_orders").select("id").eq("po_number", ref).maybeSingle();
+    poId = (match as { id: string } | null)?.id ?? null;
+    if (!poId) warning = `Reference "${ref}" doesn't match any Hub PO number — the shipment won't link to an order yet.`;
+  }
 
   const { error } = await supabase.from("shipment_contents").insert({
     spot_id: d.spot_id,
@@ -149,10 +117,11 @@ export async function addShipment(
     status: d.status,
     shipped_at: d.shipped_at || null,
     eta: d.eta || null,
-    po_reference: d.po_reference || null,
+    po_reference: ref || null,
+    po_id: poId,
   });
 
   if (error) return { error: "Failed to save shipment" };
-  revalidatePath("/shipping");
-  return { success: true };
+  revalidatePath("/transport");
+  return { success: true, warning };
 }

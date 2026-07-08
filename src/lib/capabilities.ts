@@ -19,11 +19,15 @@ export const CAPABILITY_KEYS = [
   'po.view',
   'po.create',
   'po.approve',
+  'po.receive',
   'bom.view',
   'bom.edit',
+  'cost.view',
   'transport.view',
   'mrp.view',
   'stock.edit',
+  'invoice.view',
+  'invoice.create',
   'admin',
 ] as const
 
@@ -42,11 +46,15 @@ export const CAPABILITIES: CapabilityMeta[] = [
   { key: 'po.view', module: 'purchase-orders', description: 'View purchase orders' },
   { key: 'po.create', module: 'purchase-orders', description: 'Raise purchase orders (pre-approval)' },
   { key: 'po.approve', module: 'purchase-orders', description: 'Approve / authorise purchase orders' },
-  { key: 'bom.view', module: 'bom', description: 'View the bill of materials and pricing' },
+  { key: 'po.receive', module: 'purchase-orders', description: 'Log deliveries/receipts against a purchase order (warehouse/receiving)' },
+  { key: 'bom.view', module: 'bom', description: 'View the bill of materials (specs/structure; prices require cost.view)' },
   { key: 'bom.edit', module: 'bom', description: 'Edit master BOM component prices/details (saved to the mfg snapshot)' },
+  { key: 'cost.view', module: 'costs', description: 'See prices/costs on POs, BOM and supplier documents (hidden from warehouse/production workers)' },
   { key: 'transport.view', module: 'transport', description: 'View shipments and transport tracking' },
   { key: 'mrp.view', module: 'mrp', description: 'View the MRP reorder/manufacturing dashboard' },
   { key: 'stock.edit', module: 'mrp', description: 'Override warehouse stock levels (the dummy-stock override path)' },
+  { key: 'invoice.view', module: 'invoices', description: 'View commercial invoices' },
+  { key: 'invoice.create', module: 'invoices', description: 'Generate / issue commercial invoices (requires cost.view — values exposed)' },
   { key: 'admin', module: 'admin', description: 'Full administrative access (implies all capabilities)' },
 ]
 
@@ -66,6 +74,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Purchase Orders', href: '/purchase-orders', icon: 'ShoppingCart', requires: ['po.view', 'po.create', 'po.approve'] },
   { label: 'Bill of Materials', href: '/bom', icon: 'Layers', requires: ['bom.view'] },
   { label: 'Transport', href: '/transport', icon: 'Truck', requires: ['transport.view'] },
+  { label: 'Invoices', href: '/invoices', icon: 'Receipt', requires: ['invoice.view'] },
   { label: 'MRP', href: '/mrp', icon: 'Gauge', requires: ['mrp.view'] },
 ]
 

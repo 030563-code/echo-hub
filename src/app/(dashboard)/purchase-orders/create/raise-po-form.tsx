@@ -3,9 +3,11 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Loader2, CheckCircle2 } from "lucide-react";
+import { Plus, Trash2, Loader2, CheckCircle2, Save, Layers } from "lucide-react";
 import { createPurchaseOrder } from "@/app/actions/purchase-orders/create-po";
-import type { PoProductCatalogItem, PoDeliveryAddress, PoHsCode, ProductEntityCodes } from "@/lib/erp-types";
+import { saveTemplate, deleteTemplate } from "@/app/actions/purchase-orders/templates";
+import { isLineShort } from "@/lib/po-stock";
+import type { PoProductCatalogItem, PoDeliveryAddress, PoHsCode, ProductEntityCodes, PoTemplate } from "@/lib/erp-types";
 
 // Which product_code_master column holds the Xero product code for each depot.
 const DEPOT_CODE_COL: Record<string, keyof ProductEntityCodes> = {
@@ -36,9 +38,14 @@ interface Props {
   addresses: PoDeliveryAddress[];
   hsCodes: PoHsCode[];
   entityCodes: ProductEntityCodes[];
+  templates: PoTemplate[];
+  /** SKU → total on-hand across warehouses (dummy until the stocktake lands). */
+  stockBySku: Record<string, number>;
+  /** cost.view holders may set/see unit prices; workers get a price-less form. */
+  canViewCost: boolean;
 }
 
-export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entityCodes }: Props) {
+export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entityCodes, templates, stockBySku, canViewCost }: Props) {
   const router = useRouter();
   const [fromEntity, setFromEntity] = useState(depots[0] ?? "");
   const [deliveryAddress, setDeliveryAddress] = useState("");
@@ -47,6 +54,80 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [templateId, setTemplateId] = useState("");
+  const [savingTpl, setSavingTpl] = useState(false);
+  const [tplNotice, setTplNotice] = useState<string | null>(null);
+
+  function applyTemplate(id: string) {
+    setTemplateId(id);
+    setTplNotice(null);
+    const t = templates.find((x) => x.id === id);
+    if (!t) return;
+    if (t.from_entity && depots.includes(t.from_entity)) setFromEntity(t.from_entity);
+    setDeliveryAddress(t.delivery_address ?? "");
+    setNotes(t.notes ?? "");
+    const tplLines = (t.lines ?? []).map((l) => ({
+      sku: l.sku,
+      quantity: String(l.quantity ?? 1),
+      hs_code: l.hs_code ?? "",
+      unit_price: l.unit_price != null ? String(l.unit_price) : "",
+    }));
+    setLines(tplLines.length ? tplLines : [emptyLine()]);
+  }
+
+  function saveAsTemplate() {
+    setTplNotice(null);
+    const name = window.prompt("Template name (e.g. 'Truck to Paris')")?.trim();
+    if (!name) return;
+    // Dedupe: a repeated name yields indistinguishable dropdown entries.
+    if (templates.some((t) => t.name.trim().toLowerCase() === name.toLowerCase())) {
+      if (!window.confirm(`A template named "${name}" already exists. Save another with the same name?`)) return;
+    }
+    const validLines = lines
+      .filter((l) => l.sku && Number(l.quantity) > 0)
+      .map((l) => ({
+        sku: l.sku,
+        quantity: Number(l.quantity),
+        hs_code: l.hs_code.trim() || undefined,
+        unit_price: l.unit_price.trim() !== "" ? Number(l.unit_price) : undefined,
+      }));
+    if (!validLines.length) {
+      setTplNotice("Add at least one valid line before saving a template.");
+      return;
+    }
+    setSavingTpl(true);
+    startTransition(async () => {
+      const res = await saveTemplate({
+        name,
+        from_entity: fromEntity || undefined,
+        delivery_address: deliveryAddress || undefined,
+        notes: notes.trim() || undefined,
+        lines: validLines,
+      });
+      setSavingTpl(false);
+      if (res.success) {
+        setTplNotice(`Saved template "${name}".`);
+        router.refresh();
+      } else {
+        setTplNotice(res.error);
+      }
+    });
+  }
+
+  function removeTemplate() {
+    if (!templateId) return;
+    const t = templates.find((x) => x.id === templateId);
+    if (!t || !window.confirm(`Delete template "${t.name}"?`)) return;
+    startTransition(async () => {
+      const res = await deleteTemplate(templateId);
+      if (res.success) {
+        setTemplateId("");
+        router.refresh();
+      } else {
+        setTplNotice(res.error ?? "Failed to delete template.");
+      }
+    });
+  }
 
   // Group the catalogue by product family for the SKU <optgroup>s.
   const families = useMemo(() => {
@@ -165,6 +246,45 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Templates — recurring-order autofill */}
+      <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-4 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <Layers className="w-4 h-4 text-[#6b7280]" />
+          <select
+            value={templateId}
+            onChange={(e) => applyTemplate(e.target.value)}
+            className={selectCls + " w-auto min-w-[200px]"}
+          >
+            <option value="">Load from template…</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+          {templateId && (
+            <button
+              type="button"
+              onClick={removeTemplate}
+              className="p-1.5 text-[#6b7280] hover:text-red-400 transition-colors"
+              title="Delete template"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={saveAsTemplate}
+          disabled={savingTpl}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#9ca3af] hover:text-white border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-lg transition-colors disabled:opacity-50"
+        >
+          {savingTpl ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+          Save as template
+        </button>
+        {tplNotice && <span className="text-xs text-[#6b7280]">{tplNotice}</span>}
+      </div>
+
       {/* Header fields */}
       <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-5 space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -270,16 +390,20 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
                 className={inputCls}
                 aria-label="HS code"
               />
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                value={line.unit_price}
-                onChange={(e) => updateLine(i, { unit_price: e.target.value })}
-                placeholder="optional"
-                className={inputCls + " tabular-nums"}
-                aria-label="Unit price"
-              />
+              {canViewCost ? (
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={line.unit_price}
+                  onChange={(e) => updateLine(i, { unit_price: e.target.value })}
+                  placeholder="optional"
+                  className={inputCls + " tabular-nums"}
+                  aria-label="Unit price"
+                />
+              ) : (
+                <div className={inputCls + " tabular-nums text-[#4b5563] flex items-center"} aria-hidden="true">—</div>
+              )}
               <button
                 type="button"
                 onClick={() => removeLine(i)}
@@ -298,6 +422,11 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
                   ) : (
                     <span className="text-yellow-600/80">none mapped for {fromEntity}</span>
                   )}
+                </p>
+              )}
+              {isLineShort({ sku: line.sku, quantity: Number(line.quantity) || 0 }, stockBySku) && (
+                <p className="text-[10px] text-yellow-500/90 mt-1 pl-1">
+                  ⚠ Stock short — ordered {Number(line.quantity) || 0}, {stockBySku[line.sku] ?? 0} on hand (does not block).
                 </p>
               )}
             </div>

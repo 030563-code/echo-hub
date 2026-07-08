@@ -2,6 +2,7 @@
 
 import { createServerClient } from '@/lib/supabase/server'
 import { hasCapability } from '@/lib/authz'
+import { externalCallsDisabled, STAGING_SKIP_NOTE } from '@/lib/env'
 
 interface CreateContactParams {
   firstname: string
@@ -20,6 +21,8 @@ export async function createHubSpotContact(params: CreateContactParams): Promise
   if (!(await hasCapability('quotes.create'))) {
     return { success: false, error: 'Forbidden: missing quotes.create capability' }
   }
+
+  if (externalCallsDisabled()) return { success: false, error: STAGING_SKIP_NOTE }
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
   if (!accessToken) return { success: false, error: 'Token Missing' }
