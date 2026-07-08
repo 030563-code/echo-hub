@@ -1,12 +1,16 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
-import { LayoutGrid, List, X, PackageCheck, Loader2, Check, Paperclip, Download, Upload, Trash2, Ship } from "lucide-react";
+import { toast } from "sonner";
+import { LayoutGrid, List, X, PackageCheck, Loader2, Check, Paperclip, Download, Upload, Trash2, Ship, Inbox } from "lucide-react";
 import KanbanBoard from "@/components/board/KanbanBoard";
 import BoardTable from "@/components/board/BoardTable";
 import StatusBadge from "@/components/board/StatusBadge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SearchBox } from "@/components/ui/search-box";
 import { cn, formatRelative } from "@/lib/utils";
 import { recordReceipt } from "@/app/actions/purchase-orders/receive-po";
 import { uploadPoAttachment, getPoAttachmentUrl, deletePoAttachment } from "@/app/actions/purchase-orders/attachments";
@@ -89,12 +93,40 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
   const [receiveTarget, setReceiveTarget] = useState<PurchaseOrder | null>(null);
   const [syncing, startSync] = useTransition();
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+
+  const visibleOrders = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return orders;
+    return orders.filter((o) =>
+      [
+        o.po_number,
+        chainNumber(o),
+        o.from_entity,
+        o.to_entity,
+        o.status,
+        o.fulfilment_type,
+        o.reference_po_number,
+        legLabel(o.leg),
+        (o.lines ?? []).map((l) => l.sku).join(" "),
+      ]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(s))
+    );
+  }, [orders, q]);
 
   function syncShipments() {
     setSyncMsg(null);
     startSync(async () => {
       const res = await syncAllPoShipments();
-      setSyncMsg(res.success ? `Checked ${res.checked} PO(s) — ${res.resolved} shipment(s) linked.` : res.error);
+      if (res.success) {
+        const text = `Checked ${res.checked} PO(s) — ${res.resolved} shipment(s) linked.`;
+        setSyncMsg(text);
+        toast.success(text);
+      } else {
+        setSyncMsg(res.error);
+        toast.error(res.error);
+      }
       router.refresh();
     });
   }
@@ -106,7 +138,7 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
   return (
     <div className="relative">
       {/* View toggle */}
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         <div className="flex items-center bg-[#1e1e1e] border border-[#2a2a2a] rounded-lg p-0.5">
           {(["kanban", "table"] as const).map((v) => (
             <button
@@ -122,12 +154,19 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
             </button>
           ))}
         </div>
-        <span className="text-xs text-[#4b5563]">{orders.length} orders</span>
+        <span className="text-xs text-[#4b5563]">{visibleOrders.length} orders</span>
+        <SearchBox
+          value={q}
+          onChange={setQ}
+          dark
+          placeholder="Search PO, entity, status…"
+          className="ml-auto"
+        />
         {canDetectShipment && (
           <button
             onClick={syncShipments}
             disabled={syncing}
-            className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#9ca3af] hover:text-white border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-lg transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#9ca3af] hover:text-white border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-lg transition-colors disabled:opacity-50"
             title="Auto-detect each PO's Cargo Partner SPOT ID + shipment from its PO number"
           >
             {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ship className="w-3.5 h-3.5" />}
@@ -138,11 +177,35 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
       </div>
 
       {/* Board */}
-      {view === "kanban" ? (
-        <KanbanBoard orders={orders} onCardClick={(o) => setSelectedId(o.id)} />
+      {visibleOrders.length === 0 ? (
+        orders.length === 0 ? (
+          <EmptyState
+            dark
+            icon={<Inbox className="w-8 h-8" />}
+            title="No purchase orders yet"
+            description="Raise a PO to start the Depot → Group → SRO approval chain. It'll appear here once created."
+            action={
+              <Link
+                href="/purchase-orders/create"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#FF7026] hover:bg-[#f2641b] text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                Raise a PO
+              </Link>
+            }
+          />
+        ) : (
+          <EmptyState
+            dark
+            icon={<Inbox className="w-8 h-8" />}
+            title="No matching purchase orders"
+            description="Nothing matches your search. Try a different PO number, entity, status or SKU."
+          />
+        )
+      ) : view === "kanban" ? (
+        <KanbanBoard orders={visibleOrders} onCardClick={(o) => setSelectedId(o.id)} />
       ) : (
         <BoardTable
-          data={orders}
+          data={visibleOrders}
           columns={TABLE_COLUMNS}
           searchPlaceholder="Search PO number, entity, SKU..."
           onRowClick={(o) => setSelectedId(o.id)}
@@ -278,9 +341,12 @@ function CargoPoButton({ po }: { po: PurchaseOrder }) {
     setMsg(null);
     startTransition(async () => {
       const res = await raiseCargoPo({ sro_po_id: po.id });
-      if (!res.ok) setErr(res.error);
-      else {
+      if (!res.ok) {
+        setErr(res.error);
+        toast.error(res.error);
+      } else {
         setMsg(`Cargo PO raised — ${res.chain} (${res.po_number}).`);
+        toast.success(`Cargo PO raised — ${res.chain}`);
         router.refresh();
       }
     });
@@ -346,8 +412,10 @@ function ReceiveModal({ po, onClose }: { po: PurchaseOrder; onClose: () => void 
       });
       if (!res.success) {
         setError(res.error);
+        toast.error(res.error);
         return;
       }
+      toast.success(`Delivery logged for ${chainNumber(po)}`);
       router.refresh();
       onClose();
     });
@@ -426,8 +494,14 @@ function ShipmentSection({ po, canDetect }: { po: PurchaseOrder; canDetect: bool
     setMsg(null);
     startTransition(async () => {
       const res = await resolvePoShipment(po.id);
-      if (!res.success) setMsg(res.error);
-      else if (!res.found) setMsg("No Cargo Partner shipment found for this PO number yet.");
+      if (!res.success) {
+        setMsg(res.error);
+        toast.error(res.error);
+      } else if (!res.found) {
+        setMsg("No Cargo Partner shipment found for this PO number yet.");
+      } else {
+        toast.success("Shipment linked from Cargo Partner");
+      }
       router.refresh();
     });
   }
@@ -485,7 +559,12 @@ function AttachmentsSection({ po, canManage }: { po: PurchaseOrder; canManage: b
     fd.append("file", file);
     startTransition(async () => {
       const res = await uploadPoAttachment(fd);
-      if (!res.success) setErr(res.error);
+      if (!res.success) {
+        setErr(res.error);
+        toast.error(res.error);
+      } else {
+        toast.success(`${file.name} attached`);
+      }
       if (fileRef.current) fileRef.current.value = "";
       router.refresh();
     });
@@ -495,7 +574,10 @@ function AttachmentsSection({ po, canManage }: { po: PurchaseOrder; canManage: b
     setErr(null);
     const res = await getPoAttachmentUrl(id);
     if (res.success) window.open(res.url, "_blank");
-    else setErr(res.error);
+    else {
+      setErr(res.error);
+      toast.error(res.error);
+    }
   }
 
   function remove(id: string) {
@@ -503,7 +585,12 @@ function AttachmentsSection({ po, canManage }: { po: PurchaseOrder; canManage: b
     setErr(null);
     startTransition(async () => {
       const res = await deletePoAttachment(id);
-      if (!res.success) setErr(res.error);
+      if (!res.success) {
+        setErr(res.error);
+        toast.error(res.error);
+      } else {
+        toast.success("Attachment deleted");
+      }
       router.refresh();
     });
   }

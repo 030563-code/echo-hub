@@ -84,6 +84,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   const [winProbability, setWinProbability] = useState<string>('')
   const [winProbabilityOptions, setWinProbabilityOptions] = useState<{ label: string; value: string }[]>([])
   const [setupLoading, setSetupLoading] = useState(false)
+  const [setupAttempted, setSetupAttempted] = useState(false)
 
   // State for Quote Builder
   const [lineItems, setLineItems] = useState<LineItem[]>(() => mapInitialLineItems(initialLineItems))
@@ -93,6 +94,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   const [productSearch, setProductSearch] = useState('')
   const [filteredProducts, setFilteredProducts] = useState<Product[]>(products)
   const [allowedSkusForDepot, setAllowedSkusForDepot] = useState<string[]>([])
+  const [validateLines, setValidateLines] = useState(false)
 
   useEffect(() => {
     async function fetchWinProbability() {
@@ -162,8 +164,21 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   const isDistributorSelected = distributor !== 'none' && distributor !== ''
   const canProceedFromSetup = (isDistributorSelected || depot !== '') && template !== '' && winProbability !== ''
 
+  // Field-level validation flags (backbone = win probability is mandatory)
+  const depotError = !isDistributorSelected && depot === ''
+  const templateError = template === ''
+  const winProbabilityError = winProbability === ''
+
+  // Line-item validation: every line needs a positive quantity and price
+  const isLineInvalid = (item: LineItem) => !(item.quantity > 0) || !(item.unitPrice > 0)
+  const hasInvalidLines = lineItems.some(isLineInvalid)
+
   const handleSetupComplete = async () => {
-    if (!canProceedFromSetup) return
+    setSetupAttempted(true)
+    if (!canProceedFromSetup) {
+      toast.error('Please complete all required fields before starting the quote.')
+      return
+    }
     setSetupLoading(true)
     const result = await updateDealProperties(dealId, { win_probability: winProbability })
     setSetupLoading(false)
@@ -226,6 +241,12 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     // In-flight guard: prevent double-submit duplicating HubSpot line items + note.
     if (!previewMode) {
       if (submittingRef.current) return
+      // Field-level validation: need at least one line, all with positive qty + price.
+      if (lineItems.length === 0 || hasInvalidLines) {
+        setValidateLines(true)
+        toast.error('Add at least one line item with a positive quantity and price.')
+        return
+      }
       submittingRef.current = true
       setSubmitting(true)
     }
@@ -262,6 +283,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
       }
 
       quoteRef = result.quoteReference || 'DRAFT'
+      toast.success(`Quote ${quoteRef} created`)
     } else {
       // Preview Mode: Just generate PDF, don't call server action
       quoteRef = 'PREVIEW'
@@ -519,6 +541,9 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                     ))}
                   </SelectContent>
                 </Select>
+                {setupAttempted && depotError && (
+                  <p className="text-xs text-red-600">Please select a sending depot.</p>
+                )}
               </div>
             )}
 
@@ -539,6 +564,9 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                   )}
                 </SelectContent>
               </Select>
+              {setupAttempted && templateError && (
+                <p className="text-xs text-red-600">Please choose a quote template.</p>
+              )}
             </div>
 
             {/* Win Probability Selection */}
@@ -556,13 +584,16 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                   ))}
                 </SelectContent>
               </Select>
+              {setupAttempted && winProbabilityError && (
+                <p className="text-xs text-red-600">Win probability is required — it drives stock &amp; forecasting.</p>
+              )}
             </div>
           </div>
 
           <DialogFooter>
             <Button
               onClick={handleSetupComplete}
-              disabled={!canProceedFromSetup || setupLoading}
+              disabled={setupLoading}
               className="w-full bg-echo-yellow text-black hover:bg-echo-yellow/90"
             >
               {setupLoading ? 'Saving...' : <>Start Quote <ArrowRight className="w-4 h-4 ml-2" /></>}
@@ -627,25 +658,31 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                       
                       <div className="w-24">
                         <Label className="text-xs text-gray-500">Qty</Label>
-                        <Input 
-                          type="number" 
+                        <Input
+                          type="number"
                           min="1"
                           value={item.quantity}
                           onChange={(e) => updateLineItem(index, 'quantity', parseInt(e.target.value) || 0)}
-                          className="h-8"
+                          className={`h-8 ${validateLines && !(item.quantity > 0) ? 'border-red-400 focus-visible:ring-red-500' : ''}`}
                         />
+                        {validateLines && !(item.quantity > 0) && (
+                          <p className="text-xs text-red-600 mt-1">Qty must be &gt; 0</p>
+                        )}
                       </div>
 
                       <div className="w-32">
                         <Label className="text-xs text-gray-500">Price</Label>
-                        <Input 
-                          type="number" 
+                        <Input
+                          type="number"
                           min="0"
                           step="0.01"
                           value={item.unitPrice}
                           onChange={(e) => updateLineItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                          className="h-8"
+                          className={`h-8 ${validateLines && !(item.unitPrice > 0) ? 'border-red-400 focus-visible:ring-red-500' : ''}`}
                         />
+                        {validateLines && !(item.unitPrice > 0) && (
+                          <p className="text-xs text-red-600 mt-1">Price must be &gt; 0</p>
+                        )}
                       </div>
 
                       <div className="w-24 text-right">

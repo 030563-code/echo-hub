@@ -2,7 +2,10 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { ChevronDown, ChevronRight, Loader2, PackageOpen, FileText } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SearchBox } from "@/components/ui/search-box";
 import { updateMaterialPrices } from "@/app/actions/bom/update-material-price";
 import BamidaPoModal from "./bamida-po-modal";
 import type { BamidaPo } from "@/lib/bamida-po";
@@ -82,7 +85,12 @@ function OrdersTab({ orders, error, canViewCost, bamidaByPo }: { orders: SroPoBo
   if (error) return <Empty>{error}</Empty>;
   if (orders.length === 0) {
     return (
-      <Empty>No approved EB&nbsp;SRO orders yet. Approve a purchase order and its BOM appears here automatically.</Empty>
+      <EmptyState
+        dark
+        icon={<PackageOpen className="w-7 h-7" />}
+        title="No approved SRO order BOMs yet"
+        description="Approve a purchase order and its BOM appears here automatically."
+      />
     );
   }
   return (
@@ -220,6 +228,13 @@ function MaterialsTab({ materials, week, error, canEdit }: { materials: Material
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return materials;
+    return materials.filter((m) => (m.material_code + " " + (m.description ?? "")).toLowerCase().includes(needle));
+  }, [q, materials]);
 
   const dirty = useMemo(() => {
     const out: { material_code: string; unit_price_eur: number }[] = [];
@@ -236,7 +251,15 @@ function MaterialsTab({ materials, week, error, canEdit }: { materials: Material
   }, [draft, materials]);
 
   if (error) return <Empty>{error}</Empty>;
-  if (materials.length === 0) return <Empty>No materials found for the latest BOM week.</Empty>;
+  if (materials.length === 0)
+    return (
+      <EmptyState
+        dark
+        icon={<PackageOpen className="w-7 h-7" />}
+        title="No materials"
+        description="No materials found for the latest BOM week."
+      />
+    );
 
   function save() {
     setErr(null);
@@ -265,12 +288,17 @@ function MaterialsTab({ materials, week, error, canEdit }: { materials: Material
       const res = await updateMaterialPrices({ edits: dirty });
       if (!res.success) {
         setErr(res.error);
+        toast.error(res.error);
         return;
       }
       setMsg(
         `Updated ${res.updated} material price${res.updated === 1 ? "" : "s"}` +
           (res.missing ? ` (${res.missing} not found — refresh and retry)` : "") +
           ` — open “BOM Prices” to see the affected products.`
+      );
+      toast.success(
+        `Updated ${res.updated} material price${res.updated === 1 ? "" : "s"}` +
+          (res.missing ? ` (${res.missing} not found)` : "")
       );
       setDraft({});
       router.refresh();
@@ -279,9 +307,12 @@ function MaterialsTab({ materials, week, error, canEdit }: { materials: Material
 
   return (
     <>
-      <p className="text-xs text-[#6b7280] mb-3">
-        Edit a material price once — it applies to <span className="text-[#9ca3af]">every product</span> that uses it. Quantities (the recipe) come from the synced sheet and aren&apos;t editable here.
-      </p>
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <p className="text-xs text-[#6b7280]">
+          Edit a material price once — it applies to <span className="text-[#9ca3af]">every product</span> that uses it. Quantities (the recipe) come from the synced sheet and aren&apos;t editable here.
+        </p>
+        <SearchBox value={q} onChange={setQ} placeholder="Search material or description…" dark className="flex-shrink-0" />
+      </div>
       <div className="rounded-xl border border-[#2a2a2a] overflow-hidden">
         <table className="w-full text-sm">
           <thead>
@@ -294,7 +325,14 @@ function MaterialsTab({ materials, week, error, canEdit }: { materials: Material
             </tr>
           </thead>
           <tbody>
-            {materials.map((m) => {
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-sm text-[#4b5563]">
+                  No materials match “{q}”.
+                </td>
+              </tr>
+            )}
+            {filtered.map((m) => {
               const v = draft[m.material_code] ?? String(m.unit_price_eur);
               const changed = dirty.some((d) => d.material_code === m.material_code);
               return (
@@ -356,7 +394,15 @@ function MaterialsTab({ materials, week, error, canEdit }: { materials: Material
 
 function MasterTab({ rows, week, error }: { rows: BomMasterRow[]; week: string | null; error?: string }) {
   if (error) return <Empty>{error}</Empty>;
-  if (rows.length === 0) return <Empty>No BOM rows for the latest week.</Empty>;
+  if (rows.length === 0)
+    return (
+      <EmptyState
+        dark
+        icon={<PackageOpen className="w-7 h-7" />}
+        title="No BOM rows"
+        description="No BOM rows for the latest week."
+      />
+    );
 
   return (
     <>

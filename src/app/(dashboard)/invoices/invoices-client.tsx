@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { FileText, Loader2, Pencil } from "lucide-react";
+import { FileText, Loader2, Pencil, Receipt } from "lucide-react";
+import { toast } from "sonner";
 import type { CommercialInvoiceDoc } from "@/lib/commercial-invoice";
 import CommercialInvoiceModal from "../transport/CommercialInvoiceModal";
 import InvoiceDraftEditor from "./InvoiceDraftEditor";
 import { setInvoiceStatus } from "@/app/actions/invoices/set-invoice-status";
 import type { InvoiceListRow } from "./page";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SearchBox } from "@/components/ui/search-box";
 
 const STATUS_STYLE: Record<string, string> = {
   draft: "bg-[#2a2a2a] text-[#9ca3af]",
@@ -30,18 +33,43 @@ export default function InvoicesClient({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [err, setErr] = useState<string | null>(null);
+  const [q, setQ] = useState("");
 
   function transition(id: string, action: "issue" | "void") {
     if (action === "void" && !window.confirm("Void this invoice? It stays in the list for the audit trail and frees the container/leg to be re-issued.")) return;
     setErr(null);
     setBusyId(id);
+    const num = invoices.find((r) => r.id === id)?.doc.invoice_number ?? "";
     startTransition(async () => {
       const res = await setInvoiceStatus({ invoice_id: id, action });
       setBusyId(null);
-      if (!res.ok) setErr(res.error);
-      else router.refresh();
+      if (!res.ok) {
+        setErr(res.error);
+        toast.error(res.error);
+      } else {
+        toast.success(action === "issue" ? `Invoice ${num} issued` : `Invoice ${num} voided`);
+        router.refresh();
+      }
     });
   }
+
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return invoices;
+    return invoices.filter((r) =>
+      [
+        r.doc.invoice_number,
+        `${r.doc.seller.code} → ${r.doc.buyer.code}`,
+        r.doc.seller.code,
+        r.doc.buyer.code,
+        r.doc.container_ref ?? "",
+        r.status,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(needle)
+    );
+  }, [invoices, q]);
 
   const money = (d: CommercialInvoiceDoc) =>
     d.total == null
@@ -50,19 +78,36 @@ export default function InvoicesClient({
 
   return (
     <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white" style={{ fontFamily: "Varela Round, sans-serif" }}>
-          Commercial Invoices
-        </h1>
-        <p className="text-[#6b7280] text-sm mt-1">
-          Intercompany invoices issued per container — SRO→Group (EUR) · Group→USA (USD)
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white" style={{ fontFamily: "Varela Round, sans-serif" }}>
+            Commercial Invoices
+          </h1>
+          <p className="text-[#6b7280] text-sm mt-1">
+            Intercompany invoices issued per container — SRO→Group (EUR) · Group→USA (USD)
+          </p>
+        </div>
+        {invoices.length > 0 && (
+          <SearchBox
+            value={q}
+            onChange={setQ}
+            placeholder="Search invoice, route, container…"
+            dark
+            className="w-64 shrink-0"
+          />
+        )}
       </div>
 
       {err && <p className="text-xs text-red-400 mb-3">{err}</p>}
 
       {invoices.length === 0 ? (
-        <p className="text-sm text-[#6b7280]">No commercial invoices issued yet. Generate them from <a href="/transport" className="text-[#FF7026] hover:underline">Transport</a> — pick a container and choose the EUR or USD leg.</p>
+        <EmptyState
+          dark
+          icon={<Receipt className="w-8 h-8" />}
+          title="No commercial invoices issued yet"
+          description="Generate them from Transport — pick a container and choose the EUR or USD leg."
+          action={<a href="/transport" className="text-[#FF7026] hover:underline">Go to Transport</a>}
+        />
       ) : (
         <div className="rounded-xl border border-[#2a2a2a] overflow-hidden">
           <table className="w-full text-sm">
@@ -78,7 +123,14 @@ export default function InvoicesClient({
               </tr>
             </thead>
             <tbody>
-              {invoices.map((r) => (
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-[#6b7280]">
+                    No invoices match “{q}”.
+                  </td>
+                </tr>
+              )}
+              {filtered.map((r) => (
                 <tr
                   key={r.id}
                   className="border-t border-[#222] hover:bg-[#1a1a1a] transition-colors cursor-pointer"

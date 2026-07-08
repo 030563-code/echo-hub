@@ -1,12 +1,16 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
+import { toast } from "sonner";
 import { Check, X, Loader2, Inbox, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { formatRelative } from "@/lib/utils";
 import { decidePurchaseOrder } from "@/app/actions/purchase-orders/decide-po";
 import { chainNumber } from "@/lib/po-number";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SearchBox } from "@/components/ui/search-box";
 import type { PurchaseOrder } from "@/lib/erp-types";
 
 const inputCls =
@@ -25,10 +29,21 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
   const [notice, setNotice] = useState<{ kind: "success" | "warn" | "error"; text: string } | null>(null);
   const [rejectTarget, setRejectTarget] = useState<PurchaseOrder | null>(null);
   const [rejectNote, setRejectNote] = useState("");
+  const [q, setQ] = useState("");
+
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return orders;
+    return orders.filter((o) =>
+      [o.po_number, chainNumber(o), o.from_entity, o.to_entity, o.status, o.reference_po_number, o.requested_by]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(s))
+    );
+  }, [orders, q]);
 
   const groups = useMemo(
-    () => TIERS.map((t) => ({ ...t, items: orders.filter((o) => o.leg === t.leg) })).filter((g) => g.items.length),
-    [orders]
+    () => TIERS.map((t) => ({ ...t, items: filtered.filter((o) => o.leg === t.leg) })).filter((g) => g.items.length),
+    [filtered]
   );
 
   function approve(po: PurchaseOrder) {
@@ -37,15 +52,19 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
     startTransition(async () => {
       const res = await decidePurchaseOrder({ poId: po.id, decision: "approve" });
       setBusyId(null);
-      if (!res.success) setNotice({ kind: "error", text: res.error });
-      else if (res.warning) setNotice({ kind: "warn", text: res.warning });
-      else
-        setNotice({
-          kind: "success",
-          text: res.nextPoNumber
-            ? `${res.tier} approved — next tier raised as ${res.nextPoNumber}.`
-            : `${res.tier} approved — final tier, the chain is complete.`,
-        });
+      if (!res.success) {
+        setNotice({ kind: "error", text: res.error });
+        toast.error(res.error);
+      } else if (res.warning) {
+        setNotice({ kind: "warn", text: res.warning });
+        toast.warning(res.warning);
+      } else {
+        const text = res.nextPoNumber
+          ? `${res.tier} approved — next tier raised as ${res.nextPoNumber}.`
+          : `${res.tier} approved — final tier, the chain is complete.`;
+        setNotice({ kind: "success", text });
+        toast.success(text);
+      }
       router.refresh();
     });
   }
@@ -60,25 +79,42 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
       setBusyId(null);
       setRejectTarget(null);
       setRejectNote("");
-      if (!res.success) setNotice({ kind: "error", text: res.error });
+      if (!res.success) {
+        setNotice({ kind: "error", text: res.error });
+        toast.error(res.error);
+      } else {
+        toast.success(`${chainNumber(po)} rejected`);
+      }
       router.refresh();
     });
   }
 
   if (orders.length === 0) {
     return (
-      <div className="border border-dashed border-[#2a2a2a] rounded-xl p-16 text-center">
-        <Inbox className="w-8 h-8 text-[#3a3a3a] mx-auto mb-3" />
-        <p className="text-[#9ca3af] mb-1">Nothing awaiting approval</p>
-        <p className="text-xs text-[#4b5563]">
-          Raised POs flow through three approvals — Depot → Group → SRO — and appear here at each tier.
-        </p>
-      </div>
+      <EmptyState
+        dark
+        icon={<Inbox className="w-8 h-8" />}
+        title="Nothing awaiting approval"
+        description="Raised POs flow through three approvals — Depot → Group → SRO — and appear here at each tier."
+        action={
+          <Link
+            href="/purchase-orders/create"
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#FF7026] hover:bg-[#f2641b] text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            Raise a PO
+          </Link>
+        }
+      />
     );
   }
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-[#4b5563]">{filtered.length} awaiting approval</span>
+        <SearchBox value={q} onChange={setQ} dark placeholder="Search PO, entity, ref…" />
+      </div>
+
       {notice && (
         <p
           className={
@@ -97,6 +133,15 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
           )}
           {notice.text}
         </p>
+      )}
+
+      {groups.length === 0 && (
+        <EmptyState
+          dark
+          icon={<Inbox className="w-8 h-8" />}
+          title="No matching approvals"
+          description="No pending PO matches your search. Try a different PO number, entity or reference."
+        />
       )}
 
       {groups.map((g) => (

@@ -3,7 +3,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
-import { Plus, Search, X, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { Plus, Search, X, Loader2, Ship } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
 import BoardTable from "@/components/board/BoardTable";
 import StatusBadge from "@/components/board/StatusBadge";
 import { formatDate } from "@/lib/utils";
@@ -220,11 +222,14 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
         eta: result.eta ?? prev.eta,
         shipped_at: result.shipped_at ?? prev.shipped_at,
       }));
+      toast.success(`SPOT ID ${result.spot_id} retrieved${result.vessel ? ` · vessel ${result.vessel}` : ""}`);
     } else {
       setLookupStatus("not_found");
       // The reference is a PO, not a SPOT ID — keep it as po_reference; leave the
       // SPOT ID for manual entry.
       setForm((prev) => ({ ...prev, po_reference: lookupRef.trim() }));
+      if (result.error) toast.error(result.error);
+      else toast("No Cargo Partner shipment for that PO yet — enter the SPOT ID manually.");
     }
   }
 
@@ -235,14 +240,17 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
       const result = await addShipment(form);
       if ("error" in result) {
         setSubmitError(result.error);
+        toast.error(result.error);
       } else if (result.warning) {
         // Saved, but the reference didn't link to a PO — keep the dialog open so
         // the user sees the note (they can correct the reference or close).
         setSubmitError(`Saved. ${result.warning}`);
         router.refresh();
+        toast.success("Shipment saved — check the PO reference note");
       } else {
         setOpen(false);
         router.refresh();
+        toast.success("Shipment added");
       }
     });
   }
@@ -268,12 +276,12 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
           emptyMessage="No shipments found"
         />
       ) : (
-        <div className="border border-dashed border-[#2a2a2a] rounded-xl p-16 text-center">
-          <p className="text-[#4b5563] mb-2">No shipments tracked yet</p>
-          <p className="text-xs text-[#3a3a3a]">
-            Add a shipment above — enter a PO number to auto-retrieve its SPOT ID
-          </p>
-        </div>
+        <EmptyState
+          dark
+          icon={<Ship className="w-7 h-7" />}
+          title="No shipments tracked yet"
+          description="Add a shipment above — enter a PO number to auto-retrieve its SPOT ID."
+        />
       )}
 
       <Dialog.Root open={open} onOpenChange={setOpen}>

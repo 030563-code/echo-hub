@@ -1,6 +1,7 @@
 "use client";
 
 import * as Dialog from "@radix-ui/react-dialog";
+import { toast } from "sonner";
 import { X, FileDown } from "lucide-react";
 import type { BamidaPo } from "@/lib/bamida-po";
 
@@ -14,6 +15,7 @@ export default function BamidaPoModal({ bamida, onClose }: { bamida: BamidaPo; o
   const docLabel = priced ? "Bamida PO" : "BOM PO";
 
   async function downloadPdf() {
+    try {
     const { default: jsPDF } = await import("jspdf");
     const autoTable = (await import("jspdf-autotable")).default;
     const doc = new jsPDF();
@@ -69,6 +71,10 @@ export default function BamidaPoModal({ bamida, onClose }: { bamida: BamidaPo; o
     }
 
     doc.save(`${priced ? "Bamida" : "BOM"}_${bamida.poNumber}.pdf`);
+      toast.success(`${docLabel} ${bamida.poNumber} downloaded`);
+    } catch {
+      toast.error("Couldn't generate the PDF — please try again.");
+    }
   }
 
   return (

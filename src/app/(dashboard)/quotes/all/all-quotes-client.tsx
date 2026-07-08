@@ -8,6 +8,8 @@ import { AlertCircle, Filter } from 'lucide-react'
 import Link from 'next/link'
 import { HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
 import { PaginationNav } from '@/components/ui/pagination-nav'
+import { EmptyState } from '@/components/ui/empty-state'
+import { SearchBox } from '@/components/ui/search-box'
 
 interface HubSpotDeal {
   id: string
@@ -34,24 +36,16 @@ export default function AllQuotesClient({ initialDeals, error, probabilityMap, c
   const deals = initialDeals
   const [selectedPipeline, setSelectedPipeline] = useState<string>('all')
   const [selectedStage, setSelectedStage] = useState<string>('all')
+  const [q, setQ] = useState('')
 
   // Flatten pipelines for easier lookup
   const pipelines = Object.values(HUBSPOT_PIPELINES)
-
-  // Derive filtered deals during render (React Compiler handles memoization) instead
-  // of storing in state via an effect, which would cascade an extra render pass.
-  const isFiltered = selectedPipeline !== 'all' || selectedStage !== 'all'
-  const filteredDeals = deals.filter((deal) => {
-    if (selectedPipeline !== 'all' && deal.properties.pipeline !== selectedPipeline) return false
-    if (selectedStage !== 'all' && deal.properties.dealstage !== selectedStage) return false
-    return true
-  })
 
   // Helper to get stage label
   const getStageLabel = (pipelineId: string, stageId: string) => {
     const pipeline = pipelines.find(p => p.id === pipelineId)
     if (!pipeline) return stageId
-    
+
     const stageEntry = Object.entries(pipeline.stages).find(([, id]) => id === stageId)
     return stageEntry ? stageEntry[0].replace(/_/g, ' ') : stageId
   }
@@ -61,6 +55,28 @@ export default function AllQuotesClient({ initialDeals, error, probabilityMap, c
     const pipeline = pipelines.find(p => p.id === pipelineId)
     return pipeline ? pipeline.label : pipelineId
   }
+
+  // Derive filtered deals during render (React Compiler handles memoization) instead
+  // of storing in state via an effect, which would cascade an extra render pass.
+  const query = q.trim().toLowerCase()
+  const isFiltered = selectedPipeline !== 'all' || selectedStage !== 'all' || query !== ''
+  const filteredDeals = deals.filter((deal) => {
+    if (selectedPipeline !== 'all' && deal.properties.pipeline !== selectedPipeline) return false
+    if (selectedStage !== 'all' && deal.properties.dealstage !== selectedStage) return false
+    if (query) {
+      const haystack = [
+        deal.properties.dealname,
+        deal.id,
+        getPipelineLabel(deal.properties.pipeline),
+        getStageLabel(deal.properties.pipeline, deal.properties.dealstage),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      if (!haystack.includes(query)) return false
+    }
+    return true
+  })
 
   return (
     <div className="space-y-6">
@@ -106,6 +122,11 @@ export default function AllQuotesClient({ initialDeals, error, probabilityMap, c
             </Select>
           </div>
           
+          <div className="w-full md:w-auto md:ml-auto">
+            <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Search</label>
+            <SearchBox value={q} onChange={setQ} placeholder="Company, deal, reference, stage…" />
+          </div>
+
           <div className="pb-1 text-sm text-gray-500">
             {isFiltered
               ? `Showing ${filteredDeals.length} of ${deals.length} deals on this page`
@@ -181,15 +202,11 @@ export default function AllQuotesClient({ initialDeals, error, probabilityMap, c
           </table>
         </div>
       ) : (
-        <div className="text-center py-12 bg-white border border-gray-200 rounded-lg border-dashed">
-          <div className="mx-auto h-12 w-12 text-gray-300 mb-3">
-            <Filter className="w-full h-full" />
-          </div>
-          <h3 className="text-lg font-medium text-gray-900">No quotes found</h3>
-          <p className="text-gray-500 text-sm mt-1 max-w-sm mx-auto">
-            Try adjusting your filters or check back later.
-          </p>
-        </div>
+        <EmptyState
+          icon={<Filter className="w-10 h-10" />}
+          title="No quotes found"
+          description={isFiltered ? 'Try adjusting your search or filters.' : 'No deals to show yet — check back later.'}
+        />
       )}
 
       {/* The pipeline/stage filter only operates on the currently loaded page, while

@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { FileText, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import type { ShipmentContent } from "@/lib/erp-types";
 import type { CommercialInvoiceDoc } from "@/lib/commercial-invoice";
 import { generateCommercialInvoice } from "@/app/actions/invoices/generate-commercial-invoice";
@@ -52,8 +53,13 @@ export default function CommercialInvoicePanel({
       setBusyRef(null);
       if (!res.ok) {
         setError(res.error);
+        toast.error(res.error);
         return;
       }
+      toast.success(
+        `Invoice ${res.doc.invoice_number} generated`,
+        res.warnings.length ? { description: res.warnings.join(" · ") } : undefined
+      );
       setOpen({ doc: res.doc, warnings: res.warnings });
     });
   }

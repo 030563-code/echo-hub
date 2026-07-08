@@ -38,6 +38,7 @@ export default function CreateManualRequestForm() {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   // Form State
   const [companyName, setCompanyName] = useState('')
@@ -157,11 +158,13 @@ export default function CreateManualRequestForm() {
   }
 
   const handleNext = async () => {
+    setFieldErrors({})
     setIsSubmitting(true)
     try {
       // Step 1 Validation & Creation
       if (step === 1) {
         if (!selectedCompany && !companyName) {
+          setFieldErrors({ companyName: 'Company name is required.' })
           toast.error('Please select or enter a company name.')
           return
         }
@@ -169,6 +172,7 @@ export default function CreateManualRequestForm() {
         // If creating a new company, do it now
         if (selectedCompany?.id === 'new') {
           if (!companyDomain) {
+            setFieldErrors({ companyDomain: 'Company domain is required.' })
             toast.error('Please enter a company domain.')
             return
           }
@@ -196,6 +200,7 @@ export default function CreateManualRequestForm() {
       // Step 2 Validation & Creation
       if (step === 2) {
         if (!selectedContact && !contactName) {
+          setFieldErrors({ contactName: 'Contact name is required.' })
           toast.error('Please select or enter a contact name.')
           return
         }
@@ -203,6 +208,7 @@ export default function CreateManualRequestForm() {
         // If creating a new contact, do it now
         if (selectedContact?.id === 'new') {
           if (!contactEmail) {
+            setFieldErrors({ contactEmail: 'Email address is required.' })
             toast.error('Please enter an email address.')
             return
           }
@@ -246,7 +252,14 @@ export default function CreateManualRequestForm() {
   }
 
   const handleSubmit = async () => {
+    setFieldErrors({})
+    if (!dealName.trim()) {
+      setFieldErrors({ dealName: 'Deal name is required.' })
+      toast.error('Please enter a deal name.')
+      return
+    }
     if (!winProbability) {
+      setFieldErrors({ winProbability: 'Win probability is required — it drives stock & forecasting.' })
       toast.error('Please select a Win Probability before creating the deal.')
       return
     }
@@ -282,6 +295,7 @@ export default function CreateManualRequestForm() {
       })
 
       if (result.success && result.dealId) {
+        toast.success(`Deal "${dealName}" created`)
         // 4. Redirect to Create Quote Page for this new deal
         router.push(`/quotes/create/${result.dealId}`)
       } else {
@@ -384,6 +398,9 @@ export default function CreateManualRequestForm() {
                 )}
                 
                 <p className="text-xs text-gray-500">Search existing HubSpot companies or create a new one.</p>
+                {fieldErrors.companyName && (
+                  <p className="text-xs text-red-600">{fieldErrors.companyName}</p>
+                )}
               </div>
 
               {/* Company Domain Input (Only if creating new company) */}
@@ -398,6 +415,9 @@ export default function CreateManualRequestForm() {
                     required
                   />
                   <p className="text-xs text-gray-500">Required for deduplication in HubSpot.</p>
+                  {fieldErrors.companyDomain && (
+                    <p className="text-xs text-red-600">{fieldErrors.companyDomain}</p>
+                  )}
                 </div>
               )}
             </div>
@@ -425,6 +445,9 @@ export default function CreateManualRequestForm() {
                     setSelectedContact(null)
                   }}
                 />
+                {fieldErrors.contactEmail && (
+                  <p className="text-xs text-red-600">{fieldErrors.contactEmail}</p>
+                )}
               </div>
 
               <div className="space-y-2 relative">
@@ -460,6 +483,9 @@ export default function CreateManualRequestForm() {
                     </div>
                   </div>
                 )}
+                {fieldErrors.contactName && (
+                  <p className="text-xs text-red-600">{fieldErrors.contactName}</p>
+                )}
               </div>
             </div>
           </div>
@@ -482,6 +508,9 @@ export default function CreateManualRequestForm() {
                   value={dealName}
                   onChange={(e) => setDealName(e.target.value)}
                 />
+                {fieldErrors.dealName && (
+                  <p className="text-xs text-red-600">{fieldErrors.dealName}</p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -519,6 +548,9 @@ export default function CreateManualRequestForm() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-gray-500">Required for all non-tender deals.</p>
+                {fieldErrors.winProbability && (
+                  <p className="text-xs text-red-600">{fieldErrors.winProbability}</p>
+                )}
               </div>
 
               <div className="space-y-2">

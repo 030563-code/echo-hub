@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Plus, Trash2, Loader2, CheckCircle2, Save, Layers } from "lucide-react";
 import { createPurchaseOrder } from "@/app/actions/purchase-orders/create-po";
 import { saveTemplate, deleteTemplate } from "@/app/actions/purchase-orders/templates";
@@ -32,6 +33,10 @@ interface LineRow {
 
 const emptyLine = (): LineRow => ({ sku: "", quantity: "1", hs_code: "", unit_price: "" });
 
+// Per-field validation messages surfaced under the offending input on submit.
+type LineFieldErrors = { sku?: string; quantity?: string; unit_price?: string };
+type FieldErrors = { depot?: string; lines: Record<number, LineFieldErrors> };
+
 interface Props {
   depots: string[];
   catalog: PoProductCatalogItem[];
@@ -52,6 +57,7 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({ lines: {} });
   const [success, setSuccess] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [templateId, setTemplateId] = useState("");
@@ -154,6 +160,16 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
 
   function updateLine(i: number, patch: Partial<LineRow>) {
     setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+    // Clear any surfaced error for the fields the user just edited.
+    setFieldErrors((fe) => {
+      if (!fe.lines[i]) return fe;
+      const nextLines = { ...fe.lines };
+      const le: LineFieldErrors = { ...nextLines[i] };
+      for (const k of Object.keys(patch)) delete le[k as keyof LineFieldErrors];
+      if (Object.keys(le).length) nextLines[i] = le;
+      else delete nextLines[i];
+      return { ...fe, lines: nextLines };
+    });
   }
   function addLine() {
     setLines((prev) => [...prev, emptyLine()]);
@@ -162,22 +178,33 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
     setLines((prev) => (prev.length === 1 ? prev : prev.filter((_, idx) => idx !== i)));
   }
 
+  // Field-level validation — populates red helper text under each offending
+  // input. Returns true when the form is safe to submit.
+  function validate(): boolean {
+    const fe: FieldErrors = { lines: {} };
+    if (!fromEntity) fe.depot = "Select the raising depot.";
+    lines.forEach((l, i) => {
+      const le: LineFieldErrors = {};
+      if (!l.sku) le.sku = "Select a product.";
+      const qn = Number(l.quantity);
+      if (l.quantity.trim() === "" || !Number.isFinite(qn) || qn < 1) {
+        le.quantity = "Qty must be at least 1.";
+      }
+      if (canViewCost && l.unit_price.trim() !== "") {
+        const pn = Number(l.unit_price);
+        if (!Number.isFinite(pn) || pn < 0) le.unit_price = "Must be a positive number.";
+      }
+      if (Object.keys(le).length) fe.lines[i] = le;
+    });
+    setFieldErrors(fe);
+    return !fe.depot && Object.keys(fe.lines).length === 0;
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
-    if (!fromEntity) {
-      setError("Select the raising depot.");
-      return;
-    }
-    if (lines.some((l) => !l.sku)) {
-      setError("Every line needs a product.");
-      return;
-    }
-    if (lines.some((l) => !Number.isFinite(Number(l.quantity)) || Number(l.quantity) < 1)) {
-      setError("Every line needs a quantity of at least 1.");
-      return;
-    }
+    if (!validate()) return;
 
     const payloadLines = lines.map((l) => ({
       sku: l.sku,
@@ -195,9 +222,11 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
       });
       if (res.success) {
         setSuccess(res.po_number);
+        toast.success(`Purchase order ${res.po_number} raised`);
         router.refresh();
       } else {
         setError(res.error);
+        toast.error(res.error);
       }
     });
   }
@@ -290,14 +319,26 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs text-[#9ca3af] mb-1">Raising depot *</label>
-            <select required value={fromEntity} onChange={(e) => setFromEntity(e.target.value)} className={selectCls}>
+            <select
+              required
+              value={fromEntity}
+              onChange={(e) => {
+                setFromEntity(e.target.value);
+                setFieldErrors((fe) => ({ ...fe, depot: undefined }));
+              }}
+              className={selectCls}
+            >
               {depots.map((d) => (
                 <option key={d} value={d}>
                   {d}
                 </option>
               ))}
             </select>
-            <p className="text-[10px] text-[#4b5563] mt-1">Raised to <span className="font-mono">EB-GROUP</span>.</p>
+            {fieldErrors.depot ? (
+              <p className="text-[10px] text-red-400 mt-1">{fieldErrors.depot}</p>
+            ) : (
+              <p className="text-[10px] text-[#4b5563] mt-1">Raised to <span className="font-mono">EB-GROUP</span>.</p>
+            )}
           </div>
           <div>
             <label className="block text-xs text-[#9ca3af] mb-1">Delivery address</label>
@@ -414,6 +455,19 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
                 <Trash2 className="w-4 h-4" />
               </button>
               </div>
+              {fieldErrors.lines[i] && (
+                <div className="mt-1 pl-1 space-y-0.5">
+                  {fieldErrors.lines[i].sku && (
+                    <p className="text-[10px] text-red-400">{fieldErrors.lines[i].sku}</p>
+                  )}
+                  {fieldErrors.lines[i].quantity && (
+                    <p className="text-[10px] text-red-400">{fieldErrors.lines[i].quantity}</p>
+                  )}
+                  {fieldErrors.lines[i].unit_price && (
+                    <p className="text-[10px] text-red-400">{fieldErrors.lines[i].unit_price}</p>
+                  )}
+                </div>
+              )}
               {line.sku && codeCol && (
                 <p className="text-[10px] text-[#4b5563] mt-1 pl-1">
                   {fromEntity} Xero code:{" "}

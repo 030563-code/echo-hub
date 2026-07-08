@@ -3,6 +3,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useState, useTransition } from "react";
 import { X, Plus, Trash2, Loader2, Save } from "lucide-react";
+import { toast } from "sonner";
 import type { CommercialInvoiceDoc } from "@/lib/commercial-invoice";
 import { editInvoiceDraft } from "@/app/actions/invoices/edit-invoice-draft";
 
@@ -74,8 +75,13 @@ export default function InvoiceDraftEditor({
           hs_code: r.hs_code.trim() || null,
         })),
       });
-      if (!res.ok) setErr(res.error);
-      else onSaved();
+      if (!res.ok) {
+        setErr(res.error);
+        toast.error(res.error);
+      } else {
+        toast.success("Draft saved");
+        onSaved();
+      }
     });
   }
 
