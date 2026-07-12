@@ -28,4 +28,10 @@ test("deployed staging: banner live + modules render (read-only)", async ({ page
     await page.goto(path);
     await expect(page.getByText("STAGING SANDBOX", { exact: false })).toBeVisible();
   }
+
+  // New-build signal: the header shows the per-page title (PageTitle from the UX
+  // pass), not the old static "Echo Barrier Hub" — confirms this deploy is the
+  // UX-pass build, not a stale cache.
+  await page.goto("/purchase-orders");
+  await expect(page.locator("header").getByText("Purchase Orders")).toBeVisible();
 });

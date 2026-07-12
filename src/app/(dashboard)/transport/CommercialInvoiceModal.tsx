@@ -4,6 +4,29 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { X, FileDown } from "lucide-react";
 import type { CommercialInvoiceDoc } from "@/lib/commercial-invoice";
 
+// Echo Barrier brand on the invoice document: the mono logo (public/logo.jpg,
+// 1119×215 ≈ 5.2:1) top-left + an EB green accent (header row + total), matching
+// the original demo example.
+// EB_GREEN = Echo Barrier's brand green from echobarrier.com (#025945).
+const EB_GREEN: [number, number, number] = [2, 89, 69]; // #025945
+const LOGO_ASPECT = 1119 / 215;
+
+async function loadLogoDataUrl(): Promise<string | null> {
+  try {
+    const res = await fetch("/logo.jpg");
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise<string | null>((resolve) => {
+      const r = new FileReader();
+      r.onloadend = () => resolve(typeof r.result === "string" ? r.result : null);
+      r.onerror = () => resolve(null);
+      r.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
 // `doc` is built + cost-stripped SERVER-SIDE. When `priced` is false the values
 // are already absent (the viewer lacks cost.view).
 export default function CommercialInvoiceModal({
@@ -26,19 +49,43 @@ export default function CommercialInvoiceModal({
     const d = new jsPDF();
     const W = d.internal.pageSize.width;
 
+    // ---- Branded header: EB logo (left) + title / references (right) ----
+    try {
+      const logo = await loadLogoDataUrl();
+      if (logo) d.addImage(logo, "JPEG", 14, 12, 46, 46 / LOGO_ASPECT);
+    } catch {
+      /* the logo is optional — the document still renders without it */
+    }
+
     d.setFont("helvetica", "bold");
     d.setFontSize(16);
-    d.text("COMMERCIAL INVOICE", W / 2, 16, { align: "center" });
-    d.setFontSize(10);
-    d.text(`${doc.invoice_number}   ·   ${doc.date}`, W / 2, 22, { align: "center" });
+    d.setTextColor(25, 25, 25);
+    d.text("COMMERCIAL INVOICE", W - 14, 18, { align: "right" });
+    d.setFont("helvetica", "normal");
+    d.setFontSize(9);
+    d.setTextColor(90, 90, 90);
+    d.text(
+      [`Invoice: ${doc.invoice_number}`, `Date: ${doc.date}`, `Reference: ${doc.po_reference ?? "—"}`],
+      W - 14,
+      25,
+      { align: "right" }
+    );
 
+    // Thin EB-green rule under the header.
+    d.setDrawColor(EB_GREEN[0], EB_GREEN[1], EB_GREEN[2]);
+    d.setLineWidth(0.8);
+    d.line(14, 40, W - 14, 40);
+    d.setTextColor(0, 0, 0);
+
+    // ---- Seller / Buyer ----
+    const partyY = 48;
     d.setFontSize(9);
     d.setFont("helvetica", "bold");
-    d.text("Seller", 14, 34);
-    d.text("Buyer", W / 2 + 6, 34);
+    d.text("Seller", 14, partyY);
+    d.text("Buyer", W / 2 + 6, partyY);
     d.setFont("helvetica", "normal");
-    d.text([doc.seller.legal_name, ...doc.seller.address_lines, `VAT: ${doc.seller.vat_tax_id ?? "—"}`], 14, 39);
-    d.text([doc.buyer.legal_name, ...doc.buyer.address_lines, `VAT: ${doc.buyer.vat_tax_id ?? "—"}`], W / 2 + 6, 39);
+    d.text([doc.seller.legal_name, ...doc.seller.address_lines, `VAT: ${doc.seller.vat_tax_id ?? "—"}`], 14, partyY + 5);
+    d.text([doc.buyer.legal_name, ...doc.buyer.address_lines, `VAT: ${doc.buyer.vat_tax_id ?? "—"}`], W / 2 + 6, partyY + 5);
 
     const refLines = [
       `Container: ${doc.container_ref ?? "—"}`,
@@ -46,7 +93,7 @@ export default function CommercialInvoiceModal({
       `PO ref: ${doc.po_reference ?? "—"}`,
       `Currency: ${doc.currency}`,
     ];
-    d.text(refLines, 14, 62);
+    d.text(refLines, 14, partyY + 30);
 
     const head = priced
       ? [["Ln", "SKU", "Description", "Qty", "Unit value", "Line total", "HS code"]]
@@ -59,11 +106,11 @@ export default function CommercialInvoiceModal({
     });
 
     autoTable(d, {
-      startY: 86,
+      startY: 98,
       head,
       body,
       styles: { fontSize: 9 },
-      headStyles: { fillColor: [40, 40, 40] },
+      headStyles: { fillColor: EB_GREEN, textColor: [255, 255, 255], fontStyle: "bold" },
       columnStyles: priced ? { 4: { halign: "right" }, 5: { halign: "right" } } : {},
     });
 
@@ -77,7 +124,9 @@ export default function CommercialInvoiceModal({
       d.text(`TAX (${doc.currency})   ${(doc.tax_total ?? 0).toLocaleString("en-GB", { minimumFractionDigits: 2 })}`, W - 14, y, { align: "right" });
       y += 7;
       d.setFont("helvetica", "bold");
+      d.setTextColor(EB_GREEN[0], EB_GREEN[1], EB_GREEN[2]);
       d.text(`TOTAL (${doc.currency})   ${(doc.total ?? 0).toLocaleString("en-GB", { minimumFractionDigits: 2 })}`, W - 14, y, { align: "right" });
+      d.setTextColor(0, 0, 0);
       y += 9;
       if (doc.fx) {
         d.setFont("helvetica", "normal");
