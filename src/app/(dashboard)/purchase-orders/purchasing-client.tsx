@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
 import { toast } from "sonner";
-import { LayoutGrid, List, X, PackageCheck, Loader2, Check, Paperclip, Download, Upload, Trash2, Ship, Inbox } from "lucide-react";
+import { LayoutGrid, List, X, PackageCheck, Loader2, Check, Paperclip, Download, Upload, Trash2, Ship, Inbox, FileDown } from "lucide-react";
 import KanbanBoard from "@/components/board/KanbanBoard";
 import BoardTable from "@/components/board/BoardTable";
 import StatusBadge from "@/components/board/StatusBadge";
@@ -17,6 +17,7 @@ import { uploadPoAttachment, getPoAttachmentUrl, deletePoAttachment } from "@/ap
 import { resolvePoShipment, syncAllPoShipments } from "@/app/actions/purchase-orders/po-shipments";
 import { raiseCargoPo } from "@/app/actions/purchase-orders/raise-cargo-po";
 import { chainNumber, isFullyReceived, legLabel } from "@/lib/po-number";
+import { downloadPoPdf } from "@/lib/po-pdf";
 import type { PurchaseOrder } from "@/lib/erp-types";
 import type { ColumnDef } from "@tanstack/react-table";
 
@@ -84,9 +85,10 @@ interface Props {
   canReceive: boolean;
   canManageAttachments: boolean;
   canDetectShipment: boolean;
+  canViewCost: boolean;
 }
 
-export default function PurchasingClient({ orders, canReceive, canManageAttachments, canDetectShipment }: Props) {
+export default function PurchasingClient({ orders, canReceive, canManageAttachments, canDetectShipment, canViewCost }: Props) {
   const router = useRouter();
   const [view, setView] = useState<"kanban" | "table">("kanban");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -230,6 +232,8 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
           </div>
 
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
+            <DownloadPoPdfButton po={selected} chain={chainNumber(selected)} canViewCost={canViewCost} />
+
             <DetailSection label="Status">
               <StatusBadge status={selected.status} />
             </DetailSection>
@@ -327,6 +331,29 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
 
       {receiveTarget && <ReceiveModal po={receiveTarget} onClose={() => setReceiveTarget(null)} />}
     </div>
+  );
+}
+
+function DownloadPoPdfButton({ po, chain, canViewCost }: { po: PurchaseOrder; chain: string; canViewCost: boolean }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      onClick={async () => {
+        setBusy(true);
+        try {
+          await downloadPoPdf(po, { chain, canViewCost });
+          toast.success("PO PDF downloaded");
+        } catch {
+          toast.error("Could not generate the PDF");
+        } finally {
+          setBusy(false);
+        }
+      }}
+      disabled={busy}
+      className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-white bg-[#025945] hover:bg-[#03674f] disabled:opacity-60 rounded-lg transition-colors"
+    >
+      {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />} Download PDF
+    </button>
   );
 }
 

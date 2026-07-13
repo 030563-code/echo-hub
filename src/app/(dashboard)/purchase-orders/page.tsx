@@ -128,6 +128,7 @@ export default async function PurchasingPage() {
         canReceive={canReceive}
         canManageAttachments={canManageAttachments}
         canDetectShipment={canDetectShipment}
+        canViewCost={canViewCost}
       />
     </div>
   );
