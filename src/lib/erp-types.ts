@@ -19,6 +19,15 @@ export interface PurchaseOrder {
     | "delivered"
     | "cancelled";
   fulfilment_type: "stock" | "manufacture" | null;
+  /** Board kanban column (demo lifecycle: depot_group → … → shipping). Null = derive from leg+status. */
+  lifecycle_stage:
+    | "depot_group"
+    | "group_sro"
+    | "sro"
+    | "sent_manufacturing"
+    | "manufacturing"
+    | "shipping"
+    | null;
   notes: string | null;
   /** Origin marker. 'hub' = raised/approved in the Hub; 'n8n' = the legacy Xero-poll flow. */
   source: "hub" | "n8n";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useOptimistic, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -18,6 +18,8 @@ import { resolvePoShipment, syncAllPoShipments } from "@/app/actions/purchase-or
 import { raiseCargoPo } from "@/app/actions/purchase-orders/raise-cargo-po";
 import { chainNumber, isFullyReceived, legLabel } from "@/lib/po-number";
 import { downloadPoPdf } from "@/lib/po-pdf";
+import { stageLabel, type LifecycleStage } from "@/lib/po-lifecycle";
+import { setPoStage } from "@/app/actions/purchase-orders/set-po-stage";
 import type { PurchaseOrder } from "@/lib/erp-types";
 import type { ColumnDef } from "@tanstack/react-table";
 
@@ -86,9 +88,11 @@ interface Props {
   canManageAttachments: boolean;
   canDetectShipment: boolean;
   canViewCost: boolean;
+  /** Can drag PO cards between lifecycle columns (po.approve / po.receive). */
+  canMoveStage: boolean;
 }
 
-export default function PurchasingClient({ orders, canReceive, canManageAttachments, canDetectShipment, canViewCost }: Props) {
+export default function PurchasingClient({ orders, canReceive, canManageAttachments, canDetectShipment, canViewCost, canMoveStage }: Props) {
   const router = useRouter();
   const [view, setView] = useState<"kanban" | "table">("kanban");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -97,10 +101,30 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [q, setQ] = useState("");
 
+  // Optimistic lifecycle-stage moves — the dragged card jumps columns instantly,
+  // then the server persists + router.refresh() reconciles (useOptimistic reverts
+  // to the fresh base once the transition settles, so there is no flicker).
+  const [optimisticOrders, applyMove] = useOptimistic(
+    orders,
+    (state: PurchaseOrder[], move: { poId: string; stage: LifecycleStage }) =>
+      state.map((o) => (o.id === move.poId ? { ...o, lifecycle_stage: move.stage } : o))
+  );
+  const [, startMove] = useTransition();
+
+  function moveCard(poId: string, stage: LifecycleStage) {
+    startMove(async () => {
+      applyMove({ poId, stage });
+      const res = await setPoStage({ poId, stage });
+      if (res.success) toast.success(`Moved to “${stageLabel(stage)}”`);
+      else toast.error(res.error);
+      router.refresh();
+    });
+  }
+
   const visibleOrders = useMemo(() => {
     const s = q.trim().toLowerCase();
-    if (!s) return orders;
-    return orders.filter((o) =>
+    if (!s) return optimisticOrders;
+    return optimisticOrders.filter((o) =>
       [
         o.po_number,
         chainNumber(o),
@@ -115,7 +139,7 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(s))
     );
-  }, [orders, q]);
+  }, [optimisticOrders, q]);
 
   function syncShipments() {
     setSyncMsg(null);
@@ -133,9 +157,9 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
     });
   }
 
-  // Derive the open panel's PO from live `orders` so it stays current after a
+  // Derive the open panel's PO from live orders so it stays current after a
   // router.refresh (e.g. logging a delivery / attaching a file) — no sync effect.
-  const selected = selectedId ? orders.find((o) => o.id === selectedId) ?? null : null;
+  const selected = selectedId ? optimisticOrders.find((o) => o.id === selectedId) ?? null : null;
 
   return (
     <div className="relative">
@@ -204,7 +228,12 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
           />
         )
       ) : view === "kanban" ? (
-        <KanbanBoard orders={visibleOrders} onCardClick={(o) => setSelectedId(o.id)} />
+        <KanbanBoard
+          orders={visibleOrders}
+          onCardClick={(o) => setSelectedId(o.id)}
+          canMove={canMoveStage}
+          onMove={moveCard}
+        />
       ) : (
         <BoardTable
           data={visibleOrders}

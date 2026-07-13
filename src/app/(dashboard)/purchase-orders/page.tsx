@@ -3,6 +3,7 @@ import { Plus, ClipboardCheck } from "lucide-react";
 import { createServerClient } from "@/lib/supabase/server";
 import { getCapabilities } from "@/lib/authz";
 import { stripPurchaseOrderCosts } from "@/lib/price-visibility";
+import { effectiveStage } from "@/lib/po-lifecycle";
 import PurchasingClient from "./purchasing-client";
 import type { PurchaseOrder, PoAttachment, PoShipment } from "@/lib/erp-types";
 
@@ -29,6 +30,7 @@ export default async function PurchasingPage() {
   const canCreate = caps.has("po.create");
   const canApprove = caps.has("po.approve");
   const canReceive = caps.has("po.receive");
+  const canMoveStage = canApprove || canReceive;
 
   // Attach received totals per line (partial-delivery progress).
   const lineIds = all.flatMap((o) => (o.lines ?? []).map((l) => l.id));
@@ -113,8 +115,8 @@ export default async function PurchasingPage() {
         {[
           { label: "Total Active", value: all.length, color: "text-white" },
           { label: "Awaiting Approval", value: pendingApproval, color: "text-blue-300" },
-          { label: "In Manufacturing", value: all.filter((o) => o.status === "in_manufacturing").length, color: "text-purple-300" },
-          { label: "Shipped", value: all.filter((o) => o.status === "shipped").length, color: "text-indigo-300" },
+          { label: "In Manufacturing", value: all.filter((o) => effectiveStage(o) === "manufacturing").length, color: "text-purple-300" },
+          { label: "Shipping", value: all.filter((o) => effectiveStage(o) === "shipping").length, color: "text-indigo-300" },
         ].map(({ label, value, color }) => (
           <div key={label} className="bg-[#1e1e1e] border border-[#2a2a2a] rounded-lg px-4 py-3">
             <p className="text-[#6b7280] text-xs mb-0.5">{label}</p>
@@ -129,6 +131,7 @@ export default async function PurchasingPage() {
         canManageAttachments={canManageAttachments}
         canDetectShipment={canDetectShipment}
         canViewCost={canViewCost}
+        canMoveStage={canMoveStage}
       />
     </div>
   );
