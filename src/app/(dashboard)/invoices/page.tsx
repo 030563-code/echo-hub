@@ -3,7 +3,8 @@ import { getCapabilities } from "@/lib/authz";
 import { commercialInvoiceDocFromRecord, type CommercialInvoiceDoc } from "@/lib/commercial-invoice";
 import { stripCommercialInvoice } from "@/lib/price-visibility";
 import InvoicesClient from "./invoices-client";
-import type { CommercialInvoice, CommercialInvoiceLineRow, Entity } from "@/lib/erp-types";
+import CommercialInvoicePanel from "./CommercialInvoicePanel";
+import type { CommercialInvoice, CommercialInvoiceLineRow, Entity, ShipmentContent } from "@/lib/erp-types";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,16 @@ export default async function InvoicesPage() {
   const caps = await getCapabilities();
   const canViewCost = caps.has("cost.view");
   const canManage = caps.has("invoice.create");
+  // Commercial invoices are created here now (moved off Transport). The container
+  // picker needs the shipment contents; the same invoice.view/create + cost.view
+  // gating as before decides who sees the panel and who can generate.
+  const canViewInvoice = caps.has("invoice.view") || caps.has("invoice.create");
+  const canCreateInvoice = caps.has("invoice.create") && canViewCost;
+  const { data: shipRows } = await supabase
+    .from("shipment_contents")
+    .select("*")
+    .order("eta", { ascending: true });
+  const shipmentItems = (shipRows ?? []) as ShipmentContent[];
 
   const { data: invs } = await supabase
     .from("commercial_invoices")
@@ -76,5 +87,12 @@ export default async function InvoicesPage() {
     return { id: h.id, status: h.status, doc };
   });
 
-  return <InvoicesClient invoices={rows} canViewCost={canViewCost} canManage={canManage} />;
+  return (
+    <InvoicesClient
+      invoices={rows}
+      canViewCost={canViewCost}
+      canManage={canManage}
+      createSlot={canViewInvoice ? <CommercialInvoicePanel items={shipmentItems} canCreate={canCreateInvoice} /> : null}
+    />
+  );
 }

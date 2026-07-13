@@ -237,7 +237,7 @@ export async function generateCommercialInvoice(input: { container_ref: string; 
     return { ok: false, error: "Could not save the invoice." };
   }
 
-  revalidatePath("/transport");
+  revalidatePath("/invoices");
 
   const warnings = [
     ...composition.applied,

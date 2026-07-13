@@ -65,10 +65,10 @@ export default function CommercialInvoicePanel({
   }
 
   return (
-    <div className="mt-8">
+    <div className="mb-8">
       <div className="flex items-center gap-2 mb-3">
         <h2 className="text-sm font-semibold text-white" style={{ fontFamily: "Varela Round, sans-serif" }}>
-          Commercial Invoices
+          New invoice — from a container
         </h2>
         <span className="text-[10px] text-[#4b5563]">per container — EUR (SRO → Group) &amp; USD (Group → USA)</span>
         {canCreate && (

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { FileText, Loader2, Pencil, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import type { CommercialInvoiceDoc } from "@/lib/commercial-invoice";
-import CommercialInvoiceModal from "../transport/CommercialInvoiceModal";
+import CommercialInvoiceModal from "./CommercialInvoiceModal";
 import InvoiceDraftEditor from "./InvoiceDraftEditor";
 import { setInvoiceStatus } from "@/app/actions/invoices/set-invoice-status";
 import type { InvoiceListRow } from "./page";
@@ -22,10 +22,13 @@ export default function InvoicesClient({
   invoices,
   canViewCost,
   canManage,
+  createSlot,
 }: {
   invoices: InvoiceListRow[];
   canViewCost: boolean;
   canManage: boolean;
+  /** The "generate from a container" panel — rendered under the header. */
+  createSlot?: React.ReactNode;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState<CommercialInvoiceDoc | null>(null);
@@ -98,6 +101,8 @@ export default function InvoicesClient({
         )}
       </div>
 
+      {createSlot}
+
       {err && <p className="text-xs text-red-400 mb-3">{err}</p>}
 
       {invoices.length === 0 ? (
@@ -105,8 +110,7 @@ export default function InvoicesClient({
           dark
           icon={<Receipt className="w-8 h-8" />}
           title="No commercial invoices issued yet"
-          description="Generate them from Transport — pick a container and choose the EUR or USD leg."
-          action={<a href="/transport" className="text-[#FF7026] hover:underline">Go to Transport</a>}
+          description="Pick a container above and choose the EUR (SRO→Group) or USD (Group→USA) leg to generate one."
         />
       ) : (
         <div className="rounded-xl border border-[#2a2a2a] overflow-hidden">
