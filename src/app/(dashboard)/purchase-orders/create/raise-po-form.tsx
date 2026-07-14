@@ -222,7 +222,7 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
       });
       if (res.success) {
         setSuccess(res.po_number);
-        toast.success(`Purchase order ${res.po_number} raised`);
+        toast.success("Purchase order raised");
         router.refresh();
       } else {
         setError(res.error);
@@ -248,7 +248,7 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
           Purchase order raised
         </p>
         <p className="text-[#9ca3af] text-sm mt-1">
-          <span className="font-mono text-[#FF7026]">{success}</span> is now awaiting EB&nbsp;Group approval.
+          Your purchase order is now awaiting EB&nbsp;Group approval. Its Xero PO number appears once approved.
         </p>
         <div className="flex items-center justify-center gap-2 mt-5">
           <Link

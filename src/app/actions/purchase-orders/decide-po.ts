@@ -3,7 +3,6 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
 import { externalCallsDisabled } from "@/lib/env";
 import { snapshotSroPoCost } from "@/lib/bom";
@@ -109,7 +108,9 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
 
   // ----- REJECT (terminal for this leg) -----------------------------------
   if (decision === "reject") {
-    const { error } = await supabase
+    // .select() so a stale/concurrent reject (RLS matches 0 rows once the leg is
+    // no longer 'requested') is detected instead of reported as success.
+    const { data: rejected, error } = await supabase
       .from("purchase_orders")
       .update({
         status: "rejected",
@@ -118,77 +119,60 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
         approved_at: nowIso,
         notes: note ? `${po.notes ? po.notes + "\n" : ""}Rejected (${tier}): ${note}` : po.notes,
       })
-      .eq("id", poId);
+      .eq("id", poId)
+      .select("id");
     if (error) {
       console.error("decidePurchaseOrder reject failed", error.message);
       return { success: false, error: "Failed to reject the purchase order." };
+    }
+    if (!rejected || rejected.length === 0) {
+      return { success: false, error: "This PO has already been decided." };
     }
     revalidatePath("/purchase-orders");
     revalidatePath("/purchase-orders/approvals");
     return { success: true, status: "rejected", tier };
   }
 
-  // ----- APPROVE ----------------------------------------------------------
-  const { error: upErr } = await supabase
-    .from("purchase_orders")
-    .update({ status: "approved", approved_by_uid: user.id, approved_by: label, approved_at: nowIso })
-    .eq("id", poId);
-
-  if (upErr) {
-    console.error("decidePurchaseOrder approve failed", upErr.message);
+  // ----- APPROVE (atomic) -------------------------------------------------
+  // One RPC does it all under a row lock: guard status='requested' → approve →
+  // raise the next leg with reference_po_number = THIS leg's po_number → copy the
+  // lines. This replaces three separate writes that could half-fail and strand an
+  // approved leg with no successor, is concurrency-safe (a racing/stale approver
+  // gets ok=false, not a silent duplicate PO + double Xero fire), and is what
+  // finally carries the reference through the chain Hub-side (so n8n receives it
+  // in the webhook and never needs its fragile parent-lookup).
+  const { data: rpcRes, error: rpcErr } = await supabase.rpc("hub_approve_po_leg", {
+    p_po_id: poId,
+    p_label: label,
+    p_uid: user.id,
+  });
+  if (rpcErr) {
+    console.error("decidePurchaseOrder approve RPC failed", rpcErr.message);
     return { success: false, error: "Failed to approve the purchase order." };
   }
+  const result = (rpcRes ?? {}) as {
+    ok?: boolean;
+    reason?: string;
+    next_leg?: string | null;
+    child_po_number?: string | null;
+  };
+  if (!result.ok) {
+    return {
+      success: false,
+      error:
+        result.reason === "not_found"
+          ? "Purchase order not found."
+          : "This PO has already been decided (it is no longer awaiting approval).",
+    };
+  }
 
-  // Freeze the SRO/BOM cost at approval — from here it's authoritative and no
-  // longer floats with later material-price edits. Best-effort (won't block).
+  // Freeze the SRO/BOM cost at approval — best-effort, post-commit.
   if (po.leg === "EB_GROUP_TO_SRO") {
     await snapshotSroPoCost(po.id);
   }
 
-  const admin = createAdminClient();
   let warning: string | undefined;
-  let nextPoNumber: string | undefined;
-
-  // Raise the next tier's leg (so it enters the queue). Intercompany row via
-  // service role; the trigger mints the placeholder po_number + inherits master_ref.
-  const next = NEXT_LEG[po.leg];
-  if (next) {
-    const { data: child, error: childErr } = await admin
-      .from("purchase_orders")
-      .insert({
-        parent_po_id: po.id,
-        leg: next.leg,
-        from_entity: next.from,
-        to_entity: next.to,
-        status: "requested",
-        source: "hub",
-        requested_by: label,
-        delivery_address: po.delivery_address,
-        notes: po.notes,
-      })
-      .select("id, po_number")
-      .single();
-
-    if (childErr || !child) {
-      console.error("decidePurchaseOrder next-leg insert failed", childErr?.message);
-      warning = `Approved, but the next tier (${next.leg}) could not be raised — retry or escalate.`;
-    } else {
-      nextPoNumber = child.po_number;
-      const childLines = (po.lines ?? []).map((l) => ({
-        po_id: child.id,
-        sku: l.sku,
-        product_name: l.product_name,
-        product_family: l.product_family,
-        quantity: l.quantity,
-        hs_code: l.hs_code,
-        unit_price: l.unit_price,
-      }));
-      if (childLines.length) {
-        const { error: clErr } = await admin.from("purchase_order_lines").insert(childLines);
-        if (clErr) console.error("decidePurchaseOrder next-leg lines failed", clErr.message);
-      }
-    }
-  }
+  const nextPoNumber = result.child_po_number ?? undefined;
 
   // Fire n8n for the APPROVED leg → create its Xero PO in that tier's account and
   // write the real Xero PO# back. Best-effort (the Hub record is already saved).

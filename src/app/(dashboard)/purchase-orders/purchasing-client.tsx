@@ -16,8 +16,9 @@ import { recordReceipt } from "@/app/actions/purchase-orders/receive-po";
 import { uploadPoAttachment, getPoAttachmentUrl, deletePoAttachment } from "@/app/actions/purchase-orders/attachments";
 import { resolvePoShipment, syncAllPoShipments } from "@/app/actions/purchase-orders/po-shipments";
 import { raiseCargoPo } from "@/app/actions/purchase-orders/raise-cargo-po";
-import { chainNumber, isFullyReceived, legLabel } from "@/lib/po-number";
-import { downloadPoPdf } from "@/lib/po-pdf";
+import { chainNumber, isFullyReceived, legLabel, displayPoNumber } from "@/lib/po-number";
+import { downloadPoPdf, type PdfParty } from "@/lib/po-pdf";
+import { entityPoCurrency, type FxRates } from "@/lib/po-currency";
 import { stageLabel, type LifecycleStage } from "@/lib/po-lifecycle";
 import { setPoStage } from "@/app/actions/purchase-orders/set-po-stage";
 import type { PurchaseOrder } from "@/lib/erp-types";
@@ -31,7 +32,7 @@ const TABLE_COLUMNS: ColumnDef<PurchaseOrder, unknown>[] = [
     accessorKey: "po_number",
     header: "PO Number",
     cell: ({ getValue }) => (
-      <span className="font-mono text-[#FF7026] text-xs font-medium">{getValue() as string}</span>
+      <span className="font-mono text-[#FF7026] text-xs font-medium">{displayPoNumber(getValue() as string)}</span>
     ),
   },
   {
@@ -90,9 +91,12 @@ interface Props {
   canViewCost: boolean;
   /** Can drag PO cards between lifecycle columns (po.approve / po.receive). */
   canMoveStage: boolean;
+  /** From/To party addresses + weekly FX for the branded PO PDF (server-built). */
+  parties: Record<string, PdfParty>;
+  fx: FxRates | null;
 }
 
-export default function PurchasingClient({ orders, canReceive, canManageAttachments, canDetectShipment, canViewCost, canMoveStage }: Props) {
+export default function PurchasingClient({ orders, canReceive, canManageAttachments, canDetectShipment, canViewCost, canMoveStage, parties, fx }: Props) {
   const router = useRouter();
   const [view, setView] = useState<"kanban" | "table">("kanban");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -160,6 +164,13 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
   // Derive the open panel's PO from live orders so it stays current after a
   // router.refresh (e.g. logging a delivery / attaching a file) — no sync effect.
   const selected = selectedId ? optimisticOrders.find((o) => o.id === selectedId) ?? null : null;
+
+  // The cost is entered on the root (depot) leg in that depot's currency; the PDF
+  // converts it into the leg's own currency. Resolve the chain root for the rate.
+  const rootCurrencyFor = (po: PurchaseOrder) => {
+    const root = optimisticOrders.find((o) => o.master_ref === po.master_ref && !o.parent_po_id) ?? po;
+    return entityPoCurrency(root.from_entity);
+  };
 
   return (
     <div className="relative">
@@ -249,8 +260,10 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
         <div className="fixed inset-y-0 right-0 w-96 bg-[#161616] border-l border-[#2a2a2a] z-50 flex flex-col shadow-2xl">
           <div className="flex items-center justify-between px-5 py-4 border-b border-[#2a2a2a]">
             <div>
-              <p className="font-mono text-[#FF7026] font-medium">{chainNumber(selected)}</p>
-              <p className="text-xs text-[#4b5563]">{selected.po_number}</p>
+              <p className="font-mono text-[#FF7026] font-medium">{displayPoNumber(selected.po_number)}</p>
+              {selected.reference_po_number && (
+                <p className="text-xs text-[#4b5563]">Ref: {displayPoNumber(selected.reference_po_number)}</p>
+              )}
             </div>
             <button
               onClick={() => setSelectedId(null)}
@@ -261,7 +274,7 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
           </div>
 
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
-            <DownloadPoPdfButton po={selected} chain={chainNumber(selected)} canViewCost={canViewCost} />
+            <DownloadPoPdfButton po={selected} canViewCost={canViewCost} parties={parties} fx={fx} rootCurrency={rootCurrencyFor(selected)} />
 
             <DetailSection label="Status">
               <StatusBadge status={selected.status} />
@@ -363,14 +376,26 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
   );
 }
 
-function DownloadPoPdfButton({ po, chain, canViewCost }: { po: PurchaseOrder; chain: string; canViewCost: boolean }) {
+function DownloadPoPdfButton({
+  po,
+  canViewCost,
+  parties,
+  fx,
+  rootCurrency,
+}: {
+  po: PurchaseOrder;
+  canViewCost: boolean;
+  parties: Record<string, PdfParty>;
+  fx: FxRates | null;
+  rootCurrency: ReturnType<typeof entityPoCurrency>;
+}) {
   const [busy, setBusy] = useState(false);
   return (
     <button
       onClick={async () => {
         setBusy(true);
         try {
-          await downloadPoPdf(po, { chain, canViewCost });
+          await downloadPoPdf(po, { canViewCost, parties, fx, rootCurrency });
           toast.success("PO PDF downloaded");
         } catch {
           toast.error("Could not generate the PDF");

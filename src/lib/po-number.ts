@@ -28,6 +28,23 @@ export function chainNumber(po: Pick<PurchaseOrder, 'po_number' | 'master_ref' |
   return idx === 0 ? base : `${base}-${idx}`
 }
 
+/**
+ * A Hub-minted placeholder number (`PO-01105`) vs a real Xero number written back
+ * by n8n (`EBG26086`, `EBUSA26013`, `EBSRO…`). We keep the placeholder internally
+ * (it chains master_ref + reference), but never surface it: the real PO number is
+ * the Xero one, and until n8n writes it back we show "Awaiting Xero PO number".
+ */
+export function isPlaceholderPoNumber(poNumber: string | null | undefined): boolean {
+  return !poNumber || /^PO-\d+$/i.test(poNumber.trim())
+}
+
+export const AWAITING_XERO_PO = 'Awaiting Xero PO number'
+
+/** What to SHOW for a PO number: the real Xero number, else the awaiting label. */
+export function displayPoNumber(poNumber: string | null | undefined): string {
+  return isPlaceholderPoNumber(poNumber) ? AWAITING_XERO_PO : (poNumber as string)
+}
+
 /** Human label for a leg — shared so the board, table and kanban never disagree. */
 export function legLabel(leg: string): string {
   if (leg === 'DEPOT_TO_EB_GROUP') return 'Depot → Group'

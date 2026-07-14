@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronUp, Package, Clock, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import StatusBadge from "./StatusBadge";
-import { chainNumber, legLabel } from "@/lib/po-number";
+import { displayPoNumber, legLabel } from "@/lib/po-number";
 import { LIFECYCLE_STAGES, effectiveStage, stageLabel, type LifecycleStage } from "@/lib/po-lifecycle";
 import type { PurchaseOrder } from "@/lib/erp-types";
 import { formatRelative } from "@/lib/utils";
@@ -141,8 +141,10 @@ function POCard({
             <GripVertical className="w-3.5 h-3.5 text-[#3a3a3a] group-hover:text-[#6b7280] flex-shrink-0 mt-0.5 transition-colors" />
           )}
           <div className="min-w-0">
-            <p className="text-xs font-mono text-[#FF7026] font-medium">{chainNumber(order)}</p>
-            <p className="text-[10px] text-[#4b5563] font-mono truncate">{order.po_number}</p>
+            <p className="text-xs font-mono text-[#FF7026] font-medium truncate">{displayPoNumber(order.po_number)}</p>
+            {order.reference_po_number && (
+              <p className="text-[10px] text-[#4b5563] font-mono truncate">Ref: {displayPoNumber(order.reference_po_number)}</p>
+            )}
           </div>
         </div>
         <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#2a2a2a] text-[#6b7280] whitespace-nowrap flex-shrink-0">

@@ -4,6 +4,7 @@ import { createServerClient } from "@/lib/supabase/server";
 import { getCapabilities } from "@/lib/authz";
 import { stripPurchaseOrderCosts } from "@/lib/price-visibility";
 import { effectiveStage } from "@/lib/po-lifecycle";
+import { getPoPdfData } from "@/lib/po-pdf-data";
 import PurchasingClient from "./purchasing-client";
 import type { PurchaseOrder, PoAttachment, PoShipment } from "@/lib/erp-types";
 
@@ -71,6 +72,9 @@ export default async function PurchasingPage() {
   }
   const canDetectShipment = caps.has("transport.view");
 
+  // From/To party addresses + weekly FX for the branded PO PDF.
+  const poPdfData = await getPoPdfData(supabase);
+
   return (
     <div className="p-6">
       {/* Header */}
@@ -132,6 +136,8 @@ export default async function PurchasingPage() {
         canDetectShipment={canDetectShipment}
         canViewCost={canViewCost}
         canMoveStage={canMoveStage}
+        parties={poPdfData.parties}
+        fx={poPdfData.fx}
       />
     </div>
   );

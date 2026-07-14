@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Check, X, Loader2, Inbox, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { formatRelative } from "@/lib/utils";
 import { decidePurchaseOrder } from "@/app/actions/purchase-orders/decide-po";
-import { chainNumber } from "@/lib/po-number";
+import { chainNumber, displayPoNumber } from "@/lib/po-number";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SearchBox } from "@/components/ui/search-box";
 import type { PurchaseOrder } from "@/lib/erp-types";
@@ -83,7 +83,7 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
         setNotice({ kind: "error", text: res.error });
         toast.error(res.error);
       } else {
-        toast.success(`${chainNumber(po)} rejected`);
+        toast.success(`${displayPoNumber(po.po_number)} rejected`);
       }
       router.refresh();
     });
@@ -162,8 +162,7 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
                 <div key={po.id} className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-5">
                   <div className="flex items-start justify-between gap-4 mb-3">
                     <div>
-                      <p className="font-mono text-[#FF7026] font-medium">{chainNumber(po)}</p>
-                      <p className="text-[10px] text-[#4b5563] font-mono">{po.po_number}</p>
+                      <p className="font-mono text-[#FF7026] font-medium">{displayPoNumber(po.po_number)}</p>
                       <p className="text-xs text-[#6b7280] mt-0.5">
                         <span className="font-mono">{po.from_entity}</span> →{" "}
                         <span className="font-mono">{po.to_entity}</span>
@@ -172,7 +171,7 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
                       </p>
                       {po.reference_po_number && (
                         <p className="text-xs text-[#6b7280] mt-0.5">
-                          ref: <span className="font-mono text-[#9ca3af]">{po.reference_po_number}</span>
+                          ref: <span className="font-mono text-[#9ca3af]">{displayPoNumber(po.reference_po_number)}</span>
                         </p>
                       )}
                     </div>
@@ -252,7 +251,7 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
           <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" />
           <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md bg-[#141414] border border-[#2a2a2a] rounded-2xl p-6 shadow-2xl">
             <Dialog.Title className="text-lg font-semibold text-white" style={{ fontFamily: "Varela Round, sans-serif" }}>
-              Reject {rejectTarget?.po_number}
+              Reject {rejectTarget ? displayPoNumber(rejectTarget.po_number) : ""}
             </Dialog.Title>
             <Dialog.Description className="text-xs text-[#6b7280] mt-1 mb-4">
               This marks the PO rejected and stops the chain at this tier. Add an optional reason.
