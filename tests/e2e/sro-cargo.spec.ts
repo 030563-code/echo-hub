@@ -10,6 +10,8 @@ const s = sroState()
 
 test.describe('SRO slice 6 — Cargo Partner SPOT-ID auto-retrieve', () => {
   test.skip(!s, 'Run `node tests/e2e/_setup.mjs` first')
+  // Staging's kill switch blocks outbound Cargo Partner calls BY DESIGN.
+  test.skip(!!process.env.E2E_BASE_URL, 'Cargo is kill-switched on the staging sandbox (by design)')
 
   test('a PO number auto-retrieves the real SPOT ID (no manual entry)', async ({ page }) => {
     await login(page, s!.buyer)

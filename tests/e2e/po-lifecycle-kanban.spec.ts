@@ -74,6 +74,13 @@ test("PO lifecycle kanban drags + persists; invoices create panel moved", async 
 
   // ---- drag → "Sent to manufacturing", then prove it PERSISTED ----
   await dragTo(page, card, col(page, "Sent to manufacturing"), poNumber);
+  // dragTo confirms the OPTIMISTIC render; wait for the server to CONFIRM (the
+  // toast fires only after setPoStage → RPC resolves) before reloading — on a
+  // deployed target the reload otherwise races the write and reads stale data.
+  // Destination-specific: a self-heal normalise drag can toast "Moved to" too.
+  await expect(
+    page.locator("[data-sonner-toast]").filter({ hasText: "Sent to manufacturing" }).first()
+  ).toBeVisible({ timeout: 20_000 });
   await page.reload();
   await expect(col(page, "Sent to manufacturing").getByText(poNumber, { exact: true })).toBeVisible({
     timeout: 15_000,
@@ -94,6 +101,9 @@ test("PO lifecycle kanban drags + persists; invoices create panel moved", async 
   const cardBack = page.locator('[draggable="true"]').filter({ hasText: poNumber });
   await expect(cardBack).toBeVisible({ timeout: 10_000 });
   await dragTo(page, cardBack, col(page, "Depot → Group"), poNumber);
+  await expect(
+    page.locator("[data-sonner-toast]").filter({ hasText: "Depot → Group" }).first()
+  ).toBeVisible({ timeout: 20_000 });
   await page.reload();
   await expect(col(page, "Depot → Group").getByText(poNumber, { exact: true })).toBeVisible({
     timeout: 15_000,

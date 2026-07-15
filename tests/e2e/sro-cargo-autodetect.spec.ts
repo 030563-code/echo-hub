@@ -22,6 +22,8 @@ async function openCargoFixture(page: import('@playwright/test').Page) {
 
 test.describe('SRO slice 6 — PO→shipment auto-detect + persistence', () => {
   test.skip(!s, 'Run `node tests/e2e/_setup.mjs` first')
+  // Staging's kill switch blocks outbound Cargo Partner calls BY DESIGN.
+  test.skip(!!process.env.E2E_BASE_URL, 'Cargo is kill-switched on the staging sandbox (by design)')
 
   test('detects + stores the SPOT ID from the PO number, and it persists', async ({ page }) => {
     await login(page, s!.buyer)

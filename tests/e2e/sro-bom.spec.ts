@@ -10,6 +10,8 @@ const s = sroState()
 
 test.describe('BOM — material-price master', () => {
   test.skip(!s, 'Run `node tests/e2e/_setup.mjs` first')
+  // Staging's kill switch blocks mfg-DB writes (price saves) BY DESIGN.
+  test.skip(!!process.env.E2E_BASE_URL, 'BOM price editing is kill-switched on the staging sandbox (by design)')
 
   test('editing a material price ripples to products and shows on BOM Prices', async ({ page }) => {
     await login(page, s!.buyer)
