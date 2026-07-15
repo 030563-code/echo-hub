@@ -21,7 +21,7 @@ test.describe('SRO invoicing — commercial invoices', () => {
 
   test('EUR SRO→Group: numbered + valued from the transfer-price list', async ({ page }) => {
     await login(page, s!.buyer)
-    await page.goto('/transport')
+    await page.goto('/invoices')
 
     await expect(page.getByRole('heading', { name: 'Commercial Invoices' })).toBeVisible()
     await panelRow(page).getByRole('button', { name: 'EUR' }).click()
@@ -33,7 +33,7 @@ test.describe('SRO invoicing — commercial invoices', () => {
 
   test('USD Group→USA: converts via the live FX rate and shows the FX line', async ({ page }) => {
     await login(page, s!.buyer)
-    await page.goto('/transport')
+    await page.goto('/invoices')
 
     await panelRow(page).getByRole('button', { name: 'USD' }).click()
 

@@ -60,12 +60,19 @@ test.describe('SRO slice 4 — receiving, templates, numbering', () => {
     await expect(page.getByPlaceholder('Anything EB Group should know about this order…')).toHaveValue('E2E note marker')
   })
 
-  test('the chain label shows the SRO order as the base number (SRO-rooted)', async ({ page }) => {
+  test('the side panel shows the PO number as the headline (no Ref line for a root order)', async ({ page }) => {
     await page.goto('/purchase-orders')
-    // SRO-rooted numbering: the SRO order (EB_GROUP_TO_SRO) is the base PO-001; its
-    // Bamida/Cargo children are base-1/base-2. So the SRO order itself reads as base.
-    const base = (s!.bomPo.master_ref ?? s!.bomPo.po_number).replace(/^MR-/, '')
-    await expect(page.getByText(base, { exact: true }).first()).toBeVisible()
-    await expect(page.getByText(`${base}-1`, { exact: true })).toHaveCount(0)
+    // Under the 2026-07-14 display contract the Hub-minted placeholder is never
+    // shown; the fixture's own E2E number is real (doesn't match ^PO-\d+$) so it
+    // IS the headline. bomPo has no parent_po_id (raised directly, not via the
+    // approval chain) so reference_po_number is null — no "Ref:" second line.
+    await page.getByText(s!.bomPo.po_number, { exact: true }).first().click()
+    // Scope to the slide-over panel itself (div.w-96 is unique to it on this
+    // page) — a broad `hasText` filter also matches the ancestor that wraps both
+    // the panel AND the still-visible board card behind it, which would make the
+    // po-number text match twice (strict-mode violation).
+    const panel = page.locator('div.w-96')
+    await expect(panel.getByText(s!.bomPo.po_number, { exact: true })).toBeVisible()
+    await expect(panel.getByText(/^Ref: /)).toHaveCount(0)
   })
 })

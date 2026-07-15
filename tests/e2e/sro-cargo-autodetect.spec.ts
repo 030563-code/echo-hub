@@ -9,6 +9,17 @@ import { sroState } from './sro-helpers'
 // → SPOT 240362822. May flake if that shipment is archived / the API is down.
 const s = sroState()
 
+// cargoPo.po_number is forced to a real Cargo Partner reference (PO-00001364) so
+// the live lookup has something to find — but that format collides with Hub's
+// own placeholder pattern (^PO-\d+$), so the board shows it as "Awaiting Xero PO
+// number" like any undecided PO (not unique text to click on). The top search
+// box filters the underlying orders on the RAW po_number even though the label
+// shown is masked, so it narrows the board to just this fixture before we click.
+async function openCargoFixture(page: import('@playwright/test').Page) {
+  await page.getByPlaceholder('Search PO, entity, status…').fill(s!.cargoPo.po_number)
+  await page.getByText('Awaiting Xero PO number', { exact: true }).first().click()
+}
+
 test.describe('SRO slice 6 — PO→shipment auto-detect + persistence', () => {
   test.skip(!s, 'Run `node tests/e2e/_setup.mjs` first')
 
@@ -20,7 +31,7 @@ test.describe('SRO slice 6 — PO→shipment auto-detect + persistence', () => {
     await expect(page.getByRole('button', { name: 'Sync shipments' })).toBeVisible()
 
     // Open the Cargo fixture PO (po_number forced to a real Cargo reference).
-    await page.getByText(s!.cargoPo.po_number, { exact: true }).first().click()
+    await openCargoFixture(page)
     await expect(page.getByText('Shipment (Cargo Partner)')).toBeVisible()
     await expect(page.getByText('No shipment linked yet.')).toBeVisible()
 
@@ -31,7 +42,7 @@ test.describe('SRO slice 6 — PO→shipment auto-detect + persistence', () => {
     // Persistence: reload (client state is lost), re-open — the stored SPOT ID is
     // re-loaded from po_shipments, proving it was written to the database.
     await page.reload()
-    await page.getByText(s!.cargoPo.po_number, { exact: true }).first().click()
+    await openCargoFixture(page)
     await expect(page.getByText('240362822').first()).toBeVisible({ timeout: 10000 })
     await expect(page.getByRole('button', { name: 'Refresh shipment' })).toBeVisible()
   })

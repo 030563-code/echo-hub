@@ -64,7 +64,16 @@ async function ensureUser(u, { depots, caps }) {
   return id
 }
 
-async function makePo(leg, from, to, lines) {
+// poNumber (optional) — an explicit, stable, non-placeholder number. Hub-minted
+// placeholders (PO-01116 etc) match displayPoNumber()'s ^PO-\d+$ hide-pattern, so
+// under the 2026-07-13/14 contract they never render — fixtures need a real
+// number to stay visible/clickable in the UI. Stable + delete-before-insert
+// (mirrors the shipment_contents/commercial_invoices fixture below) rather than
+// randomised per run, so re-running setup without a prior teardown can't collide.
+async function makePo(leg, from, to, lines, poNumber) {
+  if (poNumber) {
+    await sb.from('purchase_orders').delete().eq('po_number', poNumber)
+  }
   const { data: po, error } = await sb
     .from('purchase_orders')
     .insert({
@@ -76,6 +85,7 @@ async function makePo(leg, from, to, lines) {
       requested_by: 'E2E',
       approved_by: 'E2E',
       notes: 'E2E TEST FIXTURE',
+      ...(poNumber ? { po_number: poNumber } : {}),
     })
     .select('id, po_number, master_ref')
     .single()
@@ -96,15 +106,16 @@ const workerId = await ensureUser(WORKER, {
   caps: ['po.view', 'po.receive', 'bom.view', 'invoice.view'],
 })
 
-// Fixture A — depot leg, for the receiving flow (skips approve→Xero).
+// Fixture A — depot leg, for the receiving flow (skips approve→Xero). Explicit
+// E2E-prefixed po_number (not ^PO-\d+$) so it stays displayed/clickable.
 const receivePo = await makePo('DEPOT_TO_EB_GROUP', 'US-BAL', 'EB-GROUP', [
   { sku: 'EBH9NA', product_name: 'Echo Barrier H9', product_family: 'H9', quantity: 10 },
   { sku: 'EBH10NA', product_name: 'Echo Barrier H10', product_family: 'H10', quantity: 5 },
-])
+], 'E2EPO26001')
 // Fixture B — group→SRO leg with a barrier SKU, for the BOM explosion + Bamida PO.
 const bomPo = await makePo('EB_GROUP_TO_SRO', 'EB-GROUP', 'EB-SRO', [
   { sku: 'EBH9NA', product_name: 'Echo Barrier H9', product_family: 'H9', quantity: 20 },
-])
+], 'E2EPO26002')
 
 // Fixture B2 — an SRO order with a FROZEN cost snapshot (cost frozen at approval).
 // The frozen SRO total is a distinctive value a live explosion could never produce,
@@ -112,7 +123,7 @@ const bomPo = await makePo('EB_GROUP_TO_SRO', 'EB-GROUP', 'EB-SRO', [
 const FROZEN_SRO = 4242.42
 const frozenPo = await makePo('EB_GROUP_TO_SRO', 'EB-GROUP', 'EB-SRO', [
   { sku: 'EBH9NA', product_name: 'Echo Barrier H9', product_family: 'H9', quantity: 1 },
-])
+], 'E2EPO26003')
 await sb
   .from('purchase_orders')
   .update({
@@ -149,7 +160,16 @@ await sb
 
 // Fixture C — for the Cargo SPOT-ID AUTO-DETECT test: force its po_number to a
 // reference Cargo Partner actually holds (PO-00001364 → SPOT 240362822), since
-// Hub-minted PO numbers don't match Cargo's references.
+// Hub-minted PO numbers don't match Cargo's references. NOTE: that real Cargo
+// reference itself matches displayPoNumber()'s ^PO-\d+$ hide-pattern, so the
+// board shows it as "Awaiting Xero PO number" like any placeholder — the spec
+// finds this fixture via the search box (which filters on the raw po_number),
+// not by its displayed text.
+// Its final po_number is stable across runs too (forced below), so it needs the
+// same delete-before-insert guard as the others — otherwise a re-run without
+// teardown leaves a second PO-00001364 row that already has a po_shipments link
+// persisted from a prior run's "detect" (CASCADE removes that link with it).
+await sb.from('purchase_orders').delete().eq('po_number', 'PO-00001364')
 const cargoPo = await makePo('DEPOT_TO_EB_GROUP', 'US-BAL', 'EB-GROUP', [
   { sku: 'EBH9NA', product_name: 'Echo Barrier H9', product_family: 'H9', quantity: 8 },
 ])
