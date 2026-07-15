@@ -18,7 +18,7 @@ const baseURL = process.env.E2E_BASE_URL || "http://localhost:3000";
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  testMatch: /staging-remote\.spec\.ts/,
+  testMatch: /staging-(remote|smoke)\.spec\.ts/,
   timeout: 90_000,
   expect: { timeout: 20_000 },
   use: { baseURL, ignoreHTTPSErrors: true },

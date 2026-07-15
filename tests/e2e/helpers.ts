@@ -21,14 +21,15 @@ export function anyCreds(): Creds | null {
   return adminCreds() ?? limitedCreds()
 }
 
-/** Log in via the real form and wait for the dashboard. */
+/** Log in via the real form and wait for the dashboard. Host-agnostic, so it works
+ *  against localhost AND a deployed URL (E2E_BASE_URL). */
 export async function login(page: Page, c: Creds) {
   await page.goto('/login')
   await page.getByPlaceholder('name@echobarrier.com').fill(c.email)
   await page.getByPlaceholder('••••••••').fill(c.password)
   await page.getByRole('button', { name: 'Sign In' }).click()
-  await page.waitForURL('http://localhost:3000/', { timeout: 15_000 })
-  await expect(page.getByText('Welcome to the Echo Barrier Hub')).toBeVisible()
+  await page.waitForURL((u) => new URL(u).pathname === '/', { timeout: 25_000 })
+  await expect(page.getByText('Welcome to the Echo Barrier Hub')).toBeVisible({ timeout: 15_000 })
 }
 
 /** Proxy for "is this user privileged?" — only admins/ops users see the MRP nav. */
