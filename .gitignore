@@ -52,3 +52,6 @@ tests/e2e/.e2e-state.json
 *.fls
 *.aux
 *.synctex.gz
+
+# Tester how-to guide — contains test-account credentials; keep local only.
+docs/hub-guide/

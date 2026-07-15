@@ -35,7 +35,7 @@ const emptyLine = (): LineRow => ({ sku: "", quantity: "1", hs_code: "", unit_pr
 
 // Per-field validation messages surfaced under the offending input on submit.
 type LineFieldErrors = { sku?: string; quantity?: string; unit_price?: string };
-type FieldErrors = { depot?: string; lines: Record<number, LineFieldErrors> };
+type FieldErrors = { depot?: string; deliveryAddress?: string; lines: Record<number, LineFieldErrors> };
 
 interface Props {
   depots: string[];
@@ -183,6 +183,7 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
   function validate(): boolean {
     const fe: FieldErrors = { lines: {} };
     if (!fromEntity) fe.depot = "Select the raising depot.";
+    if (!deliveryAddress) fe.deliveryAddress = "Select a delivery address.";
     lines.forEach((l, i) => {
       const le: LineFieldErrors = {};
       if (!l.sku) le.sku = "Select a product.";
@@ -197,7 +198,7 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
       if (Object.keys(le).length) fe.lines[i] = le;
     });
     setFieldErrors(fe);
-    return !fe.depot && Object.keys(fe.lines).length === 0;
+    return !fe.depot && !fe.deliveryAddress && Object.keys(fe.lines).length === 0;
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -216,7 +217,7 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
     startTransition(async () => {
       const res = await createPurchaseOrder({
         from_entity: fromEntity,
-        delivery_address: deliveryAddress || undefined,
+        delivery_address: deliveryAddress,
         notes: notes.trim() || undefined,
         lines: payloadLines,
       });
@@ -341,8 +342,16 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
             )}
           </div>
           <div>
-            <label className="block text-xs text-[#9ca3af] mb-1">Delivery address</label>
-            <select value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} className={selectCls}>
+            <label className="block text-xs text-[#9ca3af] mb-1">Delivery address *</label>
+            <select
+              required
+              value={deliveryAddress}
+              onChange={(e) => {
+                setDeliveryAddress(e.target.value);
+                setFieldErrors((fe) => ({ ...fe, deliveryAddress: undefined }));
+              }}
+              className={selectCls}
+            >
               <option value="">Select a ship-to address…</option>
               {addresses.map((a) => (
                 <option key={a.id} value={`${a.label}${a.address ? ` — ${a.address}` : ""}`}>
@@ -351,6 +360,9 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
                 </option>
               ))}
             </select>
+            {fieldErrors.deliveryAddress && (
+              <p className="text-[10px] text-red-400 mt-1">{fieldErrors.deliveryAddress}</p>
+            )}
           </div>
         </div>
 

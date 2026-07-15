@@ -24,7 +24,9 @@ test("PO approve chain: raise → tier1 → tier2(ref) → tier3(ref)", async ({
 
   // ---- raise a US-BAL root PO with the marker note ----
   await page.goto("/purchase-orders/create");
-  await page.locator("select[required]").selectOption("US-BAL");
+  await page.locator('select[required]').first().selectOption("US-BAL");
+  // Delivery address is required — pick the first real ship-to option.
+  await page.locator('select[required]').nth(1).selectOption({ index: 1 });
   await page.locator("select").filter({ hasText: "Select product…" }).first().selectOption("EBH9NA");
   await page.getByLabel("Quantity").fill("7");
   await page.getByLabel("Unit price").fill("106");
