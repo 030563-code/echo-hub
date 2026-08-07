@@ -5,12 +5,15 @@ import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
+import { buildStockIncrements, type POLineLite } from "@/lib/mrp/receipts";
 
 // ---------------------------------------------------------------------------
 // Partial-delivery: log a batch of received quantities against an approved PO's
 // lines (append-only). A PO stays "open" (approved) until every line's Σ received
 // ≥ ordered, at which point it flips to 'delivered'. Receipts are qty-only (no
-// price) and do NOT touch the dummy warehouse_stock_levels. po.receive gated.
+// price) and are the SOLE automatic writer of warehouse_stock_levels: each
+// logged batch increments the receiving depot's stock per sku via the
+// service-role increment_stock RPC (MRP engine input). po.receive gated.
 // ---------------------------------------------------------------------------
 
 const ReceiveSchema = z.object({
@@ -33,16 +36,12 @@ export type RecordReceiptResult =
   | { success: true; fullyReceived: boolean }
   | { success: false; error: string };
 
-interface POLineLite {
-  id: string;
-  sku: string;
-  quantity: number;
-}
 interface POForReceive {
   id: string;
   status: string;
   source: string;
   leg: string;
+  from_entity: string;
   lines?: POLineLite[];
 }
 
@@ -63,7 +62,7 @@ export async function recordReceipt(input: RecordReceiptInput): Promise<RecordRe
 
   const { data: po } = await supabase
     .from("purchase_orders")
-    .select("id, status, source, leg, lines:purchase_order_lines(id, sku, quantity)")
+    .select("id, status, source, leg, from_entity, lines:purchase_order_lines(id, sku, quantity)")
     .eq("id", poId)
     .maybeSingle<POForReceive>();
 
@@ -123,6 +122,20 @@ export async function recordReceipt(input: RecordReceiptInput): Promise<RecordRe
     return { success: false, error: "Failed to log the delivery." };
   }
 
+  // Goods have physically landed at the depot (from_entity on the depot leg) —
+  // increment its stock per sku via the service-role RPC. Best-effort: the
+  // receipt is already logged, so an increment failure is logged, not thrown.
+  const admin = createAdminClient();
+  const increments = buildStockIncrements(lines, poLines, po.from_entity);
+  for (const inc of increments) {
+    const { error } = await admin.rpc("increment_stock", {
+      p_warehouse: inc.warehouse_code,
+      p_sku: inc.sku,
+      p_delta: inc.delta,
+    });
+    if (error) console.error("stock increment failed", inc, error.message);
+  }
+
   // Recompute from the AUTHORITATIVE post-insert sum (re-read, don't trust the
   // pre-insert snapshot — a concurrent batch on another line could also have
   // completed the PO). Flip to 'delivered' when complete via service-role (the
@@ -140,7 +153,6 @@ export async function recordReceipt(input: RecordReceiptInput): Promise<RecordRe
     (po.lines ?? []).every((l) => (finalByLine.get(l.id) ?? 0) >= l.quantity);
 
   if (fullyReceived) {
-    const admin = createAdminClient();
     const { error: upErr } = await admin
       .from("purchase_orders")
       .update({ status: "delivered", delivered_at: new Date().toISOString() })
