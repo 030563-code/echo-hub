@@ -73,6 +73,8 @@
  * INSERT … jsonb_to_recordset … ON CONFLICT DO NOTHING on ops) because the
  * MCS mirror service key is not present in .env.local. This script is the
  * committed, reproducible artifact for re-runs once MCS keys are available.
+ * Keys: the MCS mirror service key comes from the Supabase dashboard of
+ * project rmphqdopzvmirlooqnkv; runtime keys live in n8n, never the repo.
  */
 import { createClient } from "@supabase/supabase-js";
 

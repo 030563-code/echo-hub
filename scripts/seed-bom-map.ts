@@ -12,9 +12,14 @@
  *   2. SK/SRO SKUs: the constant map below — 1:1 with the 22 mfg model codes,
  *      same vocabulary as VALID_SKUS in src/app/(dashboard)/mrp/actions.ts and
  *      the SKU name map in src/app/(dashboard)/transport/actions.ts.
- *   product_code_master.internal_sku is deliberately NOT used: that vocabulary
- *   (EBH9, NDS, DBRT, ...) never appears in mrp_demand_events or deal line
- *   items, so a map keyed on it would not join to the MRP engine.
+ *   product_code_master.internal_sku is deliberately NOT the key here. The
+ *   demand ledger carries TWO SKU vocabularies: NA rows use NA depot SKUs
+ *   (EBH9NA, ...), while UK/OZ rows (source='mcs_invoice', backfilled by
+ *   scripts/backfill-mcs-demand.ts) use canonical internal SKUs (EBH9, BUN,
+ *   NDS, ...) — the engine's family map reconciles the two. The original
+ *   observation (internal_sku absent from demand data) held only for NA
+ *   demand and justified not keying THIS map on product_code_master; the
+ *   NA/SK vocabulary used here is what Bamida-buildability joins against.
  *
  * All components with qty > 0 and a non-empty code are included — fee /
  * transport pseudo-components (GRP-SLTF, ACI-TRNS, ...) too. The Kamil
