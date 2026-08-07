@@ -13,7 +13,21 @@ component is not a physical material Bamida keeps in stock (for example a fee,
 transport line, or something supplied by Group), write **n/a** instead of
 guessing. One suggestion is already pre-filled (ACI-T40) — please confirm or
 correct it; no mapping is used by the Hub until it has been entered and marked
-verified.
+verified. Rows you mark **n/a** also get recorded as confirmed — meaning
+"checked, and it is not a Bamida-stocked material" — so please answer every
+row rather than leaving blanks.
+
+### Pokyny (slovensky)
+
+Pre každý komponent v tabuľke nižšie skopírujte presný názov položky
+(item_name) z prílohy do stĺpca „Bamida item_name" — znak po znaku, vrátane
+diakritiky, pretože vyhľadávanie skladu sa páruje na presný text. Ak komponent
+nie je fyzický materiál, ktorý má Bamida na sklade (napríklad poplatok,
+doprava alebo materiál dodávaný z Group), napíšte **n/a** — nehádajte. Jeden
+návrh je už predvyplnený (ACI-T40) — prosím potvrďte ho alebo opravte; Hub
+žiadne mapovanie nepoužije, kým nie je zapísané a označené ako overené.
+Aj odpoveď **n/a** sa zaznamená ako potvrdená („skontrolované, nie je to
+skladový materiál Bamidy"), preto prosím vyplňte každý riadok.
 
 ## Components to map
 
@@ -38,6 +52,9 @@ All distinct components across the 22 current BOMs. "Used in" counts models
 
 Full list of the 112 stock items, with the available quantity at generation
 time for recognition context (quantities change; only the name matters here).
+Negative quantities are stock-ledger artifacts (uncleared issues/receipts in
+the Bamida system) — ignore the sign; they do not mean anything for this
+mapping exercise.
 
 | # | item_name | available_quantity |
 |---|---|---|
