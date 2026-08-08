@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
-import { buildStockIncrements, transitDays, type POLineLite } from "@/lib/mrp/receipts";
+import { buildStockIncrements, type POLineLite } from "@/lib/mrp/receipts";
+import { settleDeliveredPO } from "@/lib/mrp/settle-po";
 
 // ---------------------------------------------------------------------------
 // Partial-delivery: log a batch of received quantities against an approved PO's
@@ -152,46 +153,12 @@ export async function recordReceipt(input: RecordReceiptInput): Promise<RecordRe
     (po.lines ?? []).length > 0 &&
     (po.lines ?? []).every((l) => (finalByLine.get(l.id) ?? 0) >= l.quantity);
 
+  // Settlement (status flip + in-transit drain + door lead-time actuals) is
+  // extracted to settleDeliveredPO. Its single-winner flip means a concurrent
+  // final batch on another line settles at most once — losers (and callers
+  // that raced an already-delivered PO) simply skip the side effects.
   if (fullyReceived) {
-    const nowIso = new Date().toISOString();
-    const { error: upErr } = await admin
-      .from("purchase_orders")
-      .update({ status: "delivered", delivered_at: nowIso })
-      .eq("id", poId);
-    if (upErr) console.error("recordReceipt status flip failed", upErr.message);
-
-    // The PO is fully received, so any shipment rows still marked in-transit for
-    // it have physically landed — drain them to 'delivered' and capture the real
-    // door lead time (shipped_at -> now) per row. Best-effort like the stock
-    // increments: the receipt is already logged, so failures are logged, not
-    // thrown.
-    const { data: inTransit, error: shipErr } = await admin
-      .from("shipment_contents")
-      .select("id, spot_id, shipped_at")
-      .eq("po_id", poId)
-      .neq("status", "delivered");
-    if (shipErr) console.error("recordReceipt in-transit lookup failed", shipErr.message);
-
-    if (inTransit && inTransit.length > 0) {
-      const { error: drainErr } = await admin
-        .from("shipment_contents")
-        .update({ status: "delivered", delivered_at: nowIso })
-        .in(
-          "id",
-          inTransit.map((s) => s.id)
-        );
-      if (drainErr) console.error("recordReceipt in-transit drain failed", drainErr.message);
-
-      const actuals: { po_id: string; spot_id: string | null; leg: "door"; days: number }[] = [];
-      for (const s of inTransit) {
-        const days = transitDays(s.shipped_at, nowIso);
-        if (days !== null) actuals.push({ po_id: poId, spot_id: s.spot_id, leg: "door", days });
-      }
-      if (actuals.length > 0) {
-        const { error: ltErr } = await admin.from("mrp_lead_time_actuals").insert(actuals);
-        if (ltErr) console.error("recordReceipt lead-time actuals insert failed", ltErr.message);
-      }
-    }
+    await settleDeliveredPO(admin, poId, new Date().toISOString());
   }
 
   revalidatePath("/purchase-orders");
