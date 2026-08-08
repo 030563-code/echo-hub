@@ -8,6 +8,7 @@ import {
   formatPStockout,
   commonDltDays,
   formatLastRun,
+  formatMaxBuildable,
 } from '@/lib/mrp/board-format'
 
 describe('zoneChipClasses', () => {
@@ -29,10 +30,11 @@ describe('humanizeFlag', () => {
     expect(humanizeFlag('buffers_unseeded')).toBe('Buffers unseeded')
     expect(humanizeFlag('spikes_skipped_no_buffer')).toBe('Spikes skipped (no buffer)')
     expect(humanizeFlag('thin_history')).toBe('Thin history')
-    expect(humanizeFlag('materials_unverified')).toBe('Materials unverified')
     expect(humanizeFlag('demand_capture_gap')).toBe('Demand capture gap')
     expect(humanizeFlag('stock_drift')).toBe('Stock drift')
-    expect(humanizeFlag('bom_map_stale')).toBe('BOM map stale')
+    expect(humanizeFlag('materials_unmapped')).toBe('No BOM mapped')
+    expect(humanizeFlag('materials_map_provisional')).toBe('BOM mapping provisional')
+    expect(humanizeFlag('pallet_size_unknown')).toBe('Pallet size unknown')
   })
   it('unknown flags degrade to sentence case, never raw snake_case', () => {
     expect(humanizeFlag('future_new_flag')).toBe('Future new flag')
@@ -122,5 +124,36 @@ describe('formatLastRun', () => {
   it('missing/invalid created_at degrades to the run date alone', () => {
     expect(formatLastRun('2026-08-08', null)).toBe('Last run 2026-08-08')
     expect(formatLastRun('2026-08-08', 'not-a-date')).toBe('Last run 2026-08-08')
+  })
+})
+
+describe('formatMaxBuildable', () => {
+  it('names the binding component, because the bare ceiling is not actionable', () => {
+    expect(formatMaxBuildable(280, '1781', 'Kovove istenie')).toBe('280 · capped by Kovove istenie')
+  })
+  it('falls back to the ns_number when no description was snapshotted', () => {
+    expect(formatMaxBuildable(48, '900', null)).toBe('48 · capped by 900')
+    expect(formatMaxBuildable(48, '900', '   ')).toBe('48 · capped by 900')
+  })
+  it('renders a bare number when nothing bound', () => {
+    expect(formatMaxBuildable(120, null, null)).toBe('120')
+  })
+  it('em-dashes an unknown ceiling rather than implying zero capacity', () => {
+    expect(formatMaxBuildable(null, null, null)).toBe('—')
+    expect(formatMaxBuildable(undefined, '1781', 'Clip')).toBe('—')
+    expect(formatMaxBuildable(Number.NaN, null, null)).toBe('—')
+  })
+  it('keeps a real zero distinct from unknown', () => {
+    expect(formatMaxBuildable(0, '5097', 'Mehler')).toBe('0 · capped by Mehler')
+  })
+})
+
+describe('humanizeFlag — materials vocabulary', () => {
+  it('labels the provisional-mapping flag explicitly', () => {
+    expect(humanizeFlag('materials_map_provisional')).toBe('BOM mapping provisional')
+    expect(humanizeFlag('materials_unmapped')).toBe('No BOM mapped')
+  })
+  it('degrades an unknown future flag to sentence case rather than snake_case', () => {
+    expect(humanizeFlag('some_future_flag')).toBe('Some future flag')
   })
 })

@@ -163,6 +163,9 @@ export interface StatusDailyRow {
   zone: "red" | "yellow" | "green";
   action_qty: number;
   max_buildable: number | null;
+  /** ns_number of the component capping max_buildable — the thing to reorder. */
+  materials_binding_code: string | null;
+  materials_binding_desc: string | null;
   blocked_by_materials: boolean;
   flags: string[]; // jsonb ARRAY of strings — never an object
 }
@@ -671,6 +674,8 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
     const skuMap = fgBySku.get(p.sku);
     const fgProduct = skuMap ? productByFg.get(skuMap.fg_code) : undefined;
     let maxBuildable: number | null = null;
+    let bindingCode: string | null = null;
+    let bindingDesc: string | null = null;
     let blocked = false;
 
     if (!skuMap || !fgProduct) {
@@ -680,10 +685,9 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
     } else {
       const ceiling = materialsCeiling(fgProduct, componentsByFg.get(skuMap.fg_code) ?? [], stockByCode);
       maxBuildable = ceiling.maxBuildable;
+      bindingCode = ceiling.bindingComponent;
+      bindingDesc = ceiling.bindingDesc;
       if (ceiling.palletSizeUnknown) flags.push("pallet_size_unknown");
-      if (ceiling.bindingComponent !== null && maxBuildable !== null) {
-        flags.push(`materials_bound_by:${ceiling.bindingComponent}`);
-      }
 
       // A mapping that no human has confirmed may INFORM but must never BLOCK.
       // Nothing on a delivery note names a regional Hub SKU, so the SKU→FG link
@@ -717,6 +721,8 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
       // firm demand), so round UP — an order that must cover 12.3 units is 13.
       action_qty: Math.ceil(actionQty),
       max_buildable: maxBuildable,
+      materials_binding_code: bindingCode,
+      materials_binding_desc: bindingDesc,
       blocked_by_materials: blocked,
       flags,
     });

@@ -293,7 +293,10 @@ describe('runMrpEngine (stubbed end-to-end)', () => {
     // never draws stock even though its qty would bound at 3.
     expect(vfk.max_buildable).toBe(50)
     expect(vfk.blocked_by_materials).toBe(true)
-    expect(vfk.flags).toContain('materials_bound_by:FOAM')
+    // The binding component rides in its own columns, not the flags array, so
+    // "which SKUs were fabric-bound" stays a group-by rather than a string scan.
+    expect(vfk.materials_binding_code).toBe('FOAM')
+    expect(vfk.materials_binding_desc).toBe('Foam')
     expect(vfk.flags).toContain('stock_drift')
     expect(res.warnings).toContain('bom_join_missing:GHOST')
     expect(res.warnings).toContain('stock_drift:EBVFKNA')

@@ -29,8 +29,11 @@ export interface V2BoardRow {
   yellow_top: number | null;
   green_top: number | null;
   action_qty: number | null;
-  /** Null = capacity unknown (unverified BOM) — rendered as "—" + badge. */
+  /** Null = capacity unknown (no BOM mapped) — rendered as "—" + badge. */
   max_buildable: number | null;
+  /** ns_number + snapshotted name of the component capping max_buildable. */
+  materials_binding_code: string | null;
+  materials_binding_desc: string | null;
   blocked_by_materials: boolean;
   /** Null until the stockout model lands (later task) — rendered as "—". */
   p_stockout: number | null;
@@ -96,7 +99,7 @@ export async function getV2Board(): Promise<V2BoardData> {
   const { data: statusData, error: statusErr } = await supabase
     .from("mrp_buffer_status_daily")
     .select(
-      "sku, nfp, projected_nfp, yellow_top, green_top, zone, action_qty, max_buildable, blocked_by_materials, p_stockout, flags, created_at"
+      "sku, nfp, projected_nfp, yellow_top, green_top, zone, action_qty, max_buildable, materials_binding_code, materials_binding_desc, blocked_by_materials, p_stockout, flags, created_at"
     )
     .eq("run_date", latest.run_date)
     .order("sku", { ascending: true });
@@ -122,6 +125,8 @@ export async function getV2Board(): Promise<V2BoardData> {
       green_top: r.green_top ?? null,
       action_qty: r.action_qty ?? null,
       max_buildable: r.max_buildable ?? null,
+      materials_binding_code: r.materials_binding_code ?? null,
+      materials_binding_desc: r.materials_binding_desc ?? null,
       blocked_by_materials: r.blocked_by_materials === true,
       p_stockout: r.p_stockout ?? null,
       flags: normalizeFlags(r.flags),

@@ -34,10 +34,15 @@ const FLAG_LABELS: Record<string, string> = {
   buffers_unseeded: "Buffers unseeded",
   spikes_skipped_no_buffer: "Spikes skipped (no buffer)",
   thin_history: "Thin history",
-  materials_unverified: "Materials unverified",
   demand_capture_gap: "Demand capture gap",
   stock_drift: "Stock drift",
-  bom_map_stale: "BOM map stale",
+  // Materials-gate vocabulary. "Provisional" is the one that matters
+  // operationally: the ceiling beside it is real, but the SKU→finished-good
+  // mapping behind it is inference, so the engine deliberately refuses to let
+  // it block. Reading it as a hard constraint would be the wrong conclusion.
+  materials_unmapped: "No BOM mapped",
+  materials_map_provisional: "BOM mapping provisional",
+  pallet_size_unknown: "Pallet size unknown",
 };
 
 /**
@@ -81,6 +86,28 @@ export function projectedDiffers(
 ): boolean {
   if (projected === null || projected === undefined) return false;
   return formatQty(projected) !== formatQty(nfp);
+}
+
+/**
+ * The materials line: how many units the factory could build, and — the part
+ * that is actually actionable — which component caps it.
+ *
+ * A bare ceiling tells nobody what to do about it. The binding component is
+ * often the surprise: H9 reads 280 because of four pieces of a metal securing
+ * clip, while everyone assumes fabric is the constraint. Falls back to the raw
+ * ns_number when no description was snapshotted, and to the bare number when
+ * nothing bound (an unconstrained BOM). Null ceiling → em dash.
+ */
+export function formatMaxBuildable(
+  maxBuildable: number | null | undefined,
+  bindingCode: string | null | undefined,
+  bindingDesc: string | null | undefined
+): string {
+  if (maxBuildable === null || maxBuildable === undefined || !Number.isFinite(maxBuildable)) {
+    return "—";
+  }
+  const label = bindingDesc?.trim() || bindingCode?.trim();
+  return label ? `${maxBuildable} · capped by ${label}` : String(maxBuildable);
 }
 
 /**

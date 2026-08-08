@@ -114,13 +114,23 @@ export default function V2ShadowBoard({ data }: { data: V2BoardData | null }) {
                     {r.max_buildable === null ? (
                       <span className="inline-flex items-center gap-1.5">
                         <span className="text-sm text-[#4b5563]">—</span>
-                        <FlagBadge flag="materials_unverified" />
+                        <FlagBadge flag="materials_unmapped" />
                       </span>
                     ) : (
-                      <span
-                        className={`text-sm tabular-nums ${r.blocked_by_materials ? "font-bold text-red-300" : "text-[#e5e5e5]"}`}
-                      >
-                        {formatQty(r.max_buildable)}
+                      <span className="flex flex-col gap-0.5">
+                        <span
+                          className={`text-sm tabular-nums ${r.blocked_by_materials ? "font-bold text-red-300" : "text-[#e5e5e5]"}`}
+                        >
+                          {formatQty(r.max_buildable)}
+                        </span>
+                        {/* The ceiling alone is not actionable — name the
+                            component to reorder. Often the surprise: H9 caps on
+                            a metal clip, not on fabric. */}
+                        {r.materials_binding_desc || r.materials_binding_code ? (
+                          <span className="text-[10px] leading-tight text-[#6b7280]">
+                            capped by {r.materials_binding_desc || r.materials_binding_code}
+                          </span>
+                        ) : null}
                       </span>
                     )}
                   </td>
@@ -131,12 +141,12 @@ export default function V2ShadowBoard({ data }: { data: V2BoardData | null }) {
                   </td>
                   <td className="px-4 py-2.5">
                     {(() => {
-                      // materials_unverified already renders inline in the
+                      // materials_unmapped already renders inline in the
                       // Max-buildable cell when the value is null — don't badge
                       // it twice on the same row.
                       const flags =
                         r.max_buildable === null
-                          ? r.flags.filter((f) => f !== "materials_unverified")
+                          ? r.flags.filter((f) => f !== "materials_unmapped")
                           : r.flags;
                       return flags.length === 0 ? (
                         <span className="text-xs text-[#4b5563]">—</span>

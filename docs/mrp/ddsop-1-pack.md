@@ -139,6 +139,8 @@ Juraj/Kamil):
 | Manufacturing lead time (order → ex-works), per SKU or family | 45d seed, uniform | DLT — every buffer zone scales with it |
 | MOQ per SKU | 0 (unset) | order sizing (green zone floor) |
 | Container CBM per unit, per SKU | null on all 14 | Phase-2 container fill (Task 15) — blocks that task's math |
+| Priced invoices (*faktúra*) for POs `PO-00001292/1318/1322/1332/1335` | we have delivery notes only (quantities, no prices) | turns the verified BOM coefficients into a cost model |
+| Why does `available_quantity` run so negative? | −165,717 m on orange thread vs 75,093 m physically on hand | if reservations never clear, that field is unusable — they may not know |
 
 ### 2e. EBHS→EBH9 history caveat — accept?
 
@@ -256,8 +258,100 @@ Two schedule-or-defer items:
    hardcoded `ITEM_ALIASES` map to an ops table so mapping changes don't need
    a deploy. ☐ schedule weekly / ☐ defer
 2. **`seed-bom-map` weekly cadence** — re-sync `mrp_bom_map` from the mfg BOM
-   snapshots weekly (keeps `last_seen_week` fresh; the engine's
-   `bom_map_stale` flag stops firing spuriously). ☐ schedule weekly / ☐ defer
+   snapshots weekly. NOTE: `mrp_bom_map` is the **Echo-Barrier-supplied** BOM
+   (PC350FR membrane, ACI acoustic infill, Datatag, slitting fee) and is
+   **no longer read by the engine** — the manufacturing gate now uses
+   `mrp_bom_component`. See also 2i. ☐ schedule weekly / ☐ defer
+
+### 2i. 🔴 Two bills of materials that do not overlap — which is real?
+
+`mrp_bom_map` (194 rows) lists components **Echo Barrier supplies** to Bamida:
+`PC350FR-UV21` membrane, `ACI-T40` acoustic infill, `DAT-01` Datatag,
+`GRP-SLTF` slitting fee. **None appear on any Bamida delivery note**, and
+`PC350` returns **zero hits** in the 112-card Bamida stock feed. No acoustic
+infill line appears on any note either — consistent with consigned stock that
+is invisible to Bamida's system.
+
+So a delivered barrier's cost is roughly *EB-supplied materials + Bamida
+conversion + freight + duty*, and the delivery notes cover **one of those four
+layers**.
+
+> **Question for Kamil / Juraj:** are `PC350FR` and the Mehler skins on the
+> delivery notes the **same material under two names**, or two genuinely
+> different supply chains? And where is the acoustic infill tracked?
+> ______
+
+### 2j. 🔴 Materials gate — confirm the three SKU → finished-good mappings
+
+The manufacturing BOM is now live, recovered from five Bamida delivery notes
+and joined to live stock on `ns_number` (the ONIX code printed as "Kód
+položky" on those notes). The engine reports, against physical stock:
+
+| Hub SKU | Bamida FG | Buffer wants | Can build | Capped by |
+|---|---|---|---|---|
+| `EBH9NA` | `000716` H9 (1335×2050) | **1,501** | **280** | `1781` Kovové istenie — **4 pieces on hand** |
+| `EBH8NA` | `000717` H8 (3650×2050) | 0 | 120 | `1781` Kovové istenie |
+| `EBH10NA` | `000728` H10 | 315 | **48** | `900` Serge Ferrari mesh — 137 m² on hand |
+
+**Nothing on a delivery note names a regional Hub SKU.** The mapping above is
+inference from `product_code_master` and the panel dimensions, so the engine
+marks it `materials_map_provisional` and **deliberately refuses to let it
+block** — an inferred parts list halting a manufacturing trigger is the
+expensive direction of error. Confirming flips `mrp_bom_sku_map.confirmed` and
+the gate starts blocking.
+
+> **Decision:**
+> 1. `EBH9NA` = Bamida `000716`? — ☐ confirm / ☐ no: ______
+> 2. `EBH8NA` = Bamida `000717`? — ☐ confirm / ☐ no: ______
+> 3. `EBH10NA` = Bamida `000728`? ⚠️ that note is the **"Navarovacia reflexná
+>    páska"** variant and carries a Serge Ferrari mesh skin *as well as* the
+>    Mehler skin — it may be a variant, not base H10. — ☐ confirm / ☐ it is a
+>    variant, needs its own SKU: ______
+> 4. The other 11 buffered SKUs have no BOM (`materials_unmapped`). Which
+>    should Bamida delivery notes be collected for? ______
+
+### 2k. Should packaging consumables gate MANUFACTURING?
+
+The BOM splits two ways: **per unit** (fabric, eyelets, webbing, thread) and
+**per pallet** (packing bag, 16 wood screws, 10 washers, 6 texa screws, 20 m²
+kašír, 50 m bag thread, metal securing) — 70 units/pallet on the 1335 mm
+panels, 30 on the 3650 mm ones.
+
+Right now the per-pallet consumables gate buildability along with everything
+else, and that produces the odd headline above: **H9 caps at 280 because of
+four pieces of a metal securing clip**, while the real constraint people care
+about is fabric (Mehler 5097 has 24,586 m² — enough for ~8,600 units).
+
+Arguably running out of packing screws delays *shipping* by a day; running out
+of Mehler stops *manufacturing* for weeks. Those are not the same constraint
+and the engine currently cannot tell them apart.
+
+> **Decision:** set `mrp_bom_component.is_gating = false` for the pallet-level
+> consumables (`1781`, `361`, `4898`, and the bag-thread rows)?
+> - ☐ yes — gate on production materials only; packaging is a shipping issue
+> - ☐ no — a pallet we cannot pack is a unit we cannot ship, keep them gating
+> - ☐ split — keep gating but surface packaging separately: ______
+>
+> (Nine other codes — ink, print, ratchets, packing bags, fasteners — are
+> already non-gating because Bamida does not expose them on our API account at
+> all. That is a visibility limit, not a judgment call.)
+
+### 2l. Capacity: the SPIDER welder looks like a shared bottleneck
+
+The delivery notes also carry **labour and machine minutes**, which gives a
+first capacity model. Total touch time per unit: H9 26 min · H10 29 · ND 52 ·
+HT 3,5 58 · H8 65.
+
+The single largest operation is `000582` **HF welding on "SPIDER XYZ" at 30
+min/unit**, and it appears on **H8, HT 3,5 and Noise Defender** — but *not* on
+H9, which uses VF-ZEMAT at 2 min/unit. If SPIDER is one machine on one shift,
+the entire large-panel family shares a ceiling around **16 units/day** and
+competes with itself, while H9 runs independently.
+
+The engine does not model this yet (operations are stored but never gate).
+
+> **Decision:** ☐ ask Bamida how many SPIDER machines / shifts, and whether the
+> 30 min is machine time or operator time / ☐ out of scope for now
 
 ## 3. Dean's gate list (blockers before the trigger goes live)
 
