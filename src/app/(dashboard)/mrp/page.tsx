@@ -89,7 +89,10 @@ export default async function MRPPage() {
         <p><span className="text-[#9ca3af]">Pipeline Demand</span> = Σ(Quote Qty × Deal Probability)</p>
         <p>
           <span className="text-[#9ca3af]">Lead Time Demand</span> = (Daily Run Rate × {dltSeedDays} days) + Pipeline Demand{" "}
-          <span className="text-[#4b5563]">(lead time = mrp_buffer_profile dlt_days; seed — recalibrating from live shipments)</span>
+          {/* 90d = DEFAULT_LEAD_TIME_DAYS in actions.ts — the legacy engine's
+              computation input, disclosed here so operators can reproduce the
+              board's numbers while the display shows the profile-sourced DLT. */}
+          <span className="text-[#4b5563]">(target lead time from mrp_buffer_profile; seed — recalibrating from live shipments; the legacy trigger above still computes with 90d until cutover)</span>
         </p>
         <p><span className="text-red-400">Trigger</span> = CIP ≤ Lead Time Demand + Safety Stock</p>
         <p className="text-[#4b5563] pt-1">⚠ All stock currently at 0 — red status expected until Dave provides real quantities</p>
