@@ -405,4 +405,20 @@ describe('runMrpEngine (stubbed end-to-end)', () => {
     expect(wb.cov).toBeNull()    // no realized weeks → undefined CoV
     expect(wb.var_factor).toBe(1) // null CoV → most conservative bucket
   })
+
+  it('warns on alias chains (target itself aliased = silent demand loss)', async () => {
+    const { data } = makeData({
+      profiles: [
+        profile({ sku: 'EBH8NA' }),                     // canonical
+        profile({ sku: 'H8', alias_of: 'EBH8NA' }),     // legal single-level alias
+        profile({ sku: '08-H8', alias_of: 'H8' }),      // chain: resolves to an excluded row
+      ],
+      demandEvents: [{ event_date: '2026-07-01', sku: '08-H8', qty: 10, source: 'xero_invoice' }],
+    })
+    const res = await runMrpEngine(data, { now: NOW })
+    expect(res.warnings).toContain('alias_chain:08-H8->H8')
+    // The demand routed to 'H8' lands on an excluded row — no status row carries it.
+    expect(res.rows.map(r => r.sku)).toEqual(['EBH8NA'])
+    expect(res.rows[0].nfp).toBe(0)
+  })
 })

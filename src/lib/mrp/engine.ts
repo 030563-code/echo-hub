@@ -423,6 +423,13 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
   // --- alias routing --------------------------------------------------------
   const aliasMap = new Map<string, string>();
   for (const p of profiles) if (p.alias_of !== null) aliasMap.set(p.sku, p.alias_of);
+  // Chain guard: aliases are single-level by contract (see the alias_of column
+  // comment). A target that is itself an alias would swallow demand silently —
+  // resolve() stops at the target, which is excluded from computation, so the
+  // rolled-up qty lands on a SKU no buffer is computed for.
+  for (const [sku, target] of aliasMap) {
+    if (aliasMap.has(target)) warnings.push(`alias_chain:${sku}->${target}`);
+  }
   const resolve = (sku: string) => aliasMap.get(sku) ?? sku;
   const computed = profiles.filter((p) => p.alias_of === null);
 
