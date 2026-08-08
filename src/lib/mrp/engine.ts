@@ -532,18 +532,18 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
   {
     const receiptSum = new Map<string, number>();
     for (const r of receiptRows) {
-      const key = `${r.depot} ${resolve(r.sku)}`;
+      const key = `${r.depot}\u0000${resolve(r.sku)}`;
       receiptSum.set(key, (receiptSum.get(key) ?? 0) + r.qty);
     }
     const stockSum = new Map<string, number>();
     for (const s of stockRows) {
-      const key = `${s.warehouse_code} ${resolve(s.sku)}`;
+      const key = `${s.warehouse_code}\u0000${resolve(s.sku)}`;
       stockSum.set(key, (stockSum.get(key) ?? 0) + s.quantity_on_hand);
     }
     const driftSkus = new Set<string>();
     for (const key of new Set([...receiptSum.keys(), ...stockSum.keys()])) {
       if ((receiptSum.get(key) ?? 0) !== (stockSum.get(key) ?? 0)) {
-        driftSkus.add(key.split(" ")[1]);
+        driftSkus.add(key.split("\u0000")[1]);
       }
     }
     for (const sku of [...driftSkus].sort()) {
