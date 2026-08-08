@@ -206,6 +206,46 @@ NOTHING), so the re-run only adds the FK rows.
 > Decision: add FK master entry + re-run backfill — ☐ yes / ☐ no (stays
 > excluded, revisit when NA sells fitting kits).
 
+### 2g-bis. 🔴 `NO_SKU_FOUND` — 2,691 units of NA demand with no SKU
+
+**This is the NA-side twin of the FK gap above, and the highest-impact item in
+this pack.** In the last 180 days, US/CA demand events carry
+**2,691 units (17 invoice lines) under the parse-failure sentinel
+`NO_SKU_FOUND`** — more volume than every SKU except EBH9NA. The engine
+correctly excludes the sentinel from buffers, so this demand is invisible to
+ADU, zones, and every trigger.
+
+**Root cause is not our code:** the n8n hydration chain reads `hs_sku` off the
+HubSpot *product* record; where that property is blank it writes the sentinel.
+So the fix is data entry in HubSpot, not a deploy. Measured contents:
+
+| Line-item name (HubSpot) | Units | Maps to | Note |
+|---|---:|---|---|
+| Fitting Kits | 2,112 | *(no NA SKU)* | same product family as the UK FK gap in 2g |
+| Echo Barrier Reverse Hooks | 195 | `HKNA` "Hooks"? | confirm: variant or distinct SKU |
+| **Echo Barrier H9 Window** | **155** | **`EBH9WNA`** | **exact catalog name match** |
+| Fitting Kit (1 hook + 2 bungies) | 65 | `HKNA` + `BUNNA` | composite — decompose or new SKU |
+| Vertical Fitting Kits | 60 | `EBVFKNA` | exact catalog name match |
+| Echo Barrier H9 | 53 | `EBH9NA` | exact catalog name match |
+| Security Cable | 50 | *(no NA SKU)* | accessory — buffer or ignore? |
+| Freight to Vancouver | 1 | — | freight, correctly excluded |
+
+**Why it changes a decision today:** `EBH9WNA` shows ADU 0 in this pack (§2b)
+and renders red-with-no-action on the shadow board — but it has **155 units of
+real demand** sitting in this bucket. Any buffer decision taken on its current
+numbers is taken on wrong data. `EBH9NA` and `EBVFKNA` are similarly (mildly)
+understated.
+
+> Decisions:
+> 1. Populate `hs_sku` on the HubSpot product records above — ☐ Dean/Jillian
+>    action, target date ______
+> 2. Re-hydrate the affected deals afterwards so the corrected SKUs flow into
+>    the ledger (the capture trigger fires on line-item change, so a
+>    re-hydration is sufficient — no manual ledger edits) — ☐ yes / ☐ no
+> 3. "Reverse Hooks" = `HKNA` or its own SKU? — ☐ HKNA / ☐ new SKU: ______
+> 4. Fitting Kits + Security Cable: buffer as NA SKUs (needs catalog entries,
+>    pairs with the 2g decision) — ☐ yes / ☐ no
+
 ### 2h. MCS go-forward sync + BOM snapshot cadence
 
 Two schedule-or-defer items:
