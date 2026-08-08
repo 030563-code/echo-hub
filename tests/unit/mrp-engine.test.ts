@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   parseLineItems, isoWeekKey, trailingIsoWeeks, weeklyTotals, covFromWeeklyTotals,
-  median, dltDaysFor, onOrderBySku, maxBuildableFor, runMrpEngine,
+  median, dltDaysFor, onOrderBySku, runMrpEngine,
   type EngineData, type ProfileRow, type StatusDailyRow, type SpikeRegisterRow,
   type ProfileWriteBack,
 } from '@/lib/mrp/engine'
@@ -31,8 +31,10 @@ interface Fixtures {
   openDeals: { hubspot_deal_id: string; deal_status: string; line_items_raw: unknown }[]
   closedWonDeals: { hubspot_deal_id: string; deal_status: string; line_items_raw: unknown }[]
   hubspotDemandDealIds: string[]
-  bomMap: { finished_sku: string; component_code: string; qty_per: number; bamida_item_name: string | null; verified: boolean; last_seen_week: string | null }[]
-  materialStock: { item_name: string; available_quantity: number }[]
+  bomProducts: { fg_code: string; pallet_size: number | null }[]
+  bomComponents: { fg_code: string; component_code: string; component_desc: string; qty: number; basis: 'per_unit' | 'per_pallet'; line_type: 'material' | 'operation' | 'intermediate'; is_gating: boolean }[]
+  bomSkuMap: { hub_sku: string; fg_code: string; confirmed: boolean }[]
+  materialStock: { ns_number: string; quantity: number }[]
   doorLeadTimeDays: number[]
   receiptRows: { depot: string; sku: string; qty: number }[]
 }
@@ -47,7 +49,7 @@ function makeData(over: Partial<Fixtures> = {}): { data: EngineData; captured: C
   const f: Fixtures = {
     profiles: [], demandEvents: [], stockLevels: [], shipments: [], openPoLines: [],
     stageWeights: [], openDeals: [], closedWonDeals: [], hubspotDemandDealIds: [],
-    bomMap: [], materialStock: [], doorLeadTimeDays: [], receiptRows: [],
+    bomProducts: [], bomComponents: [], bomSkuMap: [], materialStock: [], doorLeadTimeDays: [], receiptRows: [],
     ...over,
   }
   const captured: Captured = { status: [], spikes: [], writeBacks: [] }
@@ -61,7 +63,9 @@ function makeData(over: Partial<Fixtures> = {}): { data: EngineData; captured: C
     openDeals: () => Promise.resolve(f.openDeals),
     closedWonDeals: () => Promise.resolve(f.closedWonDeals),
     hubspotDemandDealIds: () => Promise.resolve(new Set(f.hubspotDemandDealIds)),
-    bomMap: () => Promise.resolve(f.bomMap),
+    bomProducts: () => Promise.resolve(f.bomProducts),
+    bomComponents: () => Promise.resolve(f.bomComponents),
+    bomSkuMap: () => Promise.resolve(f.bomSkuMap),
     materialStock: () => Promise.resolve(f.materialStock),
     doorLeadTimeDays: () => Promise.resolve(f.doorLeadTimeDays),
     receiptRows: () => Promise.resolve(f.receiptRows),
@@ -180,36 +184,6 @@ describe('onOrderBySku', () => {
   })
 })
 
-describe('maxBuildableFor', () => {
-  const bom = (over: Record<string, unknown>) => ({
-    finished_sku: 'EBVFKNA', component_code: 'C', qty_per: 1, bamida_item_name: 'Foam',
-    verified: true, last_seen_week: null, ...over,
-  })
-  it('MIN over verified mapped rows; negative availability clamps to 0', () => {
-    const rows = [
-      bom({ component_code: 'C1', bamida_item_name: 'Foam', qty_per: 2 }),
-      bom({ component_code: 'C2', bamida_item_name: 'Steel', qty_per: 1 }),
-      bom({ component_code: 'C3', bamida_item_name: 'Clip', qty_per: 4, verified: false }), // ignored
-    ]
-    const avail = new Map([['Foam', 100], ['Steel', 80], ['Clip', 4]])
-    expect(maxBuildableFor(rows, avail)).toEqual({ value: 50, missingJoins: [] })
-    expect(maxBuildableFor(rows, new Map([['Foam', -5], ['Steel', 80]])))
-      .toEqual({ value: 0, missingJoins: [] })
-  })
-  it('reports vanished joins (never silent) and keeps the known-component bound', () => {
-    const rows = [
-      bom({ component_code: 'C1', bamida_item_name: 'Foam', qty_per: 2 }),
-      bom({ component_code: 'C2', bamida_item_name: 'Ghost' }),
-    ]
-    expect(maxBuildableFor(rows, new Map([['Foam', 100]])))
-      .toEqual({ value: 50, missingJoins: ['Ghost'] })
-  })
-  it('null (capacity unknown) with no verified mapped rows', () => {
-    expect(maxBuildableFor([bom({ verified: false })], new Map())).toEqual({ value: null, missingJoins: [] })
-    expect(maxBuildableFor([], new Map())).toEqual({ value: null, missingJoins: [] })
-  })
-})
-
 // ---------------------------------------------------------------------------
 // Full engine run over one rich fixture
 // ---------------------------------------------------------------------------
@@ -253,12 +227,16 @@ function richFixture(): Partial<Fixtures> {
       { hubspot_deal_id: 'CW2', deal_status: 'closedwon', line_items_raw: [{ sku: 'EBH9NA', quantity: 7 }] }, // captured
     ],
     hubspotDemandDealIds: ['CW2'],
-    bomMap: [
-      { finished_sku: 'EBVFKNA', component_code: 'C1', qty_per: 2, bamida_item_name: 'Foam', verified: true, last_seen_week: '2026-08-03' },
-      { finished_sku: 'EBVFKNA', component_code: 'C2', qty_per: 1, bamida_item_name: 'Ghost', verified: true, last_seen_week: '2026-08-03' },
-      { finished_sku: 'EBH9NA', component_code: 'C3', qty_per: 1, bamida_item_name: null, verified: false, last_seen_week: '2026-07-27' }, // stale
+    bomProducts: [{ fg_code: 'FG-VFK', pallet_size: 10 }],
+    bomComponents: [
+      { fg_code: 'FG-VFK', component_code: 'FOAM', component_desc: 'Foam', qty: 2, basis: 'per_unit', line_type: 'material', is_gating: true },
+      { fg_code: 'FG-VFK', component_code: 'GHOST', component_desc: 'Ghost', qty: 1, basis: 'per_unit', line_type: 'material', is_gating: true },
+      { fg_code: 'FG-VFK', component_code: 'WELD', component_desc: 'HF weld', qty: 30, basis: 'per_unit', line_type: 'operation', is_gating: false },
     ],
-    materialStock: [{ item_name: 'Foam', available_quantity: 100 }],
+    // confirmed=true so the ceiling is allowed to BLOCK — an unconfirmed
+    // mapping may only inform (see the provisional-mapping test below).
+    bomSkuMap: [{ hub_sku: 'EBVFKNA', fg_code: 'FG-VFK', confirmed: true }],
+    materialStock: [{ ns_number: 'FOAM', quantity: 100 }],
     receiptRows: [
       { depot: 'US-BAL', sku: 'EBH9NA', qty: 40 },  // matches stock
       { depot: 'CA-HAM', sku: 'EBH9NA', qty: 10 },  // matches stock
@@ -293,10 +271,9 @@ describe('runMrpEngine (stubbed end-to-end)', () => {
     expect(h9.zone).toBe('green')
     expect(h9.action_qty).toBe(0)
     expect(h9.max_buildable).toBeNull()
-    expect(h9.flags).toContain('materials_unverified')
+    expect(h9.flags).toContain('materials_unmapped')
     expect(h9.flags).toContain('stock_unverified')   // every last_counted_at null
     expect(h9.flags).toContain('demand_capture_gap') // CW1 never hit the ledger
-    expect(h9.flags).toContain('bom_map_stale')
 
     const vfk = res.rows.find(r => r.sku === 'EBVFKNA')!
     // Same demand shape → same zones; zero flow → NFP 0 → red, action 132.
@@ -310,14 +287,17 @@ describe('runMrpEngine (stubbed end-to-end)', () => {
     }])
     expect(vfk.qualified_spikes).toBeCloseTo(27, 10)
     expect(vfk.projected_nfp).toBeCloseTo(-27, 10)
-    // Materials: Foam bounds 100/2 = 50 < action 132 → blocked; Ghost is warned.
+    // Materials: FOAM bounds 100/2 = 50 < action 132 → blocked. The mapping is
+    // confirmed, so blocking is permitted. GHOST is gating but has no stock card
+    // and is reported rather than silently dropped; WELD is an operation and
+    // never draws stock even though its qty would bound at 3.
     expect(vfk.max_buildable).toBe(50)
     expect(vfk.blocked_by_materials).toBe(true)
+    expect(vfk.flags).toContain('materials_bound_by:FOAM')
     expect(vfk.flags).toContain('stock_drift')
-    expect(res.warnings).toContain('bom_join_missing:EBVFKNA:Ghost')
+    expect(res.warnings).toContain('bom_join_missing:GHOST')
     expect(res.warnings).toContain('stock_drift:EBVFKNA')
     expect(res.warnings).toContain('demand_capture_gap:CW1')
-    expect(res.warnings).toContain('bom_map_stale:1 rows')
 
     // Unseeded SKU: binding spike guard — no register rows even though D3
     // targets it via the H8 alias; both state flags land for the shadow board.
@@ -420,5 +400,50 @@ describe('runMrpEngine (stubbed end-to-end)', () => {
     // The demand routed to 'H8' lands on an excluded row — no status row carries it.
     expect(res.rows.map(r => r.sku)).toEqual(['EBH8NA'])
     expect(res.rows[0].nfp).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Provisional SKU→finished-good mapping
+// ---------------------------------------------------------------------------
+
+describe('materials gate — provisional mappings inform but never block', () => {
+  const withMapping = (confirmed: boolean) =>
+    makeData({
+      ...richFixture(),
+      bomSkuMap: [{ hub_sku: 'EBVFKNA', fg_code: 'FG-VFK', confirmed }],
+    })
+
+  it('blocks when the mapping is confirmed', async () => {
+    const res = await runMrpEngine(withMapping(true).data, { now: NOW })
+    const vfk = res.rows.find(r => r.sku === 'EBVFKNA')!
+    expect(vfk.max_buildable).toBe(50)
+    expect(vfk.action_qty).toBeGreaterThan(50)
+    expect(vfk.blocked_by_materials).toBe(true)
+    expect(vfk.flags).not.toContain('materials_map_provisional')
+  })
+
+  it('still REPORTS the ceiling but does NOT block when unconfirmed', async () => {
+    // Nothing on a Bamida delivery note names a regional Hub SKU, so the
+    // SKU→finished-good link is inference until a human confirms it. Halting a
+    // manufacturing trigger on an inferred parts list is the expensive
+    // direction of error; showing the number is how the mapping gets confirmed.
+    const res = await runMrpEngine(withMapping(false).data, { now: NOW })
+    const vfk = res.rows.find(r => r.sku === 'EBVFKNA')!
+    expect(vfk.max_buildable).toBe(50)
+    expect(vfk.action_qty).toBeGreaterThan(50)
+    expect(vfk.blocked_by_materials).toBe(false)
+    expect(vfk.flags).toContain('materials_map_provisional')
+    expect(res.blocked).toBe(0)
+  })
+
+  it('flags an unmapped SKU rather than inventing a red', async () => {
+    const { data } = makeData({ ...richFixture(), bomSkuMap: [] })
+    const res = await runMrpEngine(data, { now: NOW })
+    for (const row of res.rows) {
+      expect(row.max_buildable).toBeNull()
+      expect(row.blocked_by_materials).toBe(false)
+      expect(row.flags).toContain('materials_unmapped')
+    }
   })
 })

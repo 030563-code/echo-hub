@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
-  BomMapRow,
+  BomComponentRow,
+  BomProductRow,
+  BomSkuMapRow,
   DealRow,
   DemandEventRow,
   EngineData,
@@ -162,19 +164,36 @@ export function createSupabaseEngineData(admin: SupabaseClient): EngineData {
       return new Set(rows.map((r) => r.source_ref));
     },
 
-    bomMap: () =>
-      pageAll<BomMapRow>("bom_map", (from, to) =>
+    bomProducts: () =>
+      pageAll<BomProductRow>("bom_products", (from, to) =>
+        admin.from("mrp_bom_product").select("fg_code, pallet_size").order("fg_code").range(from, to)
+      ),
+
+    bomComponents: () =>
+      pageAll<BomComponentRow>("bom_components", (from, to) =>
         admin
-          .from("mrp_bom_map")
-          .select("finished_sku, component_code, qty_per, bamida_item_name, verified, last_seen_week")
-          .order("finished_sku")
+          .from("mrp_bom_component")
+          .select("fg_code, component_code, component_desc, qty, basis, line_type, is_gating")
+          .order("fg_code")
           .order("component_code")
           .range(from, to)
       ),
 
+    bomSkuMap: () =>
+      pageAll<BomSkuMapRow>("bom_sku_map", (from, to) =>
+        admin.from("mrp_bom_sku_map").select("hub_sku, fg_code, confirmed").order("hub_sku").range(from, to)
+      ),
+
     materialStock: () =>
       pageAll<MaterialStockRow>("material_stock", (from, to) =>
-        admin.from("bamida_material_stock").select("item_name, available_quantity").order("id").range(from, to)
+        // PHYSICAL quantity, never available_quantity — the latter is net of
+        // reservations Bamida never drains and runs deeply negative.
+        admin
+          .from("bamida_material_stock")
+          .select("ns_number, quantity")
+          .eq("is_active", true)
+          .order("id")
+          .range(from, to)
       ),
 
     doorLeadTimeDays: async () => {

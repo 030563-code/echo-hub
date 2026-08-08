@@ -24,6 +24,9 @@ import {
   qualifySpikes,
   type SpikeCandidate,
 } from "./buffers";
+import { materialsCeiling, type BomComponentRow, type BomProductRow } from "./materials";
+
+export type { BomComponentRow, BomProductRow };
 
 // ---------------------------------------------------------------------------
 // Tunable constants (DDS&OP-reviewable heuristics — change here, not inline)
@@ -117,18 +120,21 @@ export interface DealRow {
   line_items_raw: unknown;
 }
 
-export interface BomMapRow {
-  finished_sku: string;
-  component_code: string;
-  qty_per: number;
-  bamida_item_name: string | null;
-  verified: boolean;
-  last_seen_week: string | null;
+export interface BomSkuMapRow {
+  hub_sku: string;
+  fg_code: string;
+  confirmed: boolean;
 }
 
 export interface MaterialStockRow {
-  item_name: string;
-  available_quantity: number;
+  ns_number: string;
+  /**
+   * PHYSICAL stock on hand. Deliberately not available_quantity: that column is
+   * quantity minus reservations Bamida never drains, so it runs deeply negative
+   * on fast movers (orange thread -165,717 m against 75,093 m on the shelf) and
+   * would make every product permanently unbuildable.
+   */
+  quantity: number;
 }
 
 export interface ReceiptRow {
@@ -196,7 +202,9 @@ export interface EngineData {
   closedWonDeals(): Promise<DealRow[]>;
   /** Distinct source_ref of source='hubspot_deal' demand events. */
   hubspotDemandDealIds(): Promise<Set<string>>;
-  bomMap(): Promise<BomMapRow[]>;
+  bomProducts(): Promise<BomProductRow[]>;
+  bomComponents(): Promise<BomComponentRow[]>;
+  bomSkuMap(): Promise<BomSkuMapRow[]>;
   materialStock(): Promise<MaterialStockRow[]>;
   /** days of leg='door' mrp_lead_time_actuals. */
   doorLeadTimeDays(): Promise<number[]>;
@@ -344,35 +352,6 @@ export function onOrderBySku(
   return gross;
 }
 
-/**
- * Materials ceiling for one SKU over its VERIFIED, mapped BOM rows:
- * MIN(floor(max(available, 0) / qty_per)). Bamida available_quantity can be
- * negative (oversold) — clamped to 0, never allowed to produce a negative
- * ceiling. A verified bamida_item_name that no longer joins the stock table is
- * reported in missingJoins (never silent, per the mrp_bom_map column-comment
- * contract) and excluded from the MIN — every component that IS known still
- * bounds capacity, and the warning drives the repair. No usable rows → null
- * (capacity unknown).
- */
-export function maxBuildableFor(
-  bomRows: BomMapRow[],
-  availableByItem: Map<string, number>
-): { value: number | null; missingJoins: string[] } {
-  const missingJoins: string[] = [];
-  let min: number | null = null;
-  for (const r of bomRows) {
-    if (!r.verified || r.bamida_item_name === null) continue;
-    const avail = availableByItem.get(r.bamida_item_name);
-    if (avail === undefined) {
-      missingJoins.push(r.bamida_item_name);
-      continue;
-    }
-    const buildable = Math.floor(Math.max(avail, 0) / r.qty_per);
-    min = min === null ? buildable : Math.min(min, buildable);
-  }
-  return { value: min, missingJoins };
-}
-
 const isoDate = (d: Date) => d.toISOString().slice(0, 10);
 const daysBefore = (d: Date, days: number) => new Date(d.getTime() - days * MS_PER_DAY);
 
@@ -400,7 +379,9 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
     openDealRows,
     closedWonRows,
     demandDealIds,
-    bomRows,
+    bomProductRows,
+    bomComponentRows,
+    bomSkuMapRows,
     materialRows,
     doorDays,
     receiptRows,
@@ -414,7 +395,9 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
     data.openDeals(),
     data.closedWonDeals(),
     data.hubspotDemandDealIds(),
-    data.bomMap(),
+    data.bomProducts(),
+    data.bomComponents(),
+    data.bomSkuMap(),
     data.materialStock(),
     data.doorLeadTimeDays(),
     data.receiptRows(),
@@ -501,14 +484,23 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
   }
 
   // --- materials ------------------------------------------------------------
-  const availableByItem = new Map(materialRows.map((m) => [m.item_name, m.available_quantity]));
-  const bomBySku = new Map<string, BomMapRow[]>();
-  for (const r of bomRows) {
-    const sku = resolve(r.finished_sku);
-    const list = bomBySku.get(sku);
-    if (list) list.push(r);
-    else bomBySku.set(sku, [r]);
+  // Stock is keyed on ns_number, the ONIX item code, which is the same value
+  // printed as "Kód položky" on Bamida delivery notes — so a BOM line resolves
+  // to a stock card exactly, with no name matching.
+  const stockByCode = new Map(materialRows.map((m) => [m.ns_number, m.quantity]));
+  const productByFg = new Map(bomProductRows.map((p) => [p.fg_code, p]));
+  const componentsByFg = new Map<string, BomComponentRow[]>();
+  for (const c of bomComponentRows) {
+    // Only materials draw stock. Operations are machine/labour minutes and
+    // 'intermediate' rows are produced in-house from other lines on the same BOM
+    // (code 311 is printed Mehler) — gating on either would be wrong.
+    if (c.line_type !== "material") continue;
+    const list = componentsByFg.get(c.fg_code);
+    if (list) list.push(c);
+    else componentsByFg.set(c.fg_code, [c]);
   }
+  const fgBySku = new Map<string, BomSkuMapRow>();
+  for (const m of bomSkuMapRows) fgBySku.set(resolve(m.hub_sku), m);
 
   // --- reconciliation nets (engine warnings + per-SKU flags) ----------------
   const extraFlagsBySku = new Map<string, string[]>();
@@ -552,18 +544,18 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
     }
   }
 
-  // (c) BOM rows not seen in the latest snapshot week — the map is drifting
-  // from the mfg source.
+  // (c) gating BOM components with no matching stock card, reported ONCE for the
+  // whole run rather than per SKU. Bamida exposes 112 material cards to our API
+  // account and the BOM references a few they do not (packaging, fasteners);
+  // those are marked is_gating=false at seed time, so anything landing here is a
+  // genuine drift between the BOM and the feed and wants repairing.
   {
-    const weeks = bomRows.map((r) => r.last_seen_week).filter((w): w is string => w !== null);
-    if (weeks.length > 0) {
-      const maxWeek = weeks.reduce((a, b) => (a > b ? a : b));
-      const stale = bomRows.filter((r) => r.last_seen_week !== null && r.last_seen_week < maxWeek);
-      if (stale.length > 0) {
-        warnings.push(`bom_map_stale:${stale.length} rows`);
-        for (const r of stale) addFlag(resolve(r.finished_sku), "bom_map_stale");
-      }
+    const missing = new Set<string>();
+    for (const c of bomComponentRows) {
+      if (c.line_type !== "material" || !c.is_gating) continue;
+      if (!stockByCode.has(c.component_code)) missing.add(c.component_code);
     }
+    if (missing.size > 0) warnings.push(`bom_join_missing:${[...missing].sort().join(",")}`);
   }
 
   // --- per-SKU assembly -----------------------------------------------------
@@ -675,12 +667,35 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
     });
     const { zone, actionQty } = zoneFor(nfp, zones);
 
-    // 9. Materials ceiling.
-    const { value: maxBuildable, missingJoins } = maxBuildableFor(bomBySku.get(p.sku) ?? [], availableByItem);
-    const hasVerified = (bomBySku.get(p.sku) ?? []).some((r) => r.verified && r.bamida_item_name !== null);
-    if (!hasVerified) flags.push("materials_unverified");
-    for (const item of missingJoins) warnings.push(`bom_join_missing:${p.sku}:${item}`);
-    const blocked = actionQty > 0 && maxBuildable !== null && maxBuildable < actionQty;
+    // 9. Materials ceiling — can Bamida actually build what the buffer asks for?
+    const skuMap = fgBySku.get(p.sku);
+    const fgProduct = skuMap ? productByFg.get(skuMap.fg_code) : undefined;
+    let maxBuildable: number | null = null;
+    let blocked = false;
+
+    if (!skuMap || !fgProduct) {
+      // No BOM for this SKU. Most of the buffered set is accessories and cutting
+      // stations that Bamida does not build; silence beats a false red.
+      flags.push("materials_unmapped");
+    } else {
+      const ceiling = materialsCeiling(fgProduct, componentsByFg.get(skuMap.fg_code) ?? [], stockByCode);
+      maxBuildable = ceiling.maxBuildable;
+      if (ceiling.palletSizeUnknown) flags.push("pallet_size_unknown");
+      if (ceiling.bindingComponent !== null && maxBuildable !== null) {
+        flags.push(`materials_bound_by:${ceiling.bindingComponent}`);
+      }
+
+      // A mapping that no human has confirmed may INFORM but must never BLOCK.
+      // Nothing on a delivery note names a regional Hub SKU, so the SKU→FG link
+      // is inference; halting a manufacturing trigger on an inferred parts list
+      // is the expensive direction of error, while showing a provisional ceiling
+      // next to the number is how the mapping actually gets confirmed.
+      if (skuMap.confirmed) {
+        blocked = actionQty > 0 && maxBuildable !== null && maxBuildable < actionQty;
+      } else {
+        flags.push("materials_map_provisional");
+      }
+    }
 
     for (const f of extraFlagsBySku.get(p.sku) ?? []) if (!flags.includes(f)) flags.push(f);
 
