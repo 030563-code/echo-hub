@@ -539,7 +539,7 @@ export const STOCK_LAST_COUNTED_AT = "2026-08-07T09:00:00Z";
 
 export const STOCK: Record<string, Record<string, number>> = {
   "US-BAL": {
-    EBH9NA: 1200,
+    EBH9NA: 350,
     HKNA: 480,
     BUNNA: 420,
     EBH10HERCNA: 340,
@@ -554,14 +554,14 @@ export const STOCK: Record<string, Record<string, number>> = {
     FSCNA: 5,
   },
   "US-SBD": {
-    EBH9NA: 420,
+    EBH9NA: 100,
     EBH10NA: 40,
     EBH9ERNA: 70,
     EBH9XNA: 60,
     EBH8NA: 35,
   },
   "CA-HAM": {
-    EBH9NA: 260,
+    EBH9NA: 50,
     EBH10NA: 35,
     HKNA: 130,
     BUNNA: 90,
