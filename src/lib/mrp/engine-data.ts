@@ -261,5 +261,13 @@ export function createSupabaseEngineData(admin: SupabaseClient): EngineData {
         if (error) throw new Error(`mrp engine profile write-back failed (${sku}): ${error.message}`);
       }
     },
+
+    // Task 16: quiet-mode 3-leg PO-chain pre-draft. p_quiet=true always — this
+    // adapter is only ever called from the nightly engine, never interactively.
+    draftPoChain: async (payload: unknown) => {
+      const { data, error } = await admin.rpc("mrp_draft_po_chain", { p_master: payload, p_quiet: true });
+      if (error) throw new Error(`mrp engine draft PO chain failed: ${error.message}`);
+      return data;
+    },
   };
 }

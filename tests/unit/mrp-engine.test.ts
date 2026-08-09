@@ -17,6 +17,7 @@ function profile(over: Partial<ProfileRow> & { sku: string }): ProfileRow {
     sku_class: 'slow', family_sku: null, adu: null, adu_source: 'auto', cov: null,
     dlt_days: 75, mfg_lt: 45, ocean_lt: 21, customs_lt: 9, lt_factor: 0.25,
     var_factor: null, moq: 0, container_qty: null, seeded: true, alias_of: null,
+    cbm_per_unit: null,
     ...over,
   }
 }
@@ -38,12 +39,14 @@ interface Fixtures {
   doorLeadTimeDays: number[]
   receiptRows: { depot: string; sku: string; qty: number }[]
   legActuals: { leg: string; days: number }[]
+  draftPoChainResult: unknown
 }
 
 interface Captured {
   status: StatusDailyRow[][]
   spikes: SpikeRegisterRow[][]
   writeBacks: ProfileWriteBack[][]
+  draftPoChain: unknown[]
 }
 
 function makeData(over: Partial<Fixtures> = {}): { data: EngineData; captured: Captured } {
@@ -52,9 +55,10 @@ function makeData(over: Partial<Fixtures> = {}): { data: EngineData; captured: C
     stageWeights: [], openDeals: [], closedWonDeals: [], hubspotDemandDealIds: [],
     bomProducts: [], bomComponents: [], bomSkuMap: [], materialStock: [], doorLeadTimeDays: [], receiptRows: [],
     legActuals: [],
+    draftPoChainResult: { master_ref: 'MR-TEST', po_ids: [], po_numbers: [] },
     ...over,
   }
-  const captured: Captured = { status: [], spikes: [], writeBacks: [] }
+  const captured: Captured = { status: [], spikes: [], writeBacks: [], draftPoChain: [] }
   const data: EngineData = {
     profiles: () => Promise.resolve(f.profiles),
     demandEvents: (since) => Promise.resolve(f.demandEvents.filter(e => e.event_date > since)),
@@ -75,6 +79,7 @@ function makeData(over: Partial<Fixtures> = {}): { data: EngineData; captured: C
     persistStatus: (rows) => { captured.status.push(rows); return Promise.resolve() },
     persistSpikes: (rows) => { captured.spikes.push(rows); return Promise.resolve() },
     writeBackProfiles: (rows) => { captured.writeBacks.push(rows); return Promise.resolve() },
+    draftPoChain: (payload) => { captured.draftPoChain.push(payload); return Promise.resolve(f.draftPoChainResult) },
   }
   return { data, captured }
 }
@@ -451,5 +456,118 @@ describe('materials gate — provisional mappings inform but never block', () =>
       expect(row.blocked_by_materials).toBe(false)
       expect(row.flags).toContain('materials_unmapped')
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Container fill (Task 15) + PO-chain pre-draft (Task 16)
+// ---------------------------------------------------------------------------
+
+// Zero flow, ADU 1, dlt 75 → red 38 / yellowTop 113 / greenTop 132 (same zone
+// math as the EBVFKNA case in richFixture) — but a SINGLE unmapped SKU so
+// blocked_by_materials never enters into it unless the test opts in.
+function redSkuFixture(over: Partial<Fixtures> = {}): Partial<Fixtures> {
+  return {
+    profiles: [profile({ sku: 'EBH9NA', cbm_per_unit: 2 })],
+    demandEvents: [{ event_date: '2026-07-01', sku: 'EBH9NA', qty: 180, source: 'xero_invoice' }],
+    ...over,
+  }
+}
+
+// Reused verbatim from richFixture's EBH9NA-only inputs: nfp 162 > yellowTop
+// 113 → green.
+function greenSkuFixture(): Partial<Fixtures> {
+  return {
+    profiles: [profile({ sku: 'EBH9NA', cbm_per_unit: 3 })],
+    demandEvents: [
+      { event_date: '2026-07-01', sku: 'EBH9NA', qty: 162, source: 'xero_invoice' },
+      { event_date: '2026-08-01', sku: 'EBH9NA', qty: 18, source: 'hubspot_deal' },
+    ],
+    stockLevels: [
+      { warehouse_code: 'US-BAL', sku: 'EBH9NA', quantity_on_hand: 40, last_counted_at: null },
+      { warehouse_code: 'CA-HAM', sku: 'EBH9NA', quantity_on_hand: 10, last_counted_at: null },
+    ],
+    shipments: [
+      { sku: 'EBH9NA', qty: 30, status: 'in_transit', po_id: null, eta: null },
+      { sku: 'EBH9NA', qty: 20, status: 'in_transit', po_id: 'po1', eta: null },
+    ],
+    openPoLines: [{ po_id: 'po1', sku: 'EBH9NA', quantity: 100 }],
+  }
+}
+
+describe('container fill + PO-chain pre-draft', () => {
+  it('draftPos absent/false never drafts, even with a red SKU — but containerFill still fills', async () => {
+    const { data, captured } = makeData(redSkuFixture())
+    const res = await runMrpEngine(data, { now: NOW })
+    expect(res.rows[0].zone).toBe('red')
+    expect(res.containerFill).not.toBeNull()
+    expect(res.containerFill!.lines).toEqual([{ sku: 'EBH9NA', qty: 33, cbm: 66 }]) // trimmed to the 66 cbm default cap
+    expect(res.draft).toEqual({ attempted: false, result: null })
+    expect(captured.draftPoChain).toHaveLength(0)
+  })
+
+  it('draftPos true + dryRun true never drafts', async () => {
+    const { data, captured } = makeData(redSkuFixture())
+    const res = await runMrpEngine(data, { now: NOW, draftPos: true, dryRun: true })
+    expect(res.containerFill!.lines.length).toBe(1) // still computed — pure
+    expect(res.draft.attempted).toBe(false)
+    expect(captured.draftPoChain).toHaveLength(0)
+  })
+
+  it('draftPos true + an unblocked red SKU with cbm drafts once with matching lines + rationale', async () => {
+    const { data, captured } = makeData(redSkuFixture())
+    const res = await runMrpEngine(data, { now: NOW, draftPos: true })
+    expect(captured.draftPoChain).toHaveLength(1)
+    expect(res.draft.attempted).toBe(true)
+    expect(res.draft.result).toEqual({ master_ref: 'MR-TEST', po_ids: [], po_numbers: [] })
+
+    const payload = captured.draftPoChain[0] as {
+      depot: string; po_prefix: string; rationale: string
+      lines: { sku: string; product_name: string; qty: number }[]
+    }
+    expect(payload.depot).toBe('US-BAL')
+    expect(payload.po_prefix).toBe('MRPD-20260808')
+    expect(payload.lines).toEqual(
+      res.containerFill!.lines.map(l => ({ sku: l.sku, product_name: l.sku, qty: l.qty }))
+    )
+    expect(payload.rationale).toContain('EBH9NA')
+    expect(payload.rationale).toContain('NFP 0')
+    expect(payload.rationale).toContain('red 38')
+  })
+
+  it('excludes a red SKU that already has open Hub PO cover', async () => {
+    const { data, captured } = makeData(redSkuFixture({
+      openPoLines: [{ po_id: 'po1', sku: 'EBH9NA', quantity: 10 }],
+    }))
+    const res = await runMrpEngine(data, { now: NOW, draftPos: true })
+    expect(res.containerFill!.lines).toEqual([])
+    expect(res.draft).toEqual({ attempted: false, result: null })
+    expect(captured.draftPoChain).toHaveLength(0)
+  })
+
+  it('excludes a red SKU blocked by materials', async () => {
+    const { data, captured } = makeData(redSkuFixture({
+      bomProducts: [{ fg_code: 'FG', pallet_size: null }],
+      bomComponents: [{
+        fg_code: 'FG', component_code: 'MAT', component_desc: 'Mat', qty: 1,
+        basis: 'per_unit', line_type: 'material', is_gating: true,
+      }],
+      bomSkuMap: [{ hub_sku: 'EBH9NA', fg_code: 'FG', confirmed: true }],
+      materialStock: [{ ns_number: 'MAT', quantity: 5 }], // max_buildable 5 << action_qty 132
+    }))
+    const res = await runMrpEngine(data, { now: NOW, draftPos: true })
+    expect(res.rows[0].blocked_by_materials).toBe(true)
+    expect(res.containerFill!.lines).toEqual([])
+    expect(res.draft).toEqual({ attempted: false, result: null })
+    expect(captured.draftPoChain).toHaveLength(0)
+  })
+
+  it('an all-green board never drafts; containerFill is reported empty (not null)', async () => {
+    const { data, captured } = makeData(greenSkuFixture())
+    const res = await runMrpEngine(data, { now: NOW, draftPos: true })
+    expect(res.rows[0].zone).toBe('green')
+    expect(res.containerFill).toEqual({ lines: [], cbmUsed: 0, cbmCapacity: 66, dropped: [] })
+    expect(res.draft).toEqual({ attempted: false, result: null })
+    expect(captured.draftPoChain).toHaveLength(0)
   })
 })

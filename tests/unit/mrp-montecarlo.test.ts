@@ -299,6 +299,7 @@ function makeEngineData(over: Partial<Fixtures> = {}): { data: EngineData; captu
     persistStatus: (rows) => { captured.push(rows); return Promise.resolve() },
     persistSpikes: (rows) => { spikesCaptured.push(rows); return Promise.resolve() },
     writeBackProfiles: (rows) => { writeBacksCaptured.push(rows); return Promise.resolve() },
+    draftPoChain: () => Promise.resolve(null),
   }
   return { data, captured }
 }
@@ -308,6 +309,7 @@ function engineProfile(over: Partial<ProfileRow> & { sku: string }): ProfileRow 
     sku_class: 'slow', family_sku: null, adu: null, adu_source: 'auto', cov: null,
     dlt_days: 75, mfg_lt: 45, ocean_lt: 21, customs_lt: 9, lt_factor: 0.25,
     var_factor: null, moq: 0, container_qty: null, seeded: true, alias_of: null,
+    cbm_per_unit: null,
     ...over,
   }
 }

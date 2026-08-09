@@ -26,8 +26,9 @@ import {
 } from "./buffers";
 import { materialsCeiling, type BomComponentRow, type BomProductRow } from "./materials";
 import { mulberry32, seedFrom, simulateStockout, type McArrival, type McInput, type McLegSamples } from "./montecarlo";
+import { fillContainer, type ContainerCandidate, type ContainerFill } from "./container";
 
-export type { BomComponentRow, BomProductRow };
+export type { BomComponentRow, BomProductRow, ContainerFill };
 
 // ---------------------------------------------------------------------------
 // Tunable constants (DDS&OP-reviewable heuristics — change here, not inline)
@@ -80,6 +81,8 @@ export interface ProfileRow {
   container_qty: number | null;
   seeded: boolean;
   alias_of: string | null;
+  /** CBM per unit for the container-fill step (Task 15); null = cannot be placed. */
+  cbm_per_unit: number | null;
 }
 
 export interface DemandEventRow {
@@ -227,12 +230,20 @@ export interface EngineData {
   persistStatus(rows: StatusDailyRow[]): Promise<void>;
   persistSpikes(rows: SpikeRegisterRow[]): Promise<void>;
   writeBackProfiles(updates: ProfileWriteBack[]): Promise<void>;
+  /** Task 16: quiet-mode 3-leg PO-chain pre-draft (mrp_draft_po_chain RPC). Throws on error. */
+  draftPoChain(payload: unknown): Promise<unknown>;
 }
 
 export interface EngineOptions {
   now?: Date;
   /** Read + compute only — no status/spike/profile writes (live smoke path). */
   dryRun?: boolean;
+  /**
+   * Task 16: draft the red-zone PO chain via EngineData.draftPoChain. Default
+   * false — dry runs and plain persists never draft (the operator opts in
+   * explicitly, and dryRun always wins over draftPos when both are set).
+   */
+  draftPos?: boolean;
 }
 
 export interface EngineResult {
@@ -245,6 +256,10 @@ export interface EngineResult {
   warnings: string[];
   rows: StatusDailyRow[];
   spikes: SpikeRegisterRow[];
+  /** Task 15 — always computed (pure), regardless of draftPos/dryRun. */
+  containerFill: ContainerFill | null;
+  /** Task 16 — draftPoChain is only ever called when draftPos && !dryRun and the fill has a red-driven line. */
+  draft: { attempted: boolean; result: unknown | null };
 }
 
 // ---------------------------------------------------------------------------
@@ -592,6 +607,10 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
   const statusRows: StatusDailyRow[] = [];
   const spikeRegister: SpikeRegisterRow[] = [];
   const writeBacks: ProfileWriteBack[] = [];
+  // Task 16: qualified-spike count/qty and ADU aren't carried on StatusDailyRow
+  // — captured here per SKU so the post-loop rationale builder can read them
+  // without recomputing.
+  const draftStatsBySku = new Map<string, { spikeCount: number; spikeQty: number; adu: number }>();
 
   for (const p of computed) {
     const flags: string[] = [];
@@ -687,6 +706,11 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
       }
     }
     const spikeLoad = qualified.reduce((a, q) => a + q.qty * q.weight, 0);
+    draftStatsBySku.set(p.sku, {
+      spikeCount: qualified.length,
+      spikeQty: qualified.reduce((a, q) => a + q.qty, 0),
+      adu,
+    });
 
     const { nfp, projectedNfp } = computeNFP({
       onHand,
@@ -806,6 +830,63 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
     writeBacks.push(wb);
   }
 
+  // --- container fill (Task 15) + PO-chain pre-draft (Task 16) --------------
+  // Candidates = red/yellow rows the buffer math says need action, MINUS any
+  // SKU already covered by an open Hub PO (the on-order idempotency rule) and
+  // any red row the materials ceiling blocks — Bamida can't build it yet, so
+  // drafting an order against it would be noise. Runs unconditionally (pure,
+  // cheap); only the draftPoChain call below is gated on opts.draftPos.
+  const profileBySku = new Map(computed.map((p) => [p.sku, p]));
+  const containerCandidates: ContainerCandidate[] = [];
+  for (const r of statusRows) {
+    if (r.zone !== "red" && r.zone !== "yellow") continue;
+    if (r.action_qty <= 0) continue;
+    if ((onOrder.get(r.sku) ?? 0) > 0) continue;
+    if (r.zone === "red" && r.blocked_by_materials) continue;
+    const p = profileBySku.get(r.sku);
+    containerCandidates.push({
+      sku: r.sku,
+      zone: r.zone,
+      nfp: r.nfp,
+      greenTop: r.green_top,
+      moq: p?.moq ?? 0,
+      cbmPerUnit: p?.cbm_per_unit ?? null,
+    });
+  }
+  const containerFill = fillContainer(containerCandidates);
+
+  const redSkus = new Set(containerCandidates.filter((c) => c.zone === "red").map((c) => c.sku));
+  const redLines = containerFill.lines.filter((l) => redSkus.has(l.sku));
+
+  let draftAttempted = false;
+  let draftResult: unknown = null;
+  if (opts.draftPos && !opts.dryRun && redLines.length > 0) {
+    draftAttempted = true;
+    const statusBySku = new Map(statusRows.map((r) => [r.sku, r]));
+    const rationaleLines = redLines.map((line) => {
+      const row = statusBySku.get(line.sku)!;
+      const stats = draftStatsBySku.get(line.sku)!;
+      const buildable = row.max_buildable ?? "unknown";
+      const binding = row.materials_binding_desc ? ` (limit: ${row.materials_binding_desc})` : "";
+      return (
+        `START MFG: ${line.qty}× ${line.sku} — NFP ${row.nfp} ≤ red ${row.red}. ` +
+        `Drivers: ${stats.spikeCount} qualified spike(s) (${stats.spikeQty}u weighted ${row.qualified_spikes}), ` +
+        `ADU ${stats.adu.toFixed(1)}/d. Buildable ${buildable}${binding}.`
+      );
+    });
+    const payload = {
+      run_date: runDate,
+      po_prefix: `MRPD-${runDate.replace(/-/g, "")}`,
+      rationale: [`MRP trigger ${runDate}:`, ...rationaleLines].join("\n"),
+      // Single-depot simplification (Task 16 scope) — multi-depot triggers are
+      // a later slice; call it out rather than silently guessing a depot.
+      depot: "US-BAL",
+      // No SKU→name map exists yet; product_name falls back to the SKU itself.
+      lines: containerFill.lines.map((l) => ({ sku: l.sku, product_name: l.sku, qty: l.qty })),
+    };
+    draftResult = await data.draftPoChain(payload);
+  }
+
   if (!opts.dryRun) {
     await data.persistStatus(statusRows);
     await data.persistSpikes(spikeRegister);
@@ -822,5 +903,7 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
     warnings,
     rows: statusRows,
     spikes: spikeRegister,
+    containerFill,
+    draft: { attempted: draftAttempted, result: draftResult },
   };
 }
