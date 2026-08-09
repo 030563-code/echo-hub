@@ -46,6 +46,10 @@ async function main() {
     .eq("alias_of", sku);
   const spellings = [sku, ...(aliasRows ?? []).map((r) => r.sku)];
 
+  // No-ETA arrivals land at the profile's DLT, exactly as the engine assumes.
+  const { data: prof } = await admin.from("mrp_buffer_profile").select("dlt_days").eq("sku", sku);
+  const dltDays = prof?.[0]?.dlt_days ?? 75;
+
   const [{ data: events }, { data: status }, { data: ships }, { data: legs }, { data: spikes }] =
     await Promise.all([
       admin
@@ -84,9 +88,9 @@ async function main() {
     qty: r.qty,
     etaDaysFromNow: r.eta
       ? Math.max(0, Math.ceil((new Date(`${r.eta}T00:00:00Z`).getTime() - now.getTime()) / MS_PER_DAY))
-      : 75,
+      : dltDays,
   }));
-  if ((s.on_order ?? 0) > 0) arrivals.push({ qty: s.on_order, etaDaysFromNow: 75 });
+  if ((s.on_order ?? 0) > 0) arrivals.push({ qty: s.on_order, etaDaysFromNow: dltDays });
 
   const spikeList = (spikes ?? []).slice(0, 4);
 
