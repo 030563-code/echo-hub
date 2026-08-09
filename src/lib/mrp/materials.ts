@@ -40,6 +40,8 @@ export interface BomComponentRow {
   basis: "per_unit" | "per_pallet";
   line_type: "material" | "operation" | "intermediate";
   is_gating: boolean;
+  /** 'delivery_note_estimate' until an engineering BOM replaces it. */
+  source_kind?: string;
 }
 
 export interface MaterialsCeiling {
@@ -52,6 +54,14 @@ export interface MaterialsCeiling {
   unjoined: string[];
   /** True when per_pallet rows had to be skipped for want of a pallet size. */
   palletSizeUnknown: boolean;
+  /**
+   * True when any component the ceiling actually rests on is an estimate
+   * rather than an engineering BOM. Independent of whether the SKU mapping is
+   * confirmed — the two get resolved at different times, and once the mapping
+   * is confirmed the ceiling would otherwise start looking authoritative while
+   * still resting on one observed batch.
+   */
+  bomEstimated: boolean;
 }
 
 /** Per-component demand, keyed on component_code, for a build of `qty` units. */
@@ -107,8 +117,12 @@ export function materialsCeiling(
     bindingDesc: null,
     unjoined,
     palletSizeUnknown: skippedPalletRow,
+    bomEstimated: false,
   };
 
+  // Only the components the bound actually rests on matter here; a stray
+  // estimated row that never binds should not taint a ceiling.
+  const bomEstimated = usable.some((c) => (c.source_kind ?? "delivery_note_estimate") !== "official_bom");
   if (usable.length === 0) return base;
 
   const available = (code: string) => Math.max(stockByCode.get(code) ?? 0, 0);
@@ -120,7 +134,7 @@ export function materialsCeiling(
     return true;
   };
 
-  if (!fits(0)) return { ...base, maxBuildable: 0 };
+  if (!fits(0)) return { ...base, maxBuildable: 0, bomEstimated };
 
   // Bracket the frontier by doubling. Requirement is non-decreasing in n, so
   // the first infeasible power of two is a valid upper bound. The cap keeps a
@@ -155,5 +169,5 @@ export function materialsCeiling(
     }
   }
 
-  return { ...base, maxBuildable: lo, bindingComponent, bindingDesc };
+  return { ...base, maxBuildable: lo, bindingComponent, bindingDesc, bomEstimated };
 }

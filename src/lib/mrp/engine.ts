@@ -688,6 +688,7 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
       bindingCode = ceiling.bindingComponent;
       bindingDesc = ceiling.bindingDesc;
       if (ceiling.palletSizeUnknown) flags.push("pallet_size_unknown");
+      if (ceiling.bomEstimated) flags.push("bom_estimated");
 
       // A mapping that no human has confirmed may INFORM but must never BLOCK.
       // Nothing on a delivery note names a regional Hub SKU, so the SKU→FG link

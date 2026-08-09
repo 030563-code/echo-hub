@@ -209,3 +209,47 @@ describe("materialsCeiling", () => {
     expect(r.bindingComponent).toBe("1781");
   });
 });
+
+describe('bomEstimated — an estimate must not read as an engineering BOM', () => {
+  const est = (code: string, qty: number): BomComponentRow => ({
+    ...comp(code, qty, 'per_unit'),
+    source_kind: 'delivery_note_estimate',
+  })
+  const official = (code: string, qty: number): BomComponentRow => ({
+    ...comp(code, qty, 'per_unit'),
+    source_kind: 'official_bom',
+  })
+
+  it('flags a ceiling resting on delivery-note estimates', () => {
+    const r = materialsCeiling(product(70), [est('A', 2)], stock([['A', 100]]))
+    expect(r.maxBuildable).toBe(50)
+    expect(r.bomEstimated).toBe(true)
+  })
+
+  it('does not flag a ceiling resting only on an official BOM', () => {
+    const r = materialsCeiling(product(70), [official('A', 2)], stock([['A', 100]]))
+    expect(r.bomEstimated).toBe(false)
+  })
+
+  it('treats a missing source_kind as an estimate, not as official', () => {
+    // Defaulting the other way would let an un-migrated row silently claim
+    // authority it never had.
+    const r = materialsCeiling(product(70), [comp('A', 2, 'per_unit')], stock([['A', 100]]))
+    expect(r.bomEstimated).toBe(true)
+  })
+
+  it('flags when the mix is partly estimated', () => {
+    const r = materialsCeiling(
+      product(70),
+      [official('A', 1), est('B', 1)],
+      stock([['A', 100], ['B', 100]])
+    )
+    expect(r.bomEstimated).toBe(true)
+  })
+
+  it('still flags when stock is exhausted', () => {
+    const r = materialsCeiling(product(70), [est('A', 5)], stock([['A', 0]]))
+    expect(r.maxBuildable).toBe(0)
+    expect(r.bomEstimated).toBe(true)
+  })
+})

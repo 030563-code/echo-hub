@@ -43,6 +43,7 @@ const FLAG_LABELS: Record<string, string> = {
   materials_unmapped: "No BOM mapped",
   materials_map_provisional: "BOM mapping provisional",
   pallet_size_unknown: "Pallet size unknown",
+  bom_estimated: "BOM estimated",
 };
 
 /**

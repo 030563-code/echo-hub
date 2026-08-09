@@ -173,7 +173,7 @@ export function createSupabaseEngineData(admin: SupabaseClient): EngineData {
       pageAll<BomComponentRow>("bom_components", (from, to) =>
         admin
           .from("mrp_bom_component")
-          .select("fg_code, component_code, component_desc, qty, basis, line_type, is_gating")
+          .select("fg_code, component_code, component_desc, qty, basis, line_type, is_gating, source_kind")
           .order("fg_code")
           .order("component_code")
           .range(from, to)
