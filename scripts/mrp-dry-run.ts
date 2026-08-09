@@ -4,7 +4,14 @@
  * write-back). Smoke check for the nightly engine.
  *
  * Usage:
- *   npx tsx --env-file=.env.local scripts/mrp-dry-run.ts
+ *   npx tsx --env-file=.env.local scripts/mrp-dry-run.ts             # read-only
+ *   npx tsx --env-file=.env.local scripts/mrp-dry-run.ts --persist   # save a run
+ *
+ * --persist writes mrp_buffer_status_daily + mrp_spike_register and updates
+ * measured ADU/CoV on mrp_buffer_profile. Those are SHADOW-BOARD tables: the
+ * /mrp v2 section reads them for observation, and no operational decision or
+ * outbound integration is driven off them until the Phase-2 cutover. It is
+ * still a write to the live project, so it is opt-in rather than the default.
  */
 import { createClient } from "@supabase/supabase-js";
 import { runMrpEngine } from "../src/lib/mrp/engine";
@@ -34,11 +41,12 @@ async function main() {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  const result = await runMrpEngine(createSupabaseEngineData(admin), { dryRun: true });
+  const persist = process.argv.includes("--persist");
+  const result = await runMrpEngine(createSupabaseEngineData(admin), { dryRun: !persist });
 
   const { rows, spikes, ...summary } = result;
   console.log("summary:", JSON.stringify(summary, null, 2));
-  console.log("\nper-SKU rows (dry run — NOT persisted):");
+  console.log(persist ? "\nper-SKU rows (PERSISTED):" : "\nper-SKU rows (dry run — NOT persisted):");
   for (const r of rows) {
     console.log(
       `  ${r.sku.padEnd(12)} zone=${r.zone.padEnd(6)} nfp=${String(r.nfp).padStart(6)} ` +
