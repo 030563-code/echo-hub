@@ -176,6 +176,26 @@ describe('simulateStockout — end-to-end small cases', () => {
     expect(res.pStockout).toBeGreaterThan(0.9)
   })
 
+  it('is invariant to how a week\'s demand splits into events — sizes are week totals', () => {
+    // Same weekly totals, different event granularity: one 100-unit order per
+    // active week vs the same weeks split into two 50-unit orders. A per-event
+    // size pool reads the split history at ~half the demand (the review-
+    // confirmed bias); a week-total pool must price both identically.
+    const whole = steadyWeeklyEvents(NOW, 52, 100)
+    const split = [
+      ...steadyWeeklyEvents(NOW, 52, 50),
+      ...steadyWeeklyEvents(NOW, 52, 50).map((e) => ({ ...e, qty: 50 })),
+    ]
+    const base = { now: NOW, arrivals: [], spikes: [], legs: EMPTY_LEGS, iterations: 4000 }
+    // onHand near the median lead-time demand so pStockout sits mid-range,
+    // where a halved demand distribution would move it dramatically.
+    const a = simulateStockout({ ...base, events: whole, onHand: 1100, rng: mulberry32(7) })!
+    const b = simulateStockout({ ...base, events: split, onHand: 1100, rng: mulberry32(7) })!
+    expect(Math.abs(a.pStockout - b.pStockout)).toBeLessThan(0.05)
+    // And the halved-pool symptom stays gone: split history must NOT look safer.
+    expect(b.pStockout).toBeGreaterThan(0.2)
+  })
+
   it('an arrival landing inside L pushes pStockout down vs the same arrival landing outside L', () => {
     const events = steadyWeeklyEvents(NOW, 52, 10)
     const base = (etaDaysFromNow: number) =>

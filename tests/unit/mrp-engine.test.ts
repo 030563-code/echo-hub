@@ -535,11 +535,32 @@ describe('container fill + PO-chain pre-draft', () => {
     expect(payload.rationale).toContain('red 38')
   })
 
-  it('excludes a red SKU that already has open Hub PO cover', async () => {
+  it('still drafts a SKU whose open-PO cover leaves it red — NFP nets the cover, no binary exclusion', async () => {
+    // Partial cover (10 units against a ~132-unit shortfall) must NOT starve
+    // the SKU: NFP already includes on-order, so action_qty is the true
+    // residual. A binary onOrder>0 exclusion would freeze out any SKU whose
+    // first draft was CBM-trimmed below its need (adversarial review
+    // 2026-08-09); same-day duplicates are the RPC's po_number guard's job.
     const { data, captured } = makeData(redSkuFixture({
       openPoLines: [{ po_id: 'po1', sku: 'EBH9NA', quantity: 10 }],
     }))
     const res = await runMrpEngine(data, { now: NOW, draftPos: true })
+    expect(res.rows[0].zone).toBe('red')
+    expect(res.rows[0].on_order).toBe(10)
+    expect(res.containerFill!.lines.map((l) => l.sku)).toEqual(['EBH9NA'])
+    expect(res.draft.attempted).toBe(true)
+    expect(captured.draftPoChain).toHaveLength(1)
+  })
+
+  it('does not draft when open-PO cover lifts the SKU out of the action zones', async () => {
+    // Full cover: enough on order to push NFP above yellow-top — the natural
+    // (NFP-embedded) form of the plan's "skip if an open Hub PO already
+    // covers the SKU" idempotency rule.
+    const { data, captured } = makeData(redSkuFixture({
+      openPoLines: [{ po_id: 'po1', sku: 'EBH9NA', quantity: 10_000 }],
+    }))
+    const res = await runMrpEngine(data, { now: NOW, draftPos: true })
+    expect(res.rows[0].zone).toBe('green')
     expect(res.containerFill!.lines).toEqual([])
     expect(res.draft).toEqual({ attempted: false, result: null })
     expect(captured.draftPoChain).toHaveLength(0)
@@ -559,6 +580,29 @@ describe('container fill + PO-chain pre-draft', () => {
     expect(res.rows[0].blocked_by_materials).toBe(true)
     expect(res.containerFill!.lines).toEqual([])
     expect(res.draft).toEqual({ attempted: false, result: null })
+    expect(captured.draftPoChain).toHaveLength(0)
+  })
+
+  it('excludes a materials-blocked YELLOW SKU from the container program', async () => {
+    // The blocked filter must apply to both zones: a blocked yellow that fits
+    // the CBM budget would otherwise ride into a chain some red SKU triggered
+    // (adversarial review 2026-08-09).
+    const { data, captured } = makeData(redSkuFixture({
+      stockLevels: [
+        { warehouse_code: 'US-BAL', sku: 'EBH9NA', quantity_on_hand: 60, last_counted_at: null },
+      ],
+      bomProducts: [{ fg_code: 'FG', pallet_size: null }],
+      bomComponents: [{
+        fg_code: 'FG', component_code: 'MAT', component_desc: 'Mat', qty: 1,
+        basis: 'per_unit', line_type: 'material', is_gating: true,
+      }],
+      bomSkuMap: [{ hub_sku: 'EBH9NA', fg_code: 'FG', confirmed: true }],
+      materialStock: [{ ns_number: 'MAT', quantity: 5 }],
+    }))
+    const res = await runMrpEngine(data, { now: NOW, draftPos: true })
+    expect(res.rows[0].zone).toBe('yellow')
+    expect(res.rows[0].blocked_by_materials).toBe(true)
+    expect(res.containerFill!.lines).toEqual([])
     expect(captured.draftPoChain).toHaveLength(0)
   })
 

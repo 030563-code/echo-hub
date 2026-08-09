@@ -20,6 +20,13 @@ export const TODAY = "2026-08-09";
 export const DEMO_SEED = 20260809;
 export const BATCH_TAG = "andy-demo-2026-08-09";
 
+/**
+ * The stale-shipment flip in batch 06 only touches rows whose ETA is older
+ * than this. The 11 known stale Cargo seed rows all carry Feb/Mar-2026 ETAs;
+ * anything nearer is presumed genuinely live and untouchable by a demo seed.
+ */
+export const STALE_ETA_BEFORE = "2026-05-01";
+
 // Historical demand window: nothing synthetic lands on/after 2026-08-01 —
 // August-onward "demand" comes from deals (firm demand / spikes), not history.
 export const DEMAND_WINDOW_START = "2025-02-01"; // inclusive

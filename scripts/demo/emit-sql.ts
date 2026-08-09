@@ -257,16 +257,22 @@ function emitPosBatch(data: DemoData): string {
 // ---------------------------------------------------------------------------
 
 function emitShipmentsBatch(data: DemoData): string {
+  // Scoped to LONG-PAST ETAs only: the 11 known stale Cargo seed rows all
+  // carry Feb/Mar-2026 ETAs while still reading on_water. Without the eta
+  // cutoff a re-run of this seed months later would flip genuinely live
+  // shipments to delivered (adversarial review 2026-08-09). Registry captures
+  // prior status/delivered_at row-by-row for restore either way.
+  const staleWhere = `status <> 'delivered' and spot_id not like 'DEMO-%' and eta < ${str(design.STALE_ETA_BEFORE)}`;
   const captureStale =
     `insert into public.mrp_demo_seed_registry (batch_tag, op, table_name, pk, prior)\n` +
     `select ${str(design.BATCH_TAG)}, 'update', 'shipment_contents', jsonb_build_object('id', id), jsonb_build_object('status', status, 'delivered_at', delivered_at)\n` +
     `from public.shipment_contents\n` +
-    `where status <> 'delivered' and spot_id not like 'DEMO-%';`;
+    `where ${staleWhere};`;
 
   const updateStale =
     `update public.shipment_contents\n` +
     `set status = 'delivered', delivered_at = eta + interval '3 days'\n` +
-    `where status <> 'delivered' and spot_id not like 'DEMO-%';`;
+    `where ${staleWhere};`;
 
   const inserts = chunk(data.shipments, MAX_ROWS_PER_INSERT)
     .map(
@@ -398,20 +404,26 @@ where r.batch_tag = ${tag} and r.op = 'update' and r.table_name = 'mrp_buffer_pr
 -- 2. Delete inserts, FK-safe reverse order (children before parents).
 -- 'MRPD-%' covers chains the ENGINE drafts at run time (mrp_draft_po_chain)
 -- while demo data is loaded — engine output, so the seed registry never saw
--- them, but they exist only because of seeded demand and must go too.
+-- them, but they derive from seeded demand and must go too. Guarded to
+-- status='requested': a chain a human has ADVANCED (approved/shipped/...) is
+-- operationally live and must never be swept by a demo teardown — if any
+-- MRPD chain survives this delete, resolve it by hand before rerunning.
 delete from public.po_line_receipts rcpt
 using public.purchase_orders po
-where rcpt.po_id = po.id and (po.po_number like 'DEMO-%' or po.po_number like 'MRPD-%');
+where rcpt.po_id = po.id
+  and (po.po_number like 'DEMO-%' or (po.po_number like 'MRPD-%' and po.status = 'requested'));
 
 delete from public.purchase_order_lines pol
 using public.purchase_orders po
-where pol.po_id = po.id and (po.po_number like 'DEMO-%' or po.po_number like 'MRPD-%');
+where pol.po_id = po.id
+  and (po.po_number like 'DEMO-%' or (po.po_number like 'MRPD-%' and po.status = 'requested'));
 
 delete from public.purchase_orders
-where (po_number like 'DEMO-%' or po_number like 'MRPD-%') and parent_po_id is not null;
+where (po_number like 'DEMO-%' or (po_number like 'MRPD-%' and status = 'requested'))
+  and parent_po_id is not null;
 
 delete from public.purchase_orders
-where po_number like 'DEMO-%' or po_number like 'MRPD-%';
+where po_number like 'DEMO-%' or (po_number like 'MRPD-%' and status = 'requested');
 
 delete from public.shipment_contents
 where spot_id like 'DEMO-SPOT-%';
@@ -428,7 +440,12 @@ where spot_id = 'DEMO';
 delete from public.mrp_stage_weights
 where stage_id = 'demo_late_stage';
 
--- 3. Delete engine output computed from demo inputs.
+-- 3. Delete engine output computed from demo inputs. The open-ended >= is
+-- DELIBERATE: every engine run between seed and teardown reads the seeded
+-- demand/stock/deals, so its output is demo-contaminated whatever its
+-- run_date — there is no "legitimate" post-seed run to preserve. After this
+-- teardown, run the engine once (--persist) to rebuild real-only rows and
+-- profile stats (manifest step 2).
 delete from public.mrp_buffer_status_daily
 where run_date >= '${design.TODAY}';
 

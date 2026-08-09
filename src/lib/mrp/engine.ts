@@ -831,18 +831,26 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
   }
 
   // --- container fill (Task 15) + PO-chain pre-draft (Task 16) --------------
-  // Candidates = red/yellow rows the buffer math says need action, MINUS any
-  // SKU already covered by an open Hub PO (the on-order idempotency rule) and
-  // any red row the materials ceiling blocks — Bamida can't build it yet, so
-  // drafting an order against it would be noise. Runs unconditionally (pure,
-  // cheap); only the draftPoChain call below is gated on opts.draftPos.
+  // Candidates = red/yellow rows the buffer math says need action, minus any
+  // row the materials ceiling BLOCKS (either zone — Bamida can't build it yet,
+  // so drafting an order against it would be noise; a blocked yellow must not
+  // ride into a chain a red SKU triggered). Open-PO cover needs NO explicit
+  // filter here: NFP already nets on-order (the plan's "per the on-order
+  // dedup"), so action_qty is the true residual shortfall — a binary
+  // onOrder>0 exclusion would permanently starve any SKU whose first draft
+  // was CBM-trimmed below its need (adversarial review 2026-08-09). Same-day
+  // duplicate chains are stopped by the RPC's po_number idempotency instead;
+  // note that guard is DAY-granular, so a second same-day run with NEWLY red
+  // SKUs returns {skipped:'exists'} and drafts nothing — a visible, accepted
+  // limitation until the Phase-2 cutover reworks drafting notifications.
+  // Runs unconditionally (pure, cheap); only the draftPoChain call below is
+  // gated on opts.draftPos.
   const profileBySku = new Map(computed.map((p) => [p.sku, p]));
   const containerCandidates: ContainerCandidate[] = [];
   for (const r of statusRows) {
     if (r.zone !== "red" && r.zone !== "yellow") continue;
     if (r.action_qty <= 0) continue;
-    if ((onOrder.get(r.sku) ?? 0) > 0) continue;
-    if (r.zone === "red" && r.blocked_by_materials) continue;
+    if (r.blocked_by_materials) continue;
     const p = profileBySku.get(r.sku);
     containerCandidates.push({
       sku: r.sku,

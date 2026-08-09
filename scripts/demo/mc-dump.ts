@@ -92,8 +92,12 @@ async function main() {
 
   const rng = mulberry32(seedFrom(`${runDate}:${sku}`));
   const weeks = trailingIsoWeeks(now, 52);
-  const { p01, p11, lastActive } = fitMarkov(weeklyTotals(events, weeks));
-  const sizes = events.filter((e) => e.qty > 0).map((e) => e.qty);
+  const totals = weeklyTotals(events, weeks);
+  const { p01, p11, lastActive } = fitMarkov(totals);
+  // Mirrors montecarlo.ts: sizes are ACTIVE-WEEK TOTALS (one Markov step =
+  // one week), falling back to per-event sizes only with no active week.
+  let sizes = totals.filter((t) => t > 0);
+  if (sizes.length === 0) sizes = events.filter((e) => e.qty > 0).map((e) => e.qty);
   const sampleLeg = (arr: number[], seed: [number, number, number]) =>
     arr.length >= 10 ? arr[Math.floor(rng() * arr.length)] : triangular(seed[0], seed[1], seed[2], rng());
 

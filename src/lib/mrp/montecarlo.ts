@@ -11,9 +11,12 @@
  *      on both transition counts so degenerate histories (all-active,
  *      all-inactive) stay strictly inside (0, 1). Initial state for the walk
  *      = the most recent week's activity.
- *   2. Size — empirical positive event quantities from the trailing 365 days
- *      (the caller pre-filters `events` to that window), each draw jittered
- *      × (1 + U(−0.25, 0.25)) and floored at 1 after rounding.
+ *   2. Size — empirical ACTIVE-WEEK TOTALS over the same 52 trailing weeks the
+ *      occurrence model was fit on (one Markov step = one week, so the size
+ *      draw must aggregate the way the state does; per-event draws understate
+ *      multi-order weeks). Each draw jittered × (1 + U(−0.25, 0.25)) and
+ *      floored at 1 after rounding. Falls back to per-event quantities only
+ *      when no listed week is active (e.g. purely future-dated history).
  *   3. Lead time — per iteration, L_i = mfg() + ocean() + customs(): each leg
  *      resamples its empirical actuals array once it has ≥ 10 observations,
  *      else draws Triangular(min, mode, max) with the DDS&OP seed parameters.
@@ -203,7 +206,16 @@ export function simulateStockout(input: McInput): McResult | null {
   const totals = weeklyTotals(input.events, weeks);
   const { p01, p11, lastActive } = fitMarkov(totals);
 
-  const sizes = input.events.filter((e) => e.qty > 0).map((e) => e.qty);
+  // One Markov step = one WEEK, so sizes must come from the same aggregation
+  // the occurrence model was fit on: ACTIVE-WEEK TOTALS. Drawing per-event
+  // quantities here systematically understates demand for any SKU whose
+  // active weeks hold several orders (~2× low on a two-orders-per-week
+  // fixture — adversarial review 2026-08-09). Events future-dated past the
+  // current ISO week sit outside the 52-week key list; if that leaves no
+  // active week at all, fall back to per-event sizes rather than walking a
+  // chain that can only ever produce zero demand.
+  let sizes = totals.filter((t) => t > 0);
+  if (sizes.length === 0) sizes = input.events.filter((e) => e.qty > 0).map((e) => e.qty);
 
   const shorts: number[] = new Array(iterations);
   for (let i = 0; i < iterations; i++) {
