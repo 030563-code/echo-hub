@@ -396,19 +396,22 @@ where r.batch_tag = ${tag} and r.op = 'update' and r.table_name = 'mrp_buffer_pr
   and p.sku = r.pk->>'sku';
 
 -- 2. Delete inserts, FK-safe reverse order (children before parents).
+-- 'MRPD-%' covers chains the ENGINE drafts at run time (mrp_draft_po_chain)
+-- while demo data is loaded — engine output, so the seed registry never saw
+-- them, but they exist only because of seeded demand and must go too.
 delete from public.po_line_receipts rcpt
 using public.purchase_orders po
-where rcpt.po_id = po.id and po.po_number like 'DEMO-%';
+where rcpt.po_id = po.id and (po.po_number like 'DEMO-%' or po.po_number like 'MRPD-%');
 
 delete from public.purchase_order_lines pol
 using public.purchase_orders po
-where pol.po_id = po.id and po.po_number like 'DEMO-%';
+where pol.po_id = po.id and (po.po_number like 'DEMO-%' or po.po_number like 'MRPD-%');
 
 delete from public.purchase_orders
-where po_number like 'DEMO-%' and parent_po_id is not null;
+where (po_number like 'DEMO-%' or po_number like 'MRPD-%') and parent_po_id is not null;
 
 delete from public.purchase_orders
-where po_number like 'DEMO-%';
+where po_number like 'DEMO-%' or po_number like 'MRPD-%';
 
 delete from public.shipment_contents
 where spot_id like 'DEMO-SPOT-%';
