@@ -122,6 +122,27 @@ export function formatPStockout(p: number | null | undefined): string {
 }
 
 /**
+ * data_grade chip text — 'A' (≥20 local events) / 'B' (5–19) / 'C' (<5) pass
+ * through unchanged; null (no Monte Carlo result yet, same gate as
+ * p_stockout) → em dash.
+ */
+export function formatDataGrade(grade: string | null): string {
+  if (grade === null || grade.trim() === "") return "—";
+  return grade;
+}
+
+/**
+ * "±wide — collect data" hint for the p_stockout chip when the 95% CI
+ * half-width exceeds the calibration-review threshold (0.30) — a signal the
+ * SKU needs more local demand history before its probability is worth acting
+ * on. Below the threshold, or when ci is unknown, there is nothing to show.
+ */
+export function pStockoutCiHint(ci: number | null | undefined): string | null {
+  if (ci === null || ci === undefined || !Number.isFinite(ci)) return null;
+  return ci > 0.3 ? "±wide — collect data" : null;
+}
+
+/**
  * Representative dlt_days across buffer profiles for the legacy formula line:
  * the most common value (every profile carries the 75d seed today), ties
  * broken by the smaller value so the result is deterministic. Null when no

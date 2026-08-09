@@ -25,6 +25,7 @@ import {
   type SpikeCandidate,
 } from "./buffers";
 import { materialsCeiling, type BomComponentRow, type BomProductRow } from "./materials";
+import { mulberry32, seedFrom, simulateStockout, type McArrival, type McInput, type McLegSamples } from "./montecarlo";
 
 export type { BomComponentRow, BomProductRow };
 
@@ -100,6 +101,8 @@ export interface ShipmentRow {
   qty: number;
   status: string;
   po_id: string | null;
+  /** In-transit ETA ('YYYY-MM-DD'); null when unknown (Monte Carlo falls back to DLT). */
+  eta: string | null;
 }
 
 export interface OpenPoLineRow {
@@ -167,6 +170,12 @@ export interface StatusDailyRow {
   materials_binding_code: string | null;
   materials_binding_desc: string | null;
   blocked_by_materials: boolean;
+  /** Monte Carlo stockout probability (Task 17); null when there is no local demand history. */
+  p_stockout: number | null;
+  /** 95% CI half-width on p_stockout; null alongside p_stockout. */
+  p_stockout_ci: number | null;
+  /** 'A' (≥20 local events) / 'B' (5–19) / 'C' (<5); null alongside p_stockout. */
+  data_grade: string | null;
   flags: string[]; // jsonb ARRAY of strings — never an object
 }
 
@@ -211,6 +220,8 @@ export interface EngineData {
   materialStock(): Promise<MaterialStockRow[]>;
   /** days of leg='door' mrp_lead_time_actuals. */
   doorLeadTimeDays(): Promise<number[]>;
+  /** leg in ('mfg','ocean','customs') mrp_lead_time_actuals — feeds the Monte Carlo lead-time model (Task 17). */
+  legActuals(): Promise<{ leg: string; days: number }[]>;
   /** Per-receipt (depot, sku, qty) on delivered/approved Hub POs (net b). */
   receiptRows(): Promise<ReceiptRow[]>;
   persistStatus(rows: StatusDailyRow[]): Promise<void>;
@@ -388,6 +399,7 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
     materialRows,
     doorDays,
     receiptRows,
+    legActualsRows,
   ] = await Promise.all([
     data.profiles(),
     data.demandEvents(fetchSince),
@@ -404,6 +416,7 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
     data.materialStock(),
     data.doorLeadTimeDays(),
     data.receiptRows(),
+    data.legActuals(),
   ]);
 
   // --- alias routing --------------------------------------------------------
@@ -446,13 +459,27 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
   const stockAllUncounted = stockRows.length === 0 || stockRows.every((s) => s.last_counted_at === null);
 
   const inTransitBySku = new Map<string, number>();
+  const shipmentsBySku = new Map<string, ShipmentRow[]>();
   for (const s of shipmentRows) {
     if (s.status === "delivered") continue;
     const sku = resolve(s.sku);
     inTransitBySku.set(sku, (inTransitBySku.get(sku) ?? 0) + s.qty);
+    const list = shipmentsBySku.get(sku);
+    if (list) list.push(s);
+    else shipmentsBySku.set(sku, [s]);
   }
 
   const onOrder = onOrderBySku(openLines, shipmentRows, resolve);
+
+  // Monte Carlo lead-time legs (Task 17) — global per leg, same shape as the
+  // door-actuals table (no per-SKU dimension yet).
+  const legsByType: McLegSamples = { mfg: [], ocean: [], customs: [] };
+  for (const r of legActualsRows) {
+    if (r.leg === "mfg") legsByType.mfg.push(r.days);
+    else if (r.leg === "ocean") legsByType.ocean.push(r.days);
+    else if (r.leg === "customs") legsByType.customs.push(r.days);
+  }
+  const mcSince = isoDate(daysBefore(now, 365));
 
   // --- spikes: late-stage weighted open-deal pipeline -----------------------
   const weightByStage = new Map(stageWeightRows.map((w) => [w.stage_id, w]));
@@ -704,6 +731,36 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
 
     for (const f of extraFlagsBySku.get(p.sku) ?? []) if (!flags.includes(f)) flags.push(f);
 
+    // 10. Monte Carlo stockout (Task 17) — pure bootstrap layered on top of the
+    // zone/NFP math above; it never feeds back into zone, NFP, or action_qty.
+    // Runs under dryRun too (it's pure) — only persistence below is gated.
+    const mcEvents = skuEvents
+      .filter((e) => e.event_date > mcSince)
+      .map((e) => ({ event_date: e.event_date, qty: e.qty }));
+    const arrivals: McArrival[] = [];
+    for (const s of shipmentsBySku.get(p.sku) ?? []) {
+      const etaDaysFromNow =
+        s.eta === null
+          ? dlt
+          : Math.max(0, Math.ceil((new Date(`${s.eta}T00:00:00Z`).getTime() - now.getTime()) / MS_PER_DAY));
+      arrivals.push({ qty: s.qty, etaDaysFromNow });
+    }
+    if (skuOnOrder > 0) arrivals.push({ qty: skuOnOrder, etaDaysFromNow: dlt });
+
+    const mcInput: McInput = {
+      events: mcEvents,
+      now,
+      onHand,
+      arrivals,
+      spikes: qualified.map((q) => ({ qty: q.qty, weight: q.weight })),
+      legs: legsByType,
+      rng: mulberry32(seedFrom(`${runDate}:${p.sku}`)),
+    };
+    const mc = simulateStockout(mcInput);
+    const pStockout = mc === null ? null : Math.round(mc.pStockout * 10_000) / 10_000;
+    const pStockoutCi = mc === null ? null : Math.round(mc.ci * 10_000) / 10_000;
+    const dataGrade = mc === null ? null : mc.dataGrade;
+
     statusRows.push({
       run_date: runDate,
       sku: p.sku,
@@ -725,6 +782,9 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
       materials_binding_code: bindingCode,
       materials_binding_desc: bindingDesc,
       blocked_by_materials: blocked,
+      p_stockout: pStockout,
+      p_stockout_ci: pStockoutCi,
+      data_grade: dataGrade,
       flags,
     });
 

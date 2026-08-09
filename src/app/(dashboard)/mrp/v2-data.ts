@@ -35,8 +35,12 @@ export interface V2BoardRow {
   materials_binding_code: string | null;
   materials_binding_desc: string | null;
   blocked_by_materials: boolean;
-  /** Null until the stockout model lands (later task) — rendered as "—". */
+  /** Null when the SKU has no local demand history (Monte Carlo — Task 17) — rendered as "—". */
   p_stockout: number | null;
+  /** 95% CI half-width on p_stockout; null alongside p_stockout. */
+  p_stockout_ci: number | null;
+  /** 'A' / 'B' / 'C' by local event count; null alongside p_stockout. */
+  data_grade: string | null;
   flags: string[];
   /** Joined from mrp_buffer_profile (null if the profile row vanished). */
   dlt_days: number | null;
@@ -99,7 +103,7 @@ export async function getV2Board(): Promise<V2BoardData> {
   const { data: statusData, error: statusErr } = await supabase
     .from("mrp_buffer_status_daily")
     .select(
-      "sku, nfp, projected_nfp, yellow_top, green_top, zone, action_qty, max_buildable, materials_binding_code, materials_binding_desc, blocked_by_materials, p_stockout, flags, created_at"
+      "sku, nfp, projected_nfp, yellow_top, green_top, zone, action_qty, max_buildable, materials_binding_code, materials_binding_desc, blocked_by_materials, p_stockout, p_stockout_ci, data_grade, flags, created_at"
     )
     .eq("run_date", latest.run_date)
     .order("sku", { ascending: true });
@@ -129,6 +133,8 @@ export async function getV2Board(): Promise<V2BoardData> {
       materials_binding_desc: r.materials_binding_desc ?? null,
       blocked_by_materials: r.blocked_by_materials === true,
       p_stockout: r.p_stockout ?? null,
+      p_stockout_ci: r.p_stockout_ci ?? null,
+      data_grade: r.data_grade ?? null,
       flags: normalizeFlags(r.flags),
       dlt_days: profile?.dlt_days ?? null,
       sku_class: profile?.sku_class ?? null,

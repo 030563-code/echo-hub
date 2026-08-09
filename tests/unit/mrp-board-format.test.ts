@@ -6,6 +6,8 @@ import {
   formatQty,
   projectedDiffers,
   formatPStockout,
+  formatDataGrade,
+  pStockoutCiHint,
   commonDltDays,
   formatLastRun,
   formatMaxBuildable,
@@ -93,6 +95,34 @@ describe('formatPStockout', () => {
     expect(formatPStockout(0.07)).toBe('7%')
     expect(formatPStockout(0.5)).toBe('50%')
     expect(formatPStockout(1)).toBe('100%')
+  })
+})
+
+describe('formatDataGrade', () => {
+  it('known grades pass through unchanged', () => {
+    expect(formatDataGrade('A')).toBe('A')
+    expect(formatDataGrade('B')).toBe('B')
+    expect(formatDataGrade('C')).toBe('C')
+  })
+  it('null (no MC result yet) → em dash', () => {
+    expect(formatDataGrade(null)).toBe('—')
+  })
+})
+
+describe('pStockoutCiHint', () => {
+  it('CI wider than 0.30 shows the collect-data hint', () => {
+    expect(pStockoutCiHint(0.31)).toBe('±wide — collect data')
+    expect(pStockoutCiHint(0.5)).toBe('±wide — collect data')
+  })
+  it('CI at or below 0.30 shows nothing', () => {
+    expect(pStockoutCiHint(0.3)).toBeNull()
+    expect(pStockoutCiHint(0.1)).toBeNull()
+    expect(pStockoutCiHint(0)).toBeNull()
+  })
+  it('null/undefined/non-finite → nothing', () => {
+    expect(pStockoutCiHint(null)).toBeNull()
+    expect(pStockoutCiHint(undefined)).toBeNull()
+    expect(pStockoutCiHint(NaN)).toBeNull()
   })
 })
 

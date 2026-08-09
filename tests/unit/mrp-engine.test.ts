@@ -25,7 +25,7 @@ interface Fixtures {
   profiles: ProfileRow[]
   demandEvents: { event_date: string; sku: string; qty: number; source: string }[]
   stockLevels: { warehouse_code: string; sku: string; quantity_on_hand: number; last_counted_at: string | null }[]
-  shipments: { sku: string; qty: number; status: string; po_id: string | null }[]
+  shipments: { sku: string; qty: number; status: string; po_id: string | null; eta: string | null }[]
   openPoLines: { po_id: string; sku: string; quantity: number }[]
   stageWeights: { stage_id: string; win_weight: number; is_late_stage: boolean }[]
   openDeals: { hubspot_deal_id: string; deal_status: string; line_items_raw: unknown }[]
@@ -37,6 +37,7 @@ interface Fixtures {
   materialStock: { ns_number: string; quantity: number }[]
   doorLeadTimeDays: number[]
   receiptRows: { depot: string; sku: string; qty: number }[]
+  legActuals: { leg: string; days: number }[]
 }
 
 interface Captured {
@@ -50,6 +51,7 @@ function makeData(over: Partial<Fixtures> = {}): { data: EngineData; captured: C
     profiles: [], demandEvents: [], stockLevels: [], shipments: [], openPoLines: [],
     stageWeights: [], openDeals: [], closedWonDeals: [], hubspotDemandDealIds: [],
     bomProducts: [], bomComponents: [], bomSkuMap: [], materialStock: [], doorLeadTimeDays: [], receiptRows: [],
+    legActuals: [],
     ...over,
   }
   const captured: Captured = { status: [], spikes: [], writeBacks: [] }
@@ -69,6 +71,7 @@ function makeData(over: Partial<Fixtures> = {}): { data: EngineData; captured: C
     materialStock: () => Promise.resolve(f.materialStock),
     doorLeadTimeDays: () => Promise.resolve(f.doorLeadTimeDays),
     receiptRows: () => Promise.resolve(f.receiptRows),
+    legActuals: () => Promise.resolve(f.legActuals),
     persistStatus: (rows) => { captured.status.push(rows); return Promise.resolve() },
     persistSpikes: (rows) => { captured.spikes.push(rows); return Promise.resolve() },
     writeBackProfiles: (rows) => { captured.writeBacks.push(rows); return Promise.resolve() },
@@ -167,10 +170,10 @@ describe('onOrderBySku', () => {
       { po_id: 'po2', sku: 'EBH10NA', quantity: 100 },
     ]
     const ships = [
-      { sku: 'EBH9NA', qty: 200, status: 'in_transit', po_id: 'po1' },   // dedups
-      { sku: 'EBH9NA', qty: 50, status: 'delivered', po_id: 'po1' },     // delivered: no
-      { sku: 'EBH9NA', qty: 999, status: 'in_transit', po_id: null },    // unlinked: no
-      { sku: 'EBH10NA', qty: 150, status: 'in_transit', po_id: 'po2' },  // over-ship clamps
+      { sku: 'EBH9NA', qty: 200, status: 'in_transit', po_id: 'po1', eta: null },   // dedups
+      { sku: 'EBH9NA', qty: 50, status: 'delivered', po_id: 'po1', eta: null },     // delivered: no
+      { sku: 'EBH9NA', qty: 999, status: 'in_transit', po_id: null, eta: null },    // unlinked: no
+      { sku: 'EBH10NA', qty: 150, status: 'in_transit', po_id: 'po2', eta: null },  // over-ship clamps
     ]
     const m = onOrderBySku(open, ships, id)
     expect(m.get('EBH9NA')).toBe(300)
@@ -208,8 +211,8 @@ function richFixture(): Partial<Fixtures> {
       { warehouse_code: 'CA-HAM', sku: 'EBH9NA', quantity_on_hand: 10, last_counted_at: null },
     ],
     shipments: [
-      { sku: 'EBH9NA', qty: 30, status: 'in_transit', po_id: null },
-      { sku: 'EBH9NA', qty: 20, status: 'in_transit', po_id: 'po1' }, // dedups on_order
+      { sku: 'EBH9NA', qty: 30, status: 'in_transit', po_id: null, eta: null },
+      { sku: 'EBH9NA', qty: 20, status: 'in_transit', po_id: 'po1', eta: null }, // dedups on_order
     ],
     openPoLines: [{ po_id: 'po1', sku: 'EBH9NA', quantity: 100 }],
     stageWeights: [

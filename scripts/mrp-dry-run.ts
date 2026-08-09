@@ -53,7 +53,8 @@ async function main() {
         `red=${String(r.red).padStart(4)} yTop=${String(r.yellow_top).padStart(5)} gTop=${String(r.green_top).padStart(5)} ` +
         `onHand=${r.on_hand} inTransit=${r.in_transit} onOrder=${r.on_order} firm=${r.firm_demand} ` +
         `action=${r.action_qty} buildable=${r.max_buildable ?? "null"} blocked=${r.blocked_by_materials} ` +
-        `flags=${JSON.stringify(r.flags)}`
+        `pStockout=${r.p_stockout === null ? "null" : `${(r.p_stockout * 100).toFixed(1)}%`} ` +
+        `grade=${r.data_grade ?? "null"} flags=${JSON.stringify(r.flags)}`
     );
   }
   console.log(`\nqualified spikes (dry run): ${spikes.length}`);

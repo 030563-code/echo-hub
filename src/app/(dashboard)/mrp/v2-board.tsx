@@ -1,8 +1,10 @@
 import {
+  formatDataGrade,
   formatLastRun,
   formatPStockout,
   formatQty,
   humanizeFlag,
+  pStockoutCiHint,
   projectedDiffers,
   zoneChipClasses,
 } from "@/lib/mrp/board-format";
@@ -135,9 +137,26 @@ export default function V2ShadowBoard({ data }: { data: V2BoardData | null }) {
                     )}
                   </td>
                   <td className="px-4 py-2.5">
-                    <span className="inline-flex items-center rounded-full border border-[#2a2a2a] bg-[#1e1e1e] px-2 py-0.5 text-[10px] tabular-nums text-[#9ca3af]">
-                      {formatPStockout(r.p_stockout)}
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="inline-flex items-center rounded-full border border-[#2a2a2a] bg-[#1e1e1e] px-2 py-0.5 text-[10px] tabular-nums text-[#9ca3af]">
+                        {formatPStockout(r.p_stockout)}
+                      </span>
+                      {r.data_grade !== null && (
+                        <span
+                          className="inline-flex items-center rounded-full border border-[#2a2a2a] bg-[#1e1e1e] px-1.5 py-0.5 text-[9px] font-medium text-[#6b7280]"
+                          title="Data grade — local demand-event count behind this probability"
+                        >
+                          {formatDataGrade(r.data_grade)}
+                        </span>
+                      )}
                     </span>
+                    {/* Wide CI (>0.30) means the SKU hasn't got enough local
+                        history yet — the probability isn't worth acting on. */}
+                    {pStockoutCiHint(r.p_stockout_ci) && (
+                      <span className="block text-[10px] text-[#6b7280]">
+                        {pStockoutCiHint(r.p_stockout_ci)}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-2.5">
                     {(() => {

@@ -90,7 +90,7 @@ export function createSupabaseEngineData(admin: SupabaseClient): EngineData {
 
     shipments: () =>
       pageAll<ShipmentRow>("shipments", (from, to) =>
-        admin.from("shipment_contents").select("sku, qty, status, po_id").order("id").range(from, to)
+        admin.from("shipment_contents").select("sku, qty, status, po_id, eta").order("id").range(from, to)
       ),
 
     // Open Hub depot-leg POs → their lines. Two steps (the id set is tiny) so
@@ -202,6 +202,20 @@ export function createSupabaseEngineData(admin: SupabaseClient): EngineData {
       );
       return rows.map((r) => r.days);
     },
+
+    // Feeds the Monte Carlo lead-time model (Task 17). NOTE: the table's leg
+    // check constraint today only allows ('mfg','ocean','door') — no 'customs'
+    // writer exists yet, so this in() clause simply returns zero 'customs' rows
+    // until a writer + constraint change lands (schema is out of scope here).
+    legActuals: () =>
+      pageAll<{ leg: string; days: number }>("leg_actuals", (from, to) =>
+        admin
+          .from("mrp_lead_time_actuals")
+          .select("leg, days")
+          .in("leg", ["mfg", "ocean", "customs"])
+          .order("id")
+          .range(from, to)
+      ),
 
     receiptRows: async () => {
       const rows = (await pageAll<unknown>("receipts", (from, to) =>
