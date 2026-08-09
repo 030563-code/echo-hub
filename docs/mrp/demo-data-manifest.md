@@ -37,10 +37,20 @@ Generator: `scripts/demo/` (deterministic, seed 20260809) → `scripts/demo/out/
 
 ## Engine output while demo data is live
 
-- `mrp_buffer_status_daily` run 2026-08-09: 14 rows (1 red EBH9NA p=45.4%, 7 yellow, 6 green)
 - `mrp_spike_register` 2026-08-09: 3 rows (I-95 deal → EBH9NA+HKNA, Toronto → EBH10NA)
 - Drafted chain `MRPD-20260809-01/-02/-03` (`status='requested'`, `requested_by='mrp-engine'`),
-  EBH9NA ×559, rationale in `notes`.
+  EBH9NA ×559, rationale in `notes` — drafted at the moment EBH9NA breached red
+  (NFP 964 ≤ red 1043).
+- `mrp_buffer_status_daily` run 2026-08-09 (latest re-run, post-review-fix MC):
+  14 rows, 0 red / 8 yellow / 6 green — EBH9NA sits YELLOW **because its own
+  drafted chain now counts as on-order** (NFP 1523), while corrected
+  p_stockout reads 68.7% grade A (the chain lands at ~DLT, after most of the
+  risk window). That zone-vs-MC tension is the Task-19 graduation story.
+- 2026-08-09 adversarial review (14 agents): 3 code defects confirmed + fixed
+  (commit 64189fd — MC size pool now week-aggregated, blocked-yellow draft
+  leak, binary on-order starvation); teardown scoping hardened. Known accepted
+  limitation: the draft RPC's idempotency is day-granular — a second same-day
+  run with newly-red SKUs returns skipped.
 
 ## Schema changes that STAY after teardown (real migrations, applied live + in repo)
 
