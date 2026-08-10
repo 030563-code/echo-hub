@@ -57,6 +57,28 @@ Generator: `scripts/demo/` (deterministic, seed 20260809) → `scripts/demo/out/
 1. `20260809121500` — `mrp_lead_time_actuals` leg check now includes `'customs'`
 2. `20260809124500` — `mrp_demand_events` source check now includes `'demo_seed'`
 3. `20260809120000` + `20260809131000` — `mrp_draft_po_chain(jsonb, boolean)` RPC (v2 quiet mode)
+4. `20260810090000` — `mrp_buffer_profile.mc_graduated` / `.mc_threshold` + `mrp_buffer_status_daily.trigger_reason` (Task 19)
+
+## Plan phase status (as at 2026-08-10)
+
+| Phase | State |
+|---|---|
+| 0 — data plumbing (T1–7) | complete |
+| 1 — buffer engine, shadow (T8–13) | code complete; **T11 n8n nightly built but NOT activated**; **T13 2-week shadow run + DDS&OP #1 outstanding** (calendar/meeting, not code) |
+| 2 — cutover (T14–16) | T15 container fill + T16 PO pre-draft complete; **T14 legacy-ROP removal deliberately gated** on the shadow-run exit criteria |
+| 3 — Monte Carlo (T17–19) | complete: T17 engine layer, T18 UK backtest, T19 graduation rule |
+
+**Task 18 result (real UK history, 774 EBH9 orders 2011–2026 — not demo data):**
+574 tested predictions over 2025-01→2026-07, 0 skipped. Brier 0.115 (coin flip = 0.25). Worst gap in a
+bucket with n ≥ 30 is 7.2pp; 5 of 6 well-populated buckets sit above the diagonal, i.e. the model
+**understates risk by ≈2.5pp on average** — safe direction, but a real bias. Policy head-to-head: risk-
+triggering reaches 98.6% fill / 3 stockout weeks vs the gauge's 91.9% / 8, for ~14% more average stock;
+threshold 0.12 dominates 0.03 and 0.08 (same service, least stock, fewest orders). **That trade is a DDS&OP
+call, not a code decision.**
+
+**Task 19 verified live then reverted:** HKNA graduated → sat GREEN (nfp 870 > yellow-top 810) yet triggered
+with `trigger_reason='mc'` at 26.9% risk. `mc_graduated` set back to false afterwards — 0 SKUs graduated
+today. Graduation requires two consecutive monthly reviews of evidence.
 
 ## HOW TO DELETE EVERYTHING
 
