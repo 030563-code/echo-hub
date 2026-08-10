@@ -83,6 +83,10 @@ export interface ProfileRow {
   alias_of: string | null;
   /** CBM per unit for the container-fill step (Task 15); null = cannot be placed. */
   cbm_per_unit: number | null;
+  /** Task 19: true once DDS&OP has graduated this SKU off zone-crossing onto simulated risk. */
+  mc_graduated: boolean;
+  /** p_stockout trigger threshold when mc_graduated (plan defaults: 0.03 core, 0.12 slow). */
+  mc_threshold: number;
 }
 
 export interface DemandEventRow {
@@ -179,6 +183,8 @@ export interface StatusDailyRow {
   p_stockout_ci: number | null;
   /** 'A' (≥20 local events) / 'B' (5–19) / 'C' (<5); null alongside p_stockout. */
   data_grade: string | null;
+  /** Task 19: 'zone' | 'mc' | null — which rule fired the container-candidate gate (engine.ts item 11). */
+  trigger_reason: string | null;
   flags: string[]; // jsonb ARRAY of strings — never an object
 }
 
@@ -785,6 +791,21 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
     const pStockoutCi = mc === null ? null : Math.round(mc.ci * 10_000) / 10_000;
     const dataGrade = mc === null ? null : mc.dataGrade;
 
+    // 11. Graduated SKUs trigger on simulated risk instead of the zone
+    // crossing, with the red zone retained as a hard guardrail (plan Task
+    // 19) — a red buffer always acts, whatever the probability says.
+    const mcTriggered = p.mc_graduated && pStockout !== null && pStockout > p.mc_threshold;
+    // The plan's formula is `zone==='red' || (graduated ? mcTriggered : zone
+    // in ('yellow','red'))`; the trailing `zone==='red'` in the non-graduated
+    // branch is dead (already covered by the leading clause) and TS's literal
+    // narrowing rejects it as an unreachable comparison — simplified to the
+    // equivalent `zone==='yellow'` with no change in the resulting boolean.
+    const triggered = zone === "red" || (p.mc_graduated ? mcTriggered : zone === "yellow");
+    // Reason a graduated SKU can only be MC-triggered when it is NOT already
+    // red (red is always 'zone' — the guardrail short-circuits mc_graduated
+    // entirely) and not classic-zone-triggered (only possible pre-graduation).
+    const triggerReason: "zone" | "mc" | null = !triggered ? null : zone === "red" || !p.mc_graduated ? "zone" : "mc";
+
     statusRows.push({
       run_date: runDate,
       sku: p.sku,
@@ -809,6 +830,7 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
       p_stockout: pStockout,
       p_stockout_ci: pStockoutCi,
       data_grade: dataGrade,
+      trigger_reason: triggerReason,
       flags,
     });
 
@@ -831,8 +853,9 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
   }
 
   // --- container fill (Task 15) + PO-chain pre-draft (Task 16) --------------
-  // Candidates = red/yellow rows the buffer math says need action, minus any
-  // row the materials ceiling BLOCKS (either zone — Bamida can't build it yet,
+  // Candidates = triggered rows (Task 19: classic zone red/yellow, OR — for a
+  // graduated SKU — the red guardrail / MC risk; see `trigger_reason` above),
+  // minus any row the materials ceiling BLOCKS (either zone — Bamida can't build it yet,
   // so drafting an order against it would be noise; a blocked yellow must not
   // ride into a chain a red SKU triggered). Open-PO cover needs NO explicit
   // filter here: NFP already nets on-order (the plan's "per the on-order
@@ -848,13 +871,22 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
   const profileBySku = new Map(computed.map((p) => [p.sku, p]));
   const containerCandidates: ContainerCandidate[] = [];
   for (const r of statusRows) {
-    if (r.zone !== "red" && r.zone !== "yellow") continue;
-    if (r.action_qty <= 0) continue;
+    // Task 19: `trigger_reason` (computed per-SKU above) IS the gate — it
+    // already encodes the old `zone red|yellow && action_qty > 0` pair for a
+    // non-graduated SKU, plus the red guardrail / MC-risk cases for a
+    // graduated one. container.ts's own rawGap<=0 guard still backstops any
+    // degenerate case (e.g. action_qty landing exactly on a zone boundary).
+    if (r.trigger_reason === null) continue;
     if (r.blocked_by_materials) continue;
     const p = profileBySku.get(r.sku);
     containerCandidates.push({
       sku: r.sku,
-      zone: r.zone,
+      // fillContainer treats zone 'green' as "no need by definition" and
+      // drops it before even checking the gap — true pre-Task-19, but an
+      // MC-triggered green now DOES have real need. Relabel it 'yellow' for
+      // fill-PRIORITY purposes only; the persisted status row still honestly
+      // reports 'green' (see r.zone above, untouched).
+      zone: r.zone === "green" ? "yellow" : r.zone,
       nfp: r.nfp,
       greenTop: r.green_top,
       moq: p?.moq ?? 0,

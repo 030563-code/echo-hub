@@ -17,7 +17,7 @@ function profile(over: Partial<ProfileRow> & { sku: string }): ProfileRow {
     sku_class: 'slow', family_sku: null, adu: null, adu_source: 'auto', cov: null,
     dlt_days: 75, mfg_lt: 45, ocean_lt: 21, customs_lt: 9, lt_factor: 0.25,
     var_factor: null, moq: 0, container_qty: null, seeded: true, alias_of: null,
-    cbm_per_unit: null,
+    cbm_per_unit: null, mc_graduated: false, mc_threshold: 0.12,
     ...over,
   }
 }
@@ -613,5 +613,104 @@ describe('container fill + PO-chain pre-draft', () => {
     expect(res.containerFill).toEqual({ lines: [], cbmUsed: 0, cbmCapacity: 66, dropped: [] })
     expect(res.draft).toEqual({ attempted: false, result: null })
     expect(captured.draftPoChain).toHaveLength(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 19 — per-SKU Monte Carlo graduation rule
+// ---------------------------------------------------------------------------
+
+const DAY_MS = 86_400_000
+const daysAgo = (n: number) => new Date(NOW.getTime() - n * DAY_MS).toISOString().slice(0, 10)
+
+describe('Task 19 — MC graduation rule', () => {
+  it('non-graduated SKU: yellow still triggers (trigger_reason=zone, a candidate)', async () => {
+    // Same zone math as redSkuFixture (adu 1, dlt 75 -> red 38, yellowTop 113,
+    // greenTop 132) but with enough on-hand to land in yellow, not red.
+    const { data } = makeData({
+      profiles: [profile({ sku: 'EBH9NA', cbm_per_unit: 2 })],
+      demandEvents: [{ event_date: '2026-07-01', sku: 'EBH9NA', qty: 180, source: 'xero_invoice' }],
+      stockLevels: [{ warehouse_code: 'US-BAL', sku: 'EBH9NA', quantity_on_hand: 70, last_counted_at: null }],
+    })
+    const res = await runMrpEngine(data, { now: NOW })
+    const row = res.rows[0]
+    expect(row.zone).toBe('yellow')
+    expect(row.trigger_reason).toBe('zone')
+    expect(res.containerFill!.lines.map((l) => l.sku)).toContain('EBH9NA')
+  })
+
+  it('non-graduated SKU: green never triggers (trigger_reason null, not a candidate) — unchanged', async () => {
+    const { data } = makeData(greenSkuFixture())
+    const res = await runMrpEngine(data, { now: NOW })
+    expect(res.rows[0].zone).toBe('green')
+    expect(res.rows[0].trigger_reason).toBeNull()
+    expect(res.containerFill!.lines).toEqual([])
+  })
+
+  it('graduated SKU, GREEN zone, p_stockout above threshold → becomes a candidate (trigger_reason=mc)', async () => {
+    // Nothing inside the 180d ADU window (adu=0 -> zones all zero except the
+    // moq-sized green), so classic zone math is trivially 'green' at any
+    // positive on-hand. The 365d MC window (engine.ts item 10) DOES see ~23
+    // weekly 500-unit orders at 190-350 days ago — the Markov bootstrap reads
+    // that as a live, frequently-active pattern, so pStockout comes out very
+    // high against on_hand=10 regardless of the (deliberately zero) zone math.
+    const demandEvents: { event_date: string; sku: string; qty: number; source: string }[] = []
+    for (let d = 190; d <= 350; d += 7) {
+      demandEvents.push({ event_date: daysAgo(d), sku: 'EBH9NA', qty: 500, source: 'xero_invoice' })
+    }
+    const { data } = makeData({
+      profiles: [profile({
+        sku: 'EBH9NA', moq: 50, cbm_per_unit: 1, mc_graduated: true, mc_threshold: 0.3,
+      })],
+      demandEvents,
+      stockLevels: [{ warehouse_code: 'US-BAL', sku: 'EBH9NA', quantity_on_hand: 10, last_counted_at: null }],
+    })
+    const res = await runMrpEngine(data, { now: NOW })
+    const row = res.rows[0]
+    expect(row.zone).toBe('green')
+    expect(row.p_stockout).not.toBeNull()
+    expect(row.p_stockout as number).toBeGreaterThan(0.3)
+    expect(row.trigger_reason).toBe('mc')
+    expect(res.containerFill!.lines.map((l) => l.sku)).toContain('EBH9NA')
+  })
+
+  it('graduated SKU, YELLOW zone, p_stockout below threshold → NOT a candidate (trigger_reason null)', async () => {
+    // Steady, near-zero-variance weekly demand (qty 5, every week for a full
+    // trailing year) gives a tightly-clustered bootstrap distribution. Zones:
+    // adu ~0.72/d, dlt 75, varFactor pinned low by the near-zero CoV -> red
+    // ~19, yellowTop ~74. on_hand 70 sits just inside yellow (comfortably
+    // above red) yet close enough to yellowTop's built-in safety margin that
+    // the simulated risk stays low.
+    const demandEvents: { event_date: string; sku: string; qty: number; source: string }[] = []
+    for (let d = 0; d <= 364; d += 7) {
+      demandEvents.push({ event_date: daysAgo(d), sku: 'EBH9NA', qty: 5, source: 'xero_invoice' })
+    }
+    const { data } = makeData({
+      profiles: [profile({
+        sku: 'EBH9NA', cbm_per_unit: 1, mc_graduated: true, mc_threshold: 0.4,
+      })],
+      demandEvents,
+      stockLevels: [{ warehouse_code: 'US-BAL', sku: 'EBH9NA', quantity_on_hand: 70, last_counted_at: null }],
+    })
+    const res = await runMrpEngine(data, { now: NOW })
+    const row = res.rows[0]
+    expect(row.zone).toBe('yellow')
+    expect(row.p_stockout).not.toBeNull()
+    expect(row.p_stockout as number).toBeLessThan(0.4)
+    expect(row.trigger_reason).toBeNull()
+    expect(res.containerFill!.lines).toEqual([])
+  })
+
+  it('graduated SKU in RED still triggers as the guardrail (trigger_reason=zone) regardless of p_stockout', async () => {
+    const { data } = makeData(redSkuFixture({
+      profiles: [profile({
+        sku: 'EBH9NA', cbm_per_unit: 2, mc_graduated: true, mc_threshold: 0.9,
+      })],
+    }))
+    const res = await runMrpEngine(data, { now: NOW })
+    const row = res.rows[0]
+    expect(row.zone).toBe('red')
+    expect(row.trigger_reason).toBe('zone') // the guardrail — 'zone' wins regardless of mc_graduated
+    expect(res.containerFill!.lines.map((l) => l.sku)).toContain('EBH9NA')
   })
 })
