@@ -63,7 +63,9 @@ export async function uploadFileToHubSpot(formData: FormData): Promise<{ success
 
 export async function createNoteWithAttachment(dealId: string, fileId: string) {
   // IDOR guard (finding #5): these actions previously had NO auth check at all.
-  const access = await assertDealAccess(dealId)
+  // This is a write path, so require quotes.create explicitly — the default
+  // ('quotes.view') would let a view-only user attach notes to a deal.
+  const access = await assertDealAccess(dealId, 'quotes.create')
   if (!access.ok) return { success: false, error: access.error }
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
@@ -102,7 +104,7 @@ export async function createNoteWithAttachment(dealId: string, fileId: string) {
     if (!response.ok) {
       const errorText = await response.text()
       console.error('HubSpot Create Note Error:', errorText)
-      return { success: false, error: 'Failed to create note in HubSpot: ' + errorText }
+      return { success: false, error: 'Failed to create note in HubSpot.' }
     }
 
     await response.json()
@@ -115,7 +117,9 @@ export async function createNoteWithAttachment(dealId: string, fileId: string) {
 
 export async function createEmailDraftWithAttachment(dealId: string, fileId: string) {
   // IDOR guard (finding #5): these actions previously had NO auth check at all.
-  const access = await assertDealAccess(dealId)
+  // This is a write path, so require quotes.create explicitly — the default
+  // ('quotes.view') would let a view-only user send an email draft for a deal.
+  const access = await assertDealAccess(dealId, 'quotes.create')
   if (!access.ok) return { success: false, error: access.error }
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN

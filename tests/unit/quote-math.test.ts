@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toMoney, roundCents, computeLineItemsTotal } from '@/lib/quote-math'
+import { toMoney, roundCents, computeLineItemsTotal, validateLineItems } from '@/lib/quote-math'
 
 describe('toMoney', () => {
   it('coerces numeric strings and guards NaN/undefined/null', () => {
@@ -44,5 +44,53 @@ describe('computeLineItemsTotal (finding #10 — server recomputes amount)', () 
     expect(computeLineItemsTotal([])).toBe(0)
     expect(computeLineItemsTotal(null)).toBe(0)
     expect(computeLineItemsTotal(undefined)).toBe(0)
+  })
+})
+
+describe('validateLineItems (server-side pre-HubSpot-write guard)', () => {
+  it('accepts a list of valid items', () => {
+    expect(
+      validateLineItems([
+        { quantity: 1, unitPrice: 0 },
+        { quantity: 3, unitPrice: 12.5 },
+      ])
+    ).toBeNull()
+  })
+
+  it('rejects a negative unit price and names the offending item', () => {
+    const result = validateLineItems([
+      { quantity: 1, unitPrice: 10 },
+      { quantity: 2, unitPrice: -5 },
+    ])
+    expect(result).not.toBeNull()
+    expect(result).toContain('Line item 2')
+  })
+
+  it('rejects a zero quantity', () => {
+    const result = validateLineItems([{ quantity: 0, unitPrice: 10 }])
+    expect(result).not.toBeNull()
+    expect(result).toContain('Line item 1')
+  })
+
+  it('rejects a negative quantity', () => {
+    const result = validateLineItems([{ quantity: -2, unitPrice: 10 }])
+    expect(result).not.toBeNull()
+    expect(result).toContain('Line item 1')
+  })
+
+  it('rejects a fractional quantity', () => {
+    const result = validateLineItems([{ quantity: 1.5, unitPrice: 10 }])
+    expect(result).not.toBeNull()
+    expect(result).toContain('Line item 1')
+  })
+
+  it('rejects a NaN quantity', () => {
+    const result = validateLineItems([{ quantity: NaN, unitPrice: 10 }])
+    expect(result).not.toBeNull()
+    expect(result).toContain('Line item 1')
+  })
+
+  it('treats an empty array as valid — the length > 0 gate lives elsewhere', () => {
+    expect(validateLineItems([])).toBeNull()
   })
 })

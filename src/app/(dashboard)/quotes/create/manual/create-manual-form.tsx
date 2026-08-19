@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -38,6 +38,9 @@ export default function CreateManualRequestForm() {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // In-flight guard: prevent double-click from double-creating the company/
+  // contact/deal (isSubmitting alone lags a render behind the click).
+  const inFlightRef = useRef(false)
 
   // Form State
   const [companyName, setCompanyName] = useState('')
@@ -157,6 +160,9 @@ export default function CreateManualRequestForm() {
   }
 
   const handleNext = async () => {
+    // In-flight guard: prevent double-submit duplicating the HubSpot company/contact.
+    if (inFlightRef.current) return
+    inFlightRef.current = true
     setIsSubmitting(true)
     try {
       // Step 1 Validation & Creation
@@ -237,6 +243,7 @@ export default function CreateManualRequestForm() {
 
       if (step < 3) setStep(step + 1)
     } finally {
+      inFlightRef.current = false
       setIsSubmitting(false)
     }
   }
@@ -246,27 +253,34 @@ export default function CreateManualRequestForm() {
   }
 
   const handleSubmit = async () => {
-    if (!winProbability) {
-      toast.error('Please select a Win Probability before creating the deal.')
-      return
-    }
-    const finalCompanyId = selectedCompany?.id
-    const finalContactId = selectedContact?.id
-
-    // Guard: never create an unassociated deal. The company/contact must be
-    // resolved to a real HubSpot id (not missing, empty, or the 'new' sentinel)
-    // before we proceed.
-    if (!finalCompanyId || finalCompanyId === 'new') {
-      toast.error('Please select or create a company before creating the deal.')
-      return
-    }
-    if (!finalContactId || finalContactId === 'new') {
-      toast.error('Please select or create a contact before creating the deal.')
-      return
-    }
-
+    // In-flight guard: prevent double-submit duplicating the HubSpot deal.
+    if (inFlightRef.current) return
+    inFlightRef.current = true
     setIsSubmitting(true)
     try {
+      if (!dealName.trim()) {
+        toast.error('Please enter a deal name.')
+        return
+      }
+      if (!winProbability) {
+        toast.error('Please select a Win Probability before creating the deal.')
+        return
+      }
+      const finalCompanyId = selectedCompany?.id
+      const finalContactId = selectedContact?.id
+
+      // Guard: never create an unassociated deal. The company/contact must be
+      // resolved to a real HubSpot id (not missing, empty, or the 'new' sentinel)
+      // before we proceed.
+      if (!finalCompanyId || finalCompanyId === 'new') {
+        toast.error('Please select or create a company before creating the deal.')
+        return
+      }
+      if (!finalContactId || finalContactId === 'new') {
+        toast.error('Please select or create a contact before creating the deal.')
+        return
+      }
+
       // 1. Company is already created in Step 1 if it was new
       // 2. Contact is already created in Step 2 if it was new
       // We just use the IDs which should be real IDs now
@@ -288,6 +302,7 @@ export default function CreateManualRequestForm() {
         toast.error('Failed to create deal: ' + result.error)
       }
     } finally {
+      inFlightRef.current = false
       setIsSubmitting(false)
     }
   }

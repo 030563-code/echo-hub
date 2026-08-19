@@ -93,8 +93,14 @@ export async function getContactAssociations(contactId: string) {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { success: false, error: 'Unauthorized' }
+  // APP-3: CRM-proxy read requires quotes access.
+  if (!(await hasAnyCapability(['quotes.view', 'quotes.create']))) {
+    return { success: false, error: 'Forbidden: missing quotes capability' }
+  }
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
+  if (!accessToken) return { success: false, error: 'HubSpot Token Missing' }
+
   try {
     const response = await fetch(
       `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}?associations=companies`,

@@ -10,6 +10,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { QUOTE_REQUEST_STAGES } from '@/lib/hubspot-constants'
 import ChangeStageDialog from '@/components/change-stage-dialog'
+import { hasCapability } from '@/lib/authz'
 
 const currencyFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -65,6 +66,9 @@ interface HubSpotLineItem {
 
 export default async function QuoteRequestDetailsPage(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
+  // updateDealStage requires quotes.create — don't render a button that can
+  // only fail for view-only users.
+  const canChangeStage = await hasCapability('quotes.create')
   const { success, data: deal, error } = await getDealDetails(params.id)
 
   if (!success || !deal) {
@@ -151,11 +155,13 @@ export default async function QuoteRequestDetailsPage(props: { params: Promise<{
           </div>
         </div>
         <div className="flex gap-3">
-           <ChangeStageDialog 
-             dealId={deal.id} 
-             currentStageId={deal.properties.dealstage} 
-             pipelineId={deal.properties.pipeline} 
-           />
+           {canChangeStage && (
+             <ChangeStageDialog
+               dealId={deal.id}
+               currentStageId={deal.properties.dealstage}
+               pipelineId={deal.properties.pipeline}
+             />
+           )}
            {process.env.NEXT_PUBLIC_HUBSPOT_PORTAL_ID && (
              <a
                href={`https://app.hubspot.com/contacts/${process.env.NEXT_PUBLIC_HUBSPOT_PORTAL_ID}/deal/${deal.id}`}

@@ -1,6 +1,7 @@
 'use server'
 
 import { createServerClient } from '@/lib/supabase/server'
+import { hasAnyCapability } from '@/lib/authz'
 import { QUOTE_REQUEST_STAGES, QUOTATION_SENT_STAGES, CLOSED_WON_STAGES, CLOSED_LOST_STAGES, DISTRIBUTOR_STAGES, QUOTATION_ACCEPTED_STAGES } from '@/lib/hubspot-constants'
 
 const PAGE_SIZE = 25
@@ -34,6 +35,10 @@ export async function getDealsByStage(
 
   if (!user || !user.email) {
     return { success: false, error: 'User not authenticated' }
+  }
+  // APP-3: CRM-proxy read requires quotes access.
+  if (!(await hasAnyCapability(['quotes.view', 'quotes.create']))) {
+    return { success: false, error: 'Forbidden: missing quotes capability' }
   }
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN

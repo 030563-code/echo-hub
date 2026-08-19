@@ -4,9 +4,10 @@ import { createServerClient } from '@/lib/supabase/server'
 import { getDealDetails } from '@/app/actions/hubspot/getDealDetails'
 import { updateDealStage, getDistributorStageForPipeline } from '@/app/actions/hubspot/updateDealStage'
 import { addLineItemsToDeal } from '@/app/actions/hubspot/addLineItems'
+import { getProductSkus } from '@/app/actions/hubspot/getProductSkus'
 import { uploadFileToHubSpot, createNoteWithAttachment, createEmailDraftWithAttachment } from '@/app/actions/hubspot/uploadFile'
 import { QUOTATION_SENT_STAGES, HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
-import { computeLineItemsTotal } from '@/lib/quote-math'
+import { computeLineItemsTotal, validateLineItems } from '@/lib/quote-math'
 import { assertDealAccess } from '@/lib/authz'
 
 interface QuoteLineItem {
@@ -124,6 +125,14 @@ export async function createQuote(params: CreateQuoteParams) {
     }
   }
 
+  // 1a-i. Structural validation of the line items themselves — quantity/price
+  // shape — BEFORE any HubSpot write. Runs for every caller, not just non-admins;
+  // a super admin sending garbage quantities should be rejected too.
+  const lineItemsError = validateLineItems(params.lineItems)
+  if (lineItemsError) {
+    return { success: false, error: lineItemsError }
+  }
+
   // The depot is only meaningful for direct sales; distributor quotes store null.
   const effectiveDepot = isDirectSale ? params.depot : null
 
@@ -133,19 +142,39 @@ export async function createQuote(params: CreateQuoteParams) {
   // HubSpot (notably the 22 EB-SRO manufacturing codes, which must never appear on
   // a customer quote). Mirrors the catalogue check in create-po.ts.
   //
+  // SKUs are derived server-side from HubSpot (by productId), not trusted from
+  // client-supplied li.sku — a crafted request could omit/blank sku while still
+  // supplying a restricted productId, bypassing this check entirely. We validate
+  // the UNION of the derived SKUs and any client-supplied ones, so neither can be
+  // used to hide a product from the check.
+  //
   // Deliberately FAILS OPEN for unmapped SKUs: product_depot_mapping is known
   // incomplete (01-EBH9, H8, Transport and NO_SKU_FOUND all appear on real quotes
   // but are in no depot), so rejecting the unmapped would block legitimate work.
   // A SKU is refused only when it IS mapped elsewhere but NOT to this depot —
-  // which is exactly the cross-location case this guard exists to stop.
+  // which is exactly the cross-location case this guard exists to stop. The one
+  // exception is the SKU derivation itself: if we can't reach HubSpot to derive
+  // SKUs, we FAIL CLOSED (below) rather than silently trusting the client.
   if (!profile.is_super_admin && isDirectSale && effectiveDepot) {
-    const quotedSkus = Array.from(
+    const productIds = Array.from(
       new Set(
         params.lineItems
-          .map((li) => li.sku?.trim())
-          .filter((s): s is string => !!s)
+          .map((li) => li.productId?.trim())
+          .filter((id): id is string => !!id)
       )
     )
+
+    const skuResult = await getProductSkus(productIds)
+    if (!skuResult.success) {
+      console.error('getProductSkus failed:', skuResult.error)
+      return { success: false, error: 'Could not verify products for this depot. Please try again.' }
+    }
+
+    const derivedSkus = Object.values(skuResult.data ?? {})
+    const clientSkus = params.lineItems
+      .map((li) => li.sku?.trim())
+      .filter((s): s is string => !!s)
+    const quotedSkus = Array.from(new Set([...derivedSkus, ...clientSkus]))
 
     if (quotedSkus.length > 0) {
       const { data: mapRows, error: mapError } = await supabase
@@ -185,7 +214,10 @@ export async function createQuote(params: CreateQuoteParams) {
   // so Number('70%') is NaN and the field was silently dropped on EVERY quote —
   // deal_probability was null on all 2,031 deals_registry rows. Strip the percent
   // sign (and stray whitespace) before parsing, and accept only 0-100.
-  const probabilityRaw = (params.winProbability ?? '').trim().replace(/%$/, '').trim()
+  // Wrapped in String(...) — winProbability is typed as string, but a numeric
+  // value at runtime (e.g. from a caller that skips the client form) has no
+  // .trim() and would throw TypeError before ever reaching Number.isFinite below.
+  const probabilityRaw = String(params.winProbability ?? '').trim().replace(/%$/, '').trim()
   const probabilityNum = probabilityRaw === '' ? Number.NaN : Number(probabilityRaw)
   const parsedProbability =
     Number.isFinite(probabilityNum) && probabilityNum >= 0 && probabilityNum <= 100
@@ -251,7 +283,16 @@ export async function createQuote(params: CreateQuoteParams) {
     // C. Add Line Items to HubSpot Deal
     if (params.lineItems.length > 0) {
       const r = await addLineItemsToDeal(params.dealId, params.lineItems)
-      if (!r.success) return { success: false, error: r.error || 'Failed to add line items to deal' }
+      // addLineItemsToDeal now replaces rather than appends, so retrying here is
+      // safe — the specific HubSpot error (if any) is already logged inside it;
+      // the user-facing message leads with the safe-to-retry fact instead.
+      if (!r.success) {
+        return {
+          success: false,
+          error:
+            'The deal stage was updated but adding line items failed — it is safe to click Generate again; line items are replaced, not duplicated.',
+        }
+      }
     }
   }
 
@@ -297,7 +338,12 @@ export async function createQuote(params: CreateQuoteParams) {
 
   if (upsertError) {
     console.error('Supabase upsert error:', upsertError)
-    return { success: false, error: 'Failed to save quote. Please try again.' }
+    // HubSpot already has the deal stage + line items at this point, and
+    // addLineItemsToDeal replaces rather than appends — so retrying is safe.
+    return {
+      success: false,
+      error: 'The quote was created in HubSpot but could not be saved to the Hub database — it is safe to click Generate again.',
+    }
   }
 
   return { success: true, quoteReference }

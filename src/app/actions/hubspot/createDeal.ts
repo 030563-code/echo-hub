@@ -46,7 +46,9 @@ export async function createHubSpotDeal(params: CreateDealParams): Promise<{ suc
     let stageId = ''
     let ownerId = ''
 
-    // Fetch Owner ID for current user
+    // Fetch Owner ID for current user. This is the caller's OWN lookup, keyed
+    // to their own session email — it does not touch any explicit owner
+    // override a caller might supply (there is none on this path today).
     try {
       const ownerResponse = await fetch(
         `https://api.hubapi.com/crm/v3/owners/?email=${encodeURIComponent(user.email || '')}`,
@@ -61,6 +63,18 @@ export async function createHubSpotDeal(params: CreateDealParams): Promise<{ suc
       }
     } catch (e) {
       console.error('Failed to fetch owner ID', e)
+    }
+
+    // Fail closed if the caller's own owner lookup didn't resolve (threw, or
+    // returned no match). Creating the deal with hubspot_owner_id '' would
+    // make it invisible on every list page (they filter by owner) — surface
+    // that to the caller BEFORE creating anything, rather than silently
+    // shipping an orphaned deal.
+    if (!ownerId) {
+      return {
+        success: false,
+        error: 'Could not link this deal to your HubSpot user, so it would not appear in your quote lists. Please try again or contact an administrator.',
+      }
     }
 
     // Try to find the correct Quote Request stage for the pipeline from constants

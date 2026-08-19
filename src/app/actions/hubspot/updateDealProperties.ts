@@ -4,12 +4,16 @@ import { assertDealAccess } from '@/lib/authz'
 
 // Properties an agent must never set directly via this generic action.
 // dealstage/pipeline go through updateDealStage; ownership/amount are not
-// agent-editable. (finding #5)
+// agent-editable. sending_depot and amount are also blocked here — they must
+// only be set via updateDealStage / createQuote, which enforce the depot
+// allow-list and server-side total recompute respectively. (finding #5)
 const BLOCKED_PROPERTIES = new Set([
   'hubspot_owner_id',
   'hs_owner_id',
   'dealstage',
   'pipeline',
+  'sending_depot',
+  'amount',
 ])
 
 export async function updateDealProperties(
@@ -17,10 +21,12 @@ export async function updateDealProperties(
   properties: Record<string, string>
 ): Promise<{ success: boolean; error?: string }> {
   // IDOR guard (finding #5): the deal must belong to the caller's pipeline.
-  const access = await assertDealAccess(dealId)
+  // This is a write path, so require quotes.create explicitly — the default
+  // ('quotes.view') would let a view-only user edit deal properties.
+  const access = await assertDealAccess(dealId, 'quotes.create')
   if (!access.ok) return { success: false, error: access.error }
 
-  const blocked = Object.keys(properties).filter((k) => BLOCKED_PROPERTIES.has(k))
+  const blocked = Object.keys(properties).filter((k) => BLOCKED_PROPERTIES.has(k.trim().toLowerCase()))
   if (blocked.length > 0) {
     return { success: false, error: `Cannot update protected properties: ${blocked.join(', ')}` }
   }

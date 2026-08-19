@@ -88,14 +88,24 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   // State for Quote Builder
   const [lineItems, setLineItems] = useState<LineItem[]>(() => mapInitialLineItems(initialLineItems))
   const [submitting, setSubmitting] = useState(false)
-  // Latches true after a successful generate: re-running duplicates the HubSpot
-  // line items (addLineItemsToDeal always batch-creates, never replaces).
+  // Latches true after a successful generate. addLineItemsToDeal REPLACES the
+  // deal's line items (idempotent), so this guards against accidental
+  // re-writes, not against duplication.
   const [submitted, setSubmitted] = useState(false)
   const submittingRef = useRef(false)
   const [selectedProduct, setSelectedProduct] = useState<string>('')
   const [productSearch, setProductSearch] = useState('')
   const [filteredProducts, setFilteredProducts] = useState<Product[]>(products)
   const [allowedSkusForDepot, setAllowedSkusForDepot] = useState<string[]>([])
+  // Tracks whether the attach-to-HubSpot step (run after the quote itself is
+  // saved) actually succeeded, so the success message can't render next to a
+  // failed upload just because `submitted` flipped first.
+  const [attachStatus, setAttachStatus] = useState<'pending' | 'ok' | 'failed'>('pending')
+  const [retryingAttach, setRetryingAttach] = useState(false)
+  // Holds the last generated PDF so "Retry attach" can re-run just the upload
+  // step without regenerating (and re-saving) the whole quote.
+  const lastPdfRef = useRef<{ blob: Blob; filename: string } | null>(null)
+  const prevDepotRef = useRef<string | null>(null)
 
   useEffect(() => {
     async function fetchWinProbability() {
@@ -119,6 +129,17 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     }
     fetchSkus()
   }, [depot])
+
+  // Warn (don't block) when the depot is changed via "Edit setup" after items
+  // are already in the cart — those items may not be stocked at the new depot.
+  // Actual availability is re-checked server-side on submit.
+  useEffect(() => {
+    const prevDepot = prevDepotRef.current
+    if (prevDepot !== null && prevDepot !== depot && lineItems.length > 0) {
+      toast.warning(`Depot changed to ${depot || 'none'}. Items already in the cart may not be available from this depot — availability will be checked on submit.`)
+    }
+    prevDepotRef.current = depot
+  }, [depot, lineItems.length])
 
   // Filter products based on search AND depot restrictions
   useEffect(() => {
@@ -200,12 +221,14 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   const updateLineItem = (index: number, field: keyof LineItem, value: number) => {
     const newItems = [...lineItems]
     const item = newItems[index]
-    
+
+    // Friendly-layer clamp: the server validates too, but negative/fractional
+    // quantities and negative prices shouldn't even render as a valid total here.
     if (field === 'quantity') {
-      item.quantity = value
+      item.quantity = Math.max(0, Math.trunc(value) || 0)
       item.total = item.quantity * item.unitPrice
     } else if (field === 'unitPrice') {
-      item.unitPrice = value
+      item.unitPrice = Math.max(0, value)
       item.total = item.quantity * item.unitPrice
     }
 
@@ -220,6 +243,10 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     const sum = lineItems.reduce((acc, item) => acc + (Number(item.total) || 0), 0)
     return Math.round(sum * 100) / 100
   }
+
+  // Friendly-layer validation: the server re-validates on submit, but there's
+  // no reason to let Generate fire with a line item that can't possibly be valid.
+  const hasInvalidLineItems = lineItems.some((item) => item.quantity < 1 || item.unitPrice < 0)
 
   const generatePDF = async (previewMode = false) => {
     // In-flight guard: prevent double-submit duplicating HubSpot line items + note.
@@ -319,11 +346,20 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     
     doc.setFont("helvetica", "normal")
     doc.setFontSize(9)
-    doc.text(`Shipping from ${depot || 'Depot'}`, 20, 110)
+    // depot is '' when a distributor is fulfilling the order instead — don't
+    // print the literal placeholder word "Depot" in that case.
+    if (depot) {
+      doc.text(`Shipping from ${depot}`, 20, 110)
+    } else if (isDistributorSelected) {
+      doc.text(`Fulfilled by ${distributor}`, 20, 110)
+    }
 
     // Contact Person (Bottom Right of Comments)
     if (contact) {
-      doc.text(`${contact.properties.firstname} ${contact.properties.lastname} - ${contact.properties.jobtitle || 'Client'}`, pageWidth - 20, 115, { align: 'right' })
+      const contactName = [contact.properties.firstname, contact.properties.lastname].filter(Boolean).join(' ')
+      const contactRole = contact.properties.jobtitle || 'Client'
+      const contactLine = contactName ? `${contactName} - ${contactRole}` : contactRole
+      doc.text(contactLine, pageWidth - 20, 115, { align: 'right' })
     }
 
     // --- Products & Services Section ---
@@ -442,7 +478,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     doc.text(salesRep.email, pageWidth / 2, 175, { align: 'center' })
     doc.setFont("helvetica", "bold")
     // doc.text('Cell : 312 278 5759', pageWidth / 2, 185, { align: 'center' }) // TODO: Add phone to profile
-    doc.text('Office+1 (800) 728 9098', pageWidth / 2, 195, { align: 'center' })
+    doc.text('Office +1 (800) 728 9098', pageWidth / 2, 195, { align: 'center' })
 
     doc.setFont("helvetica", "normal")
     doc.text('Echo Barrier USA LLC', pageWidth / 2, 215, { align: 'center' })
@@ -462,22 +498,42 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
 
       // 4. Upload to HubSpot (Only if NOT preview)
       const pdfBlob = doc.output('blob')
-      const formData = new FormData()
-      formData.append('file', pdfBlob, `quote_${quoteRef}.pdf`)
-      formData.append('dealId', dealId)
+      const filename = `quote_${quoteRef}.pdf`
+      lastPdfRef.current = { blob: pdfBlob, filename }
+      await attemptQuoteUpload(pdfBlob, filename)
+    }
+  }
 
-      const uploadResult = await handleQuoteFileUpload(formData)
-      if (uploadResult.success) {
-        // Redirect to HubSpot Deal Record in new tab
-        // Note: Using the portal ID from env or default
-        const portalId = process.env.NEXT_PUBLIC_HUBSPOT_PORTAL_ID
-        if (portalId) {
-          window.open(`https://app.hubspot.com/contacts/${portalId}/deal/${dealId}`, '_blank')
-        }
-      } else {
-        console.error('Failed to upload PDF:', uploadResult.error)
-        toast.error('Quote saved but failed to upload to HubSpot: ' + uploadResult.error)
+  // Shared by the initial upload and "Retry attach" — keeps the attach outcome
+  // (attachStatus) honest instead of borrowing the quote-saved state (submitted).
+  const attemptQuoteUpload = async (pdfBlob: Blob, filename: string) => {
+    const formData = new FormData()
+    formData.append('file', pdfBlob, filename)
+    formData.append('dealId', dealId)
+
+    const uploadResult = await handleQuoteFileUpload(formData)
+    if (uploadResult.success) {
+      setAttachStatus('ok')
+      // Redirect to HubSpot Deal Record in new tab
+      // Note: Using the portal ID from env or default
+      const portalId = process.env.NEXT_PUBLIC_HUBSPOT_PORTAL_ID
+      if (portalId) {
+        window.open(`https://app.hubspot.com/contacts/${portalId}/deal/${dealId}`, '_blank')
       }
+    } else {
+      setAttachStatus('failed')
+      console.error('Failed to upload PDF:', uploadResult.error)
+      toast.error('Quote saved but failed to upload to HubSpot: ' + uploadResult.error)
+    }
+  }
+
+  const handleRetryAttach = async () => {
+    if (!lastPdfRef.current || retryingAttach) return
+    setRetryingAttach(true)
+    try {
+      await attemptQuoteUpload(lastPdfRef.current.blob, lastPdfRef.current.filename)
+    } finally {
+      setRetryingAttach(false)
     }
   }
 
@@ -742,7 +798,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
 
                 <Button
                   onClick={() => generatePDF(false)}
-                  disabled={lineItems.length === 0 || submitting || submitted}
+                  disabled={lineItems.length === 0 || submitting || submitted || hasInvalidLineItems}
                   className="w-full bg-echo-yellow text-white hover:bg-[#4a5e29] font-bold h-12 text-lg"
                 >
                   <FileDown className="w-5 h-5 mr-2" />
@@ -752,12 +808,37 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                       ? 'Quote generated'
                       : 'Generate Quote & Attach to HubSpot'}
                 </Button>
-                {submitted ? (
-                  <p className="text-xs text-gray-500 text-center">
-                    Attached to the HubSpot deal and downloaded. Nothing has been emailed to the
-                    customer — send it yourself from HubSpot. Re-generating would duplicate the
-                    line items, so this is now locked.
+                {hasInvalidLineItems && !submitted && (
+                  <p className="text-xs text-red-600 text-center">
+                    Fix line item quantities (at least 1) and prices (0 or more) to generate.
                   </p>
+                )}
+                {submitted ? (
+                  attachStatus === 'pending' ? (
+                    <p className="text-xs text-gray-500 text-center">
+                      Quote saved. Attaching the PDF to the HubSpot deal…
+                    </p>
+                  ) : attachStatus === 'ok' ? (
+                    <p className="text-xs text-green-600 text-center">
+                      Attached to the HubSpot deal and downloaded. Nothing has been emailed to the
+                      customer — send it yourself from HubSpot.
+                    </p>
+                  ) : (
+                    <div className="text-center space-y-2">
+                      <p className="text-xs text-amber-600">
+                        PDF downloaded. Attaching it to the HubSpot deal failed — the quote data is saved.
+                      </p>
+                      <Button
+                        onClick={handleRetryAttach}
+                        disabled={retryingAttach}
+                        variant="outline"
+                        size="sm"
+                        className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                      >
+                        {retryingAttach ? 'Retrying...' : 'Retry attach'}
+                      </Button>
+                    </div>
+                  )
                 ) : (
                   <p className="text-xs text-gray-500 text-center">
                     Attaches the PDF to the HubSpot deal and downloads a copy. Does not email the customer.

@@ -37,3 +37,24 @@ export function computeLineItemsTotal(lineItems: readonly QuoteLineItemLike[] | 
   }, 0)
   return roundCents(sum)
 }
+
+/**
+ * Server-side line-item validation, run BEFORE any HubSpot write in createQuote.
+ * Rejects unless every item has a finite integer quantity >= 1 and a finite
+ * unitPrice >= 0. Returns a human-readable error naming the first offending
+ * item, or null when every item is valid. An empty array is valid — the
+ * length > 0 gate that decides whether an empty cart is itself an error lives
+ * elsewhere (createQuote), not here.
+ */
+export function validateLineItems(items: { quantity: number; unitPrice: number }[]): string | null {
+  for (let i = 0; i < items.length; i++) {
+    const { quantity, unitPrice } = items[i]
+    if (!Number.isFinite(quantity) || !Number.isInteger(quantity) || quantity < 1) {
+      return `Line item ${i + 1} has an invalid quantity — it must be a whole number of at least 1`
+    }
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+      return `Line item ${i + 1} has an invalid unit price — it must be zero or greater`
+    }
+  }
+  return null
+}

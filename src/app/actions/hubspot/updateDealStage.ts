@@ -6,7 +6,9 @@ import { DEPOT_MAPPING } from '@/lib/depot-constants'
 
 export async function updateDealStage(dealId: string, pipelineId: string, stageId: string, sendingDepot?: string, amount?: number, tenderDate?: string) {
   // IDOR guard (finding #5): the deal must belong to the caller's pipeline.
-  const access = await assertDealAccess(dealId)
+  // This is a write path, so require quotes.create explicitly — the default
+  // ('quotes.view') would let a view-only user push stage/depot/amount changes.
+  const access = await assertDealAccess(dealId, 'quotes.create')
   if (!access.ok) {
     return { success: false, error: access.error }
   }

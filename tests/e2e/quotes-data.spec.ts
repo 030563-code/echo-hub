@@ -31,8 +31,9 @@ test.describe('Quotes — read-only, HubSpot-backed', () => {
     // The backbone field is present and marked required (the "*" label, not the
     // select placeholder which also contains "probability").
     await expect(page.getByText('Win Probability *')).toBeVisible()
-    // Guardrail: do NOT proceed — clicking "Start Quote" would PATCH win_probability
-    // to the live HubSpot deal. Asserting presence only.
+    // Guardrail: do NOT proceed past setup. win_probability now PATCHes to the
+    // live HubSpot deal on the Generate step, not on "Start Quote" — but this
+    // spec stays read-only regardless. Asserting presence only.
     await expect(page.getByRole('button', { name: /Start Quote/i })).toBeVisible()
   })
 })
