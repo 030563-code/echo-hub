@@ -101,8 +101,12 @@ export async function createQuote(params: CreateQuoteParams) {
   const isDirectSale = !params.distributor || params.distributor === 'Direct Sale'
 
   // 1a. Validate the requested depot/distributor/template against the caller's
-  // own allowances (finding #10). Super admins bypass. deals_registry RLS also
-  // enforces the depot check at the DB layer (defence in depth).
+  // own allowances (finding #10). Super admins bypass.
+  //
+  // NB: deals_registry RLS enforces CAPABILITY + REGION (pipeline_id) at the DB
+  // layer — it does NOT reference depot_code. A previous comment here claimed
+  // depot was enforced in the database; it never was. THIS check is the only
+  // thing standing between a caller and another depot's quote.
   if (!profile.is_super_admin) {
     const allowedDepots: string[] = profile.allowed_depots ?? []
     const allowedDistributors: string[] = profile.allowed_distributors ?? []
@@ -123,6 +127,53 @@ export async function createQuote(params: CreateQuoteParams) {
   // The depot is only meaningful for direct sales; distributor quotes store null.
   const effectiveDepot = isDirectSale ? params.depot : null
 
+  // 1a-ii. Line items must belong to the depot being quoted. The form narrows the
+  // product picker by depot, but that is a CONVENIENCE, not a control — nothing
+  // stopped a crafted request carrying another location's SKUs through to live
+  // HubSpot (notably the 22 EB-SRO manufacturing codes, which must never appear on
+  // a customer quote). Mirrors the catalogue check in create-po.ts.
+  //
+  // Deliberately FAILS OPEN for unmapped SKUs: product_depot_mapping is known
+  // incomplete (01-EBH9, H8, Transport and NO_SKU_FOUND all appear on real quotes
+  // but are in no depot), so rejecting the unmapped would block legitimate work.
+  // A SKU is refused only when it IS mapped elsewhere but NOT to this depot —
+  // which is exactly the cross-location case this guard exists to stop.
+  if (!profile.is_super_admin && isDirectSale && effectiveDepot) {
+    const quotedSkus = Array.from(
+      new Set(
+        params.lineItems
+          .map((li) => li.sku?.trim())
+          .filter((s): s is string => !!s)
+      )
+    )
+
+    if (quotedSkus.length > 0) {
+      const { data: mapRows, error: mapError } = await supabase
+        .from('product_depot_mapping')
+        .select('hubspot_sku_code, depot_code')
+        .eq('is_active', true)
+        .in('hubspot_sku_code', quotedSkus)
+
+      if (mapError) {
+        console.error('product_depot_mapping lookup failed:', mapError.message)
+        return { success: false, error: 'Could not verify products for this depot. Please try again.' }
+      }
+
+      const mappedAnywhere = new Set((mapRows ?? []).map((r) => r.hubspot_sku_code))
+      const allowedHere = new Set(
+        (mapRows ?? []).filter((r) => r.depot_code === effectiveDepot).map((r) => r.hubspot_sku_code)
+      )
+      const wrongDepot = quotedSkus.filter((s) => mappedAnywhere.has(s) && !allowedHere.has(s))
+
+      if (wrongDepot.length > 0) {
+        return {
+          success: false,
+          error: `These products are not available from ${effectiveDepot}: ${wrongDepot.join(', ')}`,
+        }
+      }
+    }
+  }
+
   // 1b. Recompute the amount server-side from the line items — never trust the
   // client-supplied totalAmount (finding #10).
   const computedTotal = computeLineItemsTotal(params.lineItems)
@@ -130,11 +181,15 @@ export async function createQuote(params: CreateQuoteParams) {
   // 1c. Probability of close (the backbone). Parse the HubSpot win_probability
   // option value to a number for deals_registry.deal_probability; null if absent
   // or non-numeric (don't clobber an n8n-synced value with null on re-quote).
+  // HubSpot's win_probability option VALUES are percent strings ('10%' … '100%'),
+  // so Number('70%') is NaN and the field was silently dropped on EVERY quote —
+  // deal_probability was null on all 2,031 deals_registry rows. Strip the percent
+  // sign (and stray whitespace) before parsing, and accept only 0-100.
+  const probabilityRaw = (params.winProbability ?? '').trim().replace(/%$/, '').trim()
+  const probabilityNum = probabilityRaw === '' ? Number.NaN : Number(probabilityRaw)
   const parsedProbability =
-    params.winProbability != null &&
-    params.winProbability !== '' &&
-    Number.isFinite(Number(params.winProbability))
-      ? Number(params.winProbability)
+    Number.isFinite(probabilityNum) && probabilityNum >= 0 && probabilityNum <= 100
+      ? probabilityNum
       : null
 
   const displayName = profile.display_name || user.email || 'XX'
@@ -153,22 +208,6 @@ export async function createQuote(params: CreateQuoteParams) {
     .maybeSingle()
 
   let quoteReference = existingDeal?.quote_reference
-
-  if (!quoteReference) {
-    // Generate a NEW reference from the atomic DB sequence. The previous COUNT(*)
-    // fallback produced colliding, non-unique references under concurrency
-    // (finding #11) — fail loudly instead of risking a duplicate quote number.
-    const { data: seqData, error: seqError } = await supabase.rpc('get_next_quote_id')
-
-    if (seqError || seqData == null) {
-      console.error('get_next_quote_id failed:', seqError?.message)
-      return { success: false, error: 'Could not generate a quote reference. Please try again.' }
-    }
-
-    const year = new Date().getFullYear()
-    const paddedSequence = Number(seqData).toString().padStart(5, '0')
-    quoteReference = `${initials}${year}${paddedSequence}`
-  }
 
   // 3. Fetch Deal Details for Company ID
   const { data: deal } = await getDealDetails(params.dealId)
@@ -214,6 +253,24 @@ export async function createQuote(params: CreateQuoteParams) {
       const r = await addLineItemsToDeal(params.dealId, params.lineItems)
       if (!r.success) return { success: false, error: r.error || 'Failed to add line items to deal' }
     }
+  }
+
+  // 4d. Only NOW mint the quote reference. Every early return above (deal-stage
+  // failure, line-item failure) used to happen AFTER this ran, permanently
+  // burning a number from the sequence on a quote that was never created —
+  // leaving gaps in the customer-visible quote numbering. The sequence is still
+  // atomic; it is just claimed once the HubSpot side is known to have worked.
+  if (!quoteReference) {
+    const { data: seqData, error: seqError } = await supabase.rpc('get_next_quote_id')
+
+    if (seqError || seqData == null) {
+      console.error('get_next_quote_id failed:', seqError?.message)
+      return { success: false, error: 'Could not generate a quote reference. Please try again.' }
+    }
+
+    const year = new Date().getFullYear()
+    const paddedSequence = Number(seqData).toString().padStart(5, '0')
+    quoteReference = `${initials}${year}${paddedSequence}`
   }
 
   // 5. Upsert into deals_registry (insert or update on the unique hubspot_deal_id).

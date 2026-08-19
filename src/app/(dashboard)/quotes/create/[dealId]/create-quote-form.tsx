@@ -88,6 +88,9 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   // State for Quote Builder
   const [lineItems, setLineItems] = useState<LineItem[]>(() => mapInitialLineItems(initialLineItems))
   const [submitting, setSubmitting] = useState(false)
+  // Latches true after a successful generate: re-running duplicates the HubSpot
+  // line items (addLineItemsToDeal always batch-creates, never replaces).
+  const [submitted, setSubmitted] = useState(false)
   const submittingRef = useRef(false)
   const [selectedProduct, setSelectedProduct] = useState<string>('')
   const [productSearch, setProductSearch] = useState('')
@@ -162,15 +165,11 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   const isDistributorSelected = distributor !== 'none' && distributor !== ''
   const canProceedFromSetup = (isDistributorSelected || depot !== '') && template !== '' && winProbability !== ''
 
-  const handleSetupComplete = async () => {
+  // Opening the builder must NOT touch the customer's deal. The win probability
+  // is pushed to HubSpot on SUBMIT instead (see runGeneratePDF), so previewing a
+  // quote — or backing out of one — leaves the CRM record exactly as it was.
+  const handleSetupComplete = () => {
     if (!canProceedFromSetup) return
-    setSetupLoading(true)
-    const result = await updateDealProperties(dealId, { win_probability: winProbability })
-    setSetupLoading(false)
-    if (!result.success) {
-      toast.error('Failed to save win probability: ' + result.error)
-      return
-    }
     setShowSetupDialog(false)
   }
 
@@ -261,6 +260,16 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
         return
       }
 
+      // Now that the quote is committed, mirror the win probability onto the
+      // HubSpot deal. Non-fatal: the value is already persisted to
+      // deals_registry.deal_probability, which is what the forecasting engine reads.
+      const probResult = await updateDealProperties(dealId, { win_probability: winProbability })
+      if (!probResult.success) {
+        console.error('win_probability sync failed:', probResult.error)
+      }
+
+      setSubmitted(true)
+
       quoteRef = result.quoteReference || 'DRAFT'
     } else {
       // Preview Mode: Just generate PDF, don't call server action
@@ -310,7 +319,6 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     
     doc.setFont("helvetica", "normal")
     doc.setFontSize(9)
-    doc.text('4- day shipping via FedEx', 20, 105)
     doc.text(`Shipping from ${depot || 'Depot'}`, 20, 110)
 
     // Contact Person (Bottom Right of Comments)
@@ -327,7 +335,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     // Table
     const tableColumn = ["Item & Description", "SKU", "Quantity", "Unit Price", "Total"]
     const tableRows = lineItems.map(item => [
-      `${item.name}\n4' x 6' SOUND REDUCTING BARRIER; FIRE, UV,\nand WATER RESISTENT`, // Mock description
+      item.name,
       item.sku || 'N/A',
       item.quantity,
       item.unitPrice.toLocaleString('en-US', { style: 'currency', currency: 'USD' }),
@@ -477,7 +485,11 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     <div className="space-y-8">
       {/* Setup Dialog */}
       <Dialog open={showSetupDialog} onOpenChange={setShowSetupDialog}>
-        <DialogContent className="sm:max-w-[500px] bg-white text-gray-900 border-gray-200 shadow-xl" onInteractOutside={(e) => e.preventDefault()}>
+        <DialogContent
+          className="sm:max-w-[500px] bg-white text-gray-900 border-gray-200 shadow-xl [&>button]:hidden"
+          onInteractOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle className="text-xl font-bold uppercase tracking-wide text-gray-900">Quote Setup</DialogTitle>
           </DialogHeader>
@@ -566,10 +578,30 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
               className="w-full bg-echo-yellow text-black hover:bg-echo-yellow/90"
             >
               {setupLoading ? 'Saving...' : <>Start Quote <ArrowRight className="w-4 h-4 ml-2" /></>}
+              {/* setupLoading is retained for future async setup steps */}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Chosen setup, with a way back in — the dialog is otherwise one-way. */}
+      {!showSetupDialog && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600">
+          <span>
+            <span className="font-medium text-gray-900">
+              {isDistributorSelected ? distributor : depot || '—'}
+            </span>{' '}
+            · template {template || '—'} · {winProbability || '—'} to close
+          </span>
+          <button
+            type="button"
+            className="text-sm font-medium text-gray-900 underline underline-offset-2 hover:text-black"
+            onClick={() => setShowSetupDialog(true)}
+          >
+            Edit setup
+          </button>
+        </div>
+      )}
 
       {/* Main Quote Builder UI */}
       {!showSetupDialog && (
@@ -710,12 +742,27 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
 
                 <Button
                   onClick={() => generatePDF(false)}
-                  disabled={lineItems.length === 0 || submitting}
+                  disabled={lineItems.length === 0 || submitting || submitted}
                   className="w-full bg-echo-yellow text-white hover:bg-[#4a5e29] font-bold h-12 text-lg"
                 >
                   <FileDown className="w-5 h-5 mr-2" />
-                  {submitting ? 'Generating...' : 'Generate & Send Quote'}
+                  {submitting
+                    ? 'Generating...'
+                    : submitted
+                      ? 'Quote generated'
+                      : 'Generate Quote & Attach to HubSpot'}
                 </Button>
+                {submitted ? (
+                  <p className="text-xs text-gray-500 text-center">
+                    Attached to the HubSpot deal and downloaded. Nothing has been emailed to the
+                    customer — send it yourself from HubSpot. Re-generating would duplicate the
+                    line items, so this is now locked.
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-500 text-center">
+                    Attaches the PDF to the HubSpot deal and downloads a copy. Does not email the customer.
+                  </p>
+                )}
               </div>
             </Card>
           </div>
