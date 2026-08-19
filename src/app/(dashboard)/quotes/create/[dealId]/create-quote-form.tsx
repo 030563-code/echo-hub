@@ -445,6 +445,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     doc.setFontSize(10)
     doc.setTextColor(0, 0, 0)
     doc.setFont("helvetica", "bold")
+    // eslint-disable-next-line react-hooks/purity -- runs inside the click handler, not during render
     doc.text(`This quote expires on ${new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, pageWidth / 2, 20, { align: 'center' })
 
     // Purchase Terms Box
