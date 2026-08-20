@@ -17,7 +17,7 @@ async function findExistingCompanyByName(
   accessToken: string,
   name: string,
   domain: string
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; name: string; domain: string } | null> {
   const target = name.trim().toLowerCase()
   if (!target) return null
 
@@ -49,10 +49,23 @@ async function findExistingCompanyByName(
     const existingDomain = (c.properties.domain ?? '').trim().toLowerCase()
     return !(existingDomain && suppliedDomain && existingDomain !== suppliedDomain)
   })
-  return match ? { id: match.id } : null
+  if (!match) return null
+  return {
+    id: match.id,
+    name: (match.properties.name ?? '').trim() || name.trim(),
+    domain: (match.properties.domain ?? '').trim(),
+  }
 }
 
-export async function createHubSpotCompany(params: CreateCompanyParams): Promise<{ success: boolean; companyId?: string; error?: string }> {
+export async function createHubSpotCompany(params: CreateCompanyParams): Promise<{
+  success: boolean
+  companyId?: string
+  error?: string
+  /** True when an existing company was reused rather than created. */
+  matchedExisting?: boolean
+  /** The record's ACTUAL stored details (see createHubSpotContact). */
+  company?: { name: string; domain: string }
+}> {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -70,7 +83,12 @@ export async function createHubSpotCompany(params: CreateCompanyParams): Promise
     // existing record instead of creating a new one.
     const existing = await findExistingCompanyByName(accessToken, params.name, params.domain)
     if (existing) {
-      return { success: true, companyId: existing.id }
+      return {
+        success: true,
+        companyId: existing.id,
+        matchedExisting: true,
+        company: { name: existing.name, domain: existing.domain },
+      }
     }
 
     const response = await fetch('https://api.hubapi.com/crm/v3/objects/companies', {
@@ -95,7 +113,12 @@ export async function createHubSpotCompany(params: CreateCompanyParams): Promise
     }
 
     const data = await response.json()
-    return { success: true, companyId: data.id }
+    return {
+      success: true,
+      companyId: data.id,
+      matchedExisting: false,
+      company: { name: params.name.trim(), domain: params.domain.trim() },
+    }
 
   } catch (error: unknown) {
     return { success: false, error: error instanceof Error ? error.message : String(error) }

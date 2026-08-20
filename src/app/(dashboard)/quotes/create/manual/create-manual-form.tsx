@@ -1,15 +1,18 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Building, User, FileText, Search, Check, Plus } from 'lucide-react'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Building, User, FileText, Search, Check, ChevronLeft, ChevronRight } from 'lucide-react'
 import { searchCompanies } from '@/app/actions/hubspot/searchCompanies'
-import { searchHubSpotContact, getContactAssociations } from '@/app/actions/hubspot/searchContact'
+import { getCompanyContacts, type CompanyContact } from '@/app/actions/hubspot/getCompanyContacts'
+import { COMPANY_CONTACTS_PAGE_SIZE } from '@/lib/hubspot-constants'
+import { CreateCompanyDialog, CreateContactDialog, type CreatedCompany, type CreatedContact } from './hubspot-create-dialogs'
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { getDealCurrencyOptions, getWinProbabilityOptions } from '@/app/actions/hubspot/getDealProperties'
@@ -21,42 +24,56 @@ interface CompanyResult {
   source: 'hubspot' | 'supabase'
 }
 
-interface ContactResult {
-  id: string
-  properties: {
-    firstname: string
-    lastname: string
-    email: string
-  }
-}
-
-import { createHubSpotContact } from '@/app/actions/hubspot/createContact'
 import { createHubSpotDeal } from '@/app/actions/hubspot/createDeal'
-import { createHubSpotCompany } from '@/app/actions/hubspot/createCompany'
 
 export default function CreateManualRequestForm() {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
   // In-flight guard: prevent double-click from double-creating the company/
-  // contact/deal (isSubmitting alone lags a render behind the click).
+  // contact/deal (isSubmitting alone lags a render behind the click). Shared
+  // with the create-company/create-contact dialogs so a double-click there
+  // is guarded the same way.
   const inFlightRef = useRef(false)
 
   // Form State
   const [companyName, setCompanyName] = useState('')
-  const [companyDomain, setCompanyDomain] = useState('')
   const [selectedCompany, setSelectedCompany] = useState<CompanyResult | null>(null)
   const [companySearchResults, setCompanySearchResults] = useState<CompanyResult[]>([])
   const [isSearchingCompany, setIsSearchingCompany] = useState(false)
+  const [companySearchError, setCompanySearchError] = useState<string | null>(null)
 
   const [contactName, setContactName] = useState('')
   const [contactEmail, setContactEmail] = useState('')
-  const [selectedContact, setSelectedContact] = useState<ContactResult | null>(null)
-  const [contactSearchResults, setContactSearchResults] = useState<ContactResult[]>([])
-  const [isSearchingContact, setIsSearchingContact] = useState(false)
+  const [selectedContact, setSelectedContact] = useState<CompanyContact | null>(null)
+
+  // Step 2: the selected company's own contact list — paginated and searched
+  // server-side (real accounts here carry four figures of contacts, so this
+  // never loads them all client-side).
+  const [contacts, setContacts] = useState<CompanyContact[]>([])
+  const [totalContacts, setTotalContacts] = useState<number | null>(null)
+  const [nextAfter, setNextAfter] = useState<string | undefined>(undefined)
+  const [cursorStack, setCursorStack] = useState<string[]>([])
+  const [pageIndex, setPageIndex] = useState(1)
+  const [contactSearchInput, setContactSearchInput] = useState('')
+  const [contactDebouncedSearch, setContactDebouncedSearch] = useState('')
+  const [contactsLoading, setContactsLoading] = useState(false)
+  const [contactsError, setContactsError] = useState<string | null>(null)
+  // Stale-response guard: only the response from the most recently issued
+  // fetch is applied, so a slow page-1 response can't clobber a newer search
+  // result, and switching company can't show the previous company's contacts.
+  const requestSeqRef = useRef(0)
+  const prevContactsCompanyIdRef = useRef<string | null>(null)
+  // The query the list currently reflects. The debounce effect compares
+  // against this so clearing the box on entry (which enterContactsStep already
+  // fetched for) doesn't fire a second identical request that resets the page.
+  const appliedQueryRef = useRef('')
+  // Read inside the debounce timer, which closes over the render that last
+  // changed the input and can otherwise fire after the rep has moved on.
+  const stepRef = useRef(1)
+  const selectedCompanyIdRef = useRef<string | null>(null)
 
   const [dealName, setDealName] = useState('')
-  const [dealAmount, setDealAmount] = useState('')
   const [description, setDescription] = useState('')
   const [currency, setCurrency] = useState('USD')
   const [currencyOptions, setCurrencyOptions] = useState<{label: string, value: string}[]>([])
@@ -83,58 +100,124 @@ export default function CreateManualRequestForm() {
     fetchWinProbability()
   }, [])
 
+  // Keep the timer-visible refs in step with the current render.
+  useEffect(() => {
+    stepRef.current = step
+    selectedCompanyIdRef.current = selectedCompany?.id ?? null
+  }, [step, selectedCompany])
+
   // Debounced Search for Company
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
       if (companyName && !selectedCompany) {
         setIsSearchingCompany(true)
-        const result = await searchCompanies(companyName)
-        if (result.success && result.data) {
-          setCompanySearchResults(result.data)
+        setCompanySearchError(null)
+        try {
+          const result = await searchCompanies(companyName)
+          if (result.success && result.data) {
+            setCompanySearchResults(result.data)
+          } else {
+            // Never leave stale hits on screen next to a failure — an empty
+            // dropdown reads as "not in HubSpot" and invites a duplicate.
+            setCompanySearchResults([])
+            setCompanySearchError(result.error ?? 'Could not search HubSpot companies.')
+          }
+        } catch (error: unknown) {
+          setCompanySearchResults([])
+          setCompanySearchError(
+            error instanceof Error ? error.message : 'Could not search HubSpot companies.'
+          )
+        } finally {
+          setIsSearchingCompany(false)
         }
-        setIsSearchingCompany(false)
       } else {
         setCompanySearchResults([])
+        setCompanySearchError(null)
       }
     }, 500)
 
     return () => clearTimeout(delayDebounceFn)
   }, [companyName, selectedCompany])
 
-  // Debounced Search for Contact
-  useEffect(() => {
-    const delayDebounceFn = setTimeout(async () => {
-      if ((contactName || contactEmail) && !selectedContact) {
-        setIsSearchingContact(true)
-        const query = contactEmail || contactName
-        if (query.length > 2) {
-            // If a company is selected, try to extract domain from it (if available)
-            // Note: We don't have the domain in the selectedCompany object yet, but we could fetch it or infer it.
-            // For now, we'll just pass the query.
-            // Ideally, we should pass the company domain if we have it.
-            
-            let domain = undefined
-            if (selectedCompany && selectedCompany.source === 'hubspot' && selectedCompany.domain) {
-               domain = selectedCompany.domain
-            }
-            
-            if (!domain && contactEmail.includes('@')) {
-                domain = contactEmail.split('@')[1]
-            }
-
-            const result = await searchHubSpotContact(query, domain)
-            if (result.success && result.data) {
-            setContactSearchResults(result.data)
-            }
-        }
-        setIsSearchingContact(false)
+  // One page of the selected company's contacts, optionally filtered by a
+  // search term. Guarded against out-of-order responses via requestSeqRef.
+  const fetchContactsPage = useCallback(async (companyId: string, query: string, after: string | undefined) => {
+    const seq = ++requestSeqRef.current
+    appliedQueryRef.current = query
+    setContactsLoading(true)
+    setContactsError(null)
+    try {
+      const result = await getCompanyContacts(companyId, { query: query || undefined, after })
+      if (seq !== requestSeqRef.current) return // superseded by a newer request
+      if (result.success && result.data) {
+        setContacts(result.data)
+        setTotalContacts(typeof result.total === 'number' ? result.total : result.data.length)
+        setNextAfter(result.nextAfter)
       } else {
-        setContactSearchResults([])
+        setContacts([])
+        setTotalContacts(null)
+        setNextAfter(undefined)
+        setContactsError(result.error ?? "Could not load this company's contacts.")
       }
-    }, 500)
+    } catch (error: unknown) {
+      // The action catches its own errors, but the CALL can still reject on a
+      // dropped connection or a deploy skew. Without this the loading flag
+      // never clears and every recovery control stays hidden behind it.
+      if (seq !== requestSeqRef.current) return
+      setContacts([])
+      setTotalContacts(null)
+      setNextAfter(undefined)
+      setContactsError(
+        error instanceof Error ? error.message : "Could not load this company's contacts."
+      )
+    } finally {
+      if (seq === requestSeqRef.current) setContactsLoading(false)
+    }
+  }, [])
 
-    return () => clearTimeout(delayDebounceFn)
-  }, [contactName, contactEmail, selectedContact, selectedCompany])
+  // Debounce the contact search box ~400ms, then fetch page 1 for the
+  // current company. Deliberately keyed ONLY on contactSearchInput (not
+  // step/company) — entering step 2 for a (possibly new) company is instead
+  // handled explicitly by enterContactsStep below, so the two triggers can't
+  // race each other with a stale query.
+  useEffect(() => {
+    if (step !== 2 || !selectedCompany) return
+    if (contactSearchInput === appliedQueryRef.current) return
+    const handle = setTimeout(() => {
+      if (stepRef.current !== 2 || selectedCompanyIdRef.current !== selectedCompany.id) return
+      setContactDebouncedSearch(contactSearchInput)
+      setCursorStack([])
+      setPageIndex(1)
+      fetchContactsPage(selectedCompany.id, contactSearchInput, undefined)
+    }, 400)
+    return () => clearTimeout(handle)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contactSearchInput])
+
+  // Called when the rep advances from Step 1 to Step 2 with a company
+  // selected. Resets the contact list to page 1, clears any prior search,
+  // and drops the selected contact only if the COMPANY actually changed
+  // (revisiting Step 2 for the same company keeps the rep's selection).
+  const enterContactsStep = (companyId: string) => {
+    if (prevContactsCompanyIdRef.current !== companyId) {
+      prevContactsCompanyIdRef.current = companyId
+      setSelectedContact(null)
+      setContactName('')
+      setContactEmail('')
+    }
+    setContactSearchInput('')
+    setContactDebouncedSearch('')
+    setCursorStack([])
+    setPageIndex(1)
+    fetchContactsPage(companyId, '', undefined)
+  }
+
+  const handleClearCompany = () => {
+    setSelectedCompany(null)
+    setCompanyName('')
+    setCompanySearchResults([])
+    setCompanySearchError(null)
+  }
 
   const handleSelectCompany = (company: CompanyResult) => {
     setSelectedCompany(company)
@@ -142,110 +225,89 @@ export default function CreateManualRequestForm() {
     setCompanySearchResults([])
   }
 
-  const handleSelectContact = async (contact: ContactResult) => {
-    setSelectedContact(contact)
-    setContactName(`${contact.properties.firstname} ${contact.properties.lastname}`)
-    setContactEmail(contact.properties.email)
-    setContactSearchResults([])
-
-    // Auto-suggest company if not selected
-    if (!selectedCompany) {
-        const assocResult = await getContactAssociations(contact.id)
-        if (assocResult.success && assocResult.data.associations?.companies?.results?.length > 0) {
-            // A company association exists in HubSpot. Ideally we would fetch the
-            // company name here, but for now we just know an associated company ID exists
-            // and leave it for the user to confirm in the company step.
-        }
-    }
+  const handleCompanyCreated = (company: CreatedCompany) => {
+    setSelectedCompany({ id: company.id, name: company.name, domain: company.domain, source: 'hubspot' })
+    setCompanyName(company.name)
+    setCompanySearchResults([])
   }
 
-  const handleNext = async () => {
-    // In-flight guard: prevent double-submit duplicating the HubSpot company/contact.
-    if (inFlightRef.current) return
-    inFlightRef.current = true
-    setIsSubmitting(true)
-    try {
-      // Step 1 Validation & Creation
-      if (step === 1) {
-        if (!selectedCompany && !companyName) {
-          toast.error('Please select or enter a company name.')
-          return
-        }
+  const handleSelectContactRow = (contact: CompanyContact) => {
+    setSelectedContact(contact)
+    setContactName(`${contact.properties.firstname} ${contact.properties.lastname}`.trim())
+    setContactEmail(contact.properties.email)
+  }
 
-        // If creating a new company, do it now
-        if (selectedCompany?.id === 'new') {
-          if (!companyDomain) {
-            toast.error('Please enter a company domain.')
-            return
-          }
-
-          const companyResult = await createHubSpotCompany({
-            name: companyName,
-            domain: companyDomain
-          })
-
-          if (companyResult.success && companyResult.companyId) {
-            // Update selected company with the new real ID
-            setSelectedCompany({
-              id: companyResult.companyId,
-              name: companyName,
-              domain: companyDomain,
-              source: 'hubspot'
-            })
-          } else {
-            toast.error('Failed to create company: ' + companyResult.error)
-            return // Stop here
-          }
-        }
-      }
-
-      // Step 2 Validation & Creation
-      if (step === 2) {
-        if (!selectedContact && !contactName) {
-          toast.error('Please select or enter a contact name.')
-          return
-        }
-
-        // If creating a new contact, do it now
-        if (selectedContact?.id === 'new') {
-          if (!contactEmail) {
-            toast.error('Please enter an email address.')
-            return
-          }
-
-          const nameParts = contactName.split(' ')
-          const firstname = nameParts[0]
-          const lastname = nameParts.slice(1).join(' ') || ''
-
-          const contactResult = await createHubSpotContact({
-            firstname,
-            lastname,
-            email: contactEmail,
-            companyId: selectedCompany?.id // Associate with the company (which is now a real ID)
-          })
-
-          if (contactResult.success && contactResult.contactId) {
-            // Update selected contact with the new real ID
-            setSelectedContact({
-              id: contactResult.contactId,
-              properties: {
-                firstname,
-                lastname,
-                email: contactEmail
-              }
-            })
-          } else {
-            toast.error('Failed to create contact: ' + contactResult.error)
-            return // Stop here
-          }
-        }
-      }
-
-      if (step < 3) setStep(step + 1)
-    } finally {
-      inFlightRef.current = false
-      setIsSubmitting(false)
+  const handleContactCreated = (created: CreatedContact) => {
+    const newContact: CompanyContact = {
+      id: created.id,
+      properties: { firstname: created.firstname, lastname: created.lastname, email: created.email },
     }
+    setSelectedContact(newContact)
+    setContactName(`${created.firstname} ${created.lastname}`.trim())
+    setContactEmail(created.email)
+    // Show the new contact at the top of the current page rather than
+    // refetching: HubSpot's search index lags object creation by seconds, so a
+    // refetch usually comes back WITHOUT them, and on an alphabetical page 1
+    // they would rarely belong there anyway. Either way the rep would think it
+    // failed and add them again.
+    setContacts((prev) =>
+      prev.some((c) => c.id === newContact.id) ? prev : [newContact, ...prev]
+    )
+  }
+
+  const handleNextContactsPage = () => {
+    if (!selectedCompany || !nextAfter) return
+    const newStack = [...cursorStack, nextAfter]
+    setCursorStack(newStack)
+    setPageIndex((p) => p + 1)
+    fetchContactsPage(selectedCompany.id, contactDebouncedSearch, nextAfter)
+  }
+
+  const handlePrevContactsPage = () => {
+    if (!selectedCompany || pageIndex <= 1) return
+    const newStack = cursorStack.slice(0, -1)
+    const after = newStack[newStack.length - 1]
+    setCursorStack(newStack)
+    setPageIndex((p) => p - 1)
+    fetchContactsPage(selectedCompany.id, contactDebouncedSearch, after)
+  }
+
+  const handleBackToFirstContactsPage = () => {
+    if (!selectedCompany) return
+    setCursorStack([])
+    setPageIndex(1)
+    fetchContactsPage(selectedCompany.id, contactDebouncedSearch, undefined)
+  }
+
+  const handleRetryContacts = () => {
+    if (!selectedCompany) return
+    const after = cursorStack[cursorStack.length - 1]
+    fetchContactsPage(selectedCompany.id, contactDebouncedSearch, after)
+  }
+
+  const handleClearContactSearch = () => setContactSearchInput('')
+
+  const totalPages =
+    totalContacts === null ? null : Math.max(1, Math.ceil(totalContacts / COMPANY_CONTACTS_PAGE_SIZE))
+
+  // Advancing a step only validates and loads — nothing is written to HubSpot
+  // here any more (both creates happen in their confirmation dialogs), so this
+  // needs no in-flight guard and must not claim to be "creating" anything.
+  const handleNext = () => {
+    if (step === 1) {
+      if (!selectedCompany || !selectedCompany.id) {
+        toast.error('Please select or create a company.')
+        return
+      }
+      enterContactsStep(selectedCompany.id)
+    }
+
+    if (step === 2 && (!selectedContact || !selectedContact.id)) {
+      toast.error('Please select or add a contact.')
+      return
+    }
+
+    if (step < 3) setStep(step + 1)
   }
 
   const handleBack = () => {
@@ -255,37 +317,36 @@ export default function CreateManualRequestForm() {
   const handleSubmit = async () => {
     // In-flight guard: prevent double-submit duplicating the HubSpot deal.
     if (inFlightRef.current) return
+    if (!dealName.trim()) {
+      toast.error('Please enter a deal name.')
+      return
+    }
+    if (!winProbability) {
+      toast.error('Please select a Win Probability before creating the deal.')
+      return
+    }
     inFlightRef.current = true
     setIsSubmitting(true)
+    let createdDealId: string | null = null
     try {
-      if (!dealName.trim()) {
-        toast.error('Please enter a deal name.')
-        return
-      }
-      if (!winProbability) {
-        toast.error('Please select a Win Probability before creating the deal.')
-        return
-      }
       const finalCompanyId = selectedCompany?.id
       const finalContactId = selectedContact?.id
 
-      // Guard: never create an unassociated deal. The company/contact must be
-      // resolved to a real HubSpot id (not missing, empty, or the 'new' sentinel)
-      // before we proceed.
-      if (!finalCompanyId || finalCompanyId === 'new') {
+      // Guard: never create an unassociated deal — company/contact must both
+      // be resolved to a real HubSpot id before we proceed.
+      if (!finalCompanyId) {
         toast.error('Please select or create a company before creating the deal.')
+        inFlightRef.current = false
+        setIsSubmitting(false)
         return
       }
-      if (!finalContactId || finalContactId === 'new') {
+      if (!finalContactId) {
         toast.error('Please select or create a contact before creating the deal.')
+        inFlightRef.current = false
+        setIsSubmitting(false)
         return
       }
 
-      // 1. Company is already created in Step 1 if it was new
-      // 2. Contact is already created in Step 2 if it was new
-      // We just use the IDs which should be real IDs now
-
-      // 3. Create Deal in HubSpot
       const result = await createHubSpotDeal({
         dealName,
         description,
@@ -296,14 +357,25 @@ export default function CreateManualRequestForm() {
       })
 
       if (result.success && result.dealId) {
-        // 4. Redirect to Create Quote Page for this new deal
-        router.push(`/quotes/create/${result.dealId}`)
+        createdDealId = result.dealId
       } else {
         toast.error('Failed to create deal: ' + result.error)
+        inFlightRef.current = false
+        setIsSubmitting(false)
       }
-    } finally {
+    } catch (error: unknown) {
+      toast.error('Failed to create deal: ' + (error instanceof Error ? error.message : String(error)))
       inFlightRef.current = false
       setIsSubmitting(false)
+    }
+
+    // Navigate OUTSIDE the try: the deal exists by this point, so a throw here
+    // must never be reported as a failed deal or re-arm the button.
+    // The guard is deliberately NOT released — router.push returns immediately
+    // and this page stays interactive until the next route resolves, so
+    // releasing it would let a second click create a second deal.
+    if (createdDealId) {
+      router.push(`/quotes/create/${createdDealId}`)
     }
   }
 
@@ -335,40 +407,54 @@ export default function CreateManualRequestForm() {
               <Building className="w-6 h-6 text-gray-400" />
               <h2 className="text-xl font-bold text-gray-900">Company Information</h2>
             </div>
-            
+
             <div className="space-y-4">
               <div className="space-y-2 relative">
                 <Label className="text-gray-700">Company Name *</Label>
                 <div className="relative">
                   <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                  <Input 
-                    placeholder="Search or enter company name..." 
+                  <Input
+                    placeholder="Search company name..."
                     className="pl-10 bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow"
                     value={companyName}
                     onChange={(e) => {
                       setCompanyName(e.target.value)
                       setSelectedCompany(null)
                     }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') setCompanySearchResults([])
+                    }}
                   />
-                  {selectedCompany && selectedCompany.id !== 'new' && (
+                  {selectedCompany && (
                     <div className="absolute right-3 top-3 text-green-600">
                       <Check className="h-4 w-4" />
                     </div>
                   )}
-                  {selectedCompany && selectedCompany.id === 'new' && (
-                    <div className="absolute right-3 top-3 text-echo-yellow">
-                      <Plus className="h-4 w-4" />
-                    </div>
+                  {isSearchingCompany && !selectedCompany && (
+                    <span className="absolute right-3 top-3 text-xs text-gray-400">Searching…</span>
                   )}
                 </div>
-                
+
                 {/* Company Search Results Dropdown */}
                 {companySearchResults.length > 0 && !selectedCompany && (
                   <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-md shadow-lg mt-1 max-h-60 overflow-auto">
+                    <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-gray-50 sticky top-0">
+                      <span className="text-xs text-gray-500">
+                        {companySearchResults.length} match{companySearchResults.length === 1 ? '' : 'es'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setCompanySearchResults([])}
+                        className="text-xs font-medium text-gray-600 hover:text-gray-900"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
                     {companySearchResults.map((company) => (
-                      <div 
+                      <button
+                        type="button"
                         key={company.id}
-                        className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0"
+                        className="w-full text-left px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0"
                         onClick={() => handleSelectCompany(company)}
                       >
                         <p className="font-medium text-gray-900">{company.name}</p>
@@ -377,43 +463,42 @@ export default function CreateManualRequestForm() {
                             {company.source === 'supabase' ? 'Account Registry' : 'HubSpot'}
                           </span>
                         </div>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
 
-                {/* Create New Company Option */}
-                {companyName.length > 2 && companySearchResults.length === 0 && !selectedCompany && !isSearchingCompany && (
-                  <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-md shadow-lg mt-1 p-2">
-                    <div 
-                      className="px-4 py-3 hover:bg-gray-50 cursor-pointer rounded-md flex items-center gap-2 text-echo-yellow"
-                      onClick={() => {
-                        setSelectedCompany({ id: 'new', name: companyName, source: 'hubspot' }) // Mark as new
-                        setCompanySearchResults([])
-                      }}
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span className="font-medium">Create new company &quot;{companyName}&quot;</span>
-                    </div>
-                  </div>
+                {companySearchError ? (
+                  <p className="text-xs text-red-600">
+                    {companySearchError} Search again before creating — this company may already exist.
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-500">
+                    Search existing HubSpot companies, or create a new one below.
+                  </p>
                 )}
-                
-                <p className="text-xs text-gray-500">Search existing HubSpot companies or create a new one.</p>
               </div>
 
-              {/* Company Domain Input (Only if creating new company) */}
-              {selectedCompany?.id === 'new' && (
-                <div className="space-y-2">
-                  <Label className="text-gray-700">Company Domain *</Label>
-                  <Input 
-                    placeholder="example.com" 
-                    className="bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow"
-                    value={companyDomain}
-                    onChange={(e) => setCompanyDomain(e.target.value)}
-                    required
-                  />
-                  <p className="text-xs text-gray-500">Required for deduplication in HubSpot.</p>
+              {selectedCompany ? (
+                <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 flex items-center justify-between gap-3">
+                  <span>
+                    Selected: <span className="font-semibold">{companyName}</span>
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleClearCompany}
+                    className="border-green-300 text-green-800 hover:bg-green-100 shrink-0"
+                  >
+                    Change
+                  </Button>
                 </div>
+              ) : (
+                /* Only offered while nothing is selected. Left permanently
+                   available, a rep fixing a mistyped domain would click it
+                   again and mint a duplicate — createHubSpotCompany's dedup
+                   reads a different domain as a different business. */
+                <CreateCompanyDialog initialName={companyName} inFlightRef={inFlightRef} onCreated={handleCompanyCreated} />
               )}
             </div>
           </div>
@@ -426,57 +511,175 @@ export default function CreateManualRequestForm() {
               <User className="w-6 h-6 text-gray-400" />
               <h2 className="text-xl font-bold text-gray-900">Contact Information</h2>
             </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label className="text-gray-700">Email Address *</Label>
-                <Input 
-                  type="email"
-                  placeholder="john@example.com" 
-                  className="bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow"
-                  value={contactEmail}
-                  onChange={(e) => {
-                    setContactEmail(e.target.value)
-                    setSelectedContact(null)
-                  }}
-                />
-              </div>
 
-              <div className="space-y-2 relative">
-                <Label className="text-gray-700">Contact Name *</Label>
-                <Input 
-                  placeholder="John Doe" 
-                  className="bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow"
-                  value={contactName}
-                  onChange={(e) => {
-                    setContactName(e.target.value)
-                    setSelectedContact(null)
-                  }}
-                />
-                
-                {/* Create New Contact Option */}
-                {contactName.length > 2 && contactSearchResults.length === 0 && !selectedContact && !isSearchingContact && (
-                  <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-md shadow-lg mt-1 p-2">
-                    <div 
-                      className="px-4 py-3 hover:bg-gray-50 cursor-pointer rounded-md flex items-center gap-2 text-echo-yellow"
-                      onClick={() => {
-                        // We'll create the contact immediately or mark it for creation
-                        // For better UX, let's mark it as 'new' and create it on submission or right now?
-                        // Let's create it right now to get an ID, or just mark it.
-                        // Marking it is safer if they abandon the form.
-                        // But we need an ID for the deal creation.
-                        // Let's mark it as new and handle creation in handleSubmit.
-                        setSelectedContact({ id: 'new', properties: { firstname: contactName.split(' ')[0], lastname: contactName.split(' ').slice(1).join(' '), email: contactEmail } })
-                        setContactSearchResults([])
-                      }}
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span className="font-medium">Create new contact &quot;{contactName}&quot;</span>
-                    </div>
+            {!selectedCompany ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-6 text-center text-sm text-amber-800">
+                <p>Select a company in Step 1 before choosing a contact.</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleBack}
+                disabled={isSubmitting}
+                  className="mt-3 border-amber-300 text-amber-800 hover:bg-amber-100"
+                >
+                  Back to Company
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {selectedContact && (
+                  <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+                    Selected: <span className="font-semibold">{contactName}</span>
+                    {contactEmail ? ` — ${contactEmail}` : ''}
                   </div>
                 )}
+
+                <div className="space-y-2">
+                  <Label className="text-gray-700">Search Contacts</Label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      placeholder={`Search all contacts at ${selectedCompany.name}…`}
+                      className="pl-10 bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow"
+                      value={contactSearchInput}
+                      onChange={(e) => setContactSearchInput(e.target.value)}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Searches all of {selectedCompany.name}&apos;s contacts in HubSpot — not just the page below.
+                    Someone missing here can still be added with the button underneath; an existing
+                    email is linked rather than duplicated.
+                  </p>
+                </div>
+
+                <div className="border border-gray-200 rounded-md divide-y divide-gray-100 overflow-hidden">
+                  {contactsLoading ? (
+                    <div className="p-3 space-y-2">
+                      {Array.from({ length: 4 }).map((_, i) => (
+                        <Skeleton key={i} className="h-14 w-full" />
+                      ))}
+                    </div>
+                  ) : contactsError ? (
+                    <div className="px-4 py-6 text-center text-sm space-y-3">
+                      <p className="text-red-600">{contactsError}</p>
+                      <div className="flex items-center justify-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleRetryContacts}
+                          className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                        >
+                          Retry
+                        </Button>
+                        {pageIndex > 1 && (
+                          /* Retry re-sends the cursor that just failed, so a
+                             bad cursor deep in the list would loop forever. */
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleBackToFirstContactsPage}
+                            className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                          >
+                            Back to first page
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ) : contacts.length === 0 ? (
+                    <div className="px-4 py-6 text-center text-sm text-gray-500 space-y-3">
+                      {contactDebouncedSearch ? (
+                        <>
+                          <p>
+                            No contacts at {selectedCompany.name} match &quot;{contactDebouncedSearch}&quot;.
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleClearContactSearch}
+                            className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                          >
+                            Clear search
+                          </Button>
+                        </>
+                      ) : (
+                        <p>No contacts are linked to {selectedCompany.name} yet in HubSpot.</p>
+                      )}
+                    </div>
+                  ) : (
+                    contacts.map((contact) => {
+                      const isSelected = selectedContact?.id === contact.id
+                      const fullName =
+                        `${contact.properties.firstname} ${contact.properties.lastname}`.trim() ||
+                        contact.properties.email
+                      return (
+                        <button
+                          key={contact.id}
+                          type="button"
+                          onClick={() => handleSelectContactRow(contact)}
+                          className={`w-full text-left px-4 py-3 flex items-start justify-between gap-3 transition-colors ${
+                            isSelected ? 'bg-echo-yellow/10 ring-1 ring-inset ring-echo-yellow' : 'hover:bg-gray-50'
+                          }`}
+                        >
+                          <div>
+                            <p className="font-medium text-gray-900">{fullName}</p>
+                            <p className="text-sm text-gray-500">{contact.properties.email}</p>
+                            {contact.properties.jobtitle && (
+                              <p className="text-xs text-gray-400 mt-0.5">{contact.properties.jobtitle}</p>
+                            )}
+                          </div>
+                          {isSelected && <Check className="h-4 w-4 text-echo-yellow shrink-0 mt-1" />}
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
+
+                {!contactsLoading && !contactsError && (
+                  <div className="flex items-center justify-between">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handlePrevContactsPage}
+                      disabled={pageIndex <= 1}
+                      className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                    >
+                      <ChevronLeft className="w-4 h-4 mr-1" />
+                      Prev
+                    </Button>
+                    <span className="text-xs text-gray-500 text-center px-2">
+                      Page {pageIndex}
+                      {totalPages !== null && totalPages > 1 ? ` of ${totalPages.toLocaleString()}` : ''}
+                      {totalContacts !== null && (
+                        <>
+                          {' · '}
+                          {totalContacts.toLocaleString()}{' '}
+                          {contactDebouncedSearch
+                            ? `${totalContacts === 1 ? 'match' : 'matches'} for "${contactDebouncedSearch}"`
+                            : `${totalContacts === 1 ? 'contact' : 'contacts'} at ${selectedCompany.name}`}
+                        </>
+                      )}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleNextContactsPage}
+                      disabled={!nextAfter}
+                      className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                    >
+                      Next
+                      <ChevronRight className="w-4 h-4 ml-1" />
+                    </Button>
+                  </div>
+                )}
+
+                <CreateContactDialog
+                  companyId={selectedCompany.id}
+                  companyName={selectedCompany.name}
+                  inFlightRef={inFlightRef}
+                  onCreated={handleContactCreated}
+                />
               </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -487,12 +690,12 @@ export default function CreateManualRequestForm() {
               <FileText className="w-6 h-6 text-gray-400" />
               <h2 className="text-xl font-bold text-gray-900">Deal Details</h2>
             </div>
-            
+
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label className="text-gray-700">Deal Name *</Label>
-                <Input 
-                  placeholder="e.g. New Project Quote" 
+                <Input
+                  placeholder="e.g. New Project Quote"
                   className="bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow"
                   value={dealName}
                   onChange={(e) => setDealName(e.target.value)}
@@ -538,7 +741,7 @@ export default function CreateManualRequestForm() {
 
               <div className="space-y-2">
                 <Label className="text-gray-700">Description</Label>
-                <textarea 
+                <textarea
                   className="flex min-h-[100px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 ring-offset-background placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-echo-yellow focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   placeholder="Enter details about the request..."
                   value={description}

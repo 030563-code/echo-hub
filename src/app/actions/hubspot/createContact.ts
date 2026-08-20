@@ -14,7 +14,17 @@ interface CreateContactParams {
 // Dedup guard: email is the reliable key for a contact. Search for an exact
 // case-insensitive, trimmed match rather than trust the search API's own
 // matching (same reasoning as createCompany.ts's name dedup).
-async function findExistingContactByEmail(accessToken: string, email: string): Promise<string | null> {
+interface ExistingContact {
+  id: string
+  firstname: string
+  lastname: string
+  email: string
+}
+
+async function findExistingContactByEmail(
+  accessToken: string,
+  email: string
+): Promise<ExistingContact | null> {
   const target = email.trim().toLowerCase()
   if (!target) return null
 
@@ -30,7 +40,7 @@ async function findExistingContactByEmail(accessToken: string, email: string): P
           filters: [{ propertyName: 'email', operator: 'EQ', value: target }],
         },
       ],
-      properties: ['email'],
+      properties: ['email', 'firstname', 'lastname'],
       limit: 10,
     }),
     cache: 'no-store',
@@ -39,12 +49,31 @@ async function findExistingContactByEmail(accessToken: string, email: string): P
   if (!response.ok) return null
 
   const data = await response.json()
-  const results = (data.results ?? []) as Array<{ id: string; properties: { email?: string } }>
+  const results = (data.results ?? []) as Array<{
+    id: string
+    properties: { email?: string; firstname?: string; lastname?: string }
+  }>
   const match = results.find((c) => (c.properties.email ?? '').trim().toLowerCase() === target)
-  return match ? match.id : null
+  if (!match) return null
+  return {
+    id: match.id,
+    firstname: match.properties.firstname ?? '',
+    lastname: match.properties.lastname ?? '',
+    email: match.properties.email ?? target,
+  }
 }
 
-export async function createHubSpotContact(params: CreateContactParams): Promise<{ success: boolean; contactId?: string; error?: string }> {
+export async function createHubSpotContact(params: CreateContactParams): Promise<{
+  success: boolean
+  contactId?: string
+  error?: string
+  /** True when an existing contact with this email was reused, not created. */
+  matchedExisting?: boolean
+  /** The record's ACTUAL stored details — on a dedup hit these can differ from
+   *  what the caller typed, and showing the typed values would attach a deal to
+   *  a person the rep never saw. */
+  contact?: { firstname: string; lastname: string; email: string }
+}> {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -60,8 +89,9 @@ export async function createHubSpotContact(params: CreateContactParams): Promise
   try {
     // Avoid minting a duplicate contact for an existing email — return the
     // existing record instead of creating a new one.
-    const existingContactId = await findExistingContactByEmail(accessToken, params.email)
-    if (existingContactId) {
+    const existing = await findExistingContactByEmail(accessToken, params.email)
+    if (existing) {
+      const existingContactId = existing.id
       // The create path below would have associated a new contact with the
       // company — do the same for the reused record. Non-fatal on failure: the
       // deal itself still gets both associations at deal creation.
@@ -74,7 +104,16 @@ export async function createHubSpotContact(params: CreateContactParams): Promise
           console.error('Failed to associate existing contact with company:', assocResponse.status)
         }
       }
-      return { success: true, contactId: existingContactId }
+      return {
+        success: true,
+        contactId: existingContactId,
+        matchedExisting: true,
+        contact: {
+          firstname: existing.firstname,
+          lastname: existing.lastname,
+          email: existing.email,
+        },
+      }
     }
 
     interface ContactAssociation {
@@ -131,7 +170,16 @@ export async function createHubSpotContact(params: CreateContactParams): Promise
     }
 
     const data = await response.json()
-    return { success: true, contactId: data.id }
+    return {
+      success: true,
+      contactId: data.id,
+      matchedExisting: false,
+      contact: {
+        firstname: params.firstname,
+        lastname: params.lastname,
+        email: params.email,
+      },
+    }
 
   } catch (error: unknown) {
     return { success: false, error: error instanceof Error ? error.message : String(error) }

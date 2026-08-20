@@ -243,3 +243,6 @@ export const TENDER_STAGES = [
   HUBSPOT_PIPELINES.USA_SALES.stages.TENDER,
   HUBSPOT_PIPELINES.EURO_SALES.stages.TENDER
 ]
+
+/** Page size for the company-contacts picker in the manual quote-request flow. */
+export const COMPANY_CONTACTS_PAGE_SIZE = 10
