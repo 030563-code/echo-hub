@@ -7,7 +7,7 @@ import { addLineItemsToDeal } from '@/app/actions/hubspot/addLineItems'
 import { getProductSkus } from '@/app/actions/hubspot/getProductSkus'
 import { uploadFileToHubSpot, createNoteWithAttachment, createEmailDraftWithAttachment } from '@/app/actions/hubspot/uploadFile'
 import { QUOTATION_SENT_STAGES, HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
-import { computeLineItemsTotal, validateLineItems } from '@/lib/quote-math'
+import { computeLineItemsTotal, validateLineItems, findSuspiciousLines } from '@/lib/quote-math'
 import { assertDealAccess } from '@/lib/authz'
 
 interface QuoteLineItem {
@@ -35,6 +35,8 @@ interface CreateQuoteParams {
    * so the MRP/forecasting engine can weight pipeline demand by it.
    */
   winProbability?: string
+  /** Set after the rep explicitly confirms quoting below typical prices. */
+  confirmLowPrices?: boolean
   isPreview?: boolean
   pdfBlob?: Blob // We can't pass Blob to server action directly, need FormData or base64
 }
@@ -219,6 +221,61 @@ export async function createQuote(params: CreateQuoteParams) {
           error: effectiveDepot
             ? `These products are not available from ${effectiveDepot}: ${wrongDepot.join(', ')}`
             : `These products are not available from your depots: ${wrongDepot.join(', ')}`,
+        }
+      }
+    }
+  }
+
+  // 1a-iii. Low-price sanity gate. The HubSpot product library carries $1
+  // placeholder prices on the NA products, and $1 H9 lines have already gone
+  // out on real quotes ($185 typical). Lines far below the SKU's typical price
+  // (from the caller's own region-scoped quote history) are refused until the
+  // rep explicitly confirms. Keyed on client-supplied SKUs: this is an
+  // error-margin guard for the UI flow, not a security boundary — the
+  // depot/SKU guard above is the control.
+  if (!params.confirmLowPrices) {
+    const priceCheckSkus = Array.from(
+      new Set(params.lineItems.map((li) => li.sku?.trim()).filter((v): v is string => !!v))
+    )
+    if (priceCheckSkus.length > 0) {
+      const { data: statRows, error: statError } = await supabase.rpc('get_sku_price_stats', {
+        p_skus: priceCheckSkus,
+      })
+      // Stats are advisory — if the lookup fails, don't block quoting.
+      if (statError) {
+        console.error('get_sku_price_stats failed:', statError.message)
+      } else {
+        const stats: Record<string, { medianPrice: number }> = {}
+        for (const row of (statRows ?? []) as { sku: string; median_price: number }[]) {
+          stats[row.sku] = { medianPrice: Number(row.median_price) }
+        }
+        // Mapped product SKUs with NO history still get the placeholder floor
+        // (<= $5) — the rarely-quoted NA products are exactly where HubSpot's
+        // $1 placeholder survives.
+        const { data: mappedRows } = await supabase
+          .from('product_depot_mapping')
+          .select('hubspot_sku_code')
+          .eq('is_active', true)
+          .in('hubspot_sku_code', priceCheckSkus)
+        const suspicious = findSuspiciousLines(
+          params.lineItems.map((li) => ({ sku: li.sku, unitPrice: li.unitPrice })),
+          stats,
+          { mappedSkus: (mappedRows ?? []).map((r) => r.hubspot_sku_code) }
+        )
+        if (suspicious.length > 0) {
+          const detail = suspicious
+            .map((l) =>
+              l.typicalPrice != null
+                ? `${l.sku} at $${l.unitPrice} (recent quotes run ~$${l.typicalPrice})`
+                : `${l.sku} at $${l.unitPrice} (no price history — this looks like HubSpot's placeholder price)`
+            )
+            .join('; ')
+          return {
+            success: false,
+            code: 'LOW_PRICE_CONFIRM' as const,
+            lowPriceLines: suspicious,
+            error: `Price check: ${detail}. Confirm the low price to continue.`,
+          }
         }
       }
     }

@@ -58,3 +58,57 @@ export function validateLineItems(items: { quantity: number; unitPrice: number }
   }
   return null
 }
+
+
+export interface SkuPriceStatLike {
+  medianPrice: number
+}
+
+/**
+ * A unit price is "suspiciously low" when it's under 20% of the SKU's typical
+ * (median) price — floored at $5 absolute, but ONLY for real-priced products
+ * (median > $20). Cheap accessories are legitimately under $5 (bungees $0.50
+ * on every real line, hooks $1.50), so for them the 20% rule stands alone.
+ * Calibrated against real data: genuine discounted H9 sales bottom out around
+ * 73% of median; the $1 placeholder mistakes sit at ~0.5%.
+ */
+export function lowPriceThreshold(medianPrice: number): number {
+  return medianPrice > 20 ? Math.max(5, medianPrice * 0.2) : medianPrice * 0.2
+}
+
+export interface SuspiciousLine {
+  index: number
+  sku: string
+  unitPrice: number
+  /** Null when the SKU has no price history — flagged on the placeholder floor. */
+  typicalPrice: number | null
+}
+
+/**
+ * Lines priced below the threshold for a SKU we have real history on — plus,
+ * when `mappedSkus` is provided, MAPPED product SKUs with NO history at all
+ * priced at placeholder level (<= $5). Without that floor the guard is inert
+ * for exactly the rarely-quoted NA products still carrying HubSpot's $1
+ * placeholder (H9W had zero history rows when this shipped).
+ */
+export function findSuspiciousLines(
+  items: { sku?: string; unitPrice: number }[],
+  stats: Record<string, SkuPriceStatLike>,
+  opts: { mappedSkus?: readonly string[] } = {}
+): SuspiciousLine[] {
+  const mapped = new Set(opts.mappedSkus ?? [])
+  const flagged: SuspiciousLine[] = []
+  items.forEach((item, index) => {
+    const sku = (item.sku ?? '').trim()
+    if (!sku) return
+    const stat = stats[sku]
+    if (stat) {
+      if (item.unitPrice < lowPriceThreshold(stat.medianPrice)) {
+        flagged.push({ index, sku, unitPrice: item.unitPrice, typicalPrice: stat.medianPrice })
+      }
+    } else if (mapped.has(sku) && item.unitPrice <= 5) {
+      flagged.push({ index, sku, unitPrice: item.unitPrice, typicalPrice: null })
+    }
+  })
+  return flagged
+}
