@@ -1,7 +1,7 @@
 'use server'
 
-import { createServerClient } from '@/lib/supabase/server'
-import { hasCapability } from '@/lib/authz'
+import { getAuthorizedUser, hasCapability } from '@/lib/authz'
+import { resolveHubSpotOwnerId } from '@/lib/hubspot-owner'
 
 interface CreateCompanyParams {
   name: string
@@ -16,7 +16,8 @@ interface CreateCompanyParams {
 async function findExistingCompanyByName(
   accessToken: string,
   name: string,
-  domain: string
+  domain: string,
+  ownerScope: string | null
 ): Promise<{ id: string; name: string; domain: string } | null> {
   const target = name.trim().toLowerCase()
   if (!target) return null
@@ -30,7 +31,15 @@ async function findExistingCompanyByName(
     body: JSON.stringify({
       filterGroups: [
         {
-          filters: [{ propertyName: 'name', operator: 'CONTAINS_TOKEN', value: name.trim() }],
+          filters: [
+            { propertyName: 'name', operator: 'CONTAINS_TOKEN', value: name.trim() },
+            // Same-named companies exist per owner BY DESIGN in this portal, so
+            // a non-admin's dedup must only match their own records — matching
+            // another owner's would silently attach their pipeline to it.
+            ...(ownerScope
+              ? [{ propertyName: 'hubspot_owner_id', operator: 'EQ', value: ownerScope }]
+              : []),
+          ],
         },
       ],
       properties: ['name', 'domain'],
@@ -66,10 +75,8 @@ export async function createHubSpotCompany(params: CreateCompanyParams): Promise
   /** The record's ACTUAL stored details (see createHubSpotContact). */
   company?: { name: string; domain: string }
 }> {
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) return { success: false, error: 'Unauthorized' }
+  const auth = await getAuthorizedUser()
+  if (!auth.ok) return { success: false, error: auth.error }
   // APP-2: minting CRM objects in the shared portal requires quotes.create.
   if (!(await hasCapability('quotes.create'))) {
     return { success: false, error: 'Forbidden: missing quotes.create capability' }
@@ -78,10 +85,23 @@ export async function createHubSpotCompany(params: CreateCompanyParams): Promise
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
   if (!accessToken) return { success: false, error: 'Token Missing' }
 
+  // Company search is owner-scoped for non-admins, so a company they create
+  // MUST be owned by them or they'd never find it again. Fail closed when the
+  // owner can't be resolved — an unowned company would be invisible to its own
+  // creator. Admins may create unowned records (they see everything).
+  const ownerScope = auth.profile.is_super_admin
+    ? null
+    : await resolveHubSpotOwnerId(auth.user.email ?? '', accessToken)
+  if (!auth.profile.is_super_admin && !ownerScope) {
+    return { success: false, error: 'Could not link your HubSpot user, so the company would not appear in your searches. Please try again or contact an administrator.' }
+  }
+
   try {
     // Avoid minting a duplicate company for an existing name — return the
-    // existing record instead of creating a new one.
-    const existing = await findExistingCompanyByName(accessToken, params.name, params.domain)
+    // existing record instead of creating a new one. Scoped to the caller's own
+    // records for non-admins: same-named companies per owner are distinct
+    // businesses in this portal.
+    const existing = await findExistingCompanyByName(accessToken, params.name, params.domain, ownerScope)
     if (existing) {
       return {
         success: true,
@@ -100,7 +120,8 @@ export async function createHubSpotCompany(params: CreateCompanyParams): Promise
       body: JSON.stringify({
         properties: {
           name: params.name,
-          domain: params.domain
+          domain: params.domain,
+          ...(ownerScope ? { hubspot_owner_id: ownerScope } : {})
         }
       }),
       cache: 'no-store'

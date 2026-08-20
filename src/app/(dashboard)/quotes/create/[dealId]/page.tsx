@@ -73,7 +73,8 @@ export default async function CreateQuotePage(props: { params: Promise<{ dealId:
   const settings = settingsResult.data || {
     allowed_distributors: [],
     allowed_depots: [],
-    allowed_quote_templates: []
+    allowed_quote_templates: [],
+    is_super_admin: false
   }
 
   const [productsResult, mappedSkusResult] = await Promise.all([

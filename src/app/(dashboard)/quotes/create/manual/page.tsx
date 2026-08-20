@@ -2,10 +2,12 @@ import CreateManualRequestForm from './create-manual-form'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
-import { requireCapability } from '@/lib/authz'
+import { requireCapability, getAuthorizedUser } from '@/lib/authz'
 
 export default async function CreateManualRequestPage() {
   await requireCapability('quotes.create')
+  const auth = await getAuthorizedUser()
+  const restrictedToOwn = auth.ok ? !auth.profile.is_super_admin : true
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex items-center gap-4 mb-6">
@@ -18,7 +20,7 @@ export default async function CreateManualRequestPage() {
         <h1 className="text-2xl font-bold text-gray-900">Create Manual Request</h1>
       </div>
 
-      <CreateManualRequestForm />
+      <CreateManualRequestForm restrictedToOwn={restrictedToOwn} />
     </div>
   )
 }

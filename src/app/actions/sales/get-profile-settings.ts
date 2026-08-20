@@ -6,6 +6,7 @@ export interface SalesProfileSettings {
   allowed_distributors: string[]
   allowed_depots: string[]
   allowed_quote_templates: string[]
+  is_super_admin: boolean
 }
 
 export async function getSalesProfileSettings(): Promise<{ success: boolean; data?: SalesProfileSettings; error?: string }> {
@@ -18,7 +19,7 @@ export async function getSalesProfileSettings(): Promise<{ success: boolean; dat
 
   const { data: profile, error } = await supabase
     .from('profiles')
-    .select('allowed_distributors, allowed_depots, allowed_quote_templates')
+    .select('allowed_distributors, allowed_depots, allowed_quote_templates, is_super_admin')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -36,7 +37,8 @@ export async function getSalesProfileSettings(): Promise<{ success: boolean; dat
     data: {
       allowed_distributors: profile.allowed_distributors || [],
       allowed_depots: profile.allowed_depots || [],
-      allowed_quote_templates: profile.allowed_quote_templates || []
+      allowed_quote_templates: profile.allowed_quote_templates || [],
+      is_super_admin: profile.is_super_admin === true
     }
   }
 }

@@ -26,7 +26,7 @@ interface CompanyResult {
 
 import { createHubSpotDeal } from '@/app/actions/hubspot/createDeal'
 
-export default function CreateManualRequestForm() {
+export default function CreateManualRequestForm({ restrictedToOwn = true }: { restrictedToOwn?: boolean }) {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -106,14 +106,21 @@ export default function CreateManualRequestForm() {
     selectedCompanyIdRef.current = selectedCompany?.id ?? null
   }, [step, selectedCompany])
 
+  // Stale-response guard for the company search (same pattern as the contact
+  // list): the added owner-resolution hop upstream makes latency variance —
+  // and therefore out-of-order responses — more likely.
+  const companySearchSeqRef = useRef(0)
+
   // Debounced Search for Company
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
       if (companyName && !selectedCompany) {
+        const seq = ++companySearchSeqRef.current
         setIsSearchingCompany(true)
         setCompanySearchError(null)
         try {
           const result = await searchCompanies(companyName)
+          if (seq !== companySearchSeqRef.current) return
           if (result.success && result.data) {
             setCompanySearchResults(result.data)
           } else {
@@ -123,12 +130,14 @@ export default function CreateManualRequestForm() {
             setCompanySearchError(result.error ?? 'Could not search HubSpot companies.')
           }
         } catch (error: unknown) {
+          if (seq !== companySearchSeqRef.current) return
           setCompanySearchResults([])
           setCompanySearchError(
             error instanceof Error ? error.message : 'Could not search HubSpot companies.'
           )
         } finally {
-          setIsSearchingCompany(false)
+          // A stale request must not clear the spinner a newer one turned on.
+          if (seq === companySearchSeqRef.current) setIsSearchingCompany(false)
         }
       } else {
         setCompanySearchResults([])
@@ -414,7 +423,7 @@ export default function CreateManualRequestForm() {
                 <div className="relative">
                   <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                   <Input
-                    placeholder="Search company name..."
+                    placeholder={restrictedToOwn ? 'Search your companies…' : 'Search all companies…'}
                     className="pl-10 bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow"
                     value={companyName}
                     onChange={(e) => {
@@ -474,7 +483,9 @@ export default function CreateManualRequestForm() {
                   </p>
                 ) : (
                   <p className="text-xs text-gray-500">
-                    Search existing HubSpot companies, or create a new one below.
+                    {restrictedToOwn
+                      ? 'Searches the HubSpot companies assigned to you, or create a new one below.'
+                      : 'Search existing HubSpot companies, or create a new one below.'}
                   </p>
                 )}
               </div>
@@ -498,7 +509,7 @@ export default function CreateManualRequestForm() {
                    available, a rep fixing a mistyped domain would click it
                    again and mint a duplicate — createHubSpotCompany's dedup
                    reads a different domain as a different business. */
-                <CreateCompanyDialog initialName={companyName} inFlightRef={inFlightRef} onCreated={handleCompanyCreated} />
+                <CreateCompanyDialog initialName={companyName} inFlightRef={inFlightRef} onCreated={handleCompanyCreated} restrictedToOwn={restrictedToOwn} />
               )}
             </div>
           </div>
