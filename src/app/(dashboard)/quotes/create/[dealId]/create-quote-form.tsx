@@ -16,8 +16,6 @@ import { searchHubSpotProducts } from '@/app/actions/hubspot/searchProducts'
 import { getMappedSkus } from '@/app/actions/sales/get-mapped-skus'
 import { getWinProbabilityOptions } from '@/app/actions/hubspot/getDealProperties'
 import { updateDealProperties } from '@/app/actions/hubspot/updateDealProperties'
-import { getSkuPriceStats, type SkuPriceStat } from '@/app/actions/sales/get-sku-price-stats'
-import { findSuspiciousLines, type SuspiciousLine } from '@/lib/quote-math'
 
 interface Product {
   id: string
@@ -119,18 +117,6 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   const lastPdfRef = useRef<{ blob: Blob; filename: string } | null>(null)
   const prevDepotRef = useRef<string | null>(null)
 
-  // Typical recent prices per SKU (from the caller's own quote history) — used
-  // to catch HubSpot's $1 NA placeholder prices before they end up on a real
-  // quote. Non-fatal to fetch: an empty {} just means no hints/warnings render.
-  const [priceStats, setPriceStats] = useState<Record<string, SkuPriceStat>>({})
-  const priceStatsFetchSeqRef = useRef(0)
-  const lastPriceStatsKeyRef = useRef<string>('')
-
-  // Server returns { success: false, code: 'LOW_PRICE_CONFIRM', lowPriceLines }
-  // when the quote has suspiciously low lines and confirmLowPrices wasn't set.
-  const [lowPriceDialogOpen, setLowPriceDialogOpen] = useState(false)
-  const [lowPriceLines, setLowPriceLines] = useState<SuspiciousLine[]>([])
-
   useEffect(() => {
     async function fetchWinProbability() {
       const result = await getWinProbabilityOptions()
@@ -225,39 +211,6 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     }
     fetchSkus()
   }, [depot, settings.allowed_depots, isDistributorSelected])
-  // Fetch typical prices for the current SKU universe: whatever the depot
-  // picker allows, union'd with whatever's already in the cart (so initial
-  // line items and manually-narrowed SKUs still get stats). Keyed on the sorted
-  // SKU set (not the lineItems array reference) so editing a price/quantity
-  // doesn't re-fetch — only an actual SKU add/remove/depot change does.
-  useEffect(() => {
-    const lineItemSkus = lineItems.map((li) => li.sku?.trim()).filter((s): s is string => !!s)
-    const skuUniverse = Array.from(new Set([...allowedSkusForDepot, ...lineItemSkus])).sort()
-    const key = skuUniverse.join(',')
-    if (key === lastPriceStatsKeyRef.current) return
-
-    const seq = ++priceStatsFetchSeqRef.current
-    async function fetchStats() {
-      if (skuUniverse.length === 0) {
-        lastPriceStatsKeyRef.current = key
-        setPriceStats({})
-        return
-      }
-      const result = await getSkuPriceStats(skuUniverse)
-      if (seq !== priceStatsFetchSeqRef.current) return
-      // Non-fatal, but only latch the key on SUCCESS — latching before the
-      // await made one transient failure permanently disable the advisory
-      // layer for the rest of the session.
-      if (result.success && result.data) {
-        lastPriceStatsKeyRef.current = key
-        setPriceStats(result.data)
-      } else {
-        console.warn('getSkuPriceStats failed; price hints unavailable:', result.error)
-      }
-    }
-    fetchStats()
-  }, [allowedSkusForDepot, lineItems])
-
   // Depot is deliberately NOT required here — it's the fulfilment decision,
   // chosen at latest when the deal is moved to Quotation Accepted (the Change
   // Stage dialog + updateDealStage both require it at that transition).
@@ -282,29 +235,13 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
       return
     }
 
-    const rawPrice = Number(product.properties.price) || 0
-    const sku = product.properties.hs_sku
-    const stat = sku ? priceStats[sku] : undefined
-
-    // HubSpot's NA product library carries $1 placeholder prices on every
-    // price property. Rather than let a $1 line slip onto a real quote,
-    // default to the SKU's typical recent price when we have one on file —
-    // this never overrides a real (> $1) product price.
-    let unitPrice = rawPrice
-    if (rawPrice <= 1 && stat) {
-      unitPrice = stat.medianPrice
-      toast.info(
-        `Price defaulted to ${stat.medianPrice.toLocaleString('en-US', { style: 'currency', currency: 'USD' })} — the typical recent price for ${sku} (HubSpot lists it at ${rawPrice.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}).`
-      )
-    }
-
     const newItem: LineItem = {
       productId: product.id,
       name: product.properties.name,
-      sku,
+      sku: product.properties.hs_sku,
       quantity: 1,
-      unitPrice,
-      total: unitPrice
+      unitPrice: Number(product.properties.price) || 0,
+      total: Number(product.properties.price) || 0
     }
 
     setLineItems([...lineItems, newItem])
@@ -341,19 +278,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   // no reason to let Generate fire with a line item that can't possibly be valid.
   const hasInvalidLineItems = lineItems.some((item) => item.quantity < 1 || item.unitPrice < 0)
 
-  // Low-price hints are advisory, not blocking — hasInvalidLineItems above is
-  // unaffected by this. Reuses the exact same rule the server enforces.
-  const suspiciousLinesByIndex = new Map(
-    findSuspiciousLines(
-      lineItems.map((li) => ({ sku: li.sku, unitPrice: li.unitPrice })),
-      priceStats,
-      // The placeholder floor: mapped SKUs with no history at <= $5 flag too —
-      // exactly the rarely-quoted NA products still carrying HubSpot's $1.
-      { mappedSkus: allowedSkusForDepot }
-    ).map((line) => [line.index, line])
-  )
-
-  const generatePDF = async (previewMode = false, confirmLowPrices = false) => {
+  const generatePDF = async (previewMode = false) => {
     // In-flight guard: prevent double-submit duplicating HubSpot line items + note.
     if (!previewMode) {
       if (submittingRef.current) return
@@ -362,7 +287,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     }
 
     try {
-      await runGeneratePDF(previewMode, confirmLowPrices)
+      await runGeneratePDF(previewMode)
     } finally {
       if (!previewMode) {
         submittingRef.current = false
@@ -371,7 +296,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     }
   }
 
-  const runGeneratePDF = async (previewMode: boolean, confirmLowPrices = false) => {
+  const runGeneratePDF = async (previewMode: boolean) => {
     let quoteRef = 'PREVIEW'
 
     if (!previewMode) {
@@ -384,19 +309,10 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
         lineItems,
         totalAmount: calculateGrandTotal(),
         winProbability, // backbone: persisted to deals_registry.deal_probability
-        isPreview: false,
-        confirmLowPrices
+        isPreview: false
       })
 
       if (!result.success) {
-        // Below-typical-price lines need rep confirmation, not a hard failure —
-        // open the confirm dialog and stop here. Must NOT fall through to PDF
-        // generation/upload below on this failed first attempt.
-        if (result.code === 'LOW_PRICE_CONFIRM') {
-          setLowPriceLines(result.lowPriceLines ?? [])
-          setLowPriceDialogOpen(true)
-          return
-        }
         toast.error('Failed to save quote: ' + result.error)
         return
       }
@@ -808,19 +724,11 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                     </SelectTrigger>
                     <SelectContent className="bg-white border-gray-200 text-gray-900 max-h-[300px]">
                       {filteredProducts.length > 0 ? (
-                        filteredProducts.map((p) => {
-                          const stat = p.properties.hs_sku ? priceStats[p.properties.hs_sku] : undefined
-                          return (
+                        filteredProducts.map((p) => (
                           <SelectItem key={p.id} value={p.id} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
                             {p.properties.name} ({Number(p.properties.price).toLocaleString('en-US', { style: 'currency', currency: 'USD' })})
-                            {stat && (
-                              <span className="text-gray-400">
-                                {' '}~{stat.medianPrice.toLocaleString('en-US', { style: 'currency', currency: 'USD' })} typical
-                              </span>
-                            )}
                           </SelectItem>
-                          )
-                        })
+                        ))
                       ) : (
                         <div className="p-2 text-sm text-gray-500 text-center">No products found</div>
                       )}
@@ -839,20 +747,17 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {lineItems.map((item, index) => {
-                    const suspicious = suspiciousLinesByIndex.get(index)
-                    return (
-                    <div key={index} className="space-y-1">
-                    <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg border border-gray-100">
+                  {lineItems.map((item, index) => (
+                    <div key={index} className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg border border-gray-100">
                       <div className="flex-1">
                         <p className="font-medium text-gray-900">{item.name}</p>
                         <p className="text-xs text-gray-500">SKU: {item.sku || 'N/A'}</p>
                       </div>
-
+                      
                       <div className="w-24">
                         <Label className="text-xs text-gray-500">Qty</Label>
-                        <Input
-                          type="number"
+                        <Input 
+                          type="number" 
                           min="1"
                           value={item.quantity}
                           onChange={(e) => updateLineItem(index, 'quantity', parseInt(e.target.value) || 0)}
@@ -862,8 +767,8 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
 
                       <div className="w-32">
                         <Label className="text-xs text-gray-500">Price</Label>
-                        <Input
-                          type="number"
+                        <Input 
+                          type="number" 
                           min="0"
                           step="0.01"
                           value={item.unitPrice}
@@ -879,31 +784,16 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                         </p>
                       </div>
 
-                      <Button
-                        variant="ghost"
-                        size="icon"
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
                         className="text-red-500 hover:text-red-700 hover:bg-red-50"
                         onClick={() => removeLineItem(index)}
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
-                    {suspicious && (
-                      <p className="text-xs text-amber-600 flex items-center gap-1 px-1">
-                        <AlertCircle className="w-3 h-3 shrink-0" />
-                        {suspicious.typicalPrice != null ? (
-                          <>
-                            Unusually low — {suspicious.sku} recently averages ~
-                            {suspicious.typicalPrice.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}.
-                          </>
-                        ) : (
-                          <>This looks like HubSpot&apos;s placeholder price — check the real price for {suspicious.sku}.</>
-                        )}
-                      </p>
-                    )}
-                    </div>
-                    )
-                  })}
+                  ))}
                 </div>
               )}
             </Card>
@@ -1002,64 +892,6 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
           </div>
         </div>
       )}
-
-      {/* Low-price confirmation — the server refused to save because one or more
-          lines are priced well below the SKU's typical recent price (most often
-          the HubSpot $1 NA placeholder). The rep either edits the price and
-          re-generates, or explicitly confirms to quote at the entered price. */}
-      <Dialog open={lowPriceDialogOpen} onOpenChange={setLowPriceDialogOpen}>
-        <DialogContent className="sm:max-w-[500px] bg-white text-gray-900 border-gray-200 shadow-xl">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold uppercase tracking-wide text-gray-900">
-              Confirm low prices
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-3 py-2">
-            <p className="text-sm text-gray-600">
-              These lines are priced well below what they typically quote for. Double-check
-              before continuing.
-            </p>
-            <ul className="space-y-1.5">
-              {lowPriceLines.map((line) => (
-                <li key={line.index} className="text-sm text-gray-900 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-                  <span className="font-medium">{line.sku}</span> at{' '}
-                  {line.unitPrice.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
-                  {line.typicalPrice != null ? (
-                    <>
-                      {' '}— recent quotes run ~
-                      {line.typicalPrice.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
-                    </>
-                  ) : (
-                    <> — no price history; this looks like HubSpot&apos;s placeholder price</>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              className="border-gray-300 text-gray-700 hover:bg-gray-50"
-              disabled={submitting}
-              onClick={() => setLowPriceDialogOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              className="bg-echo-yellow text-black hover:bg-echo-yellow/90"
-              disabled={submitting}
-              onClick={() => {
-                setLowPriceDialogOpen(false)
-                generatePDF(false, true)
-              }}
-            >
-              {submitting ? 'Generating...' : 'Generate with these prices'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

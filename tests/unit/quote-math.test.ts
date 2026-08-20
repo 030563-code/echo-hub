@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toMoney, roundCents, computeLineItemsTotal, validateLineItems, lowPriceThreshold, findSuspiciousLines } from '@/lib/quote-math'
+import { toMoney, roundCents, computeLineItemsTotal, validateLineItems } from '@/lib/quote-math'
 
 describe('toMoney', () => {
   it('coerces numeric strings and guards NaN/undefined/null', () => {
@@ -92,55 +92,5 @@ describe('validateLineItems (server-side pre-HubSpot-write guard)', () => {
 
   it('treats an empty array as valid — the length > 0 gate lives elsewhere', () => {
     expect(validateLineItems([])).toBeNull()
-  })
-})
-
-
-describe('lowPriceThreshold', () => {
-  it('is 20% of median, floored at $5, for real-priced products', () => {
-    expect(lowPriceThreshold(185)).toBe(37)
-    expect(lowPriceThreshold(21)).toBe(5)
-  })
-  it('drops the $5 floor for legitimately cheap SKUs (bungees are $0.50)', () => {
-    expect(lowPriceThreshold(0.5)).toBeCloseTo(0.1)
-    expect(lowPriceThreshold(1.5)).toBeCloseTo(0.3)
-    expect(lowPriceThreshold(20)).toBe(4)
-  })
-})
-
-describe('findSuspiciousLines', () => {
-  const stats = { EBH9NA: { medianPrice: 185 } }
-  it('flags the $1 placeholder mistake', () => {
-    const flagged = findSuspiciousLines([{ sku: 'EBH9NA', unitPrice: 1 }], stats)
-    expect(flagged).toHaveLength(1)
-    expect(flagged[0]).toMatchObject({ index: 0, sku: 'EBH9NA', typicalPrice: 185 })
-  })
-  it('passes a genuine discount (73% of median)', () => {
-    expect(findSuspiciousLines([{ sku: 'EBH9NA', unitPrice: 135 }], stats)).toHaveLength(0)
-  })
-  it('passes just above the threshold and flags just below', () => {
-    expect(findSuspiciousLines([{ sku: 'EBH9NA', unitPrice: 37 }], stats)).toHaveLength(0)
-    expect(findSuspiciousLines([{ sku: 'EBH9NA', unitPrice: 36.99 }], stats)).toHaveLength(1)
-  })
-  it('ignores SKUs without history and lines without a sku', () => {
-    expect(findSuspiciousLines([{ sku: 'UNKNOWN', unitPrice: 1 }, { unitPrice: 1 }], stats)).toHaveLength(0)
-  })
-  it('passes legit cheap-accessory prices once their real median is known', () => {
-    const cheap = { BUNNA: { medianPrice: 0.5 } }
-    expect(findSuspiciousLines([{ sku: 'BUNNA', unitPrice: 0.5 }], cheap)).toHaveLength(0)
-  })
-  it('placeholder floor: flags a mapped no-history SKU at <= $5, typicalPrice null', () => {
-    const flagged = findSuspiciousLines(
-      [{ sku: 'EBH9WNA', unitPrice: 1 }],
-      stats,
-      { mappedSkus: ['EBH9WNA', 'EBH9NA'] }
-    )
-    expect(flagged).toHaveLength(1)
-    expect(flagged[0]).toMatchObject({ sku: 'EBH9WNA', typicalPrice: null })
-  })
-  it('placeholder floor ignores unmapped no-history SKUs (fee lines)', () => {
-    expect(
-      findSuspiciousLines([{ sku: 'Transport', unitPrice: 0 }], stats, { mappedSkus: ['EBH9NA'] })
-    ).toHaveLength(0)
   })
 })
