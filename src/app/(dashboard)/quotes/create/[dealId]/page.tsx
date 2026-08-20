@@ -4,6 +4,7 @@ import { getDealDetails } from '@/app/actions/hubspot/getDealDetails'
 import { getContactDetails } from '@/app/actions/hubspot/getContactDetails'
 import { getLineItems } from '@/app/actions/hubspot/getLineItems'
 import { getMappedSkus } from '@/app/actions/sales/get-mapped-skus'
+import { DEPOT_MAPPING } from '@/lib/depot-constants'
 import { createServerClient } from '@/lib/supabase/server'
 import { requireCapability } from '@/lib/authz'
 import CreateQuoteForm from './create-quote-form'
@@ -64,24 +65,37 @@ export default async function CreateQuotePage(props: { params: Promise<{ dealId:
     if (lineItemsResult?.success) existingLineItems = (lineItemsResult.data ?? []) as FormProps['initialLineItems']
   }
 
-  // 4. Fetch Settings, Products, and Mapped SKUs
-  const [settingsResult, productsResult, mappedSkusResult] = await Promise.all([
-    getSalesProfileSettings(),
-    getHubSpotProducts(),
-    getMappedSkus()
-  ])
-
+  // 4. Fetch Settings first, then Products and Mapped SKUs. The SKU fetch is
+  // scoped to the caller's own depots — the previous bare getMappedSkus() sent
+  // EVERY mapped code (EB-SRO's manufacturing SKUs included) to the browser.
+  // An empty allowed_depots (super-admin profiles) falls back to the full list.
+  const settingsResult = await getSalesProfileSettings()
   const settings = settingsResult.data || {
     allowed_distributors: [],
     allowed_depots: [],
     allowed_quote_templates: []
   }
 
+  const [productsResult, mappedSkusResult] = await Promise.all([
+    getHubSpotProducts(),
+    settings.allowed_depots.length > 0 ? getMappedSkus(settings.allowed_depots) : getMappedSkus()
+  ])
+
   const allProducts = productsResult.data || []
   const mappedSkus = mappedSkusResult.data || []
 
   // Filter products based on mapped SKUs
   const products = allProducts.filter(p => p.properties.hs_sku && mappedSkus.includes(p.properties.hs_sku))
+
+  // The deal may already carry a sending depot (HubSpot stores the internal
+  // NAME, e.g. "US Baltimore"); reverse-map it to the code the form works in.
+  // A raw code is accepted too, in case the property was ever set directly.
+  const depotNameToCode = Object.fromEntries(
+    Object.entries(DEPOT_MAPPING).map(([code, name]) => [name, code])
+  )
+  const rawSendingDepot = (deal?.properties?.sending_depot || '').trim()
+  const initialDepot =
+    depotNameToCode[rawSendingDepot] ?? (rawSendingDepot in DEPOT_MAPPING ? rawSendingDepot : '')
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -98,6 +112,7 @@ export default async function CreateQuotePage(props: { params: Promise<{ dealId:
       <CreateQuoteForm 
         dealId={params.dealId} 
         dealName={deal?.properties?.dealname || ''}
+        initialDepot={initialDepot}
         settings={settings} 
         products={products}
         salesRep={salesRep}

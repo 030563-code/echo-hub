@@ -63,7 +63,13 @@ interface CreateQuoteFormProps {
   salesRep: { name: string; email: string }
   contact: QuoteContact | null
   initialLineItems?: HubSpotLineItem[]
+  /** Depot code already on the HubSpot deal (sending_depot, reverse-mapped), if any. */
+  initialDepot?: string
 }
+
+// Radix Select can't represent "cleared", so the undecided state gets an
+// explicit sentinel item that maps back to '' in state.
+const DEPOT_UNDECIDED = '__undecided__'
 
 const mapInitialLineItems = (items: HubSpotLineItem[]): LineItem[] =>
   items.map((item) => ({
@@ -75,11 +81,15 @@ const mapInitialLineItems = (items: HubSpotLineItem[]): LineItem[] =>
     total: Number(item.properties.amount) || 0,
   }))
 
-export default function CreateQuoteForm({ dealId, dealName, settings, products, salesRep, contact, initialLineItems = [] }: CreateQuoteFormProps) {
+export default function CreateQuoteForm({ dealId, dealName, settings, products, salesRep, contact, initialLineItems = [], initialDepot = '' }: CreateQuoteFormProps) {
   // State for the Initial Setup Dialog
   const [showSetupDialog, setShowSetupDialog] = useState(true)
   const [distributor, setDistributor] = useState<string>('none')
-  const [depot, setDepot] = useState<string>('')
+  // Seeded from the deal's existing sending_depot (if any and still allowed) so
+  // re-opening the builder doesn't misreport a decided deal as "Decide later".
+  const [depot, setDepot] = useState<string>(() =>
+    initialDepot && settings.allowed_depots.includes(initialDepot) ? initialDepot : ''
+  )
   const [template, setTemplate] = useState<string>('')
   const [winProbability, setWinProbability] = useState<string>('')
   const [winProbabilityOptions, setWinProbabilityOptions] = useState<{ label: string; value: string }[]>([])
@@ -117,18 +127,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     fetchWinProbability()
   }, [])
 
-  // Fetch allowed SKUs when depot changes (or on initial load if depot is set)
-  useEffect(() => {
-    async function fetchSkus() {
-      if (depot) {
-        const result = await getMappedSkus(depot)
-        setAllowedSkusForDepot(result.data || [])
-      } else {
-        setAllowedSkusForDepot([])
-      }
-    }
-    fetchSkus()
-  }, [depot])
+
 
   // Warn (don't block) when the depot is changed via "Edit setup" after items
   // are already in the cart — those items may not be stocked at the new depot.
@@ -136,7 +135,11 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   useEffect(() => {
     const prevDepot = prevDepotRef.current
     if (prevDepot !== null && prevDepot !== depot && lineItems.length > 0) {
-      toast.warning(`Depot changed to ${depot || 'none'}. Items already in the cart may not be available from this depot — availability will be checked on submit.`)
+      toast.warning(
+        depot
+          ? `Depot changed to ${depot}. Items already in the cart may not be available from this depot — availability will be checked on submit.`
+          : 'Sending depot set to "Decide later" — items in the cart will be checked against all your depots on submit.'
+      )
     }
     prevDepotRef.current = depot
   }, [depot, lineItems.length])
@@ -184,7 +187,34 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
 
   // Derived State
   const isDistributorSelected = distributor !== 'none' && distributor !== ''
-  const canProceedFromSetup = (isDistributorSelected || depot !== '') && template !== '' && winProbability !== ''
+
+  // Fetch allowed SKUs when depot changes (or on initial load if depot is set).
+  // Guarded against out-of-order responses: the mount-time union fetch must not
+  // overwrite a later depot-specific one.
+  const skuFetchSeqRef = useRef(0)
+  useEffect(() => {
+    const seq = ++skuFetchSeqRef.current
+    async function fetchSkus() {
+      // Distributor fulfilment isn't depot-bound — the full catalog applies,
+      // exactly as before depots became optional.
+      if (isDistributorSelected) {
+        setAllowedSkusForDepot([])
+        return
+      }
+      if (depot || settings.allowed_depots.length > 0) {
+        const result = await getMappedSkus(depot || settings.allowed_depots)
+        if (seq !== skuFetchSeqRef.current) return
+        setAllowedSkusForDepot(result.data || [])
+      } else {
+        setAllowedSkusForDepot([])
+      }
+    }
+    fetchSkus()
+  }, [depot, settings.allowed_depots, isDistributorSelected])
+  // Depot is deliberately NOT required here — it's the fulfilment decision,
+  // chosen at latest when the deal is moved to Quotation Accepted (the Change
+  // Stage dialog + updateDealStage both require it at that transition).
+  const canProceedFromSetup = template !== '' && winProbability !== ''
 
   // Opening the builder must NOT touch the customer's deal. The win probability
   // is pushed to HubSpot on SUBMIT instead (see runGeneratePDF), so previewing a
@@ -274,7 +304,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
       const result = await createQuote({
         dealId,
         distributor: isDistributorSelected ? distributor : 'Direct Sale',
-        depot: depot || 'N/A',
+        depot: depot || undefined,
         template,
         lineItems,
         totalAmount: calculateGrandTotal(),
@@ -577,17 +607,27 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
             {/* Depot Selection (Only if no distributor) */}
             {!isDistributorSelected && (
               <div className="space-y-2">
-                <Label className="text-red-600 font-medium">Select Sending Depot *</Label>
-                <Select value={depot} onValueChange={setDepot}>
-                  <SelectTrigger className="bg-white border-red-200 text-gray-900 focus:ring-red-500">
-                    <SelectValue placeholder="Choose Depot..." />
+                <Label className="text-gray-700 font-medium">Sending Depot (optional)</Label>
+                <Select
+                  value={depot === '' ? DEPOT_UNDECIDED : depot}
+                  onValueChange={(v) => setDepot(v === DEPOT_UNDECIDED ? '' : v)}
+                >
+                  <SelectTrigger className="bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow">
+                    <SelectValue placeholder="Decide later" />
                   </SelectTrigger>
                   <SelectContent className="bg-white border-gray-200 text-gray-900">
+                    <SelectItem value={DEPOT_UNDECIDED} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
+                      Decide later
+                    </SelectItem>
                     {settings.allowed_depots.map((d) => (
                       <SelectItem key={d} value={d} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">{d}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-gray-500">
+                  The depot is required when the deal is marked Quotation Accepted — it can be
+                  chosen then. Without one, the product list covers all your depots.
+                </p>
               </div>
             )}
 
@@ -771,7 +811,9 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-500">Depot</span>
-                  <span className="font-medium text-gray-900 text-right">{depot || 'N/A'}</span>
+                  <span className="font-medium text-gray-900 text-right">
+                    {isDistributorSelected ? 'N/A' : depot || 'Decided at acceptance'}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-500">Template</span>

@@ -22,7 +22,10 @@ interface QuoteLineItem {
 interface CreateQuoteParams {
   dealId: string
   distributor: string
-  depot: string
+  /** Optional at quote time — the depot is a fulfilment decision, only
+   *  REQUIRED when the deal is moved to Quotation Accepted (updateDealStage
+   *  enforces that transition). */
+  depot?: string
   template: string
   lineItems: QuoteLineItem[]
   totalAmount: number
@@ -100,6 +103,7 @@ export async function createQuote(params: CreateQuoteParams) {
   // Distributor (pass-to-distributor) quotes have NO depot — the form hides the
   // depot selector. Only direct sales carry a depot to validate/store.
   const isDirectSale = !params.distributor || params.distributor === 'Direct Sale'
+  const requestedDepot = params.depot?.trim() || null
 
   // 1a. Validate the requested depot/distributor/template against the caller's
   // own allowances (finding #10). Super admins bypass.
@@ -114,8 +118,16 @@ export async function createQuote(params: CreateQuoteParams) {
     const allowedTemplates: string[] = profile.allowed_quote_templates ?? []
 
     if (isDirectSale) {
-      if (!params.depot || !allowedDepots.includes(params.depot)) {
+      // Depot is optional at quote time (chosen at Quotation Accepted) — but
+      // when one IS chosen it must be the caller's own, and a profile with no
+      // depots at all has nothing to defer TO: without this check they'd sail
+      // through setup and quote unmapped SKUs (the guard below fails open for
+      // those by design).
+      if (requestedDepot && !allowedDepots.includes(requestedDepot)) {
         return { success: false, error: 'You are not permitted to quote for this depot' }
+      }
+      if (!requestedDepot && allowedDepots.length === 0) {
+        return { success: false, error: 'No sending depots are assigned to your profile — ask an administrator before quoting direct sales.' }
       }
     } else if (!allowedDistributors.includes(params.distributor)) {
       return { success: false, error: 'You are not permitted to quote for this distributor' }
@@ -133,8 +145,9 @@ export async function createQuote(params: CreateQuoteParams) {
     return { success: false, error: lineItemsError }
   }
 
-  // The depot is only meaningful for direct sales; distributor quotes store null.
-  const effectiveDepot = isDirectSale ? params.depot : null
+  // The depot is only meaningful for direct sales; distributor quotes store
+  // null, and a direct sale may also be null until acceptance.
+  const effectiveDepot = isDirectSale ? requestedDepot : null
 
   // 1a-ii. Line items must belong to the depot being quoted. The form narrows the
   // product picker by depot, but that is a CONVENIENCE, not a control — nothing
@@ -155,7 +168,13 @@ export async function createQuote(params: CreateQuoteParams) {
   // which is exactly the cross-location case this guard exists to stop. The one
   // exception is the SKU derivation itself: if we can't reach HubSpot to derive
   // SKUs, we FAIL CLOSED (below) rather than silently trusting the client.
-  if (!profile.is_super_admin && isDirectSale && effectiveDepot) {
+  if (!profile.is_super_admin && isDirectSale) {
+    // With no depot chosen yet, validate against the union of the caller's own
+    // depots — cross-region SKUs (EB-SRO's manufacturing codes above all) stay
+    // blocked even before the fulfilment depot is decided.
+    const depotScope: string[] = effectiveDepot
+      ? [effectiveDepot]
+      : ((profile.allowed_depots as string[] | null) ?? [])
     const productIds = Array.from(
       new Set(
         params.lineItems
@@ -190,14 +209,16 @@ export async function createQuote(params: CreateQuoteParams) {
 
       const mappedAnywhere = new Set((mapRows ?? []).map((r) => r.hubspot_sku_code))
       const allowedHere = new Set(
-        (mapRows ?? []).filter((r) => r.depot_code === effectiveDepot).map((r) => r.hubspot_sku_code)
+        (mapRows ?? []).filter((r) => depotScope.includes(r.depot_code)).map((r) => r.hubspot_sku_code)
       )
       const wrongDepot = quotedSkus.filter((s) => mappedAnywhere.has(s) && !allowedHere.has(s))
 
       if (wrongDepot.length > 0) {
         return {
           success: false,
-          error: `These products are not available from ${effectiveDepot}: ${wrongDepot.join(', ')}`,
+          error: effectiveDepot
+            ? `These products are not available from ${effectiveDepot}: ${wrongDepot.join(', ')}`
+            : `These products are not available from your depots: ${wrongDepot.join(', ')}`,
         }
       }
     }
@@ -325,12 +346,16 @@ export async function createQuote(params: CreateQuoteParams) {
     amount: computedTotal,
     currency: 'USD',
     quote_reference: quoteReference, // Will preserve existing ref if upserting
-    depot_code: effectiveDepot,
     line_items_raw: params.lineItems,
     updated_at: new Date().toISOString(),
   }
   if (pipelineId) registryRow.pipeline_id = pipelineId
   if (parsedProbability !== null) registryRow.deal_probability = parsedProbability
+  // Depot follows the same don't-null-a-synced-value rule as probability: an
+  // undecided re-quote must NOT wipe a depot already on the row — the Xero/MCS
+  // trigger (notify_quote_accepted) silently disarms without a valid depot_code,
+  // and the authoritative depot choice happens at the acceptance transition.
+  if (effectiveDepot !== null) registryRow.depot_code = effectiveDepot
 
   const { error: upsertError } = await supabase
     .from('deals_registry')
