@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { LinkSpinner } from '@/components/nav/link-spinner'
 
 /**
  * Sub-navigation for the Quotes module.
@@ -38,11 +39,13 @@ export function QuotesNav() {
                 aria-current={active ? 'page' : undefined}
                 className={
                   active
-                    ? 'inline-block border-b-2 border-echo-yellow px-4 py-2.5 text-sm font-semibold text-gray-900'
-                    : 'inline-block border-b-2 border-transparent px-4 py-2.5 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-800'
+                    ? 'flex items-center gap-1.5 border-b-2 border-echo-yellow px-4 py-2.5 text-sm font-semibold text-gray-900'
+                    : 'flex items-center gap-1.5 border-b-2 border-transparent px-4 py-2.5 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-800'
                 }
               >
+                {/* useLinkStatus must be a child of Link, hence the separate LinkSpinner component */}
                 {tab.label}
+                <LinkSpinner />
               </Link>
             </li>
           )

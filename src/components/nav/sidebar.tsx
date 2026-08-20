@@ -16,6 +16,7 @@ import {
 import { NAV_ITEMS, satisfiesRequirement, type CapabilityKey } from '@/lib/capabilities'
 import { Button } from '@/components/ui/button'
 import { signOut } from '@/app/actions/sign-out'
+import { LinkSpinner } from '@/components/nav/link-spinner'
 
 const ICONS: Record<string, LucideIcon> = {
   LayoutDashboard,
@@ -70,6 +71,8 @@ export function Sidebar({ capabilities, displayName }: SidebarProps) {
             >
               <Icon className="w-5 h-5" />
               <span className="font-medium">{item.label}</span>
+              {/* useLinkStatus must be a child of Link, hence the separate LinkSpinner component */}
+              <LinkSpinner className="ml-auto" />
             </Link>
           )
         })}

@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { LinkSpinner } from '@/components/nav/link-spinner'
 
 interface PaginationNavProps {
   currentPage: number
@@ -62,6 +63,7 @@ export function PaginationNav({
           >
             <ChevronLeft className="w-4 h-4" />
             Previous
+            <LinkSpinner />
           </Link>
         )}
       </div>
@@ -76,6 +78,7 @@ export function PaginationNav({
           >
             Next
             <ChevronRight className="w-4 h-4" />
+            <LinkSpinner />
           </Link>
         ) : (
           <span className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-400 border border-gray-200 rounded cursor-not-allowed select-none">
