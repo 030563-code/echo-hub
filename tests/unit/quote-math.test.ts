@@ -21,12 +21,15 @@ describe('roundCents', () => {
 })
 
 describe('computeLineItemsTotal (finding #10 — server recomputes amount)', () => {
-  it('sums explicit line totals', () => {
-    expect(computeLineItemsTotal([{ total: 10 }, { total: 5.5 }, { total: 0.25 }])).toBe(15.75)
+  it('derives each line from quantity × unitPrice', () => {
+    expect(computeLineItemsTotal([{ quantity: 3, unitPrice: 2 }, { quantity: 2, unitPrice: 1.5 }])).toBe(9)
   })
 
-  it('falls back to quantity × unitPrice when total is absent', () => {
-    expect(computeLineItemsTotal([{ quantity: 3, unitPrice: 2 }, { quantity: 2, unitPrice: 1.5 }])).toBe(9)
+  it('IGNORES a client-supplied total that disagrees with quantity × unitPrice', () => {
+    // The whole point of finding #10: a crafted request cannot name its own
+    // line total. 54 × 245 = 13230 regardless of what the browser claims.
+    expect(computeLineItemsTotal([{ quantity: 54, unitPrice: 245, total: 1 }])).toBe(13230)
+    expect(computeLineItemsTotal([{ quantity: 1, unitPrice: 10, total: 999999 }])).toBe(10)
   })
 
   it('never returns NaN when HubSpot fields are null/garbage', () => {
@@ -34,7 +37,7 @@ describe('computeLineItemsTotal (finding #10 — server recomputes amount)', () 
       { total: null },
       { quantity: null, unitPrice: null },
       { total: 'abc' as unknown as number },
-      { total: 4 },
+      { quantity: 2, unitPrice: 2 },
     ])
     expect(result).toBe(4)
     expect(Number.isNaN(result)).toBe(false)

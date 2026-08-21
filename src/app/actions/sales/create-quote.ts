@@ -7,7 +7,7 @@ import { addLineItemsToDeal } from '@/app/actions/hubspot/addLineItems'
 import { getProductSkus } from '@/app/actions/hubspot/getProductSkus'
 import { uploadFileToHubSpot, createNoteWithAttachment, createEmailDraftWithAttachment } from '@/app/actions/hubspot/uploadFile'
 import { QUOTATION_SENT_STAGES, HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
-import { computeLineItemsTotal, validateLineItems } from '@/lib/quote-math'
+import { computeLineItemsTotal, computeLineTotal, validateLineItems } from '@/lib/quote-math'
 import { assertDealAccess } from '@/lib/authz'
 
 interface QuoteLineItem {
@@ -146,6 +146,14 @@ export async function createQuote(params: CreateQuoteParams) {
   const lineItemsError = validateLineItems(params.lineItems)
   if (lineItemsError) {
     return { success: false, error: lineItemsError }
+  }
+
+  // An empty cart used to skip addLineItemsToDeal entirely, so the deal stage
+  // and a zero amount were written while the PREVIOUS HubSpot line items
+  // survived untouched. The replace guarantee only holds for a non-empty cart.
+  // Refused here, before any write, so nothing is half-applied.
+  if (params.lineItems.length === 0) {
+    return { success: false, error: 'Add at least one line item before generating a quote.' }
   }
 
   // The depot is only meaningful for direct sales; distributor quotes store
@@ -292,10 +300,18 @@ export async function createQuote(params: CreateQuoteParams) {
     // A. Handle Distributor Logic
     if (params.distributor !== 'Direct Sale') {
       const distributorStageId = await getDistributorStageForPipeline(pipelineId)
-      if (distributorStageId) {
-        const r = await updateDealStage(params.dealId, pipelineId, distributorStageId, effectiveDepot ?? undefined, computedTotal)
-        if (!r.success) return { success: false, error: r.error || 'Failed to update deal stage' }
+      // Only USA_SALES and EURO_SALES have a distributor stage mapped. Any other
+      // pipeline used to fall through silently: no stage move, but line items and
+      // the PDF still written and success returned.
+      if (!distributorStageId) {
+        console.error('createQuote: no distributor stage for pipeline', pipelineId)
+        return {
+          success: false,
+          error: 'This pipeline has no distributor stage configured, so the deal was not moved. Nothing was changed.',
+        }
       }
+      const r = await updateDealStage(params.dealId, pipelineId, distributorStageId, effectiveDepot ?? undefined, computedTotal)
+      if (!r.success) return { success: false, error: r.error || 'Failed to update deal stage' }
     } else {
       // B. Handle Direct Sale Logic (Move to Quotation Sent)
       // Find the "Quotation Sent" stage for this pipeline
@@ -314,14 +330,20 @@ export async function createQuote(params: CreateQuoteParams) {
         }
       }
 
-      if (quotationSentStageId) {
-        const r = await updateDealStage(params.dealId, pipelineId, quotationSentStageId, effectiveDepot ?? undefined, computedTotal)
-        if (!r.success) return { success: false, error: r.error || 'Failed to update deal stage' }
+      if (!quotationSentStageId) {
+        console.error('createQuote: no Quotation Sent stage for pipeline', pipelineId)
+        return {
+          success: false,
+          error: 'This pipeline has no Quotation Sent stage configured, so the deal was not moved. Nothing was changed.',
+        }
       }
+      const r = await updateDealStage(params.dealId, pipelineId, quotationSentStageId, effectiveDepot ?? undefined, computedTotal)
+      if (!r.success) return { success: false, error: r.error || 'Failed to update deal stage' }
     }
 
-    // C. Add Line Items to HubSpot Deal
-    if (params.lineItems.length > 0) {
+    // C. Add Line Items to HubSpot Deal. The cart is guaranteed non-empty by
+    // the pre-write guard above.
+    {
       const r = await addLineItemsToDeal(params.dealId, params.lineItems)
       if (r.success) createdLineItemIds = r.lineItemIds ?? []
       // addLineItemsToDeal now replaces rather than appends, so retrying here is
@@ -378,7 +400,9 @@ export async function createQuote(params: CreateQuoteParams) {
       sku: item.sku,
       quantity: item.quantity,
       unit_price: item.unitPrice,
-      total_amount: item.total,
+      // Derived, never the browser's number: this value reaches the deal
+      // amount and the Xero/MCS payload.
+      total_amount: computeLineTotal(item),
       hs_product_id: item.productId,
       // Present only when HubSpot accepted the batch create; the deep sync
       // fills it in later otherwise.

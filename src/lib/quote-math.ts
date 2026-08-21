@@ -1,5 +1,5 @@
 /**
- * Pure money/quote math helpers. No 'server-only' guard — safe to use on either
+ * Pure money/quote math helpers. No 'server-only' guard, safe to use on either
  * side and easy to unit test. Used by createQuote() to recompute totals
  * server-side rather than trusting the client (audit finding #10).
  */
@@ -22,20 +22,26 @@ export function roundCents(value: number): number {
 }
 
 /**
- * Sum a list of line items to a cents-rounded grand total. Prefers each item's
- * explicit `total`; falls back to quantity × unitPrice. Never returns NaN.
+ * A single line's value, always DERIVED as quantity x unitPrice.
+ *
+ * The client-supplied `total` is deliberately ignored. It used to be preferred
+ * when present, which meant a crafted request could pass validateLineItems on a
+ * sane quantity and unit price while naming any line total it liked. That total
+ * reaches the deal amount, the stored row and the Xero/MCS webhook payload.
+ * HubSpot derives its own amount from price x quantity and is never sent a
+ * total, so deriving here also keeps the two sides in agreement.
+ *
+ * There is no discount concept in the builder; if one is ever added, it belongs
+ * here rather than in a value the browser hands over.
  */
+export function computeLineTotal(item: QuoteLineItemLike | null | undefined): number {
+  return roundCents(toMoney(item?.quantity) * toMoney(item?.unitPrice))
+}
+
+/** Sum a list of line items to a cents-rounded grand total. Never returns NaN. */
 export function computeLineItemsTotal(lineItems: readonly QuoteLineItemLike[] | null | undefined): number {
   if (!Array.isArray(lineItems)) return 0
-  const sum = lineItems.reduce((acc, item) => {
-    const explicit = item?.total
-    const lineTotal =
-      explicit !== undefined && explicit !== null && Number.isFinite(Number(explicit))
-        ? toMoney(explicit)
-        : toMoney(item?.quantity) * toMoney(item?.unitPrice)
-    return acc + lineTotal
-  }, 0)
-  return roundCents(sum)
+  return roundCents(lineItems.reduce((acc, item) => acc + computeLineTotal(item), 0))
 }
 
 /**
