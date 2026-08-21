@@ -17,6 +17,7 @@ interface QuoteLineItem {
   unitPrice: number
   total: number
   sku?: string
+  description?: string
 }
 
 interface CreateQuoteParams {
@@ -35,6 +36,8 @@ interface CreateQuoteParams {
    * so the MRP/forecasting engine can weight pipeline demand by it.
    */
   winProbability?: string
+  /** Free-text rep comments, printed on the quote under "Comments from {rep}". */
+  comments?: string
   isPreview?: boolean
   pdfBlob?: Blob // We can't pass Blob to server action directly, need FormData or base64
 }
@@ -356,6 +359,10 @@ export async function createQuote(params: CreateQuoteParams) {
   // trigger (notify_quote_accepted) silently disarms without a valid depot_code,
   // and the authoritative depot choice happens at the acceptance transition.
   if (effectiveDepot !== null) registryRow.depot_code = effectiveDepot
+  // Same don't-null-a-synced-value rule: an empty comments box on a re-quote
+  // must not wipe out comments that were written (and printed) previously.
+  const trimmedComments = params.comments?.trim()
+  if (trimmedComments) registryRow.quote_comments = trimmedComments
 
   const { error: upsertError } = await supabase
     .from('deals_registry')

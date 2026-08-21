@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -16,6 +17,8 @@ import { searchHubSpotProducts } from '@/app/actions/hubspot/searchProducts'
 import { getMappedSkus } from '@/app/actions/sales/get-mapped-skus'
 import { getWinProbabilityOptions } from '@/app/actions/hubspot/getDealProperties'
 import { updateDealProperties } from '@/app/actions/hubspot/updateDealProperties'
+import { buildQuotePdf } from '@/lib/quote-pdf'
+import { loadQuoteLogo } from '@/lib/quote-logo'
 
 interface Product {
   id: string
@@ -31,6 +34,7 @@ interface LineItem {
   productId: string
   name: string
   sku?: string
+  description?: string
   quantity: number
   unitPrice: number
   total: number
@@ -41,6 +45,8 @@ interface QuoteContact {
     firstname?: string
     lastname?: string
     jobtitle?: string
+    email?: string
+    phone?: string
   }
 }
 
@@ -49,6 +55,7 @@ interface HubSpotLineItem {
     hs_product_id?: string
     name?: string
     hs_sku?: string
+    description?: string
     quantity?: string | number | null
     price?: string | number | null
     amount?: string | number | null
@@ -60,11 +67,14 @@ interface CreateQuoteFormProps {
   dealName: string
   settings: SalesProfileSettings
   products: Product[]
-  salesRep: { name: string; email: string }
+  salesRep: { name: string; email: string; phone?: string }
   contact: QuoteContact | null
+  companyName?: string
   initialLineItems?: HubSpotLineItem[]
   /** Depot code already on the HubSpot deal (sending_depot, reverse-mapped), if any. */
   initialDepot?: string
+  /** Comments already saved for this deal (deals_registry.quote_comments), if any. */
+  initialComments?: string
 }
 
 // Radix Select can't represent "cleared", so the undecided state gets an
@@ -76,12 +86,13 @@ const mapInitialLineItems = (items: HubSpotLineItem[]): LineItem[] =>
     productId: item.properties.hs_product_id ?? '',
     name: item.properties.name ?? '',
     sku: item.properties.hs_sku,
+    description: item.properties.description,
     quantity: Number(item.properties.quantity) || 0,
     unitPrice: Number(item.properties.price) || 0,
     total: Number(item.properties.amount) || 0,
   }))
 
-export default function CreateQuoteForm({ dealId, dealName, settings, products, salesRep, contact, initialLineItems = [], initialDepot = '' }: CreateQuoteFormProps) {
+export default function CreateQuoteForm({ dealId, dealName, settings, products, salesRep, contact, companyName, initialLineItems = [], initialDepot = '', initialComments = '' }: CreateQuoteFormProps) {
   // State for the Initial Setup Dialog
   const [showSetupDialog, setShowSetupDialog] = useState(true)
   const [distributor, setDistributor] = useState<string>('none')
@@ -97,6 +108,8 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
 
   // State for Quote Builder
   const [lineItems, setLineItems] = useState<LineItem[]>(() => mapInitialLineItems(initialLineItems))
+  // Free-text rep comments — printed on the quote under "Comments from {rep}".
+  const [comments, setComments] = useState<string>(initialComments)
   const [submitting, setSubmitting] = useState(false)
   // Latches true after a successful generate. addLineItemsToDeal REPLACES the
   // deal's line items (idempotent), so this guards against accidental
@@ -239,6 +252,8 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
       productId: product.id,
       name: product.properties.name,
       sku: product.properties.hs_sku,
+      // Prefilled from HubSpot, freely editable — this is what prints on the quote.
+      description: product.properties.description,
       quantity: 1,
       unitPrice: Number(product.properties.price) || 0,
       total: Number(product.properties.price) || 0
@@ -262,6 +277,12 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
       item.total = item.quantity * item.unitPrice
     }
 
+    setLineItems(newItems)
+  }
+
+  const updateLineItemDescription = (index: number, description: string) => {
+    const newItems = [...lineItems]
+    newItems[index] = { ...newItems[index], description }
     setLineItems(newItems)
   }
 
@@ -309,6 +330,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
         lineItems,
         totalAmount: calculateGrandTotal(),
         winProbability, // backbone: persisted to deals_registry.deal_probability
+        comments,
         isPreview: false
       })
 
@@ -333,190 +355,35 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
       quoteRef = 'PREVIEW'
     }
 
-    // 2. Generate PDF Content (dynamically imported to keep them out of the initial bundle)
-    const { default: jsPDF } = await import('jspdf')
-    const { default: autoTable } = await import('jspdf-autotable')
-    const doc = new jsPDF()
-
-    // --- Header Section ---
-    // Logo (Placeholder - ideally load base64 image)
-    doc.setFontSize(24)
-    doc.setTextColor(85, 107, 47) // Olive Green (RAL 6003)
-    doc.setFont("helvetica", "bold")
-    doc.text('ECHO BARRIER', 14, 20)
-    doc.setFontSize(10)
-    doc.text('Environmentally Sound', 14, 25)
-
-    // Title
-    doc.setFontSize(22)
-    doc.setTextColor(0, 0, 0)
-    doc.text(dealName, 14, 45)
-    // doc.text('Order #2', 14, 55) // Optional: Add order number if available
-
-    // Meta Info
-    doc.setFontSize(10)
-    doc.setTextColor(100, 100, 100)
-    doc.setFont("helvetica", "normal")
-    doc.text(`Quote created: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}   Reference: ${quoteRef}`, 14, 65)
-
-    // Sales Rep Info (Right Aligned)
-    const pageWidth = doc.internal.pageSize.width
-    doc.setFont("helvetica", "bold")
-    doc.setTextColor(0, 0, 0)
-    doc.text(salesRep.name, pageWidth - 14, 75, { align: 'right' })
-    doc.setFont("helvetica", "normal")
-    doc.text(salesRep.email, pageWidth - 14, 80, { align: 'right' })
-
-    // Comments Box (Gray Background)
-    doc.setFillColor(240, 240, 240)
-    doc.rect(14, 90, pageWidth - 28, 30, 'F')
-    
-    doc.setFont("helvetica", "bold")
-    doc.text('Comments', pageWidth / 2, 95, { align: 'center' })
-    
-    doc.setFont("helvetica", "normal")
-    doc.setFontSize(9)
-    // depot is '' when a distributor is fulfilling the order instead — don't
-    // print the literal placeholder word "Depot" in that case.
-    if (depot) {
-      doc.text(`Shipping from ${depot}`, 20, 110)
-    } else if (isDistributorSelected) {
-      doc.text(`Fulfilled by ${distributor}`, 20, 110)
-    }
-
-    // Contact Person (Bottom Right of Comments)
-    if (contact) {
-      const contactName = [contact.properties.firstname, contact.properties.lastname].filter(Boolean).join(' ')
-      const contactRole = contact.properties.jobtitle || 'Client'
-      const contactLine = contactName ? `${contactName} - ${contactRole}` : contactRole
-      doc.text(contactLine, pageWidth - 20, 115, { align: 'right' })
-    }
-
-    // --- Products & Services Section ---
-    doc.setFontSize(18)
-    doc.setFont("helvetica", "bold")
-    doc.setTextColor(40, 55, 75) // Dark Blue/Gray
-    doc.text('Products & Services', pageWidth / 2, 140, { align: 'center' })
-
-    // Table
-    const tableColumn = ["Item & Description", "SKU", "Quantity", "Unit Price", "Total"]
-    const tableRows = lineItems.map(item => [
-      item.name,
-      item.sku || 'N/A',
-      item.quantity,
-      item.unitPrice.toLocaleString('en-US', { style: 'currency', currency: 'USD' }),
-      item.total.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
-    ])
-
-    // Add Freight Line Item (Mock)
-    // Only add if not already in line items
-    // tableRows.push([
-    //   "LTL Freight\nLTL",
-    //   "LTLNA",
-    //   1,
-    //   "$550.00",
-    //   "$550.00"
-    // ])
-
-    autoTable(doc, {
-      head: [tableColumn],
-      body: tableRows,
-      startY: 150,
-      theme: 'plain',
-      headStyles: { 
-        fillColor: [255, 255, 255], 
-        textColor: [85, 107, 47], // Olive Green
-        fontStyle: 'bold',
-        fontSize: 10,
-        halign: 'left'
-      },
-      bodyStyles: {
-        textColor: [80, 80, 80],
-        fontSize: 10,
-        cellPadding: 6
-      },
-      columnStyles: {
-        0: { cellWidth: 80 }, // Description column wider
-        3: { halign: 'right' },
-        4: { halign: 'right' }
-      },
-      didDrawCell: (data) => {
-        // Add horizontal lines only (custom styling to match screenshot)
-        if (data.section === 'head' || data.section === 'body') {
-           doc.setDrawColor(230, 230, 230);
-           doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
-        }
-      }
-    })
-
-    // Totals Section
-    const finalY = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || 150
+    // 2. Build the PDF. Drawing lives in the pure quote-pdf module; this
+    // component only supplies the facts (including the clock, since the
+    // module must not read it itself) and then handles preview/save/upload.
+    const contactName = contact
+      ? [contact.properties.firstname, contact.properties.lastname].filter(Boolean).join(' ') || undefined
+      : undefined
     const grandTotal = calculateGrandTotal()
-    
-    doc.setFontSize(10)
-    doc.setTextColor(80, 80, 80)
-    doc.text('One-time subtotal', pageWidth - 60, finalY + 15)
-    doc.text(grandTotal.toLocaleString('en-US', { style: 'currency', currency: 'USD' }), pageWidth - 14, finalY + 15, { align: 'right' })
-    
-    doc.setFontSize(11)
-    doc.setTextColor(40, 55, 75)
-    doc.text('Total', pageWidth - 60, finalY + 25)
-    doc.text(grandTotal.toLocaleString('en-US', { style: 'currency', currency: 'USD' }), pageWidth - 14, finalY + 25, { align: 'right' })
-
-    // Dotted lines for totals
-    doc.setDrawColor(200, 200, 200);
-    (doc as unknown as { setLineDash: (segments: number[], phase: number) => void }).setLineDash([1, 1], 0);
-    doc.line(pageWidth - 60, finalY + 17, pageWidth - 14, finalY + 17);
-    doc.line(pageWidth - 60, finalY + 27, pageWidth - 14, finalY + 27);
-
-    // --- Page 2: Terms & Contact ---
-    doc.addPage()
-    
-    doc.setFontSize(10)
-    doc.setTextColor(0, 0, 0)
-    doc.setFont("helvetica", "bold")
-    // eslint-disable-next-line react-hooks/purity -- runs inside the click handler, not during render
-    doc.text(`This quote expires on ${new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, pageWidth / 2, 20, { align: 'center' })
-
-    // Purchase Terms Box
-    doc.setFillColor(248, 248, 248)
-    doc.rect(14, 30, pageWidth - 28, 80, 'F')
-    
-    doc.setFontSize(11)
-    doc.setTextColor(40, 55, 75)
-    doc.text('Purchase terms', pageWidth / 2, 45, { align: 'center' })
-    
-    doc.setFontSize(9)
-    doc.setTextColor(80, 80, 80)
-    doc.setFont("helvetica", "normal")
-    const termsText = "We trust that our quotation meets your requirements and look forward to receiving your written confirmation and/or purchase order by return. Please note that under no circumstances can we proceed with an order without written confirmation from the client. In the meantime, if you require any further assistance, please do not hesitate to contact our office.\n\nIn the event of an order we would be grateful if you would refer to the quotation number shown above. Many thanks for your ongoing support of our Echo Barrier product line.\n\nYours sincerely,"
-    doc.text(termsText, 20, 60, { maxWidth: pageWidth - 40, align: 'justify' })
-
-    // Contact Me Box
-    doc.setFillColor(230, 230, 230)
-    doc.rect(14, 120, pageWidth - 28, 140, 'F')
-
-    doc.setFontSize(24)
-    doc.setTextColor(0, 0, 0)
-    doc.setFont("helvetica", "bold")
-    doc.text('Questions? Contact me', pageWidth / 2, 140, { align: 'center' })
-
-    doc.setFontSize(10)
-    doc.text(salesRep.name, pageWidth / 2, 155, { align: 'center' })
-    doc.text('Sales Representative', pageWidth / 2, 160, { align: 'center' })
-
-    doc.setFont("helvetica", "normal")
-    doc.text(salesRep.email, pageWidth / 2, 175, { align: 'center' })
-    doc.setFont("helvetica", "bold")
-    // doc.text('Cell : 312 278 5759', pageWidth / 2, 185, { align: 'center' }) // TODO: Add phone to profile
-    doc.text('Office +1 (800) 728 9098', pageWidth / 2, 195, { align: 'center' })
-
-    doc.setFont("helvetica", "normal")
-    doc.text('Echo Barrier USA LLC', pageWidth / 2, 215, { align: 'center' })
-    doc.text('33 North Dearborn', pageWidth / 2, 225, { align: 'center' })
-    doc.text('Suite 1000', pageWidth / 2, 235, { align: 'center' })
-    doc.text('Chicago 60602', pageWidth / 2, 245, { align: 'center' })
-    doc.text('IL', pageWidth / 2, 255, { align: 'center' })
+    const createdAt = new Date()
+    const logoDataUrl = await loadQuoteLogo()
+    const doc = await buildQuotePdf({
+      logoDataUrl,
+      dealName,
+      quoteReference: quoteRef,
+      createdAt,
+      companyName,
+      contactName,
+      contactEmail: contact?.properties.email,
+      contactPhone: contact?.properties.phone,
+      salesRep,
+      comments,
+      lineItems: lineItems.map((item) => ({
+        name: item.name,
+        description: item.description,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        total: item.total,
+      })),
+      grandTotal,
+    })
 
     if (previewMode) {
       // Open in new tab for preview
@@ -748,54 +615,82 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
               ) : (
                 <div className="space-y-4">
                   {lineItems.map((item, index) => (
-                    <div key={index} className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg border border-gray-100">
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-900">{item.name}</p>
-                        <p className="text-xs text-gray-500">SKU: {item.sku || 'N/A'}</p>
+                    <div key={index} className="p-4 bg-gray-50 rounded-lg border border-gray-100 space-y-3">
+                      <div className="flex items-center gap-4">
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900">{item.name}</p>
+                          <p className="text-xs text-gray-500">SKU: {item.sku || 'N/A'}</p>
+                        </div>
+
+                        <div className="w-24">
+                          <Label className="text-xs text-gray-500">Qty</Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={(e) => updateLineItem(index, 'quantity', parseInt(e.target.value) || 0)}
+                            className="h-8"
+                          />
+                        </div>
+
+                        <div className="w-32">
+                          <Label className="text-xs text-gray-500">Price</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.unitPrice}
+                            onChange={(e) => updateLineItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+                            className="h-8"
+                          />
+                        </div>
+
+                        <div className="w-24 text-right">
+                          <Label className="text-xs text-gray-500">Total</Label>
+                          <p className="font-mono font-medium pt-1">
+                            {item.total.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                          </p>
+                        </div>
+
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => removeLineItem(index)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       </div>
-                      
-                      <div className="w-24">
-                        <Label className="text-xs text-gray-500">Qty</Label>
-                        <Input 
-                          type="number" 
-                          min="1"
-                          value={item.quantity}
-                          onChange={(e) => updateLineItem(index, 'quantity', parseInt(e.target.value) || 0)}
-                          className="h-8"
+
+                      <div>
+                        <Label className="text-xs text-gray-500">Description (shown on the quote, under the item name)</Label>
+                        <Input
+                          value={item.description || ''}
+                          onChange={(e) => updateLineItemDescription(index, e.target.value)}
+                          placeholder="e.g. Green PVC front / black back / acoustic absorbent inside"
+                          className="h-8 text-sm"
                         />
                       </div>
-
-                      <div className="w-32">
-                        <Label className="text-xs text-gray-500">Price</Label>
-                        <Input 
-                          type="number" 
-                          min="0"
-                          step="0.01"
-                          value={item.unitPrice}
-                          onChange={(e) => updateLineItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                          className="h-8"
-                        />
-                      </div>
-
-                      <div className="w-24 text-right">
-                        <Label className="text-xs text-gray-500">Total</Label>
-                        <p className="font-mono font-medium pt-1">
-                          {item.total.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
-                        </p>
-                      </div>
-
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                        onClick={() => removeLineItem(index)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
                     </div>
                   ))}
                 </div>
               )}
+            </Card>
+
+            <Card className="p-6 bg-white border-gray-200">
+              <Label className="text-gray-900 font-medium">Comments</Label>
+              <p className="text-xs text-gray-500 mb-2">
+                {`Shown on the quote under "Comments from ${salesRep.name}". Use it for things the`}{' '}
+                customer needs to know: ship-from, what the quote assumes, panel layout or
+                dimensions, what&apos;s optional.
+              </p>
+              <Textarea
+                rows={7}
+                value={comments}
+                onChange={(e) => setComments(e.target.value)}
+                placeholder={"e.g. In stock and ready to ship from Baltimore, MD\nFitting Kits optional - 1 hook + 2 bungees\n\nQuote based on:\nPanels only - substrate by others. Recommended scaffolding."}
+                className="text-sm"
+              />
             </Card>
           </div>
 

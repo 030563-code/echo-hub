@@ -9,6 +9,7 @@ interface LineItem {
   unitPrice: number
   total: number
   sku?: string
+  description?: string
 }
 
 export async function addLineItemsToDeal(dealId: string, lineItems: LineItem[]) {
@@ -95,6 +96,7 @@ export async function addLineItemsToDeal(dealId: string, lineItems: LineItem[]) 
             price: item.unitPrice.toString(),
             hs_product_id: item.productId,
             hs_sku: item.sku,
+            description: item.description,
           },
         })),
       }),

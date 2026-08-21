@@ -2,6 +2,7 @@ import { getSalesProfileSettings } from '@/app/actions/sales/get-profile-setting
 import { getHubSpotProducts } from '@/app/actions/hubspot/getProducts'
 import { getDealDetails } from '@/app/actions/hubspot/getDealDetails'
 import { getContactDetails } from '@/app/actions/hubspot/getContactDetails'
+import { getCompanyDetails } from '@/app/actions/hubspot/getCompanyDetails'
 import { getLineItems } from '@/app/actions/hubspot/getLineItems'
 import { getMappedSkus } from '@/app/actions/sales/get-mapped-skus'
 import { DEPOT_MAPPING } from '@/lib/depot-constants'
@@ -36,7 +37,8 @@ export default async function CreateQuotePage(props: { params: Promise<{ dealId:
   // 2. Fetch Deal Details to get Contact ID and Line Items
   const { data: deal } = await getDealDetails(params.dealId)
   const contactId = deal?.associations?.contacts?.results?.[0]?.id
-  
+  const companyId = deal?.associations?.companies?.results?.[0]?.id
+
   // Handle both potential keys for line items (singular or plural)
   // HubSpot API v3 often uses the object type name, which can be tricky.
   // Based on your n8n output, it might be under 'line items' (with a space) or 'line_items'.
@@ -45,25 +47,26 @@ export default async function CreateQuotePage(props: { params: Promise<{ dealId:
   const lineItemsAssoc = assoc?.line_items || assoc?.line_item || assoc?.['line items']
   const lineItemIds = lineItemsAssoc?.results?.map((i) => i.id) || []
 
-  // 3. Fetch Contact Details & Line Items
-  let contact: FormProps['contact'] = null
-  let existingLineItems: FormProps['initialLineItems'] = []
+  // 3. Fetch Contact Details, Company (for the quote's company-name line) & Line Items
+  const [contactResult, lineItemsResult, companyResult] = await Promise.all([
+    contactId ? getContactDetails(contactId) : Promise.resolve(null),
+    lineItemIds.length > 0 ? getLineItems(lineItemIds) : Promise.resolve(null),
+    companyId ? getCompanyDetails(companyId) : Promise.resolve(null),
+  ])
 
-  const promises = []
-  if (contactId) promises.push(getContactDetails(contactId))
-  if (lineItemIds.length > 0) promises.push(getLineItems(lineItemIds))
+  const contact: FormProps['contact'] = contactResult?.success ? ((contactResult.data ?? null) as FormProps['contact']) : null
+  const existingLineItems: FormProps['initialLineItems'] = lineItemsResult?.success
+    ? ((lineItemsResult.data ?? []) as FormProps['initialLineItems'])
+    : []
+  const companyName = companyResult?.success ? companyResult.data?.properties.name : undefined
 
-  const results = await Promise.all(promises)
-
-  if (contactId) {
-    const contactResult = results.shift()
-    if (contactResult?.success) contact = (contactResult.data ?? null) as FormProps['contact']
-  }
-
-  if (lineItemIds.length > 0) {
-    const lineItemsResult = results.shift()
-    if (lineItemsResult?.success) existingLineItems = (lineItemsResult.data ?? []) as FormProps['initialLineItems']
-  }
+  // Comments already saved for this deal (if the builder was opened before).
+  const { data: registryRow } = await supabase
+    .from('deals_registry')
+    .select('quote_comments')
+    .eq('hubspot_deal_id', params.dealId)
+    .maybeSingle()
+  const initialComments = registryRow?.quote_comments ?? ''
 
   // 4. Fetch Settings first, then Products and Mapped SKUs. The SKU fetch is
   // scoped to the caller's own depots — the previous bare getMappedSkus() sent
@@ -110,15 +113,17 @@ export default async function CreateQuotePage(props: { params: Promise<{ dealId:
         <h1 className="text-2xl font-bold text-gray-900">Create New Quote</h1>
       </div>
 
-      <CreateQuoteForm 
-        dealId={params.dealId} 
+      <CreateQuoteForm
+        dealId={params.dealId}
         dealName={deal?.properties?.dealname || ''}
         initialDepot={initialDepot}
-        settings={settings} 
+        settings={settings}
         products={products}
         salesRep={salesRep}
         contact={contact}
+        companyName={companyName}
         initialLineItems={existingLineItems}
+        initialComments={initialComments}
       />
     </div>
   )
