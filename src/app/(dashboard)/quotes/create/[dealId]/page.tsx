@@ -25,13 +25,17 @@ export default async function CreateQuotePage(props: { params: Promise<{ dealId:
   const { data: { user } } = await supabase.auth.getUser()
   const { data: profile } = await supabase
     .from('profiles')
-    .select('display_name')
+    .select('display_name, phone')
     .eq('id', user?.id)
     .single()
 
   const salesRep = {
     name: profile?.display_name || user?.email || 'Sales Rep',
-    email: user?.email || ''
+    email: user?.email || '',
+    // Printed in the quote meta block and under "Questions? Contact me", the
+    // same two places the HubSpot-native quote shows it. Omitted from the PDF
+    // when unset rather than falling back to a generic office number.
+    phone: profile?.phone || undefined,
   }
 
   // 2. Fetch Deal Details to get Contact ID and Line Items
