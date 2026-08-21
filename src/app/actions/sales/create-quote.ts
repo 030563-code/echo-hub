@@ -271,8 +271,24 @@ export async function createQuote(params: CreateQuoteParams) {
   const dealName = deal?.properties?.dealname || 'Unknown Deal'
   const pipelineId = deal?.properties?.pipeline
 
+  /** HubSpot ids of the line items created below, in the order they were sent. */
+  let createdLineItemIds: string[] = []
+
+  // Without a pipeline there is no stage to move the deal to, so every HubSpot
+  // write below is skipped. This used to fall through to the registry upsert and
+  // return success, so the rep saw "quote generated" while HubSpot had nothing:
+  // no stage change, no line items, no PDF on the deal. Fail loudly instead.
+  if (!pipelineId) {
+    console.error('createQuote: no pipeline on deal', params.dealId)
+    return {
+      success: false,
+      error:
+        'Could not read this deal from HubSpot, so nothing was written. Reopen the deal and try again.',
+    }
+  }
+
   // 4. Update Deal Stage and Add Line Items
-  if (pipelineId) {
+  {
     // A. Handle Distributor Logic
     if (params.distributor !== 'Direct Sale') {
       const distributorStageId = await getDistributorStageForPipeline(pipelineId)
@@ -307,6 +323,7 @@ export async function createQuote(params: CreateQuoteParams) {
     // C. Add Line Items to HubSpot Deal
     if (params.lineItems.length > 0) {
       const r = await addLineItemsToDeal(params.dealId, params.lineItems)
+      if (r.success) createdLineItemIds = r.lineItemIds ?? []
       // addLineItemsToDeal now replaces rather than appends, so retrying here is
       // safe — the specific HubSpot error (if any) is already logged inside it;
       // the user-facing message leads with the safe-to-retry fact instead.
@@ -349,7 +366,27 @@ export async function createQuote(params: CreateQuoteParams) {
     amount: computedTotal,
     currency: 'USD',
     quote_reference: quoteReference, // Will preserve existing ref if upserting
-    line_items_raw: params.lineItems,
+    // Written in the SAME key shape the rest of the system uses, not the
+    // builder's camelCase. notify_quote_accepted() reads unit_price,
+    // total_amount and hs_product_id straight off these elements and COALESCEs
+    // a miss to 0 — so a camelCase row reaching Quotation Accepted would post a
+    // draft Xero quote and an MCS contract with every price and line total at
+    // zero. n8n's own sync writes snake_case, which is why the mismatch has
+    // never shown up: no Hub quote has reached acceptance yet.
+    line_items_raw: params.lineItems.map((item, i) => ({
+      name: item.name,
+      sku: item.sku,
+      quantity: item.quantity,
+      unit_price: item.unitPrice,
+      total_amount: item.total,
+      hs_product_id: item.productId,
+      // Present only when HubSpot accepted the batch create; the deep sync
+      // fills it in later otherwise.
+      ...(createdLineItemIds[i] ? { hs_line_item_id: createdLineItemIds[i] } : {}),
+      // Rep-edited copy. The enrichment trigger merges rather than replaces, so
+      // this survives; HubSpot remains the durable home for it either way.
+      ...(item.description ? { description: item.description } : {}),
+    })),
     updated_at: new Date().toISOString(),
   }
   if (pipelineId) registryRow.pipeline_id = pipelineId

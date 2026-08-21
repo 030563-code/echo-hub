@@ -140,7 +140,9 @@ export async function addLineItemsToDeal(dealId: string, lineItems: LineItem[]) 
       return { success: false, error: 'Failed to associate line items with deal' }
     }
 
-    return { success: true }
+    // Batch create preserves input order, so caller can zip these back onto
+    // the items it sent — deals_registry stores them as hs_line_item_id.
+    return { success: true, lineItemIds: createdIds }
 
   } catch (error: unknown) {
     console.error('addLineItemsToDeal Exception:', error)
