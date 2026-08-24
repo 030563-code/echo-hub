@@ -30,6 +30,47 @@ export const TAX_NOTES: Record<TaxRegion, string> = {
 }
 
 /**
+ * Issuing entity printed in the footer, keyed by the same template that decides
+ * the tax wording. Supplied by Dean 2026-08-24.
+ *
+ * Anything outside US/CAN falls back to the group entity, which is what every
+ * quote carried before this split.
+ */
+export const ENTITY_ADDRESSES: Record<TaxRegion, string[]> = {
+  US: [
+    'Echo Barrier USA Head Office',
+    'Echo Barrier USA LLC',
+    '33 North Dearborn',
+    'Suite 1000',
+    'Chicago',
+    'IL 60602',
+    'USA',
+    'Tel: + 1 (800) 728 9098',
+  ],
+  CAN: [
+    '2482 Yonge Street',
+    'Suite 4106',
+    'Toronto',
+    'Ontario M4P 2H5',
+    'Canada',
+    'Tel: + 1 (800) 728 9098',
+  ],
+}
+
+export const DEFAULT_ENTITY_ADDRESS: string[] = [
+  'Echo Barrier Group',
+  '41 Central Chambers',
+  'Dame Court',
+  'Dublin, Dublin 2',
+  'Ireland',
+]
+
+/** The footer address for a template, falling back to the group entity. */
+export function entityAddressForRegion(region: TaxRegion | undefined): string[] {
+  return region ? ENTITY_ADDRESSES[region] : DEFAULT_ENTITY_ADDRESS
+}
+
+/**
  * Maps a chosen quote template to its tax wording. allowed_quote_templates is
  * free text in the database, so anything unrecognised prints no tax line rather
  * than guessing a jurisdiction.
@@ -428,14 +469,18 @@ export async function buildQuotePdf(input: QuotePdfInput): Promise<import('jspdf
   }
 
   // --- Entity address block ---
-  let addressY = ensureSpace(contactY + 10, 24)
+  // The issuing entity follows the quote template, so a US customer sees the
+  // Chicago LLC rather than the Dublin group. Height is reserved from the real
+  // line count: the US block is eight lines where the group block was five.
+  const addressLines = entityAddressForRegion(input.taxRegion)
+  const addressLineHeight = 4.5
+  let addressY = ensureSpace(contactY + 10, addressLines.length * addressLineHeight + 4)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(...BODY_TEXT_COLOR)
-  const addressLines = ['Echo Barrier Group', '41 Central Chambers', 'Dame Court', 'Dublin, Dublin 2', 'Ireland']
   for (const line of addressLines) {
     doc.text(line, MARGIN, addressY)
-    addressY += 4.5
+    addressY += addressLineHeight
   }
 
   return doc
