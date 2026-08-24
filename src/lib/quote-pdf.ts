@@ -13,6 +13,32 @@
  * (comments, line item descriptions) or generic commercial terms.
  */
 
+/**
+ * Quote template, which doubles as the tax jurisdiction. These are the values
+ * stored in profiles.allowed_quote_templates and picked in the setup dialog.
+ */
+export type TaxRegion = 'US' | 'CAN'
+
+/**
+ * Exact wording supplied by Dean, 2026-08-24. Do not reword these without
+ * asking: they are a commercial statement about how the customer will be
+ * invoiced, not descriptive copy.
+ */
+export const TAX_NOTES: Record<TaxRegion, string> = {
+  US: 'Federal and state tax will be applied on invoicing where applicable.',
+  CAN: 'All taxes will be applied on invoicing.',
+}
+
+/**
+ * Maps a chosen quote template to its tax wording. allowed_quote_templates is
+ * free text in the database, so anything unrecognised prints no tax line rather
+ * than guessing a jurisdiction.
+ */
+export function taxRegionForTemplate(template: string | null | undefined): TaxRegion | undefined {
+  const key = template?.trim().toUpperCase()
+  return key === 'US' || key === 'CAN' ? key : undefined
+}
+
 export interface QuotePdfLineItem {
   name: string
   description?: string
@@ -34,6 +60,13 @@ export interface QuotePdfInput {
   comments?: string
   lineItems: QuotePdfLineItem[]
   grandTotal: number
+  /**
+   * Which country's tax wording to print under the total. Comes from the quote
+   * template the rep picks at setup, deliberately NOT from the sending depot: a
+   * US rep can sell a Canadian job, and the depot stays optional until
+   * acceptance whereas the template is mandatory before generating.
+   */
+  taxRegion?: TaxRegion
   /**
    * The Echo Barrier wordmark as a data URL. Passed in rather than imported so
    * this module stays pure and free of the ~48KB base64 string: the browser
@@ -341,6 +374,18 @@ export async function buildQuotePdf(input: QuotePdfInput): Promise<import('jspdf
 
   doc.setDrawColor(...BORDER_COLOR)
   doc.line(labelRight - 20, totalsY, amountRight, totalsY)
+
+  // --- Tax note ---
+  // Sits directly under the total, because it qualifies that number: the quote
+  // is tax-exclusive and tax lands at invoicing.
+  const taxNote = input.taxRegion ? TAX_NOTES[input.taxRegion] : undefined
+  if (taxNote) {
+    totalsY = ensureSpace(totalsY + 7, 8)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(...BODY_TEXT_COLOR)
+    doc.text(taxNote, amountRight, totalsY, { align: 'right' })
+  }
 
   // --- Purchase terms ---
   let termsY = ensureSpace(totalsY + 16, 30)

@@ -17,7 +17,7 @@ import { searchHubSpotProducts } from '@/app/actions/hubspot/searchProducts'
 import { getMappedSkus } from '@/app/actions/sales/get-mapped-skus'
 import { getWinProbabilityOptions } from '@/app/actions/hubspot/getDealProperties'
 import { updateDealProperties } from '@/app/actions/hubspot/updateDealProperties'
-import { buildQuotePdf } from '@/lib/quote-pdf'
+import { buildQuotePdf, taxRegionForTemplate } from '@/lib/quote-pdf'
 import { loadQuoteLogo } from '@/lib/quote-logo'
 
 interface Product {
@@ -366,6 +366,9 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     const logoDataUrl = await loadQuoteLogo()
     const doc = await buildQuotePdf({
       logoDataUrl,
+      // The quote template doubles as the tax jurisdiction (US / CAN). It is
+      // mandatory at setup, so a generated quote always carries the right line.
+      taxRegion: taxRegionForTemplate(template),
       dealName,
       quoteReference: quoteRef,
       createdAt,
