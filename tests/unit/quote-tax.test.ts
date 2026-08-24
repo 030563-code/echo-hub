@@ -45,6 +45,7 @@ describe('entityAddressForRegion (issuing entity follows the template)', () => {
 
   it('gives a Canadian quote the Toronto address', () => {
     const can = entityAddressForRegion('CAN')
+    expect(can).toContain('Echo Barrier Canada, Inc')
     expect(can).toContain('2482 Yonge Street')
     expect(can).toContain('Ontario M4P 2H5')
     expect(can.join(' ')).not.toContain('Dublin')
@@ -55,6 +56,11 @@ describe('entityAddressForRegion (issuing entity follows the template)', () => {
     // value degrades to the parent entity rather than to no address at all.
     expect(entityAddressForRegion(undefined)).toEqual(DEFAULT_ENTITY_ADDRESS)
     expect(DEFAULT_ENTITY_ADDRESS).toContain('Echo Barrier Group')
+  })
+
+  it('names a legal entity on both, so the customer knows who they contract with', () => {
+    expect(entityAddressForRegion('US')).toContain('Echo Barrier USA LLC')
+    expect(entityAddressForRegion('CAN')).toContain('Echo Barrier Canada, Inc')
   })
 
   it('carries the same head-office number on both', () => {

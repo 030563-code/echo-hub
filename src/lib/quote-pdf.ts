@@ -48,6 +48,8 @@ export const ENTITY_ADDRESSES: Record<TaxRegion, string[]> = {
     'Tel: + 1 (800) 728 9098',
   ],
   CAN: [
+    'Echo Barrier Canada',
+    'Echo Barrier Canada, Inc',
     '2482 Yonge Street',
     'Suite 4106',
     'Toronto',
