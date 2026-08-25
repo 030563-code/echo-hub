@@ -76,14 +76,14 @@ export default function PurchasingClient({ orders }: Props) {
   return (
     <div className="relative">
       {/* View toggle */}
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         <div className="flex items-center bg-[#1e1e1e] border border-[#2a2a2a] rounded-lg p-0.5">
           {(["kanban", "table"] as const).map((v) => (
             <button
               key={v}
               onClick={() => setView(v)}
               className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                "flex items-center gap-1.5 px-3 py-2.5 sm:py-1.5 rounded-md text-xs font-medium transition-colors",
                 view === v ? "bg-[#2a2a2a] text-[#e5e5e5]" : "text-[#6b7280] hover:text-[#9ca3af]"
               )}
             >
@@ -110,7 +110,7 @@ export default function PurchasingClient({ orders }: Props) {
 
       {/* Side panel */}
       {selected && (
-        <div className="fixed inset-y-0 right-0 w-96 bg-[#161616] border-l border-[#2a2a2a] z-50 flex flex-col shadow-2xl">
+        <div className="fixed inset-y-0 right-0 w-full max-w-md sm:w-96 bg-[#161616] border-l border-[#2a2a2a] z-50 flex flex-col shadow-2xl">
           <div className="flex items-center justify-between px-5 py-4 border-b border-[#2a2a2a]">
             <div>
               <p className="font-mono text-[#FF7026] font-medium">{selected.po_number}</p>
@@ -118,7 +118,7 @@ export default function PurchasingClient({ orders }: Props) {
             </div>
             <button
               onClick={() => setSelected(null)}
-              className="p-1.5 hover:bg-[#2a2a2a] rounded-lg transition-colors text-[#6b7280] hover:text-white"
+              className="p-2.5 sm:p-1.5 hover:bg-[#2a2a2a] rounded-lg transition-colors text-[#6b7280] hover:text-white"
             >
               <X className="w-4 h-4" />
             </button>

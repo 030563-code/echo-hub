@@ -460,9 +460,9 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                   <SelectValue placeholder="Select Distributor (Optional)" />
                 </SelectTrigger>
                 <SelectContent className="bg-white border-gray-200 text-gray-900">
-                  <SelectItem value="none" className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">No Distributor (Direct Sale)</SelectItem>
+                  <SelectItem value="none" className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">No Distributor (Direct Sale)</SelectItem>
                   {settings.allowed_distributors.map((dist) => (
-                    <SelectItem key={dist} value={dist} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">{dist}</SelectItem>
+                    <SelectItem key={dist} value={dist} className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">{dist}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -486,11 +486,11 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                     <SelectValue placeholder="Decide later" />
                   </SelectTrigger>
                   <SelectContent className="bg-white border-gray-200 text-gray-900">
-                    <SelectItem value={DEPOT_UNDECIDED} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
+                    <SelectItem value={DEPOT_UNDECIDED} className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
                       Decide later
                     </SelectItem>
                     {settings.allowed_depots.map((d) => (
-                      <SelectItem key={d} value={d} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">{d}</SelectItem>
+                      <SelectItem key={d} value={d} className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">{d}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -511,10 +511,10 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                 <SelectContent className="bg-white border-gray-200 text-gray-900">
                   {settings.allowed_quote_templates.length > 0 ? (
                     settings.allowed_quote_templates.map((t) => (
-                      <SelectItem key={t} value={t} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">{t}</SelectItem>
+                      <SelectItem key={t} value={t} className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">{t}</SelectItem>
                     ))
                   ) : (
-                    <SelectItem value="default" className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">Standard Quote Template</SelectItem>
+                    <SelectItem value="default" className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">Standard Quote Template</SelectItem>
                   )}
                 </SelectContent>
               </Select>
@@ -529,7 +529,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                 </SelectTrigger>
                 <SelectContent className="bg-white border-gray-200 text-gray-900">
                   {winProbabilityOptions.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
+                    <SelectItem key={opt.value} value={opt.value} className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
                       {opt.label}
                     </SelectItem>
                   ))}
@@ -542,7 +542,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
             <Button
               onClick={handleSetupComplete}
               disabled={!canProceedFromSetup || setupLoading}
-              className="w-full bg-echo-yellow text-black hover:bg-echo-yellow/90"
+              className="w-full min-h-11 sm:min-h-0 bg-echo-yellow text-black hover:bg-echo-yellow/90"
             >
               {setupLoading ? 'Saving...' : <>Start Quote <ArrowRight className="w-4 h-4 ml-2" /></>}
               {/* setupLoading is retained for future async setup steps */}
@@ -562,7 +562,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
           </span>
           <button
             type="button"
-            className="text-sm font-medium text-gray-900 underline underline-offset-2 hover:text-black"
+            className="inline-flex items-center min-h-11 sm:min-h-0 text-sm font-medium text-gray-900 underline underline-offset-2 hover:text-black"
             onClick={() => setShowSetupDialog(true)}
           >
             Edit setup
@@ -572,30 +572,30 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
 
       {/* Main Quote Builder UI */}
       {!showSetupDialog && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
           {/* Left: Line Items */}
           <div className="lg:col-span-2 space-y-6">
             <Card className="p-6 bg-white border-gray-200">
-              <div className="flex justify-between items-center mb-6">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-0 mb-6">
                 <h2 className="text-lg font-bold text-gray-900">Line Items</h2>
-                <div className="flex gap-2 items-center">
-                  <div className="relative w-[300px]">
-                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
+                <div className="flex flex-wrap lg:flex-nowrap gap-2 items-center">
+                  <div className="relative w-full lg:w-[300px]">
+                    <Search className="absolute left-2 top-3.5 lg:top-2.5 h-4 w-4 text-gray-400" />
                     <Input 
                       placeholder="Search products..." 
                       value={productSearch}
                       onChange={(e) => setProductSearch(e.target.value)}
-                      className="pl-8 h-10 bg-white border-gray-300 text-gray-900"
+                      className="pl-8 h-11 lg:h-10 bg-white border-gray-300 text-gray-900"
                     />
                   </div>
                   <Select value={selectedProduct} onValueChange={setSelectedProduct}>
-                    <SelectTrigger className="w-[250px] bg-white border-gray-300 text-gray-900">
+                    <SelectTrigger className="max-lg:min-w-0 grow basis-0 lg:grow-0 lg:basis-auto lg:w-[250px] bg-white border-gray-300 text-gray-900">
                       <SelectValue placeholder="Select Product..." />
                     </SelectTrigger>
-                    <SelectContent className="bg-white border-gray-200 text-gray-900 max-h-[300px]">
+                    <SelectContent className="bg-white border-gray-200 text-gray-900 max-h-[300px] max-w-[calc(100vw-1rem)]">
                       {filteredProducts.length > 0 ? (
                         filteredProducts.map((p) => (
-                          <SelectItem key={p.id} value={p.id} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
+                          <SelectItem key={p.id} value={p.id} className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
                             {p.properties.name} ({Number(p.properties.price).toLocaleString('en-US', { style: 'currency', currency: 'USD' })})
                           </SelectItem>
                         ))
@@ -604,7 +604,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                       )}
                     </SelectContent>
                   </Select>
-                  <Button onClick={addLineItem} disabled={!selectedProduct} size="icon" className="bg-echo-yellow text-black hover:bg-echo-yellow/90">
+                  <Button onClick={addLineItem} disabled={!selectedProduct} size="icon" className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0 bg-echo-yellow text-black hover:bg-echo-yellow/90">
                     <Plus className="w-4 h-4" />
                   </Button>
                 </div>
@@ -619,24 +619,24 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                 <div className="space-y-4">
                   {lineItems.map((item, index) => (
                     <div key={index} className="p-4 bg-gray-50 rounded-lg border border-gray-100 space-y-3">
-                      <div className="flex items-center gap-4">
-                        <div className="flex-1">
-                          <p className="font-medium text-gray-900">{item.name}</p>
+                      <div className="grid grid-cols-2 gap-3 sm:flex sm:items-center sm:gap-4">
+                        <div className="col-span-2 max-sm:min-w-0 sm:flex-1">
+                          <p className="font-medium text-gray-900 break-words">{item.name}</p>
                           <p className="text-xs text-gray-500">SKU: {item.sku || 'N/A'}</p>
                         </div>
 
-                        <div className="w-24">
+                        <div className="max-sm:min-w-0 sm:w-24">
                           <Label className="text-xs text-gray-500">Qty</Label>
                           <Input
                             type="number"
                             min="1"
                             value={item.quantity}
                             onChange={(e) => updateLineItem(index, 'quantity', parseInt(e.target.value) || 0)}
-                            className="h-8"
+                            className="h-11 sm:h-8"
                           />
                         </div>
 
-                        <div className="w-32">
+                        <div className="max-sm:min-w-0 sm:w-32">
                           <Label className="text-xs text-gray-500">Price</Label>
                           <Input
                             type="number"
@@ -644,11 +644,11 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                             step="0.01"
                             value={item.unitPrice}
                             onChange={(e) => updateLineItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                            className="h-8"
+                            className="h-11 sm:h-8"
                           />
                         </div>
 
-                        <div className="w-24 text-right">
+                        <div className="sm:w-24 text-left sm:text-right">
                           <Label className="text-xs text-gray-500">Total</Label>
                           <p className="font-mono font-medium pt-1">
                             {item.total.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
@@ -658,7 +658,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                          className="justify-self-end self-end sm:self-center min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 text-red-500 hover:text-red-700 hover:bg-red-50"
                           onClick={() => removeLineItem(index)}
                         >
                           <Trash2 className="w-4 h-4" />
@@ -671,7 +671,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                           value={item.description || ''}
                           onChange={(e) => updateLineItemDescription(index, e.target.value)}
                           placeholder="e.g. Green PVC front / black back / acoustic absorbent inside"
-                          className="h-8 text-sm"
+                          className="h-11 sm:h-8 sm:text-sm"
                         />
                       </div>
                     </div>
@@ -692,14 +692,14 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                 value={comments}
                 onChange={(e) => setComments(e.target.value)}
                 placeholder={"e.g. In stock and ready to ship from Baltimore, MD\nFitting Kits optional - 1 hook + 2 bungees\n\nQuote based on:\nPanels only - substrate by others. Recommended scaffolding."}
-                className="text-sm"
+                className="sm:text-sm"
               />
             </Card>
           </div>
 
           {/* Right: Summary & Actions */}
           <div className="space-y-6">
-            <Card className="p-6 bg-white border-gray-200 sticky top-24">
+            <Card className="p-6 bg-white border-gray-200 lg:sticky lg:top-24">
               <h3 className="text-lg font-bold text-gray-900 mb-4">Quote Summary</h3>
               
               <div className="space-y-3 text-sm border-b border-gray-100 pb-4 mb-4">
@@ -731,7 +731,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                   onClick={() => generatePDF(true)}
                   disabled={lineItems.length === 0 || submitting}
                   variant="outline"
-                  className="w-full border-gray-300 text-gray-700 hover:bg-gray-50 font-bold h-12 text-lg"
+                  className="w-full border-gray-300 text-gray-700 hover:bg-gray-50 font-bold min-h-12 sm:h-12 max-sm:text-base"
                 >
                   <Eye className="w-5 h-5 mr-2" />
                   Preview Quote
@@ -740,7 +740,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                 <Button
                   onClick={() => generatePDF(false)}
                   disabled={lineItems.length === 0 || submitting || submitted || hasInvalidLineItems}
-                  className="w-full bg-echo-yellow text-white hover:bg-[#4a5e29] font-bold h-12 text-lg"
+                  className="w-full bg-echo-yellow text-white hover:bg-[#4a5e29] font-bold min-h-12 sm:h-12 max-sm:text-base"
                 >
                   <FileDown className="w-5 h-5 mr-2" />
                   {submitting
@@ -774,7 +774,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                         disabled={retryingAttach}
                         variant="outline"
                         size="sm"
-                        className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                        className="min-h-11 sm:min-h-0 border-gray-300 text-gray-700 hover:bg-gray-50"
                       >
                         {retryingAttach ? 'Retrying...' : 'Retry attach'}
                       </Button>

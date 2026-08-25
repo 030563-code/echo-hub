@@ -8,7 +8,7 @@ import { createPurchaseOrder } from "@/app/actions/purchase-orders/create-po";
 import type { PoProductCatalogItem, PoDeliveryAddress, PoHsCode } from "@/lib/erp-types";
 
 const inputCls =
-  "w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-sm text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026] transition-colors";
+  "w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-base sm:text-sm text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026] transition-colors";
 const selectCls = inputCls;
 
 interface LineRow {
@@ -120,10 +120,10 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes }: Pro
         <p className="text-[#9ca3af] text-sm mt-1">
           <span className="font-mono text-[#FF7026]">{success}</span> is now awaiting EB&nbsp;Group approval.
         </p>
-        <div className="flex items-center justify-center gap-2 mt-5">
+        <div className="flex flex-wrap items-center justify-center gap-2 mt-5">
           <Link
             href="/purchase-orders"
-            className="px-4 py-2 bg-[#FF7026] hover:bg-[#f2641b] text-white text-sm font-medium rounded-lg transition-colors"
+            className="px-4 py-3 sm:py-2 bg-[#FF7026] hover:bg-[#f2641b] text-white text-sm font-medium rounded-lg transition-colors"
           >
             View on the board
           </Link>
@@ -134,7 +134,7 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes }: Pro
               setNotes("");
               setDeliveryAddress("");
             }}
-            className="px-4 py-2 text-sm text-[#9ca3af] hover:text-white border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-lg transition-colors"
+            className="px-4 py-3 sm:py-2 text-sm text-[#9ca3af] hover:text-white border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-lg transition-colors"
           >
             Raise another
           </button>
@@ -288,14 +288,14 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes }: Pro
       <div className="flex items-center justify-end gap-2">
         <Link
           href="/purchase-orders"
-          className="px-4 py-2 text-sm text-[#9ca3af] hover:text-white transition-colors rounded-lg hover:bg-[#2a2a2a]"
+          className="px-4 py-3 sm:py-2 text-sm text-[#9ca3af] hover:text-white transition-colors rounded-lg hover:bg-[#2a2a2a]"
         >
           Cancel
         </Link>
         <button
           type="submit"
           disabled={pending}
-          className="inline-flex items-center gap-2 px-5 py-2 bg-[#FF7026] hover:bg-[#f2641b] disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
+          className="inline-flex items-center gap-2 px-5 py-3 sm:py-2 bg-[#FF7026] hover:bg-[#f2641b] disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
         >
           {pending && <Loader2 className="w-4 h-4 animate-spin" />}
           Raise PO for approval

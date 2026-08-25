@@ -1,13 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { AlertCircle, Filter } from 'lucide-react'
-import Link from 'next/link'
 import { HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
 import { PaginationNav } from '@/components/ui/pagination-nav'
+import { DealList } from '@/components/quotes/deal-list'
 
 interface HubSpotDeal {
   id: string
@@ -64,7 +63,7 @@ export default function AllQuotesClient({ initialDeals, error, probabilityMap, c
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">All Quotes</h1>
           <p className="text-gray-500 text-sm mt-1">View and filter all your deals across pipelines.</p>
@@ -123,63 +122,31 @@ export default function AllQuotesClient({ initialDeals, error, probabilityMap, c
           <p className="text-red-600 text-sm mt-1 ml-8">{error}</p>
         </Card>
       ) : filteredDeals.length > 0 ? (
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-black text-white uppercase text-xs tracking-wider">
-              <tr>
-                <th className="px-6 py-4 font-medium">Deal Name</th>
-                <th className="px-6 py-4 font-medium">Pipeline</th>
-                <th className="px-6 py-4 font-medium">Created Date</th>
-                <th className="px-6 py-4 font-medium text-right">Amount</th>
-                <th className="px-6 py-4 font-medium text-center">Stage</th>
-                <th className="px-6 py-4 font-medium text-right">Probability</th>
-                <th className="px-6 py-4 font-medium text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filteredDeals.map((deal) => (
-                <tr key={deal.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-4 font-medium text-gray-900">
-                    {deal.properties.dealname}
-                  </td>
-                  <td className="px-6 py-4 text-gray-500 text-xs">
-                    {getPipelineLabel(deal.properties.pipeline)}
-                  </td>
-                  <td className="px-6 py-4 text-gray-500">
-                    {new Date(deal.properties.createdate).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'short',
-                      day: 'numeric'
-                    })}
-                  </td>
-                  <td className="px-6 py-4 text-right font-mono text-gray-700">
-                    {deal.properties.amount 
-                      ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(deal.properties.amount))
-                      : '-'
-                    }
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200">
-                      {getStageLabel(deal.properties.pipeline, deal.properties.dealstage)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <span className="text-xs text-gray-500 font-mono">
-                      {probabilityMap[deal.id] != null ? `${probabilityMap[deal.id]}%` : '—'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <Link href={`/quotes/requests/${deal.id}`}>
-                      <Button variant="outline" size="sm" className="text-xs h-8">
-                        View Details
-                      </Button>
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DealList
+          dateHeader="Created Date"
+          badgeHeader="Stage"
+          pipelineHeader="Pipeline"
+          probabilityHeader="Probability"
+          rows={filteredDeals.map((deal) => ({
+            id: deal.id,
+            name: deal.properties.dealname,
+            pipelineLabel: getPipelineLabel(deal.properties.pipeline),
+            dateValue: new Date(deal.properties.createdate).toLocaleDateString('en-US', {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric'
+            }),
+            amountFormatted: deal.properties.amount
+              ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(deal.properties.amount))
+              : '-',
+            badge: {
+              text: getStageLabel(deal.properties.pipeline, deal.properties.dealstage),
+              className: 'bg-gray-100 text-gray-800 border-gray-200',
+            },
+            probabilityLabel: probabilityMap[deal.id] != null ? `${probabilityMap[deal.id]}%` : '\u2014',
+            action: { href: `/quotes/requests/${deal.id}`, label: 'View Details' },
+          }))}
+        />
       ) : (
         <div className="text-center py-12 bg-white border border-gray-200 rounded-lg border-dashed">
           <div className="mx-auto h-12 w-12 text-gray-300 mb-3">

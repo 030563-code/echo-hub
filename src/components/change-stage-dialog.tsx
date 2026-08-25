@@ -84,7 +84,7 @@ export default function ChangeStageDialog({ dealId, currentStageId, pipelineId }
 
   return (
     <>
-      <Button variant="outline" size="sm" onClick={() => setIsOpen(true)} className="border-gray-300 text-gray-700 hover:bg-gray-50">
+      <Button variant="outline" size="sm" onClick={() => setIsOpen(true)} className="w-full sm:w-auto min-h-11 sm:min-h-0 border-gray-300 text-gray-700 hover:bg-gray-50">
         <ArrowRightLeft className="w-4 h-4 mr-2" />
         Change Stage
       </Button>
@@ -99,7 +99,7 @@ export default function ChangeStageDialog({ dealId, currentStageId, pipelineId }
             <div>
               <label className="text-sm font-medium text-gray-700 mb-2 block">Select New Stage</label>
               <Select value={selectedStage} onValueChange={handleStageChange}>
-                <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                <SelectTrigger className="h-11 sm:h-10 bg-white border-gray-300 text-gray-900">
                   <SelectValue placeholder="Select stage..." />
                 </SelectTrigger>
                 <SelectContent className="bg-white border-gray-200 text-gray-900">
@@ -132,7 +132,7 @@ export default function ChangeStageDialog({ dealId, currentStageId, pipelineId }
                   <p className="text-sm text-red-600">Unable to load depots. Please refresh and try again.</p>
                 ) : (
                   <Select value={depotForAccepted} onValueChange={setDepotForAccepted}>
-                    <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                    <SelectTrigger className="h-11 sm:h-10 bg-white border-gray-300 text-gray-900">
                       <SelectValue placeholder="Choose depot..." />
                     </SelectTrigger>
                     <SelectContent className="bg-white border-gray-200 text-gray-900">
@@ -147,11 +147,11 @@ export default function ChangeStageDialog({ dealId, currentStageId, pipelineId }
             )}
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsOpen(false)} className="border-gray-300 text-gray-700">
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setIsOpen(false)} className="w-full sm:w-auto min-h-11 sm:min-h-0 border-gray-300 text-gray-700">
               Cancel
             </Button>
-            <Button onClick={handleUpdateStage} disabled={loading || !canUpdate || (isQuoteAcceptedStage && depotsError)} className="bg-echo-yellow text-black hover:bg-echo-yellow/90">
+            <Button onClick={handleUpdateStage} disabled={loading || !canUpdate || (isQuoteAcceptedStage && depotsError)} className="w-full sm:w-auto min-h-11 sm:min-h-0 bg-echo-yellow text-black hover:bg-echo-yellow/90">
               {loading ? 'Updating...' : isQuoteAcceptedStage && depotsError ? 'Depot Unavailable' : 'Update Stage'}
             </Button>
           </DialogFooter>

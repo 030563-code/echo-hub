@@ -140,10 +140,10 @@ export default async function QuoteRequestDetailsPage(props: { params: Promise<{
       </div>
 
       {/* Main Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-0">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">{deal.properties.dealname || 'Untitled Deal'}</h1>
-          <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
+          <h1 className="text-3xl font-bold text-gray-900 break-words">{deal.properties.dealname || 'Untitled Deal'}</h1>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm text-gray-500">
             <span className="flex items-center gap-1">
               <Calendar className="w-4 h-4" />
               Created: {formatDate(deal.properties.createdate)}
@@ -154,7 +154,7 @@ export default async function QuoteRequestDetailsPage(props: { params: Promise<{
             </span>
           </div>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row">
            {canChangeStage && (
              <ChangeStageDialog
                dealId={deal.id}
@@ -167,15 +167,16 @@ export default async function QuoteRequestDetailsPage(props: { params: Promise<{
                href={`https://app.hubspot.com/contacts/${process.env.NEXT_PUBLIC_HUBSPOT_PORTAL_ID}/deal/${deal.id}`}
                target="_blank"
                rel="noopener noreferrer"
+               className="w-full sm:w-auto"
              >
-               <Button variant="outline" className="border-gray-300">
+               <Button variant="outline" className="w-full sm:w-auto min-h-11 sm:min-h-0 border-gray-300">
                  Edit in HubSpot
                </Button>
              </a>
            )}
            {isQuoteRequest && (
-             <Link href={`/quotes/create/${deal.id}`}>
-               <Button className="bg-echo-yellow text-black hover:bg-echo-yellow/90">
+             <Link href={`/quotes/create/${deal.id}`} className="w-full sm:w-auto">
+               <Button className="w-full sm:w-auto min-h-11 sm:min-h-0 bg-echo-yellow text-black hover:bg-echo-yellow/90">
                  Generate Quote
                </Button>
              </Link>
@@ -188,7 +189,7 @@ export default async function QuoteRequestDetailsPage(props: { params: Promise<{
         <div className="md:col-span-2 space-y-6">
           <Card className="p-6 bg-white border-gray-200">
             <h3 className="text-lg font-semibold mb-4 border-b border-gray-100 pb-2 text-gray-900">Deal Information</h3>
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div>
                 <label className="text-xs uppercase text-gray-500 font-bold">Amount</label>
                 <div className="flex items-center gap-2 mt-1 text-xl font-mono font-medium text-gray-900">
@@ -210,7 +211,7 @@ export default async function QuoteRequestDetailsPage(props: { params: Promise<{
                   </span>
                 </div>
               </div>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <label className="text-xs uppercase text-gray-500 font-bold">Description</label>
                 <p className="mt-1 text-gray-700 whitespace-pre-wrap">
                   {deal.properties.description || 'No description provided.'}
@@ -229,12 +230,12 @@ export default async function QuoteRequestDetailsPage(props: { params: Promise<{
             {lineItems.length > 0 ? (
               <div className="space-y-4">
                 {lineItems.map((item) => (
-                  <div key={item.id} className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0">
-                    <div>
-                      <p className="font-medium text-gray-900">{item.properties.name || 'Unnamed item'}</p>
+                  <div key={item.id} className="flex justify-between items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+                    <div className="min-w-0">
+                      <p className="font-medium text-gray-900 break-words">{item.properties.name || 'Unnamed item'}</p>
                       <p className="text-xs text-gray-500">Qty: {item.properties.quantity || '0'}</p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right shrink-0">
                       <p className="font-mono font-medium text-gray-900">
                         {formatMoney(item.properties.amount)}
                       </p>

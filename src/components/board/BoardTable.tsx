@@ -57,13 +57,13 @@ export default function BoardTable<T>({
           value={globalFilter}
           onChange={(e) => setGlobalFilter(e.target.value)}
           placeholder={searchPlaceholder}
-          className="w-full pl-8 pr-3 py-2 bg-[#1e1e1e] border border-[#2a2a2a] rounded-lg text-sm text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026]/50 transition-colors"
+          className="w-full pl-8 pr-3 py-2 bg-[#1e1e1e] border border-[#2a2a2a] rounded-lg text-base sm:text-sm text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026]/50 transition-colors"
         />
       </div>
 
       {/* Table */}
       <div className="overflow-auto rounded-lg border border-[#2a2a2a]">
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[640px] text-sm">
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className="border-b border-[#2a2a2a] bg-[#161616]">
@@ -139,14 +139,14 @@ export default function BoardTable<T>({
             <button
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
-              className="p-1.5 rounded hover:bg-[#1e1e1e] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="p-2.5 sm:p-1.5 rounded hover:bg-[#1e1e1e] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
             <button
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
-              className="p-1.5 rounded hover:bg-[#1e1e1e] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="p-2.5 sm:p-1.5 rounded hover:bg-[#1e1e1e] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronRight className="w-4 h-4" />
             </button>

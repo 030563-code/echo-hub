@@ -52,7 +52,7 @@ export default function WarehouseClient({ initialStock }: { initialStock: Wareho
           </div>
 
           <div className="overflow-auto rounded-lg border border-[#2a2a2a]">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[480px] text-sm">
               <thead>
                 <tr className="border-b border-[#2a2a2a] bg-[#161616]">
                   {["SKU", "Product Name", "In Stock", ""].map((h) => (
@@ -83,7 +83,7 @@ export default function WarehouseClient({ initialStock }: { initialStock: Wareho
                             if (e.key === "Enter") saveEdit(item);
                             if (e.key === "Escape") setEditingId(null);
                           }}
-                          className="w-20 px-2 py-1 bg-[#2a2a2a] border border-[#FF7026]/50 rounded text-sm text-white focus:outline-none"
+                          className="w-20 px-2 py-1 bg-[#2a2a2a] border border-[#FF7026]/50 rounded text-base sm:text-sm text-white focus:outline-none"
                         />
                       ) : (
                         <span className={cn("text-sm font-bold tabular-nums", stockColor(item.quantity_on_hand))}>
@@ -94,17 +94,17 @@ export default function WarehouseClient({ initialStock }: { initialStock: Wareho
                     <td className="px-4 py-3">
                       {editingId === item.id ? (
                         <div className="flex items-center gap-1">
-                          <button onClick={() => saveEdit(item)} className="p-1 text-emerald-400 hover:text-emerald-300 transition-colors">
+                          <button onClick={() => saveEdit(item)} className="p-3 sm:p-1 text-emerald-400 hover:text-emerald-300 transition-colors">
                             <Check className="w-3.5 h-3.5" />
                           </button>
-                          <button onClick={() => setEditingId(null)} className="p-1 text-[#6b7280] hover:text-white transition-colors">
+                          <button onClick={() => setEditingId(null)} className="p-3 sm:p-1 text-[#6b7280] hover:text-white transition-colors">
                             <X className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       ) : (
                         <button
                           onClick={() => { setEditingId(item.id); setEditValue(String(item.quantity_on_hand)); }}
-                          className="p-1 text-[#4b5563] hover:text-[#FF7026] transition-colors opacity-0 group-hover:opacity-100"
+                          className="p-3 sm:p-1 text-[#4b5563] hover:text-[#FF7026] transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>

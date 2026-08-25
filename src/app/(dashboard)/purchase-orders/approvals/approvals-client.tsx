@@ -9,7 +9,7 @@ import { decidePurchaseOrder } from "@/app/actions/purchase-orders/decide-po";
 import type { PurchaseOrder } from "@/lib/erp-types";
 
 const inputCls =
-  "w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-sm text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026] transition-colors";
+  "w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-base sm:text-sm text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026] transition-colors";
 
 export default function ApprovalsClient({ orders }: { orders: PurchaseOrder[] }) {
   const router = useRouter();
@@ -91,7 +91,7 @@ export default function ApprovalsClient({ orders }: { orders: PurchaseOrder[] })
         const busy = busyId === po.id;
         return (
           <div key={po.id} className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-5">
-            <div className="flex items-start justify-between gap-4 mb-3">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-3">
               <div>
                 <p className="font-mono text-[#FF7026] font-medium">{po.po_number}</p>
                 <p className="text-xs text-[#6b7280] mt-0.5">
@@ -104,7 +104,7 @@ export default function ApprovalsClient({ orders }: { orders: PurchaseOrder[] })
                 <button
                   onClick={() => setRejectTarget(po)}
                   disabled={busy}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-300 hover:bg-red-900/20 border border-red-900/40 rounded-lg transition-colors disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 px-3 py-3 sm:py-1.5 text-sm text-red-300 hover:bg-red-900/20 border border-red-900/40 rounded-lg transition-colors disabled:opacity-50"
                 >
                   <X className="w-3.5 h-3.5" />
                   Reject
@@ -112,7 +112,7 @@ export default function ApprovalsClient({ orders }: { orders: PurchaseOrder[] })
                 <button
                   onClick={() => approve(po)}
                   disabled={busy}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-white bg-green-700/80 hover:bg-green-600 rounded-lg transition-colors disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 px-3 py-3 sm:py-1.5 text-sm text-white bg-green-700/80 hover:bg-green-600 rounded-lg transition-colors disabled:opacity-50"
                 >
                   {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                   Approve
@@ -121,8 +121,8 @@ export default function ApprovalsClient({ orders }: { orders: PurchaseOrder[] })
             </div>
 
             {/* Lines */}
-            <div className="rounded-lg border border-[#222] overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="rounded-lg border border-[#222] overflow-x-auto">
+              <table className="w-full min-w-[480px] text-sm">
                 <thead>
                   <tr className="bg-[#1a1a1a] text-[10px] uppercase tracking-wider text-[#4b5563]">
                     <th className="text-left font-medium px-3 py-1.5">Product</th>
@@ -171,7 +171,7 @@ export default function ApprovalsClient({ orders }: { orders: PurchaseOrder[] })
       <Dialog.Root open={rejectTarget !== null} onOpenChange={(o) => !o && setRejectTarget(null)}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md bg-[#141414] border border-[#2a2a2a] rounded-2xl p-6 shadow-2xl">
+          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[calc(100%-2rem)] sm:w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto bg-[#141414] border border-[#2a2a2a] rounded-2xl p-6 shadow-2xl">
             <Dialog.Title className="text-lg font-semibold text-white" style={{ fontFamily: "Varela Round, sans-serif" }}>
               Reject {rejectTarget?.po_number}
             </Dialog.Title>
@@ -186,13 +186,13 @@ export default function ApprovalsClient({ orders }: { orders: PurchaseOrder[] })
               className={inputCls + " resize-none"}
             />
             <div className="flex justify-end gap-2 mt-4">
-              <Dialog.Close className="px-4 py-2 text-sm text-[#9ca3af] hover:text-white transition-colors rounded-lg hover:bg-[#2a2a2a]">
+              <Dialog.Close className="px-4 py-3 sm:py-2 text-sm text-[#9ca3af] hover:text-white transition-colors rounded-lg hover:bg-[#2a2a2a]">
                 Cancel
               </Dialog.Close>
               <button
                 onClick={confirmReject}
                 disabled={busyId === rejectTarget?.id}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-red-700/80 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60"
+                className="inline-flex items-center gap-2 px-4 py-3 sm:py-2 bg-red-700/80 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60"
               >
                 {busyId === rejectTarget?.id && <Loader2 className="w-4 h-4 animate-spin" />}
                 Reject PO

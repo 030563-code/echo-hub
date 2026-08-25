@@ -145,7 +145,7 @@ export function CreateCompanyDialog({ initialName, inFlightRef, onCreated, restr
         variant="outline"
         size="sm"
         onClick={() => handleOpenChange(true)}
-        className="border-gray-300 text-gray-700 hover:bg-gray-50"
+        className="w-full sm:w-auto py-3 sm:py-2 max-sm:text-sm border-gray-300 text-gray-700 hover:bg-gray-50"
       >
         <Plus className="w-4 h-4 mr-1.5" />
         Create new company
@@ -200,7 +200,7 @@ export function CreateCompanyDialog({ initialName, inFlightRef, onCreated, restr
                       <button
                         type="button"
                         onClick={() => handleUseExisting(c)}
-                        className="w-full text-left rounded border border-amber-300 bg-white px-3 py-2 hover:bg-amber-100"
+                        className="w-full min-h-11 break-words text-left rounded border border-amber-300 bg-white px-3 py-2 hover:bg-amber-100"
                       >
                         <span className="font-semibold text-gray-900">{c.name}</span>
                         <span className="text-gray-600">{c.domain ? ` — ${c.domain}` : ' — no domain'}</span>
@@ -213,7 +213,7 @@ export function CreateCompanyDialog({ initialName, inFlightRef, onCreated, restr
             )}
 
             {isValid && !nameConflicts && (
-              <div className="rounded-md border border-echo-yellow/40 bg-echo-yellow/5 p-3 text-sm text-gray-700">
+              <div className="rounded-md border border-echo-yellow/40 bg-echo-yellow/5 p-3 text-sm text-gray-700 break-words">
                 You are about to add this company to HubSpot:{' '}
                 <span className="font-semibold text-gray-900">
                   {trimmedName} — {trimmedDomain}
@@ -224,13 +224,13 @@ export function CreateCompanyDialog({ initialName, inFlightRef, onCreated, restr
             )}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button
               type="button"
               variant="outline"
               onClick={() => handleOpenChange(false)}
               disabled={pending}
-              className="border-gray-300 text-gray-700 disabled:opacity-60"
+              className="py-3 sm:py-2.5 border-gray-300 text-gray-700 disabled:opacity-60"
             >
               Cancel
             </Button>
@@ -238,7 +238,7 @@ export function CreateCompanyDialog({ initialName, inFlightRef, onCreated, restr
               type="button"
               onClick={nameConflicts ? () => runCreate(true) : handleConfirm}
               disabled={pending}
-              className="bg-echo-yellow text-black hover:bg-echo-yellow/90 font-bold disabled:opacity-60"
+              className="py-3 sm:py-2.5 bg-echo-yellow text-black hover:bg-echo-yellow/90 font-bold disabled:opacity-60"
             >
               {pending
                 ? 'Creating…'
@@ -346,7 +346,7 @@ export function CreateContactDialog({ companyId, companyName, inFlightRef, onCre
         variant="outline"
         size="sm"
         onClick={() => handleOpenChange(true)}
-        className="border-gray-300 text-gray-700 hover:bg-gray-50"
+        className="w-full sm:w-auto py-3 sm:py-2 max-sm:text-sm border-gray-300 text-gray-700 hover:bg-gray-50"
       >
         <Plus className="w-4 h-4 mr-1.5" />
         Add new contact to {companyName}
@@ -359,7 +359,7 @@ export function CreateContactDialog({ companyId, companyName, inFlightRef, onCre
           </DialogHeader>
 
           <div className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-gray-700">First Name *</Label>
                 <Input
@@ -406,7 +406,7 @@ export function CreateContactDialog({ companyId, companyName, inFlightRef, onCre
             </div>
 
             {isValid && (
-              <div className="rounded-md border border-echo-yellow/40 bg-echo-yellow/5 p-3 text-sm text-gray-700">
+              <div className="rounded-md border border-echo-yellow/40 bg-echo-yellow/5 p-3 text-sm text-gray-700 break-words">
                 You are about to add this contact to HubSpot:{' '}
                 <span className="font-semibold text-gray-900">
                   {trimmedFirst} {trimmedLast} — {trimmedEmail}
@@ -418,13 +418,13 @@ export function CreateContactDialog({ companyId, companyName, inFlightRef, onCre
             )}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button
               type="button"
               variant="outline"
               onClick={() => handleOpenChange(false)}
               disabled={pending}
-              className="border-gray-300 text-gray-700 disabled:opacity-60"
+              className="py-3 sm:py-2.5 border-gray-300 text-gray-700 disabled:opacity-60"
             >
               Cancel
             </Button>
@@ -432,7 +432,7 @@ export function CreateContactDialog({ companyId, companyName, inFlightRef, onCre
               type="button"
               onClick={handleConfirm}
               disabled={pending}
-              className="bg-echo-yellow text-black hover:bg-echo-yellow/90 font-bold disabled:opacity-60"
+              className="py-3 sm:py-2.5 bg-echo-yellow text-black hover:bg-echo-yellow/90 font-bold disabled:opacity-60"
             >
               {pending ? 'Creating…' : 'Create contact'}
             </Button>

@@ -24,9 +24,14 @@ export function Shell({ capabilities, displayName, children }: ShellProps) {
   const pathname = usePathname()
 
   // Navigating (tapping a nav link, or any redirect) closes the drawer.
-  useEffect(() => {
-    setOpen(false)
-  }, [pathname])
+  // State is adjusted during render rather than in an effect: the React
+  // Compiler flags a synchronous setState-in-effect, and this is the
+  // documented "storing information from previous renders" pattern.
+  const [prevPathname, setPrevPathname] = useState(pathname)
+  if (prevPathname !== pathname) {
+    setPrevPathname(pathname)
+    if (open) setOpen(false)
+  }
 
   // While the drawer is open the page behind it must not scroll, and Escape
   // should close it, same as any overlay.

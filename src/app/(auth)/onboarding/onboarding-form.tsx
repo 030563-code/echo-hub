@@ -90,7 +90,7 @@ export default function OnboardingForm({ defaultDisplayName, suggestedPipelineId
             Your Region <span className="text-gray-500 font-normal">(sales users only)</span>
           </label>
           <Select value={pipelineId} onValueChange={setPipelineId}>
-            <SelectTrigger className="border-gray-600">
+            <SelectTrigger className="h-11 sm:h-10 border-gray-600">
               <SelectValue placeholder="Select your sales region (optional)..." />
             </SelectTrigger>
             <SelectContent>
@@ -139,7 +139,7 @@ export default function OnboardingForm({ defaultDisplayName, suggestedPipelineId
           className="border-gray-600 focus:border-echo-orange"
         />
 
-        <Button type="submit" variant="primary" className="w-full" disabled={submitting}>
+        <Button type="submit" variant="primary" className="w-full min-h-11 sm:min-h-0" disabled={submitting}>
           {submitting ? 'Saving...' : 'Complete Setup'}
         </Button>
       </form>

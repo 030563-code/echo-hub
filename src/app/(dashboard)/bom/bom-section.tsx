@@ -8,7 +8,7 @@ import { updateBomComponentDetail } from "@/app/actions/bom/update-bom";
 import type { BomMasterRow, SroPoBom, SroPoBomLine } from "@/lib/erp-types";
 
 const inputCls =
-  "w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-sm text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026] transition-colors";
+  "w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-base sm:text-sm text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026] transition-colors";
 
 const eur = (v: number | null | undefined) =>
   v == null ? "—" : `€${v.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -36,7 +36,7 @@ export default function BomSection({ orders, ordersError, master, masterWeek, ma
             key={k}
             onClick={() => setTab(k)}
             className={
-              "px-4 py-1.5 rounded-md text-xs font-medium transition-colors " +
+              "px-4 py-2.5 sm:py-1.5 rounded-md text-xs font-medium transition-colors " +
               (tab === k ? "bg-[#2a2a2a] text-[#e5e5e5]" : "text-[#6b7280] hover:text-[#9ca3af]")
             }
           >
@@ -82,7 +82,7 @@ function OrderCard({ po }: { po: SroPoBom }) {
     <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl overflow-hidden">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between gap-4 px-5 py-4 text-left hover:bg-[#1a1a1a] transition-colors"
+        className="w-full flex flex-col items-start sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4 px-5 py-4 text-left hover:bg-[#1a1a1a] transition-colors"
       >
         <div className="flex items-center gap-3 min-w-0">
           {open ? (
@@ -98,7 +98,7 @@ function OrderCard({ po }: { po: SroPoBom }) {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-5 flex-shrink-0 text-right">
+        <div className="flex items-center gap-5 flex-shrink-0 pl-7 sm:pl-0 text-left sm:text-right">
           <div>
             <p className="text-[10px] uppercase tracking-wider text-[#4b5563]">Bamida draft PO</p>
             <p className="text-sm font-bold tabular-nums text-[#FF7026]">{eur(po.bamida_total)}</p>
@@ -125,7 +125,7 @@ function LineExplosion({ line }: { line: SroPoBomLine }) {
   return (
     <div className="px-5 py-4">
       <div className="flex items-center justify-between gap-3 mb-2">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-xs text-[#e5e5e5]">{line.sku}</span>
           {line.product_name && <span className="text-xs text-[#6b7280]">{line.product_name}</span>}
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#2a2a2a] text-[#9ca3af]">×{line.quantity}</span>
@@ -143,8 +143,8 @@ function LineExplosion({ line }: { line: SroPoBomLine }) {
 
       {line.has_bom ? (
         <>
-          <div className="rounded-lg border border-[#222] overflow-hidden">
-            <table className="w-full text-xs">
+          <div className="rounded-lg border border-[#222] overflow-x-auto">
+            <table className="w-full min-w-[560px] text-xs">
               <thead>
                 <tr className="bg-[#1a1a1a] text-[10px] uppercase tracking-wider text-[#4b5563]">
                   <th className="text-left font-medium px-3 py-1.5">Component</th>
@@ -216,8 +216,8 @@ function MasterTab({
 
   return (
     <>
-      <div className="rounded-xl border border-[#2a2a2a] overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="rounded-xl border border-[#2a2a2a] overflow-x-auto">
+        <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="bg-[#1a1a1a] text-[10px] uppercase tracking-wider text-[#4b5563]">
               <th className="text-left font-medium px-4 py-2">Model</th>
@@ -242,7 +242,7 @@ function MasterTab({
                   <td className="px-4 py-2 text-right">
                     <button
                       onClick={() => setEditing(r)}
-                      className="inline-flex items-center gap-1 text-xs text-[#9ca3af] hover:text-[#FF7026] transition-colors"
+                      className="inline-flex items-center gap-1 p-2.5 sm:p-0 text-xs text-[#9ca3af] hover:text-[#FF7026] transition-colors"
                     >
                       <Pencil className="w-3 h-3" /> Edit
                     </button>
@@ -358,12 +358,12 @@ function EditModal({ row, onClose }: { row: BomMasterRow; onClose: () => void })
     <Dialog.Root open onOpenChange={(o) => !o && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-[#141414] border border-[#2a2a2a] rounded-2xl p-6 shadow-2xl">
+        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[calc(100%-2rem)] sm:w-full max-w-3xl max-h-[calc(100dvh-2rem)] sm:max-h-[90vh] overflow-y-auto bg-[#141414] border border-[#2a2a2a] rounded-2xl p-6 shadow-2xl">
           <div className="flex items-center justify-between mb-1">
             <Dialog.Title className="text-lg font-semibold text-white" style={{ fontFamily: "Varela Round, sans-serif" }}>
               Edit BOM — <span className="font-mono text-[#FF7026]">{row.model_code}</span>
             </Dialog.Title>
-            <Dialog.Close className="p-1.5 text-[#4b5563] hover:text-white transition-colors rounded-lg hover:bg-[#2a2a2a]">
+            <Dialog.Close className="p-2.5 sm:p-1.5 text-[#4b5563] hover:text-white transition-colors rounded-lg hover:bg-[#2a2a2a]">
               <X className="w-4 h-4" />
             </Dialog.Close>
           </div>
@@ -394,9 +394,9 @@ function EditModal({ row, onClose }: { row: BomMasterRow; onClose: () => void })
               <div key={i} className="grid grid-cols-2 sm:grid-cols-[1fr_1.4fr_70px_90px_70px_50px_28px] gap-2">
                 <input value={c.code} onChange={(e) => setComp(i, { code: e.target.value })} placeholder="code" className={inputCls + " font-mono"} />
                 <input value={c.desc} onChange={(e) => setComp(i, { desc: e.target.value })} placeholder="description" className={inputCls} />
-                <input value={c.qty} onChange={(e) => setComp(i, { qty: e.target.value })} inputMode="decimal" className={inputCls + " tabular-nums"} />
-                <input value={c.unit_cost_eur} onChange={(e) => setComp(i, { unit_cost_eur: e.target.value })} inputMode="decimal" className={inputCls + " tabular-nums"} />
-                <input value={c.currency} onChange={(e) => setComp(i, { currency: e.target.value })} className={inputCls} />
+                <input value={c.qty} onChange={(e) => setComp(i, { qty: e.target.value })} inputMode="decimal" placeholder="qty" aria-label="Quantity" className={inputCls + " tabular-nums"} />
+                <input value={c.unit_cost_eur} onChange={(e) => setComp(i, { unit_cost_eur: e.target.value })} inputMode="decimal" placeholder="unit €" aria-label="Unit cost (EUR)" className={inputCls + " tabular-nums"} />
+                <input value={c.currency} onChange={(e) => setComp(i, { currency: e.target.value })} placeholder="cur" aria-label="Currency" className={inputCls} />
                 <label className="flex items-center justify-center">
                   <input type="checkbox" checked={c.dutiable} onChange={(e) => setComp(i, { dutiable: e.target.checked })} className="accent-[#FF7026]" />
                 </label>
@@ -430,13 +430,13 @@ function EditModal({ row, onClose }: { row: BomMasterRow; onClose: () => void })
           )}
 
           <div className="flex justify-end gap-2 mt-5">
-            <Dialog.Close className="px-4 py-2 text-sm text-[#9ca3af] hover:text-white transition-colors rounded-lg hover:bg-[#2a2a2a]">
+            <Dialog.Close className="px-4 py-3 sm:py-2 text-sm text-[#9ca3af] hover:text-white transition-colors rounded-lg hover:bg-[#2a2a2a]">
               Cancel
             </Dialog.Close>
             <button
               onClick={save}
               disabled={pending}
-              className="inline-flex items-center gap-2 px-5 py-2 bg-[#FF7026] hover:bg-[#f2641b] disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
+              className="inline-flex items-center gap-2 px-5 py-3 sm:py-2 bg-[#FF7026] hover:bg-[#f2641b] disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
             >
               {pending && <Loader2 className="w-4 h-4 animate-spin" />}
               Save to master

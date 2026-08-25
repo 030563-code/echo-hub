@@ -52,14 +52,14 @@ export function PaginationNav({
     <div className="flex items-center justify-between pt-4">
       <div className="flex items-center gap-2">
         {isFirstPage ? (
-          <span className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-400 border border-gray-200 rounded cursor-not-allowed select-none">
+          <span className="inline-flex items-center gap-1 min-h-11 sm:min-h-0 px-3 py-1.5 text-sm font-medium text-gray-400 border border-gray-200 rounded cursor-not-allowed select-none">
             <ChevronLeft className="w-4 h-4" />
             Previous
           </span>
         ) : (
           <Link
             href={prevHref}
-            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+            className="inline-flex items-center gap-1 min-h-11 sm:min-h-0 px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-300 rounded hover:bg-gray-50 transition-colors"
           >
             <ChevronLeft className="w-4 h-4" />
             Previous
@@ -74,14 +74,14 @@ export function PaginationNav({
         {hasNextPage ? (
           <Link
             href={nextHref}
-            className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+            className="inline-flex items-center gap-1 min-h-11 sm:min-h-0 px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-300 rounded hover:bg-gray-50 transition-colors"
           >
             Next
             <ChevronRight className="w-4 h-4" />
             <LinkSpinner />
           </Link>
         ) : (
-          <span className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-400 border border-gray-200 rounded cursor-not-allowed select-none">
+          <span className="inline-flex items-center gap-1 min-h-11 sm:min-h-0 px-3 py-1.5 text-sm font-medium text-gray-400 border border-gray-200 rounded cursor-not-allowed select-none">
             Next
             <ChevronRight className="w-4 h-4" />
           </span>

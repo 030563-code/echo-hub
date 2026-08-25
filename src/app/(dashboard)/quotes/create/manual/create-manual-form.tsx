@@ -391,24 +391,24 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
   return (
     <div className="max-w-3xl mx-auto space-y-8">
       {/* Progress Steps */}
-      <div className="flex items-center justify-between px-10">
+      <div className="flex items-center justify-between px-2 sm:px-10">
         <div className={`flex flex-col items-center ${step >= 1 ? 'text-echo-yellow' : 'text-gray-400'}`}>
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 font-bold mb-2 ${step >= 1 ? 'border-echo-yellow bg-black text-echo-yellow' : 'border-gray-300 bg-white text-gray-400'}`}>1</div>
+          <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center border-2 text-sm sm:text-base font-bold mb-2 ${step >= 1 ? 'border-echo-yellow bg-black text-echo-yellow' : 'border-gray-300 bg-white text-gray-400'}`}>1</div>
           <span className="text-xs font-medium uppercase tracking-wider">Company</span>
         </div>
-        <div className={`flex-1 h-0.5 mx-4 ${step >= 2 ? 'bg-echo-yellow' : 'bg-gray-200'}`}></div>
+        <div className={`flex-1 h-0.5 mx-2 sm:mx-4 ${step >= 2 ? 'bg-echo-yellow' : 'bg-gray-200'}`}></div>
         <div className={`flex flex-col items-center ${step >= 2 ? 'text-echo-yellow' : 'text-gray-400'}`}>
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 font-bold mb-2 ${step >= 2 ? 'border-echo-yellow bg-black text-echo-yellow' : 'border-gray-300 bg-white text-gray-400'}`}>2</div>
+          <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center border-2 text-sm sm:text-base font-bold mb-2 ${step >= 2 ? 'border-echo-yellow bg-black text-echo-yellow' : 'border-gray-300 bg-white text-gray-400'}`}>2</div>
           <span className="text-xs font-medium uppercase tracking-wider">Contact</span>
         </div>
-        <div className={`flex-1 h-0.5 mx-4 ${step >= 3 ? 'bg-echo-yellow' : 'bg-gray-200'}`}></div>
+        <div className={`flex-1 h-0.5 mx-2 sm:mx-4 ${step >= 3 ? 'bg-echo-yellow' : 'bg-gray-200'}`}></div>
         <div className={`flex flex-col items-center ${step >= 3 ? 'text-echo-yellow' : 'text-gray-400'}`}>
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 font-bold mb-2 ${step >= 3 ? 'border-echo-yellow bg-black text-echo-yellow' : 'border-gray-300 bg-white text-gray-400'}`}>3</div>
+          <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center border-2 text-sm sm:text-base font-bold mb-2 ${step >= 3 ? 'border-echo-yellow bg-black text-echo-yellow' : 'border-gray-300 bg-white text-gray-400'}`}>3</div>
           <span className="text-xs font-medium uppercase tracking-wider">Deal Details</span>
         </div>
       </div>
 
-      <Card className="p-8 bg-white border-gray-200 shadow-sm">
+      <Card className="p-8 max-sm:p-4 bg-white border-gray-200 shadow-sm">
         {/* Step 1: Company Information */}
         {step === 1 && (
           <div className="space-y-6">
@@ -466,7 +466,7 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
                         className="w-full text-left px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0"
                         onClick={() => handleSelectCompany(company)}
                       >
-                        <p className="font-medium text-gray-900">{company.name}</p>
+                        <p className="font-medium text-gray-900 max-sm:truncate">{company.name}</p>
                         <div className="flex items-center gap-2 mt-1">
                           <span className={`text-xs px-2 py-0.5 rounded-full ${company.source === 'supabase' ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'}`}>
                             {company.source === 'supabase' ? 'Account Registry' : 'HubSpot'}
@@ -492,7 +492,7 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
 
               {selectedCompany ? (
                 <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 flex items-center justify-between gap-3">
-                  <span>
+                  <span className="min-w-0 break-words">
                     Selected: <span className="font-semibold">{companyName}</span>
                   </span>
                   <Button
@@ -539,7 +539,7 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
             ) : (
               <div className="space-y-4">
                 {selectedContact && (
-                  <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+                  <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 break-words">
                     Selected: <span className="font-semibold">{contactName}</span>
                     {contactEmail ? ` — ${contactEmail}` : ''}
                   </div>
@@ -627,15 +627,15 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
                           key={contact.id}
                           type="button"
                           onClick={() => handleSelectContactRow(contact)}
-                          className={`w-full text-left px-4 py-3 flex items-start justify-between gap-3 transition-colors ${
+                          className={`w-full min-h-11 text-left px-4 py-3 flex items-start justify-between gap-3 transition-colors ${
                             isSelected ? 'bg-echo-yellow/10 ring-1 ring-inset ring-echo-yellow' : 'hover:bg-gray-50'
                           }`}
                         >
-                          <div>
-                            <p className="font-medium text-gray-900">{fullName}</p>
-                            <p className="text-sm text-gray-500">{contact.properties.email}</p>
+                          <div className="min-w-0">
+                            <p className="font-medium text-gray-900 max-sm:truncate">{fullName}</p>
+                            <p className="text-sm text-gray-500 max-sm:truncate">{contact.properties.email}</p>
                             {contact.properties.jobtitle && (
-                              <p className="text-xs text-gray-400 mt-0.5">{contact.properties.jobtitle}</p>
+                              <p className="text-xs text-gray-400 mt-0.5 max-sm:truncate">{contact.properties.jobtitle}</p>
                             )}
                           </div>
                           {isSelected && <Check className="h-4 w-4 text-echo-yellow shrink-0 mt-1" />}
@@ -646,18 +646,18 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
                 </div>
 
                 {!contactsLoading && !contactsError && (
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={handlePrevContactsPage}
                       disabled={pageIndex <= 1}
-                      className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                      className="shrink-0 py-3.5 sm:py-2 border-gray-300 text-gray-700 hover:bg-gray-50"
                     >
                       <ChevronLeft className="w-4 h-4 mr-1" />
                       Prev
                     </Button>
-                    <span className="text-xs text-gray-500 text-center px-2">
+                    <span className="min-w-0 text-xs text-gray-500 text-center px-2">
                       Page {pageIndex}
                       {totalPages !== null && totalPages > 1 ? ` of ${totalPages.toLocaleString()}` : ''}
                       {totalContacts !== null && (
@@ -675,7 +675,7 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
                       size="sm"
                       onClick={handleNextContactsPage}
                       disabled={!nextAfter}
-                      className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                      className="shrink-0 py-3.5 sm:py-2 border-gray-300 text-gray-700 hover:bg-gray-50"
                     >
                       Next
                       <ChevronRight className="w-4 h-4 ml-1" />
@@ -753,7 +753,7 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
               <div className="space-y-2">
                 <Label className="text-gray-700">Description</Label>
                 <textarea
-                  className="flex min-h-[100px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 ring-offset-background placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-echo-yellow focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex min-h-[100px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm text-gray-900 ring-offset-background placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-echo-yellow focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   placeholder="Enter details about the request..."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -764,9 +764,9 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
         )}
 
         {/* Footer Actions */}
-        <div className="flex justify-between mt-8 pt-6 border-t border-gray-100">
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between mt-8 pt-6 border-t border-gray-100">
           {step > 1 ? (
-            <Button variant="outline" onClick={handleBack} className="text-gray-600 border-gray-300 hover:bg-gray-50">
+            <Button variant="outline" onClick={handleBack} className="w-full sm:w-auto py-3 sm:py-2.5 text-gray-600 border-gray-300 hover:bg-gray-50">
               Back
             </Button>
           ) : (
@@ -774,11 +774,11 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
           )}
 
           {step < 3 ? (
-            <Button onClick={handleNext} disabled={isSubmitting} className="bg-black text-white hover:bg-gray-800 disabled:opacity-60">
+            <Button onClick={handleNext} disabled={isSubmitting} className="w-full sm:w-auto py-3 sm:py-2.5 bg-black text-white hover:bg-gray-800 disabled:opacity-60">
               {isSubmitting ? 'Creating...' : 'Next Step'}
             </Button>
           ) : (
-            <Button onClick={handleSubmit} disabled={isSubmitting} className="bg-echo-yellow text-black hover:bg-echo-yellow/90 font-bold disabled:opacity-60">
+            <Button onClick={handleSubmit} disabled={isSubmitting} className="w-full sm:w-auto py-3 sm:py-2.5 bg-echo-yellow text-black hover:bg-echo-yellow/90 font-bold disabled:opacity-60">
               {isSubmitting ? 'Creating...' : 'Create Request'}
             </Button>
           )}

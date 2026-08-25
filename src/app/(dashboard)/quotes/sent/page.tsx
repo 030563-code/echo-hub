@@ -1,9 +1,8 @@
 import { getDealsByStage } from '@/app/actions/hubspot/getDeals'
-import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { AlertCircle, FileText, Send } from 'lucide-react'
-import Link from 'next/link'
+import { AlertCircle, Send } from 'lucide-react'
 import { PaginationNav } from '@/components/ui/pagination-nav'
+import { DealList } from '@/components/quotes/deal-list'
 
 interface SearchParams {
   page?: string
@@ -25,7 +24,7 @@ export default async function SentQuotesPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Sent Quotes</h1>
           <p className="text-gray-500 text-sm mt-1">Quotes that have been sent to customers.</p>
@@ -42,53 +41,24 @@ export default async function SentQuotesPage({
         </Card>
       ) : deals && deals.length > 0 ? (
         <>
-          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-black text-white uppercase text-xs tracking-wider">
-                <tr>
-                  <th className="px-6 py-4 font-medium">Deal Name</th>
-                  <th className="px-6 py-4 font-medium">Created Date</th>
-                  <th className="px-6 py-4 font-medium text-right">Amount</th>
-                  <th className="px-6 py-4 font-medium text-center">Status</th>
-                  <th className="px-6 py-4 font-medium text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {deals.map((deal) => (
-                  <tr key={deal.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 font-medium text-gray-900">
-                      {deal.properties.dealname}
-                    </td>
-                    <td className="px-6 py-4 text-gray-500">
-                      {new Date(deal.properties.createdate).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric'
-                      })}
-                    </td>
-                    <td className="px-6 py-4 text-right font-mono text-gray-700">
-                      {deal.properties.amount
-                        ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(deal.properties.amount))
-                        : '-'
-                      }
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
-                        Sent
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <Link href={`/quotes/requests/${deal.id}`}>
-                        <Button variant="outline" size="sm" className="text-xs h-8">
-                          View Details
-                        </Button>
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DealList
+            dateHeader="Created Date"
+            badgeHeader="Status"
+            rows={deals.map((deal) => ({
+              id: deal.id,
+              name: deal.properties.dealname,
+              dateValue: new Date(deal.properties.createdate).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+              }),
+              amountFormatted: deal.properties.amount
+                ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(deal.properties.amount))
+                : '-',
+              badge: { text: 'Sent', className: 'bg-blue-100 text-blue-800 border-blue-200' },
+              action: { href: `/quotes/requests/${deal.id}`, label: 'View Details' },
+            }))}
+          />
           <PaginationNav
             currentPage={page}
             hasNextPage={!!hasNextPage}

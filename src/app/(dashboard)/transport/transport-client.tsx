@@ -176,10 +176,10 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 const inputCls =
-  "w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-sm text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026] transition-colors";
+  "w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-base sm:text-sm text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026] transition-colors";
 
 const selectCls =
-  "w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-sm text-[#e5e5e5] focus:outline-none focus:border-[#FF7026] transition-colors";
+  "w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-base sm:text-sm text-[#e5e5e5] focus:outline-none focus:border-[#FF7026] transition-colors";
 
 export default function ShippingClient({ items }: { items: ShipmentContent[] }) {
   const router = useRouter();
@@ -241,7 +241,7 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
         <p className="text-xs text-[#4b5563]">{items.length} shipment line{items.length !== 1 ? "s" : ""}</p>
         <button
           onClick={openModal}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FF7026] hover:bg-[#f2641b] text-white text-sm font-medium rounded-lg transition-colors"
+          className="flex items-center gap-1.5 px-3 py-3 sm:py-1.5 bg-[#FF7026] hover:bg-[#f2641b] text-white text-sm font-medium rounded-lg transition-colors"
         >
           <Plus className="w-3.5 h-3.5" />
           Add Shipment
@@ -267,12 +267,12 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
       <Dialog.Root open={open} onOpenChange={setOpen}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-lg max-h-[90vh] overflow-y-auto bg-[#141414] border border-[#2a2a2a] rounded-2xl p-6 shadow-2xl">
+          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[calc(100%-2rem)] sm:w-full max-w-lg max-h-[calc(100dvh-2rem)] sm:max-h-[90vh] overflow-y-auto bg-[#141414] border border-[#2a2a2a] rounded-2xl p-6 shadow-2xl">
             <div className="flex items-center justify-between mb-5">
               <Dialog.Title className="text-lg font-semibold text-white" style={{ fontFamily: "Varela Round, sans-serif" }}>
                 Add Shipment
               </Dialog.Title>
-              <Dialog.Close className="p-1.5 text-[#4b5563] hover:text-white transition-colors rounded-lg hover:bg-[#2a2a2a]">
+              <Dialog.Close className="p-2.5 sm:p-1.5 text-[#4b5563] hover:text-white transition-colors rounded-lg hover:bg-[#2a2a2a]">
                 <X className="w-4 h-4" />
               </Dialog.Close>
             </div>
@@ -315,7 +315,7 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Field label="SPOT ID *">
                   <input
                     required
@@ -337,7 +337,7 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
                 </Field>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Field label="SKU *">
                   <select
                     required
@@ -365,7 +365,7 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
                 </Field>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Field label="Depot Destination *">
                   <select
                     required
@@ -392,7 +392,7 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
                 </Field>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Field label="Shipped Date">
                   <input
                     type="date"
@@ -428,12 +428,12 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
               )}
 
               <div className="flex justify-end gap-2 pt-1">
-                <Dialog.Close className="px-4 py-2 text-sm text-[#6b7280] hover:text-white transition-colors rounded-lg hover:bg-[#2a2a2a]">
+                <Dialog.Close className="px-4 py-3 sm:py-2 text-sm text-[#6b7280] hover:text-white transition-colors rounded-lg hover:bg-[#2a2a2a]">
                   Cancel
                 </Dialog.Close>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-[#FF7026] hover:bg-[#f2641b] text-white text-sm font-medium rounded-lg transition-colors"
+                  className="px-4 py-3 sm:py-2 bg-[#FF7026] hover:bg-[#f2641b] text-white text-sm font-medium rounded-lg transition-colors"
                 >
                   Add Shipment
                 </button>
