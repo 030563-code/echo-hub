@@ -17,7 +17,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           className={`
             w-full bg-white border-b-2 border-echo-border text-echo-dark px-0 py-2.5
             focus:outline-none focus:border-echo-orange
-            placeholder-gray-400 transition-colors text-sm
+            placeholder-gray-400 transition-colors text-base sm:text-sm
             disabled:bg-transparent disabled:text-gray-400
             ${error ? 'border-red-500 focus:border-red-500' : ''}
             ${className}

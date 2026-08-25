@@ -30,16 +30,18 @@ const ICONS: Record<string, LucideIcon> = {
 interface SidebarProps {
   capabilities: CapabilityKey[]
   displayName: string
+  /** Positioning/visibility classes from the shell (off-canvas transform on mobile). */
+  className?: string
 }
 
-export function Sidebar({ capabilities, displayName }: SidebarProps) {
+export function Sidebar({ capabilities, displayName, className = '' }: SidebarProps) {
   const pathname = usePathname()
   const caps = new Set<CapabilityKey>(capabilities)
 
   const visible = NAV_ITEMS.filter((item) => satisfiesRequirement(caps, item.requires))
 
   return (
-    <aside className="w-64 bg-black text-white flex flex-col fixed h-full z-30">
+    <aside className={`w-64 bg-black text-white flex flex-col fixed h-full z-30 ${className}`}>
       <div className="p-5 border-b border-gray-800">
         <Link href="/">
           <Image
