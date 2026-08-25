@@ -1,6 +1,6 @@
 'use server'
 
-import { getAuthorizedUser } from '@/lib/authz'
+import { getAuthorizedUser, isDealInScope } from '@/lib/authz'
 
 interface HubSpotDealDetails {
   id: string
@@ -14,8 +14,9 @@ interface HubSpotDealDetails {
     // Add other relevant properties here
     description?: string
     closedate?: string
-    /** Internal depot NAME (e.g. "US Baltimore") — set at latest on acceptance. */
+    /** Internal depot NAME (e.g. "US Baltimore"), set at latest on acceptance. */
     sending_depot?: string
+    hubspot_owner_id?: string
   }
   associations?: {
     companies?: { results: { id: string }[] }
@@ -50,7 +51,7 @@ export async function getDealDetails(dealId: string): Promise<GetDealDetailsResu
   try {
     // Fetch Deal Details with Associations and Line Items
     // Requesting both singular and plural to be safe
-    const url = `https://api.hubapi.com/crm/v3/objects/deals/${dealId}?properties=dealname,amount,createdate,dealstage,pipeline,description,closedate,sending_depot&associations=companies,contacts,line_item,line_items`
+    const url = `https://api.hubapi.com/crm/v3/objects/deals/${dealId}?properties=dealname,amount,createdate,dealstage,pipeline,description,closedate,sending_depot,hubspot_owner_id&associations=companies,contacts,line_item,line_items`
 
     const response = await fetch(
       url,
@@ -74,11 +75,13 @@ export async function getDealDetails(dealId: string): Promise<GetDealDetailsResu
 
     const data = await response.json()
 
-    // IDOR guard (finding #4): an agent may only read deals in their own
-    // pipeline. Super admins bypass. Don't leak existence of out-of-pipeline deals.
+    // IDOR guard (finding #4): a rep may only read a deal they own or one in
+    // their own pipeline, the same scope the deal lists use. Super admins
+    // bypass. Don't leak existence of out-of-scope deals.
     if (!profile.is_super_admin) {
       const dealPipeline: string | null = data?.properties?.pipeline ?? null
-      if (!profile.pipeline_id || dealPipeline !== profile.pipeline_id) {
+      const dealOwnerId: string | null = data?.properties?.hubspot_owner_id ?? null
+      if (!(await isDealInScope(dealPipeline, dealOwnerId, profile, auth.user.email))) {
         return { success: false, error: 'Deal not found' }
       }
     }

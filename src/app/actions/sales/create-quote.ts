@@ -95,7 +95,7 @@ export async function createQuote(params: CreateQuoteParams) {
   // 1. Get user profile + access restrictions
   const { data: profile } = await supabase
     .from('profiles')
-    .select('display_name, is_super_admin, allowed_depots, allowed_distributors, allowed_quote_templates')
+    .select('display_name, is_super_admin, pipeline_id, allowed_depots, allowed_distributors, allowed_quote_templates')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -292,6 +292,22 @@ export async function createQuote(params: CreateQuoteParams) {
       success: false,
       error:
         'Could not read this deal from HubSpot, so nothing was written. Reopen the deal and try again.',
+    }
+  }
+
+  // A rep may READ any deal they own (see isDealInScope), but the
+  // deals_registry INSERT policy requires the row's pipeline_id to equal their
+  // OWN profile pipeline. Quoting a deal from another pipeline would write the
+  // stage change, line items and PDF to HubSpot and only then be refused by
+  // RLS, leaving the change half applied. Refuse before any write instead.
+  // This is the case for inbound web-form requests, which land in the Demo
+  // pipeline rather than the rep's.
+  if (!profile.is_super_admin && pipelineId !== profile.pipeline_id) {
+    console.error('createQuote: deal outside caller pipeline', params.dealId, pipelineId)
+    return {
+      success: false,
+      error:
+        'This request sits in a different HubSpot pipeline to yours, so a quote cannot be raised against it yet. Move the deal into your own pipeline in HubSpot first, then reopen it here.',
     }
   }
 

@@ -3,6 +3,7 @@ import 'server-only'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase/server'
 import { hubspotFetch, HubSpotConfigError } from '@/lib/hubspot-client'
+import { resolveHubSpotOwnerId } from '@/lib/hubspot-owner'
 import { CAPABILITY_KEYS, type CapabilityKey } from '@/lib/capabilities'
 
 /**
@@ -139,6 +140,36 @@ export type DealAccessResult =
 
 const DEAL_ID_RE = /^\d+$/
 
+/**
+ * The deal-scope rule, shared by the read path (getDealDetails) and every
+ * write (assertDealAccess). A non-admin may reach a deal they OWN in HubSpot,
+ * or any deal in their own pipeline.
+ *
+ * Owner is in the rule because that is exactly how the deal LISTS are scoped:
+ * getDealsByStage filters on hubspot_owner_id across the quote-request stages
+ * of FOUR pipelines. Checking only the pipeline here meant the list showed rows
+ * the detail page then refused, which surfaced as a 404. It hit every inbound
+ * web-form request, because those all land in the Demo pipeline (1216642)
+ * rather than the rep's own, and carry no deal value, which is why it looked
+ * like an amount problem.
+ *
+ * Fails closed: an unresolvable owner id leaves the pipeline match as the only
+ * way through, and the caller is refused rather than admitted.
+ */
+export async function isDealInScope(
+  dealPipelineId: string | null,
+  dealOwnerId: string | null,
+  profile: { pipeline_id: string | null },
+  email?: string
+): Promise<boolean> {
+  if (profile.pipeline_id && dealPipelineId === profile.pipeline_id) return true
+  if (!dealOwnerId || !email) return false
+  const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
+  if (!accessToken) return false
+  const callerOwnerId = await resolveHubSpotOwnerId(email, accessToken)
+  return !!callerOwnerId && callerOwnerId === dealOwnerId
+}
+
 export async function assertDealAccess(
   dealId: string,
   capability: CapabilityKey = 'quotes.view'
@@ -162,7 +193,7 @@ export async function assertDealAccess(
 
   try {
     const res = await hubspotFetch(
-      `https://api.hubapi.com/crm/v3/objects/deals/${dealId}?properties=pipeline`,
+      `https://api.hubapi.com/crm/v3/objects/deals/${dealId}?properties=pipeline,hubspot_owner_id`,
       { method: 'GET' }
     )
     if (!res.ok) {
@@ -170,10 +201,11 @@ export async function assertDealAccess(
     }
     const deal = await res.json()
     const pipelineId: string | null = deal?.properties?.pipeline ?? null
+    const dealOwnerId: string | null = deal?.properties?.hubspot_owner_id ?? null
 
-    if (!profile.pipeline_id || pipelineId !== profile.pipeline_id) {
-      // Same response whether the deal exists in another pipeline or not —
-      // don't leak existence to an unauthorized caller.
+    if (!(await isDealInScope(pipelineId, dealOwnerId, profile, auth.user.email))) {
+      // Same response whether the deal exists out of scope or not: don't leak
+      // existence to an unauthorized caller.
       return { ok: false, error: 'Forbidden: deal is outside your pipeline' }
     }
     return { ok: true, pipelineId, profile }
