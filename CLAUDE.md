@@ -36,7 +36,7 @@ Every quote requires a **"probability of close"** field. It feeds **stock availa
 ## Data (Supabase — via the `supabase-echobarrier` MCP)
 - **ops** `korylyniwsqtsvzuzydg` — deals_registry, invoices_registry, account_registry, purchase_orders/_lines, shipment_contents/shipments/shipment_events, warehouse_stock_levels, product_code_master.
 - **mfg** `cdkpczinzhykcdbfoobn` — bom_weekly_snapshot, landed_weekly_snapshot, fx_weekly, invoice_markup_config.
-- Stock is blocked (manufacturing levels unknown) → use **dummy figures with an override path** until the manufacturer stocktake lands.
+- Stock is blocked (manufacturing levels unknown) → use **dummy figures with an override path** until the manufacturer stocktake lands. *(Status as of 2026-08-20: unverified. Check whether the stocktake has landed before relying on this — if it has, use real levels and delete this line. Never present dummy figures as real stock.)*
 - n8n (Dave's stock + outstanding-quotes workflows): `n8n-echobarrier` MCP.
 
 ## Security (NON-NEGOTIABLE — learn from the sales-hub audit)
@@ -45,7 +45,10 @@ The previous sales-hub leaked its **service_role key in a public repo**, shipped
 - **Authorize server-side** on every action (verify capability + ownership; never trust a client-supplied id/role).
 
 ## Skills + MCP to use
-- Skills: **`frontend-design`** + **`ui-ux-pro-max`** (UI), **`supabase-postgres-best-practices`** (schema/RLS).
+- **`frontend-design`** / **`ui-ux-pro-max`** — when designing a new screen or reworking a
+  layout. Not for a CSS tweak or a copy change.
+- **`supabase-postgres-best-practices`** — when writing migrations, RLS policies, or
+  reworking schema. Not for a plain read query.
 - MCP: **`supabase-echobarrier`** (both projects), **`n8n-echobarrier`** (workflows).
 
 ## Deploy
