@@ -63,9 +63,16 @@ the Hub: corrections happen in Xero as credit notes.
 - Hub: `/invoicing` module, actions in `src/app/actions/invoicing/`, pure logic in
   `src/lib/customer-invoice/` and `src/lib/us-address.ts`, TaxJar client in
   `src/lib/taxjar.ts`.
-- n8n: workflow "Hub US Invoicing (TaxJar -> Xero)" with webhooks
-  `/hub-quote-accepted-notify` (Slack notification) and `/hub-invoice-authorize`
-  (Xero leg, held behind an in-workflow `xeroEnabled=false` gate until G4).
+- n8n: workflow "Hub US Invoicing (TaxJar -> Xero)", id `FL7DfDbwYfKU5rDG`, PUBLISHED,
+  with webhooks `/hub-quote-accepted-notify` (Slack notification to the USA team
+  channel, verified live) and `/hub-invoice-authorize` (Xero leg). The authorize leg is
+  double-gated: the "Check Secret" If node currently holds a PLACEHOLDER (everything
+  gets 401, fail-closed) and the "Xero Enabled?" If node is hard-wired false. At G4:
+  paste `N8N_CUSTOMER_INVOICE_WEBHOOK_SECRET` from `.env.local` into the Check Secret
+  node's right-hand value, verify against the Xero Demo tenant, then flip
+  "Xero Enabled?" (see the sticky note on the canvas). The repo's
+  `N8N_ECHOBARRIER_API_KEY` expired in Nov 2025 (API returns 401); mint a new one in
+  the n8n UI if REST access is needed.
 - Cutover: `supabase/migrations/pending/20260828000000_us_accepted_quotes_cutover.sql`
   (NOT applied; rollback file alongside in `rollback/`).
 
