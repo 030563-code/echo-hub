@@ -17,6 +17,8 @@ interface HubSpotDealDetails {
     /** Internal depot NAME (e.g. "US Baltimore"), set at latest on acceptance. */
     sending_depot?: string
     hubspot_owner_id?: string
+    /** Rep-set probability of close, an option value like '70%'. */
+    win_probability?: string
   }
   associations?: {
     companies?: { results: { id: string }[] }
@@ -51,7 +53,7 @@ export async function getDealDetails(dealId: string): Promise<GetDealDetailsResu
   try {
     // Fetch Deal Details with Associations and Line Items
     // Requesting both singular and plural to be safe
-    const url = `https://api.hubapi.com/crm/v3/objects/deals/${dealId}?properties=dealname,amount,createdate,dealstage,pipeline,description,closedate,sending_depot,hubspot_owner_id&associations=companies,contacts,line_item,line_items`
+    const url = `https://api.hubapi.com/crm/v3/objects/deals/${dealId}?properties=dealname,amount,createdate,dealstage,pipeline,description,closedate,sending_depot,hubspot_owner_id,win_probability&associations=companies,contacts,line_item,line_items`
 
     const response = await fetch(
       url,

@@ -96,10 +96,18 @@ export default async function QuoteRequestDetailsPage(props: { params: Promise<{
   const supabase = await createServerClient()
   const { data: registryEntry } = await supabase
     .from('deals_registry')
-    .select('deal_probability')
+    .select('deal_probability, delivery_street, delivery_city, delivery_state, delivery_zip')
     .eq('hubspot_deal_id', params.id)
     .maybeSingle()
   const dealProbability: number | null = registryEntry?.deal_probability ?? null
+  const initialDelivery = registryEntry
+    ? {
+        street: registryEntry.delivery_street ?? '',
+        city: registryEntry.delivery_city ?? '',
+        state: registryEntry.delivery_state ?? '',
+        zip: registryEntry.delivery_zip ?? '',
+      }
+    : null
 
   const promises = []
   if (companyId) promises.push(getCompanyDetails(companyId))
@@ -160,6 +168,9 @@ export default async function QuoteRequestDetailsPage(props: { params: Promise<{
                dealId={deal.id}
                currentStageId={deal.properties.dealstage}
                pipelineId={deal.properties.pipeline}
+               hasAssociatedCompany={Boolean(companyId)}
+               currentWinProbability={deal.properties.win_probability ?? null}
+               initialDelivery={initialDelivery}
              />
            )}
            {process.env.NEXT_PUBLIC_HUBSPOT_PORTAL_ID && (

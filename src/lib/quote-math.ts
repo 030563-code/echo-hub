@@ -64,3 +64,16 @@ export function validateLineItems(items: { quantity: number; unitPrice: number }
   }
   return null
 }
+
+/**
+ * Parse HubSpot's win_probability option value ('10%' … '100%') to a number,
+ * or null when absent/non-numeric/out of range. Shared by createQuote and the
+ * US acceptance gate so deals_registry.deal_probability is written the same
+ * way from both paths. Wrapped in String(...) because a numeric runtime value
+ * (caller skipping the client form) has no .trim().
+ */
+export function parseWinProbability(raw: unknown): number | null {
+  const cleaned = String(raw ?? '').trim().replace(/%$/, '').trim()
+  const n = cleaned === '' ? Number.NaN : Number(cleaned)
+  return Number.isFinite(n) && n >= 0 && n <= 100 ? n : null
+}

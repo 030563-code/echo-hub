@@ -10,21 +10,46 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { updateDealStage } from '@/app/actions/hubspot/updateDealStage'
 import { getSalesProfileSettings } from '@/app/actions/sales/get-profile-settings'
 import { HUBSPOT_PIPELINES, QUOTATION_ACCEPTED_STAGES, TENDER_STAGES } from '@/lib/hubspot-constants'
+import { isUSDepot } from '@/lib/customer-invoice/constants'
+import { US_STATE_CODES } from '@/lib/us-address'
 import { useRouter } from 'next/navigation'
 import { ArrowRightLeft } from 'lucide-react'
+
+const WIN_PROBABILITY_OPTIONS = ['10%', '20%', '30%', '40%', '50%', '60%', '70%', '80%', '90%', '100%']
+const ZIP_RE = /^\d{5}(-\d{4})?$/
 
 interface ChangeStageDialogProps {
   dealId: string
   currentStageId: string
   pipelineId: string
+  /** The deal has at least one associated company (the invoice customer). */
+  hasAssociatedCompany?: boolean
+  /** HubSpot win_probability option value already on the deal, if any. */
+  currentWinProbability?: string | null
+  /** Delivery address already stored on deals_registry, if any. */
+  initialDelivery?: { street: string; city: string; state: string; zip: string } | null
 }
 
-export default function ChangeStageDialog({ dealId, currentStageId, pipelineId }: ChangeStageDialogProps) {
+export default function ChangeStageDialog({
+  dealId,
+  currentStageId,
+  pipelineId,
+  hasAssociatedCompany = true,
+  currentWinProbability = null,
+  initialDelivery = null,
+}: ChangeStageDialogProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [selectedStage, setSelectedStage] = useState(currentStageId)
   const [loading, setLoading] = useState(false)
   const [tenderDate, setTenderDate] = useState('')
   const [depotForAccepted, setDepotForAccepted] = useState('')
+  const [winProbability, setWinProbability] = useState(
+    currentWinProbability && WIN_PROBABILITY_OPTIONS.includes(currentWinProbability) ? currentWinProbability : ''
+  )
+  const [street, setStreet] = useState(initialDelivery?.street ?? '')
+  const [city, setCity] = useState(initialDelivery?.city ?? '')
+  const [stateCode, setStateCode] = useState(initialDelivery?.state ?? '')
+  const [zip, setZip] = useState(initialDelivery?.zip ?? '')
   const [allowedDepots, setAllowedDepots] = useState<string[]>([])
   const [depotsError, setDepotsError] = useState(false)
   const router = useRouter()
@@ -57,10 +82,22 @@ export default function ChangeStageDialog({ dealId, currentStageId, pipelineId }
 
   const isTenderStage = TENDER_STAGES.includes(selectedStage)
   const isQuoteAcceptedStage = QUOTATION_ACCEPTED_STAGES.includes(selectedStage)
+  // A US depot routes the deal into the US invoicing flow (TaxJar destination
+  // tax), so acceptance additionally needs the probability, a full ship-to
+  // address and an associated company. All re-validated server-side.
+  const isUSAcceptance = isQuoteAcceptedStage && isUSDepot(depotForAccepted)
+  const usFieldsComplete =
+    winProbability !== '' &&
+    street.trim() !== '' &&
+    city.trim() !== '' &&
+    stateCode !== '' &&
+    ZIP_RE.test(zip.trim()) &&
+    hasAssociatedCompany
   const canUpdate =
     selectedStage !== currentStageId &&
     (!isTenderStage || tenderDate !== '') &&
-    (!isQuoteAcceptedStage || depotForAccepted !== '')
+    (!isQuoteAcceptedStage || depotForAccepted !== '') &&
+    (!isUSAcceptance || usFieldsComplete)
 
   const handleUpdateStage = async () => {
     setLoading(true)
@@ -70,7 +107,13 @@ export default function ChangeStageDialog({ dealId, currentStageId, pipelineId }
       selectedStage,
       isQuoteAcceptedStage ? depotForAccepted : undefined,
       undefined,
-      isTenderStage ? tenderDate : undefined
+      isTenderStage ? tenderDate : undefined,
+      isUSAcceptance
+        ? {
+            winProbability,
+            delivery: { street: street.trim(), city: city.trim(), state: stateCode, zip: zip.trim() },
+          }
+        : undefined
     )
     setLoading(false)
 
@@ -144,6 +187,76 @@ export default function ChangeStageDialog({ dealId, currentStageId, pipelineId }
                 )}
                 <p className="text-xs text-gray-500">Required before marking as Quote Accepted.</p>
               </div>
+            )}
+
+            {isUSAcceptance && !hasAssociatedCompany && (
+              <p className="text-sm text-red-600">
+                Associate a company with this deal in HubSpot first: the US invoice needs a customer.
+              </p>
+            )}
+
+            {isUSAcceptance && hasAssociatedCompany && (
+              <>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700">Deal Probability *</Label>
+                  <Select value={winProbability} onValueChange={setWinProbability}>
+                    <SelectTrigger className="h-11 sm:h-10 bg-white border-gray-300 text-gray-900">
+                      <SelectValue placeholder="Probability of close..." />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200 text-gray-900">
+                      {WIN_PROBABILITY_OPTIONS.map((option) => (
+                        <SelectItem key={option} value={option} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700">Delivery Address *</Label>
+                  <Input
+                    placeholder="Street address"
+                    value={street}
+                    onChange={(e) => setStreet(e.target.value)}
+                    className="bg-white border-gray-300 text-gray-900"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      placeholder="City"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      className="bg-white border-gray-300 text-gray-900"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <Select value={stateCode} onValueChange={setStateCode}>
+                        <SelectTrigger className="h-11 sm:h-10 bg-white border-gray-300 text-gray-900">
+                          <SelectValue placeholder="State" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-gray-200 text-gray-900 max-h-64">
+                          {US_STATE_CODES.map((code) => (
+                            <SelectItem key={code} value={code} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
+                              {code}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        placeholder="Zip"
+                        value={zip}
+                        onChange={(e) => setZip(e.target.value)}
+                        className="bg-white border-gray-300 text-gray-900"
+                      />
+                    </div>
+                  </div>
+                  {zip.trim() !== '' && !ZIP_RE.test(zip.trim()) && (
+                    <p className="text-xs text-red-600">Zip must be 5 digits (or ZIP+4, e.g. 20794-1234).</p>
+                  )}
+                  <p className="text-xs text-gray-500">
+                    Used to calculate US sales tax: the ship-to address, not the billing address.
+                  </p>
+                </div>
+              </>
             )}
           </div>
 
