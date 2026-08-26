@@ -143,6 +143,10 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
         description: l.description || l.name,
         quantity: Number(l.quantity),
         unit_amount: Number(l.unit_price),
+        // Freight can be discounted too; without this Xero would bill the
+        // undiscounted price while our stored total and the tax base used the
+        // discounted one.
+        discount_rate: Number(l.discount_percentage),
         tax_amount: Number(l.tax_amount ?? 0),
       })),
     totals: {
@@ -186,16 +190,31 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
       throw new Error(response.error || 'webhook returned no invoice ids')
     }
   } catch (err) {
-    const message =
-      err instanceof Error && err.name === 'AbortError'
-        ? 'Xero did not respond within 30 seconds. The invoice may still have been created; retry is safe.'
-        : `Sending to Xero failed: ${err instanceof Error ? err.message : 'unknown error'}`
-    await admin
-      .from('customer_invoices')
-      .update({ status: 'tax_calculated', error_message: message, updated_at: new Date().toISOString() })
-      .eq('id', invoiceId)
-      .eq('status', 'authorizing')
-    await logInvoiceEvent(invoiceId, 'authorize_failed', gate.auth.user.id, { error: message })
+    const timedOut = err instanceof Error && err.name === 'AbortError'
+    const message = timedOut
+      ? 'Xero did not respond within 30 seconds. The invoice may still be being created, so this one stays locked for 10 minutes before a retry can be forced.'
+      : `Sending to Xero failed: ${err instanceof Error ? err.message : 'unknown error'}`
+
+    // A timeout is NOT a failure: n8n may still be mid-flight and about to
+    // write the Xero ids back. Releasing the invoice to tax_calculated here
+    // would let a second Send race the first and create a duplicate invoice in
+    // Xero. It stays in `authorizing` and the 10-minute reset control (which
+    // re-checks that no Xero ids landed) is the only way out. A connection
+    // error before the request was accepted is safe to release immediately.
+    if (!timedOut) {
+      await admin
+        .from('customer_invoices')
+        .update({ status: 'tax_calculated', error_message: message, updated_at: new Date().toISOString() })
+        .eq('id', invoiceId)
+        .eq('status', 'authorizing')
+    } else {
+      await admin
+        .from('customer_invoices')
+        .update({ error_message: message, updated_at: new Date().toISOString() })
+        .eq('id', invoiceId)
+        .eq('status', 'authorizing')
+    }
+    await logInvoiceEvent(invoiceId, 'authorize_failed', gate.auth.user.id, { error: message, timed_out: timedOut })
     return { success: false, error: message }
   }
 

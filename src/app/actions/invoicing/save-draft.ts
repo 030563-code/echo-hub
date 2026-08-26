@@ -81,15 +81,24 @@ export async function saveInvoiceDraft(input: z.infer<typeof Input>): Promise<Sa
     return { success: false, error: `This invoice is ${invoice.status} and can no longer be edited.` }
   }
 
-  // Kit components stay pinned to Baltimore regardless of what the client sent.
-  const normalized = lines.map((l) => ({
+  // Kit components stay pinned to Baltimore. The pin is decided from the
+  // STORED line (matched by line_key), never from the client-supplied origin:
+  // a crafted payload could otherwise relabel a kit component as 'manual' and
+  // have its tax calculated from the wrong dispatch state.
+  const storedByKey = new Map(storedLines.map((l) => [l.line_key, l]))
+  const normalized = lines.map((l) => {
+    const stored = storedByKey.get(l.line_key)
+    const isKitComponent = stored ? stored.origin === 'kit_split' : l.origin === 'kit_split'
+    return {
     ...l,
-    ship_from_depot: l.origin === 'kit_split' ? KIT_SHIP_FROM : l.ship_from_depot,
-    ship_from_locked: l.origin === 'kit_split',
+    origin: stored ? stored.origin : l.origin,
+    ship_from_depot: isKitComponent ? KIT_SHIP_FROM : l.ship_from_depot,
+    ship_from_locked: isKitComponent,
     quantity: roundCents(l.quantity),
     unit_price: roundCents(l.unit_price),
     discount_percentage: roundCents(l.discount_percentage),
-  }))
+    }
+  })
 
   // Xero item codes are always re-resolved server-side for the line's own
   // ship-from depot; the client never supplies them.

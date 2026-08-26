@@ -183,3 +183,36 @@ describe('applyTaxResponses', () => {
     expect(result.taxTotal).toBe(5)
   })
 })
+
+describe('freight-only depot groups', () => {
+  it('folds a shipping-only group into the group that carries the goods', () => {
+    // Baltimore-only freight on an invoice whose goods ship from Baltimore too
+    // is the common case; the pathological one is freight alone in a group.
+    const lines = [
+      line({ line_key: 'L1', ship_from_depot: 'US-BAL' }),
+      line({ line_key: 'S1', ship_from_depot: 'US-BAL', is_shipping: true, line_total: 100, unit_price: 100 }),
+    ]
+    const result = buildTaxRequests(lines, shipTo, null)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.groups).toHaveLength(1)
+    expect(result.groups[0].request.line_items.length).toBeGreaterThan(0)
+    expect(result.groups[0].request.shipping).toBe(100)
+  })
+
+  it('never emits a request with empty line_items (TaxJar rejects those)', () => {
+    const lines = [
+      line({ line_key: 'L1', ship_from_depot: 'US-BAL' }),
+      line({ line_key: 'S1', ship_from_depot: 'US-BAL', is_shipping: true, line_total: 40, unit_price: 40 }),
+      line({ line_key: 'S2', ship_from_depot: 'US-BAL', is_shipping: true, line_total: 60, unit_price: 60 }),
+    ]
+    const result = buildTaxRequests(lines, shipTo, null)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    for (const group of result.groups) {
+      expect(group.request.line_items.length).toBeGreaterThan(0)
+    }
+    expect(result.groups[0].request.shipping).toBe(100)
+    expect(result.groups[0].shippingLineKeys).toEqual(['S1', 'S2'])
+  })
+})

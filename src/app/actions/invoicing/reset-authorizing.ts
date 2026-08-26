@@ -47,9 +47,12 @@ export async function resetStuckAuthorizing(input: { invoiceId: string }): Promi
     .update({ status: 'tax_calculated', updated_by_uid: gate.auth.user.id, updated_at: new Date().toISOString() })
     .eq('id', invoiceId)
     .eq('status', 'authorizing')
+    // Part of the same compare-and-set: if n8n wrote the Xero ids back between
+    // the read above and this update, the reset must not fire.
+    .is('xero_invoice_id', null)
     .select('id')
   if (error || !data || data.length === 0) {
-    return { success: false, error: 'The invoice changed under you. Refresh and try again.' }
+    return { success: false, error: 'The invoice changed under you (it may have just landed in Xero). Refresh and try again.' }
   }
 
   await logInvoiceEvent(invoiceId, 'authorize_reset', gate.auth.user.id)

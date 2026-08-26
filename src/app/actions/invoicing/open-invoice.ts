@@ -11,7 +11,7 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildDraftLines, type RawDealLine } from '@/lib/customer-invoice/build-draft'
-import { isUSDepot } from '@/lib/customer-invoice/constants'
+import { INVOICING_QUEUE_SINCE, US_ACCEPTED_DEAL_STATUS, isUSDepot } from '@/lib/customer-invoice/constants'
 import { linesHash } from '@/lib/customer-invoice/hash'
 import { requireInvoicingManage, lookupXeroItemCodes } from '@/app/actions/invoicing/shared'
 
@@ -42,12 +42,31 @@ export async function openInvoiceForDeal(input: { dealId: string }): Promise<Ope
   const { data: deal, error: dealError } = await admin
     .from('deals_registry')
     .select(
-      'hubspot_deal_id, hubspot_company_id, deal_name, depot_code, currency, line_items_raw, quote_reference, delivery_street, delivery_city, delivery_state, delivery_zip',
+      'hubspot_deal_id, hubspot_company_id, deal_name, deal_status, depot_code, currency, line_items_raw, quote_reference, updated_at, delivery_street, delivery_city, delivery_state, delivery_zip',
     )
     .eq('hubspot_deal_id', dealId)
     .maybeSingle()
   if (dealError) return { success: false, error: 'Failed to load the deal from the registry.' }
   if (!deal) return { success: false, error: 'This deal has no registry row yet. It appears a minute or two after acceptance.' }
+
+  // Only an accepted US deal may be invoiced, and only one accepted on or
+  // after the cutover: everything before it was already invoiced through the
+  // old draft-Xero-quote path, and a deal still in negotiation must not be
+  // billable by navigating straight to its URL. The queue applies the same two
+  // filters; this is the enforcement copy, since the action is directly
+  // POSTable.
+  if (String(deal.deal_status ?? '') !== US_ACCEPTED_DEAL_STATUS) {
+    return {
+      success: false,
+      error: 'This deal is not marked Quotation Accepted yet, so it cannot be invoiced.',
+    }
+  }
+  if (String(deal.updated_at ?? '') < INVOICING_QUEUE_SINCE) {
+    return {
+      success: false,
+      error: 'This deal was accepted before the Hub invoicing cutover and was invoiced through the old Xero flow.',
+    }
+  }
 
   const depot = String(deal.depot_code ?? '').trim().toUpperCase()
   if (!isUSDepot(depot)) {

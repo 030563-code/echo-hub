@@ -11,6 +11,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { roundCents } from '@/lib/quote-math'
 import { taxjarCreateOrder } from '@/lib/taxjar'
 import { DEPOT_FROM_ADDRESSES, US_DEPOTS } from '@/lib/customer-invoice/constants'
+import { sanitizeUSAddress } from '@/lib/us-address'
 import { getAuthorizedUser, type AuthzOk } from '@/lib/authz'
 import type { CustomerInvoiceStatus } from '@/lib/customer-invoice/constants'
 import type { USDepot } from '@/lib/customer-invoice/constants'
@@ -174,6 +175,17 @@ export async function recordTaxJarOrders(
   xeroInvoiceNumber: string,
 ): Promise<{ ok: true; transactionIds: string[] } | { ok: false; error: string }> {
   try {
+    // Same sanitization the calculation used, so the filed transaction and the
+    // calculated tax describe the same destination.
+    const address = sanitizeUSAddress({
+      street: invoice.delivery_street ?? '',
+      city: invoice.delivery_city ?? '',
+      state: invoice.delivery_state ?? '',
+      zip: invoice.delivery_zip ?? '',
+    })
+    if (!address.ok) return { ok: false, error: address.error }
+    const shipTo = address.value
+
     const depots = US_DEPOTS.filter((d) => lines.some((l) => l.ship_from_depot === d))
     const transactionIds: string[] = []
     for (const depot of depots) {
@@ -182,8 +194,33 @@ export async function recordTaxJarOrders(
       const depotLines = lines.filter((l) => l.ship_from_depot === depot)
       const taxable = depotLines.filter((l) => !l.is_shipping)
       const shipping = roundCents(depotLines.filter((l) => l.is_shipping).reduce((a, l) => a + Number(l.line_total), 0))
-      const amount = roundCents(taxable.reduce((a, l) => a + Number(l.line_total), 0) + shipping)
       const salesTax = roundCents(depotLines.reduce((a, l) => a + Number(l.tax_amount ?? 0), 0))
+
+      // TaxJar rejects the order unless `amount` equals its own sum of the
+      // line items plus shipping, EXCLUDING tax: it computes each line as
+      // quantity x unit_price - discount. Build the lines first and sum
+      // exactly those figures, rather than our own rounded line_total, which
+      // can differ by a cent once a percentage discount is involved.
+      const orderLines = taxable.map((l) => {
+        const quantity = Number(l.quantity)
+        const unitPrice = Number(l.unit_price)
+        const discount =
+          Number(l.discount_percentage) > 0
+            ? roundCents(quantity * unitPrice * (Number(l.discount_percentage) / 100))
+            : 0
+        return {
+          id: l.line_key,
+          quantity,
+          product_identifier: l.sku ?? undefined,
+          description: (l.description || l.name).slice(0, 255),
+          unit_price: unitPrice,
+          ...(discount > 0 ? { discount } : {}),
+          sales_tax: Number(l.tax_amount ?? 0),
+        }
+      })
+      const amount = roundCents(
+        orderLines.reduce((a, l) => a + roundCents(l.quantity * l.unit_price) - (l.discount ?? 0), 0) + shipping,
+      )
       const transactionId = depots.length > 1 ? `${xeroInvoiceNumber}-${depot}` : xeroInvoiceNumber
 
       await taxjarCreateOrder({
@@ -195,25 +232,15 @@ export async function recordTaxJarOrders(
         from_city: from.city,
         from_street: from.street,
         to_country: 'US',
-        to_state: invoice.delivery_state ?? '',
-        to_zip: invoice.delivery_zip ?? '',
-        to_city: invoice.delivery_city ?? undefined,
-        to_street: invoice.delivery_street ?? undefined,
+        to_state: shipTo.state,
+        to_zip: shipTo.zip,
+        to_city: shipTo.city,
+        to_street: shipTo.street,
         amount,
         shipping,
         sales_tax: salesTax,
         ...(invoice.taxjar_customer_id ? { customer_id: invoice.taxjar_customer_id } : {}),
-        line_items: taxable.map((l) => ({
-          id: l.line_key,
-          quantity: Number(l.quantity),
-          product_identifier: l.sku ?? undefined,
-          description: (l.description || l.name).slice(0, 255),
-          unit_price: Number(l.unit_price),
-          ...(Number(l.discount_percentage) > 0
-            ? { discount: roundCents(Number(l.quantity) * Number(l.unit_price) * (Number(l.discount_percentage) / 100)) }
-            : {}),
-          sales_tax: Number(l.tax_amount ?? 0),
-        })),
+        line_items: orderLines,
       })
       transactionIds.push(transactionId)
     }

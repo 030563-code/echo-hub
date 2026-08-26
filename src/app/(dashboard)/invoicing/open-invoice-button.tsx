@@ -12,12 +12,26 @@ import { openInvoiceForDeal } from '@/app/actions/invoicing/open-invoice'
  * navigate into the editor. Every navigation shows a pending state (reps and
  * reviewers double-click when nothing responds).
  */
-export function OpenInvoiceButton({ dealId, hasInvoice }: { dealId: string; hasInvoice: boolean }) {
+export function OpenInvoiceButton({
+  dealId,
+  hasInvoice,
+  canManage = true,
+}: {
+  dealId: string
+  hasInvoice: boolean
+  canManage?: boolean
+}) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
 
   const open = () => {
     startTransition(async () => {
+      // openInvoiceForDeal needs invoicing.manage; a view-only user just opens
+      // the detail page, which renders read-only.
+      if (!canManage) {
+        router.push(`/invoicing/${dealId}`)
+        return
+      }
       const result = await openInvoiceForDeal({ dealId })
       if (!result.success) {
         toast.error(result.error)
@@ -30,7 +44,7 @@ export function OpenInvoiceButton({ dealId, hasInvoice }: { dealId: string; hasI
   return (
     <Button size="sm" variant={hasInvoice ? 'outline' : 'primary'} onClick={open} disabled={pending}>
       {pending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-      {hasInvoice ? 'Open' : 'Review'}
+      {hasInvoice || !canManage ? 'Open' : 'Review'}
     </Button>
   )
 }

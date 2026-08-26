@@ -1,0 +1,116 @@
+{
+ "sku": "EBH9XNA",
+ "runDate": "2026-08-09",
+ "iterations": 10000,
+ "pStockoutLocal": 0.3203,
+ "persisted": {
+  "on_hand": 230,
+  "in_transit": 0,
+  "on_order": 0,
+  "p_stockout": 0.3269,
+  "p_stockout_ci": 0.013,
+  "data_grade": "A",
+  "red": 134,
+  "yellow_top": 402,
+  "green_top": 802,
+  "nfp": 230,
+  "zone": "yellow"
+ },
+ "markov": {
+  "p01": 0.5,
+  "p11": 0.36,
+  "lastActive": false
+ },
+ "eventCount": 31,
+ "onHand": 230,
+ "arrivals": [],
+ "spikes": [],
+ "minAvail": 230,
+ "maxAvail": 230,
+ "regions": {
+  "safeAlways": 6797,
+  "race": 0,
+  "raceLost": 0,
+  "shortAlways": 3203
+ },
+ "binWidth": 50,
+ "bins": [
+  {
+   "lo": 0,
+   "n": 500
+  },
+  {
+   "lo": 50,
+   "n": 2500
+  },
+  {
+   "lo": 100,
+   "n": 2282
+  },
+  {
+   "lo": 150,
+   "n": 1018
+  },
+  {
+   "lo": 200,
+   "n": 865
+  },
+  {
+   "lo": 250,
+   "n": 969
+  },
+  {
+   "lo": 300,
+   "n": 731
+  },
+  {
+   "lo": 350,
+   "n": 415
+  },
+  {
+   "lo": 400,
+   "n": 260
+  },
+  {
+   "lo": 450,
+   "n": 164
+  },
+  {
+   "lo": 500,
+   "n": 134
+  },
+  {
+   "lo": 550,
+   "n": 71
+  },
+  {
+   "lo": 600,
+   "n": 36
+  },
+  {
+   "lo": 650,
+   "n": 22
+  },
+  {
+   "lo": 700,
+   "n": 13
+  },
+  {
+   "lo": 750,
+   "n": 13
+  },
+  {
+   "lo": 800,
+   "n": 3
+  },
+  {
+   "lo": 850,
+   "n": 3
+  },
+  {
+   "lo": 900,
+   "n": 1
+  }
+ ],
+ "availTypical": 230
+}

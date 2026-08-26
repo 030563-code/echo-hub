@@ -103,6 +103,38 @@ Never add these to `SECRETS_SCAN_OMIT_KEYS`.
 5. G5: apply the cutover migration (US stops producing draft Xero quotes; Slack
    notification takes over), production TaxJar token in, first real invoice supervised.
 
+## Hardening applied after the adversarial review (2026-08-26)
+
+- Tax is applied through `apply_customer_invoice_tax`, one transaction guarded on
+  status AND on the hash the calculation ran against, matching lines by `line_key`.
+  The previous per-line update loop keyed on row uuids read before the TaxJar calls,
+  so a save landing mid-calculation (which replaces the rows) silently wrote nothing.
+- Freight-only depot groups are folded into a group that carries goods: TaxJar rejects
+  a request with empty `line_items` and no `amount`.
+- The TaxJar order `amount` is summed from the exact figures sent as line items
+  (quantity x unit_price minus the dollar discount), which is how TaxJar itself sums
+  them; deriving it from our rounded `line_total` could differ by a cent and be
+  rejected. Verified against the sandbox with a discounted two-line order.
+- Discounted shipping lines now carry `discount_rate` into the Xero payload; without it
+  Xero billed the undiscounted freight while the stored total and tax base used the
+  discounted one.
+- `openInvoiceForDeal` enforces the same two filters as the queue (deal must be at the
+  accepted stage, and accepted on or after the cutover date), so navigating straight to
+  `/invoicing/<dealId>` cannot invoice a deal still in negotiation or re-invoice a
+  pre-cutover deal.
+- Kit lines are pinned to Baltimore from the STORED line's origin, not the client's.
+- A Send-to-Xero TIMEOUT no longer releases the invoice back to `tax_calculated`
+  (that allowed a second Send to race an in-flight n8n run and double-create in Xero).
+  It stays locked in `authorizing`; the 10-minute reset control, which re-checks that
+  no Xero ids landed as part of its compare-and-set, is the only way out.
+- Send to Xero saves first, so on-screen edits can never be excluded from the invoice
+  that is sent; if the edits change the tax base the send stops and asks for a recalc.
+- The editor remounts on every server change (keyed on the row's updated_at), so it
+  cannot display stale lines or a stale status after a save, calc, send or rebuild.
+- `TAXJAR_API_TOKEN` is required for the production endpoint: the sandbox token is
+  never a silent fallback, because sandbox rates are plausible but wrong.
+- The queue's Open button no longer calls a manage-gated action for view-only users.
+
 ## Known limits and defaults
 
 - US-SBD dispatch address is not configured yet (blank in `po_delivery_addresses` too):
@@ -116,6 +148,11 @@ Never add these to `SECRETS_SCAN_OMIT_KEYS`.
 - TaxJar sandbox: address validation unavailable, transactions stubbed, rates
   approximate. Real rates, real exemptions and the email leg can only be verified at
   go-live.
+- The `/hub-quote-accepted-notify` webhook is unauthenticated and its URL is in this
+  public repo, so a stranger could post a fake Slack notification into the team
+  channel. Impact is limited to Slack noise (it triggers no Xero or TaxJar work); if
+  that becomes annoying, add a Supabase lookup in n8n that drops payloads whose deal id
+  is not an accepted US deal.
 - Dave's TaxJar account setup (his action item): nexus state settings, and customers
   with `customer_id` = the Xero account number plus `exemption_type` wholesale for
   resellers with certificates.

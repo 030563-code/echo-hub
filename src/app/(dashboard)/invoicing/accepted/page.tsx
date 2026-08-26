@@ -37,6 +37,8 @@ export default async function AcceptedQueuePage() {
     redirect('/')
   }
 
+  const canManage = auth.capabilities.has('invoicing.manage')
+
   const admin = createAdminClient()
   const { data: deals, error } = await admin
     .from('deals_registry')
@@ -155,7 +157,11 @@ export default async function AcceptedQueuePage() {
                       {new Date(row.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <OpenInvoiceButton dealId={row.dealId} hasInvoice={row.chip !== 'new' && row.chip !== 'missing_address'} />
+                      <OpenInvoiceButton
+                  dealId={row.dealId}
+                  hasInvoice={row.chip !== 'new' && row.chip !== 'missing_address'}
+                  canManage={canManage}
+                />
                     </td>
                   </tr>
                 ))}
@@ -177,7 +183,11 @@ export default async function AcceptedQueuePage() {
                 {row.linesChanged && (
                   <p className="text-xs font-medium text-amber-700">Lines changed on the deal since the draft was built</p>
                 )}
-                <OpenInvoiceButton dealId={row.dealId} hasInvoice={row.chip !== 'new' && row.chip !== 'missing_address'} />
+                <OpenInvoiceButton
+                  dealId={row.dealId}
+                  hasInvoice={row.chip !== 'new' && row.chip !== 'missing_address'}
+                  canManage={canManage}
+                />
               </Card>
             ))}
           </div>

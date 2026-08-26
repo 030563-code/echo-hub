@@ -101,6 +101,12 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
     delivery_zip: invoice.delivery_zip ?? '',
   })
   const [rows, setRows] = useState<EditableLine[]>(lines.map(toEditable))
+  // What TaxJar last returned per line, used to decide whether an edited tax
+  // cell is genuinely a manual override.
+  const calculatedTaxByKey = useMemo(
+    () => new Map(lines.map((l) => [l.line_key, l.tax_amount === null ? '' : String(l.tax_amount)])),
+    [lines],
+  )
   const [emailToCustomer, setEmailToCustomer] = useState(true)
 
   const status = invoice.status as CustomerInvoiceStatus
@@ -200,7 +206,10 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
       discount_percentage: Number(row.discount_percentage) || 0,
       is_shipping: row.is_shipping,
       ship_from_depot: row.ship_from_depot,
-      tax_amount_override: row.tax_override && row.tax_amount !== '' ? Number(row.tax_amount) || 0 : null,
+      tax_amount_override:
+        row.tax_override && row.tax_amount !== '' && row.tax_amount !== calculatedTaxByKey.get(row.line_key)
+          ? Number(row.tax_amount) || 0
+          : null,
     })),
   })
 
@@ -235,6 +244,20 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
 
   const onSend = () =>
     run('send', async () => {
+      // Save first: the editor holds unsaved edits in local state, and the
+      // server sends Xero what is STORED. Saving here means a change that
+      // affects tax invalidates the calculation instead of quietly shipping a
+      // stale invoice.
+      const saved = await saveInvoiceDraft(buildSavePayload())
+      if (!saved.success) {
+        toast.error(saved.error)
+        return
+      }
+      if (saved.taxInvalidated) {
+        toast.warning('Your edits changed the tax base. Recalculate tax before sending.')
+        router.refresh()
+        return
+      }
       const result = await sendInvoiceToXero({ invoiceId: invoice.id, emailToCustomer })
       if (!result.success) {
         toast.error(result.error)
@@ -564,7 +587,16 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                       inputMode="decimal"
                       value={row.tax_amount}
                       placeholder="—"
-                      onChange={(e) => updateRow(row.line_key, { tax_amount: e.target.value, tax_override: true })}
+                      onChange={(e) =>
+                        updateRow(row.line_key, {
+                          tax_amount: e.target.value,
+                          // Only a value that actually differs from the stored
+                          // TaxJar figure counts as an override, so retyping
+                          // the same number (or undoing an edit) clears the
+                          // flag instead of latching it on forever.
+                          tax_override: e.target.value !== (calculatedTaxByKey.get(row.line_key) ?? ''),
+                        })
+                      }
                       disabled={!editable || status !== 'tax_calculated'}
                       className="text-right"
                     />

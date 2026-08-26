@@ -65,6 +65,11 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
   return (
     <InvoiceEditor
+      // The editor holds the draft in local state. Keying it on the row's id +
+      // updated_at remounts it whenever the server copy changes (after a save,
+      // a tax calculation, a send, or a rebuild), so the form can never keep
+      // showing stale lines or a stale status after router.refresh().
+      key={`${invoice.id}-${invoice.updated_at}`}
       invoice={invoice as CustomerInvoiceRow}
       lines={(lines ?? []) as CustomerInvoiceLineRow[]}
       dealName={String(deal?.deal_name ?? dealId)}

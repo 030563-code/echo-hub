@@ -35,10 +35,25 @@ export class TaxJarError extends Error {
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 function config(): { base: string; token: string } {
+  const productionToken = process.env.TAXJAR_API_TOKEN
+  const sandboxToken = process.env.TAXJAR_SANDBOX_TOKEN
   const base = process.env.TAXJAR_API_BASE || DEFAULT_BASE
-  const token = process.env.TAXJAR_API_TOKEN || process.env.TAXJAR_SANDBOX_TOKEN
-  if (!token) throw new TaxJarConfigError('TaxJar API token not configured')
-  return { base, token }
+  const isSandboxBase = base.includes('sandbox')
+
+  // A production token must never be sent to the sandbox, and the sandbox
+  // token must never stand in for a missing production one: the sandbox
+  // returns plausible but WRONG rates, so silently falling back to it would
+  // bill customers the wrong sales tax with no visible failure.
+  if (isSandboxBase) {
+    if (!sandboxToken) throw new TaxJarConfigError('TAXJAR_SANDBOX_TOKEN is not configured')
+    return { base, token: sandboxToken }
+  }
+  if (!productionToken) {
+    throw new TaxJarConfigError(
+      'TAXJAR_API_TOKEN is not configured for the production TaxJar endpoint (refusing to use the sandbox token, whose rates are not accurate)',
+    )
+  }
+  return { base, token: productionToken }
 }
 
 async function taxjarFetch(path: string, init: { method: string; body?: unknown }): Promise<Response> {

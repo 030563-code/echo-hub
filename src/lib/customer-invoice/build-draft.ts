@@ -85,9 +85,12 @@ export function buildDraftLines(rawLines: readonly RawDealLine[] | null | undefi
 
   lines.forEach((raw, index) => {
     const baseKey = `L${index + 1}`
-    const quantity = toMoney(raw.quantity)
-    const unitPrice = toMoney(raw.unit_price)
-    const discount = toMoney(raw.discount_percentage)
+    // Quantize to the precision the columns actually store (numeric(12,2)) so
+    // the persisted line_total always equals qty x price on the stored values;
+    // raw HubSpot figures can carry more decimals than that.
+    const quantity = roundCents(toMoney(raw.quantity))
+    const unitPrice = roundCents(toMoney(raw.unit_price))
+    const discount = roundCents(toMoney(raw.discount_percentage))
     const sku = String(raw.sku ?? '').trim() || null
 
     if (isFittingKitLine(raw)) {

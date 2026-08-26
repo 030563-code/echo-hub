@@ -87,30 +87,20 @@ export async function calculateInvoiceTax(input: { invoiceId: string }): Promise
         : err instanceof TaxJarError
           ? `TaxJar rejected the calculation: ${err.message}`
           : 'TaxJar could not be reached. Try again in a minute.'
-    await admin.from('customer_invoices').update({ error_message: message, updated_at: new Date().toISOString() }).eq('id', invoiceId)
+    await admin.from('customer_invoices').update({ error_message: message, updated_at: new Date().toISOString() })
+      .eq('id', invoiceId)
+      .in('status', ['draft', 'tax_calculated'])
     await logInvoiceEvent(invoiceId, 'tax_failed', gate.auth.user.id, { error: message })
     return { success: false, error: message }
   }
 
   const applied = applyTaxResponses(taxableLines, results)
   if (!applied.ok) {
-    await admin.from('customer_invoices').update({ error_message: applied.error, updated_at: new Date().toISOString() }).eq('id', invoiceId)
+    await admin.from('customer_invoices').update({ error_message: applied.error, updated_at: new Date().toISOString() })
+      .eq('id', invoiceId)
+      .in('status', ['draft', 'tax_calculated'])
     await logInvoiceEvent(invoiceId, 'tax_failed', gate.auth.user.id, { error: applied.error })
     return { success: false, error: applied.error }
-  }
-
-  const taxByKey = new Map(applied.lines.map((l) => [l.line_key, l]))
-  for (const line of lines) {
-    const tax = taxByKey.get(line.line_key)
-    await admin
-      .from('customer_invoice_lines')
-      .update({
-        tax_amount: tax?.tax_amount ?? 0,
-        taxable_amount: tax?.taxable_amount ?? null,
-        combined_tax_rate: tax?.combined_tax_rate ?? null,
-        tax_override: false,
-      })
-      .eq('id', line.id)
   }
 
   const subtotal = roundCents(taxableLines.filter((l) => !l.is_shipping).reduce((a, l) => a + l.line_total, 0))
@@ -138,33 +128,26 @@ export async function calculateInvoiceTax(input: { invoiceId: string }): Promise
     },
   )
 
-  const { data: updated, error: updateError } = await admin
-    .from('customer_invoices')
-    .update({
-      subtotal,
-      shipping_total: shippingTotal,
-      tax_total: taxTotal,
-      total,
-      taxjar_request: results.map((r) => ({ depot: r.group.depot, request: r.group.request })),
-      taxjar_response: results.map((r) => ({ depot: r.group.depot, response: r.response })),
-      tax_calculated_at: new Date().toISOString(),
-      lines_hash: hash,
-      status: 'tax_calculated',
-      error_message: null,
-      updated_by_uid: gate.auth.user.id,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', invoiceId)
-    .in('status', ['draft', 'tax_calculated'])
-    .select('id')
-  if (updateError || !updated || updated.length === 0) {
-    return { success: false, error: 'The invoice changed under you. Refresh and try again.' }
-  }
-
-  await logInvoiceEvent(invoiceId, 'tax_calculated', gate.auth.user.id, {
-    tax_total: taxTotal,
-    warnings: applied.warnings,
+  // One transaction, guarded on status AND on the hash the calculation was
+  // performed against: a save that landed mid-calculation (which replaces the
+  // line rows entirely) makes this fail rather than write stale tax.
+  const { error: applyError } = await admin.rpc('apply_customer_invoice_tax', {
+    p_invoice_id: invoiceId,
+    p_expected_hash: hash,
+    p_line_tax: applied.lines,
+    p_totals: { subtotal, shipping_total: shippingTotal, tax_total: taxTotal, total, warnings: applied.warnings },
+    p_request: results.map((r) => ({ depot: r.group.depot, request: r.group.request })),
+    p_response: results.map((r) => ({ depot: r.group.depot, response: r.response })),
+    p_actor: gate.auth.user.id,
   })
+  if (applyError) {
+    const message = /STALE_CALCULATION/.test(applyError.message ?? '')
+      ? 'The invoice changed while tax was being calculated. Recalculate.'
+      : /INVALID_STATUS/.test(applyError.message ?? '')
+        ? 'The invoice changed under you. Refresh and try again.'
+        : 'Could not save the calculated tax.'
+    return { success: false, error: message }
+  }
 
   revalidatePath('/invoicing/accepted')
   revalidatePath('/invoicing/drafts')
