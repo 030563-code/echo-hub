@@ -171,50 +171,60 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
   try {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 30_000)
-    const res = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(process.env.N8N_CUSTOMER_INVOICE_WEBHOOK_SECRET
-          ? { 'x-hub-secret': process.env.N8N_CUSTOMER_INVOICE_WEBHOOK_SECRET }
-          : {}),
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-      cache: 'no-store',
-    })
-    clearTimeout(timer)
-    if (!res.ok) throw new Error(`webhook HTTP ${res.status}`)
+    let res: Response
+    try {
+      res = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(process.env.N8N_CUSTOMER_INVOICE_WEBHOOK_SECRET
+            ? { 'x-hub-secret': process.env.N8N_CUSTOMER_INVOICE_WEBHOOK_SECRET }
+            : {}),
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+        cache: 'no-store',
+      })
+    } catch (networkErr) {
+      // Distinguish "never left the building" from "we do not know". Only a
+      // connection-level failure that is NOT an abort proves nothing was
+      // created, and only that case is safe to release immediately.
+      const aborted = networkErr instanceof Error && networkErr.name === 'AbortError'
+      throw Object.assign(new Error(aborted ? 'timeout' : 'unreachable'), {
+        cause: networkErr,
+        dispatched: aborted,
+      })
+    } finally {
+      clearTimeout(timer)
+    }
+
+    if (!res.ok) throw Object.assign(new Error(`webhook HTTP ${res.status}`), { dispatched: true })
     response = (await res.json()) as N8nAuthorizeResponse
     if (!response.xero_invoice_id || !response.xero_invoice_number) {
-      throw new Error(response.error || 'webhook returned no invoice ids')
+      throw Object.assign(new Error(response.error || 'webhook returned no invoice ids'), { dispatched: true })
     }
   } catch (err) {
-    const timedOut = err instanceof Error && err.name === 'AbortError'
-    const message = timedOut
-      ? 'Xero did not respond within 30 seconds. The invoice may still be being created, so this one stays locked for 10 minutes before a retry can be forced.'
-      : `Sending to Xero failed: ${err instanceof Error ? err.message : 'unknown error'}`
+    const dispatched = Boolean((err as { dispatched?: boolean }).dispatched)
+    const detail = err instanceof Error ? err.message : 'unknown error'
+    const message = dispatched
+      ? `Sending to Xero did not complete (${detail}). The invoice may already exist in Xero, so it stays locked; use Reconcile to check once n8n has settled.`
+      : `Sending to Xero failed before it reached n8n (${detail}). Nothing was created; try again.`
 
-    // A timeout is NOT a failure: n8n may still be mid-flight and about to
-    // write the Xero ids back. Releasing the invoice to tax_calculated here
-    // would let a second Send race the first and create a duplicate invoice in
-    // Xero. It stays in `authorizing` and the 10-minute reset control (which
-    // re-checks that no Xero ids landed) is the only way out. A connection
-    // error before the request was accepted is safe to release immediately.
-    if (!timedOut) {
-      await admin
-        .from('customer_invoices')
-        .update({ status: 'tax_calculated', error_message: message, updated_at: new Date().toISOString() })
-        .eq('id', invoiceId)
-        .eq('status', 'authorizing')
-    } else {
-      await admin
-        .from('customer_invoices')
-        .update({ error_message: message, updated_at: new Date().toISOString() })
-        .eq('id', invoiceId)
-        .eq('status', 'authorizing')
-    }
-    await logInvoiceEvent(invoiceId, 'authorize_failed', gate.auth.user.id, { error: message, timed_out: timedOut })
+    // Releasing an invoice we are not certain about would let a second Send
+    // race an in-flight n8n run and create a duplicate in Xero. Only a
+    // provably-undispatched request is released here; everything else stays in
+    // `authorizing` for the Reconcile control, which adopts the Xero ids if
+    // n8n wrote them back and otherwise releases after 10 minutes.
+    await admin
+      .from('customer_invoices')
+      .update({
+        ...(dispatched ? {} : { status: 'tax_calculated' }),
+        error_message: message,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', invoiceId)
+      .eq('status', 'authorizing')
+    await logInvoiceEvent(invoiceId, 'authorize_failed', gate.auth.user.id, { error: message, dispatched })
     return { success: false, error: message }
   }
 

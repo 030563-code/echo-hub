@@ -25,9 +25,9 @@ import { saveInvoiceDraft } from '@/app/actions/invoicing/save-draft'
 import { calculateInvoiceTax } from '@/app/actions/invoicing/calculate-tax'
 import { sendInvoiceToXero } from '@/app/actions/invoicing/send-to-xero'
 import { voidInvoice } from '@/app/actions/invoicing/void-invoice'
-import { openInvoiceForDeal } from '@/app/actions/invoicing/open-invoice'
+import { rebuildInvoiceFromDeal } from '@/app/actions/invoicing/rebuild-invoice'
 import { retryTaxJarRecord } from '@/app/actions/invoicing/record-taxjar'
-import { resetStuckAuthorizing } from '@/app/actions/invoicing/reset-authorizing'
+import { reconcileStuckInvoice } from '@/app/actions/invoicing/reset-authorizing'
 import { InvoiceStatusChip } from '../status-chip'
 
 interface EditableLine {
@@ -107,7 +107,10 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
     () => new Map(lines.map((l) => [l.line_key, l.tax_amount === null ? '' : String(l.tax_amount)])),
     [lines],
   )
-  const [emailToCustomer, setEmailToCustomer] = useState(true)
+  // Deliberately opt-IN: emailing is the outward-facing, irreversible half of
+  // Send, and the editor remounts on every server write, so a default of true
+  // could silently undo a reviewer's decision not to email.
+  const [emailToCustomer, setEmailToCustomer] = useState(false)
 
   const status = invoice.status as CustomerInvoiceStatus
   const editable = canManage && (status === 'draft' || status === 'tax_calculated')
@@ -285,29 +288,28 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
 
   const onRebuild = () =>
     run('rebuild', async () => {
-      if (!window.confirm('Discard this draft and rebuild it from the deal’s current line items?')) return
-      const voided = await voidInvoice({ invoiceId: invoice.id })
-      if (!voided.success) {
-        toast.error(voided.error)
-        return
-      }
-      const opened = await openInvoiceForDeal({ dealId: invoice.hubspot_deal_id })
-      if (!opened.success) {
-        toast.error(opened.error)
+      if (!window.confirm('Discard this draft and rebuild it from the deal\u2019s current line items?')) return
+      const result = await rebuildInvoiceFromDeal({ invoiceId: invoice.id })
+      if (!result.success) {
+        toast.error(result.error)
         return
       }
       toast.success('Rebuilt from the deal.')
       router.refresh()
     })
 
-  const onResetAuthorizing = () =>
-    run('reset', async () => {
-      const result = await resetStuckAuthorizing({ invoiceId: invoice.id })
+  const onReconcile = () =>
+    run('reconcile', async () => {
+      const result = await reconcileStuckInvoice({ invoiceId: invoice.id })
       if (!result.success) {
         toast.error(result.error)
         return
       }
-      toast.success('Reset. You can retry Send to Xero.')
+      toast.success(
+        result.outcome === 'adopted'
+          ? `This invoice already exists in Xero as ${result.xeroInvoiceNumber ?? 'a new invoice'}; the Hub is back in sync.`
+          : 'Released. You can retry Send to Xero.',
+      )
       router.refresh()
     })
 
@@ -706,15 +708,28 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
             {status === 'authorizing' && (
               <div className="flex flex-col items-stretch gap-2 sm:items-end">
                 <p className="text-xs text-purple-700 sm:text-right">
-                  Being sent to Xero. If this has been stuck for more than 10 minutes, reset it and retry (safe:
-                  a retry can never double-create the invoice).
+                  Being sent to Xero. If this has not settled within 10 minutes, reconcile it: that adopts the
+                  Xero invoice if one was created, and otherwise releases this draft so you can retry.
                 </p>
                 {canManage && (
-                  <Button variant="outline" size="sm" onClick={onResetAuthorizing} disabled={pendingAction !== null}>
-                    {spinner('reset')}
-                    Reset stuck send
+                  <Button variant="outline" size="sm" onClick={onReconcile} disabled={pendingAction !== null}>
+                    {spinner('reconcile')}
+                    Reconcile with Xero
                   </Button>
                 )}
+              </div>
+            )}
+            {status === 'tax_calculated' && invoice.xero_invoice_id && canManage && (
+              <div className="flex flex-col items-stretch gap-2 sm:items-end">
+                <p className="text-xs text-amber-700 sm:text-right">
+                  This invoice already exists in Xero as{' '}
+                  {invoice.xero_invoice_number ?? invoice.xero_invoice_id}, but the Hub did not record it.
+                  Reconcile instead of sending it again.
+                </p>
+                <Button variant="outline" size="sm" onClick={onReconcile} disabled={pendingAction !== null}>
+                  {spinner('reconcile')}
+                  Reconcile with Xero
+                </Button>
               </div>
             )}
           </div>

@@ -3,12 +3,8 @@ import { AlertCircle, Inbox } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { getAuthorizedUser } from '@/lib/authz'
 import { createAdminClient } from '@/lib/supabase/admin'
-import {
-  INVOICING_QUEUE_SINCE,
-  US_ACCEPTED_DEAL_STATUS,
-  US_DEPOTS,
-  type CustomerInvoiceStatus,
-} from '@/lib/customer-invoice/constants'
+import { US_ACCEPTED_DEAL_STATUS, US_DEPOTS, type CustomerInvoiceStatus } from '@/lib/customer-invoice/constants'
+import { getAcceptedAt, isAcceptedSinceCutover } from '@/app/actions/invoicing/shared'
 import { sourceLinesHash } from '@/lib/customer-invoice/hash'
 import { sanitizeUSAddress } from '@/lib/us-address'
 import { OpenInvoiceButton } from '../open-invoice-button'
@@ -43,24 +39,27 @@ export default async function AcceptedQueuePage() {
   const { data: deals, error } = await admin
     .from('deals_registry')
     .select(
-      'hubspot_deal_id, deal_name, hubspot_company_id, depot_code, amount, quote_reference, updated_at, line_items_raw, delivery_street, delivery_city, delivery_state, delivery_zip',
+      'hubspot_deal_id, deal_name, hubspot_company_id, depot_code, amount, quote_reference, line_items_raw, delivery_street, delivery_city, delivery_state, delivery_zip',
     )
     .eq('deal_status', US_ACCEPTED_DEAL_STATUS)
     .in('depot_code', [...US_DEPOTS])
-    .gte('updated_at', INVOICING_QUEUE_SINCE)
-    .order('updated_at', { ascending: false })
-    .limit(200)
+    .limit(500)
 
   let rows: QueueRow[] = []
   if (!error && deals && deals.length > 0) {
-    const { data: invoices } = await admin
+    // Eligibility is dated from deal_stage_history, not deals_registry
+    // .updated_at, which does not move when an acceptance syncs in.
+    const acceptedAt = await getAcceptedAt(deals.map((d) => String(d.hubspot_deal_id)))
+    const eligible = deals.filter((d) => isAcceptedSinceCutover(acceptedAt.get(String(d.hubspot_deal_id))))
+
+    const { data: invoices } = eligible.length === 0 ? { data: [] } : await admin
       .from('customer_invoices')
       .select('hubspot_deal_id, status, invoice_number, xero_invoice_number, source_lines_snapshot')
-      .in('hubspot_deal_id', deals.map((d) => String(d.hubspot_deal_id)))
+      .in('hubspot_deal_id', eligible.map((d) => String(d.hubspot_deal_id)))
       .neq('status', 'voided')
     const invoiceByDeal = new Map((invoices ?? []).map((i) => [String(i.hubspot_deal_id), i]))
 
-    rows = deals.map((deal) => {
+    rows = eligible.map((deal) => {
       const dealId = String(deal.hubspot_deal_id)
       const invoice = invoiceByDeal.get(dealId)
       const addressOk = sanitizeUSAddress({
@@ -85,12 +84,13 @@ export default async function AcceptedQueuePage() {
         depot: String(deal.depot_code),
         amount: deal.amount === null ? null : Number(deal.amount),
         quoteRef: deal.quote_reference ? String(deal.quote_reference) : null,
-        updatedAt: String(deal.updated_at),
+        updatedAt: acceptedAt.get(String(deal.hubspot_deal_id)) as string,
         chip,
         linesChanged,
         invoiceNumber: invoice ? String(invoice.xero_invoice_number ?? invoice.invoice_number) : null,
       }
     })
+    rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   }
 
   return (

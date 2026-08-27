@@ -17,8 +17,10 @@ records completed orders for filing. The Hub builds and owns the draft invoice.
    Captured in the Change Stage dialog, written to `deals_registry` BEFORE the HubSpot
    PATCH. Canada and EU acceptances keep the old depot-only requirement.
 2. **Queue** (`/invoicing/accepted`). Derived at read time: `deals_registry` rows at
-   stage `1170409275` with a US depot, accepted on or after the cutover date, joined to
-   any active `customer_invoices` row. No queue table, so replays and re-acceptances
+   stage `1170409275` with a US depot, whose acceptance (dated from
+   `deal_stage_history`, NOT from `deals_registry.updated_at`, which does not move when
+   an acceptance syncs in and runs days to months stale) is on or after the cutover
+   date, joined to any active `customer_invoices` row. No queue table, so replays and re-acceptances
    cannot duplicate anything. Rows appear a minute or two after acceptance (they arrive
    via the n8n HubSpot sync).
 3. **Draft build** (`openInvoiceForDeal`). Snapshots the deal's `line_items_raw`:
@@ -87,6 +89,14 @@ the Hub: corrections happen in Xero as credit notes.
 | `N8N_CUSTOMER_INVOICE_WEBHOOK_SECRET` | local + Netlify | matches the n8n workflow check |
 
 Never add these to `SECRETS_SCAN_OMIT_KEYS`.
+
+## Testing note: the queue starts empty on purpose
+
+`INVOICING_QUEUE_SINCE` in `src/lib/customer-invoice/constants.ts` is the cutover date,
+so until someone accepts a US deal after it the queue is legitimately empty. To dry-run
+G1/G2 against real data, temporarily set that constant to `'2026-08-19'` (the date
+`deal_stage_history` started recording), which surfaces the 7 genuine recent US
+acceptances, and put it back before the cutover.
 
 ## Rollout gates (in order)
 

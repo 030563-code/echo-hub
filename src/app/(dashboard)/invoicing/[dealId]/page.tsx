@@ -4,6 +4,8 @@ import { getAuthorizedUser } from '@/lib/authz'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sourceLinesHash } from '@/lib/customer-invoice/hash'
 import type { CustomerInvoiceLineRow, CustomerInvoiceRow } from '@/app/actions/invoicing/shared'
+import { getAcceptedAt, isAcceptedSinceCutover } from '@/app/actions/invoicing/shared'
+import { US_ACCEPTED_DEAL_STATUS, isUSDepot } from '@/lib/customer-invoice/constants'
 import { OpenInvoiceButton } from '../open-invoice-button'
 import { InvoiceEditor } from './invoice-editor'
 
@@ -22,7 +24,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const admin = createAdminClient()
   const { data: deal } = await admin
     .from('deals_registry')
-    .select('hubspot_deal_id, deal_name, quote_reference, depot_code, amount, line_items_raw')
+    .select('hubspot_deal_id, deal_name, deal_status, quote_reference, depot_code, amount, line_items_raw')
     .eq('hubspot_deal_id', dealId)
     .maybeSingle()
 
@@ -34,6 +36,19 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     .maybeSingle()
 
   if (!deal && !invoice) notFound()
+
+  // Without an invoice, this page is only meaningful for a deal that is
+  // actually invoiceable. Checking it here keeps the page consistent with what
+  // openInvoiceForDeal will allow, and stops the registry being browsable deal
+  // by deal through the URL.
+  if (!invoice) {
+    const eligible =
+      deal &&
+      String(deal.deal_status ?? '') === US_ACCEPTED_DEAL_STATUS &&
+      isUSDepot(String(deal.depot_code ?? '').trim().toUpperCase()) &&
+      isAcceptedSinceCutover((await getAcceptedAt([dealId])).get(dealId))
+    if (!eligible) notFound()
+  }
 
   if (!invoice) {
     return (

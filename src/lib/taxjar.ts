@@ -7,16 +7,17 @@ import 'server-only'
  * TaxJar's own `detail` message verbatim (their validation errors are
  * actionable and the reviewer should see them).
  *
- * Environment: TAXJAR_API_TOKEN + TAXJAR_API_BASE for production
- * (https://api.taxjar.com); until then TAXJAR_SANDBOX_TOKEN against the
- * sandbox default. The sandbox validates request/response formats but does NOT
+ * Environment: setting TAXJAR_API_TOKEN switches everything to production
+ * (api.taxjar.com); with only TAXJAR_SANDBOX_TOKEN set it stays on the
+ * sandbox. TAXJAR_API_BASE overrides the host and must agree with the token. The sandbox validates request/response formats but does NOT
  * return accurate rates, and its transaction endpoints return stubbed
  * responses.
  */
 
 import type { TaxJarTaxRequest, TaxJarTaxResponse } from '@/lib/customer-invoice/tax-mapping'
 
-const DEFAULT_BASE = 'https://api.sandbox.taxjar.com'
+const SANDBOX_BASE = 'https://api.sandbox.taxjar.com'
+const PRODUCTION_BASE = 'https://api.taxjar.com'
 const DEFAULT_RETRIES = 3
 const MAX_BACKOFF_MS = 8000
 
@@ -37,23 +38,31 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 function config(): { base: string; token: string } {
   const productionToken = process.env.TAXJAR_API_TOKEN
   const sandboxToken = process.env.TAXJAR_SANDBOX_TOKEN
-  const base = process.env.TAXJAR_API_BASE || DEFAULT_BASE
-  const isSandboxBase = base.includes('sandbox')
+  const explicitBase = process.env.TAXJAR_API_BASE
 
-  // A production token must never be sent to the sandbox, and the sandbox
-  // token must never stand in for a missing production one: the sandbox
-  // returns plausible but WRONG rates, so silently falling back to it would
-  // bill customers the wrong sales tax with no visible failure.
-  if (isSandboxBase) {
-    if (!sandboxToken) throw new TaxJarConfigError('TAXJAR_SANDBOX_TOKEN is not configured')
-    return { base, token: sandboxToken }
+  // The PRESENCE of a production token is the go-live switch, so setting it is
+  // enough to leave the sandbox. Deciding on the base URL instead would have
+  // meant that setting only TAXJAR_API_TOKEN (what the runbook says to do)
+  // silently kept billing customers sandbox rates, which are plausible but
+  // wrong and return HTTP 200.
+  if (productionToken) {
+    const base = explicitBase || PRODUCTION_BASE
+    if (base.includes('sandbox')) {
+      throw new TaxJarConfigError(
+        'TAXJAR_API_TOKEN is set (production) but TAXJAR_API_BASE points at the sandbox. Clear the base override, or unset the production token to stay on the sandbox.',
+      )
+    }
+    return { base, token: productionToken }
   }
-  if (!productionToken) {
+
+  const base = explicitBase || SANDBOX_BASE
+  if (!base.includes('sandbox')) {
     throw new TaxJarConfigError(
-      'TAXJAR_API_TOKEN is not configured for the production TaxJar endpoint (refusing to use the sandbox token, whose rates are not accurate)',
+      'TAXJAR_API_BASE points at the production TaxJar endpoint but TAXJAR_API_TOKEN is not configured (the sandbox token is deliberately not used as a fallback: its rates are not accurate).',
     )
   }
-  return { base, token: productionToken }
+  if (!sandboxToken) throw new TaxJarConfigError('TAXJAR_SANDBOX_TOKEN is not configured')
+  return { base, token: sandboxToken }
 }
 
 async function taxjarFetch(path: string, init: { method: string; body?: unknown }): Promise<Response> {

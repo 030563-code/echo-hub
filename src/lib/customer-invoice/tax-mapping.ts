@@ -93,9 +93,24 @@ export function buildTaxRequests(
   }
 
   const groups: TaxRequestGroup[] = []
+  const freightOnly: { depot: USDepot; shipping: number; keys: string[] }[] = []
+
   for (const depot of US_DEPOTS) {
     const depotLines = lines.filter((l) => l.ship_from_depot === depot)
     if (depotLines.length === 0) continue
+
+    const taxable = depotLines.filter((l) => !l.is_shipping)
+    const shippingLines = depotLines.filter((l) => l.is_shipping)
+    const shipping = roundCents(shippingLines.reduce((acc, l) => acc + l.line_total, 0))
+
+    // A depot carrying only freight never needs its own dispatch address: its
+    // shipping is folded into a group that has goods (freight follows the
+    // goods it carries), and TaxJar would reject a request with no line items
+    // anyway. The address check therefore applies only to groups with goods.
+    if (taxable.length === 0) {
+      freightOnly.push({ depot, shipping, keys: shippingLines.map((l) => l.line_key) })
+      continue
+    }
 
     const from = DEPOT_FROM_ADDRESSES[depot]
     if (!from) {
@@ -104,10 +119,6 @@ export function buildTaxRequests(
         error: `The ${depot} dispatch address is not configured yet, so tax cannot be calculated for lines shipping from it.`,
       }
     }
-
-    const taxable = depotLines.filter((l) => !l.is_shipping)
-    const shippingLines = depotLines.filter((l) => l.is_shipping)
-    const shipping = roundCents(shippingLines.reduce((acc, l) => acc + l.line_total, 0))
 
     groups.push({
       depot,
@@ -138,22 +149,16 @@ export function buildTaxRequests(
     })
   }
 
-  // TaxJar requires `amount` or a non-empty `line_items`, so a group holding
-  // only freight is not a valid request on its own. Fold such a group's
-  // shipping into a group that does carry goods (freight follows the goods),
-  // which also keeps freight taxability tied to a real taxable base.
-  const withGoods = groups.filter((g) => g.request.line_items.length > 0)
-  const freightOnly = groups.filter((g) => g.request.line_items.length === 0)
   if (freightOnly.length > 0) {
-    const host = withGoods[0]
+    const host = groups[0]
     if (!host) return { ok: false, error: 'The invoice has no product lines (only shipping).' }
     for (const group of freightOnly) {
-      host.request.shipping = roundCents(host.request.shipping + group.request.shipping)
-      host.shippingLineKeys = [...host.shippingLineKeys, ...group.shippingLineKeys]
+      host.request.shipping = roundCents(host.request.shipping + group.shipping)
+      host.shippingLineKeys = [...host.shippingLineKeys, ...group.keys]
     }
   }
 
-  return { ok: true, groups: withGoods }
+  return { ok: true, groups }
 }
 
 export interface LineTaxResult {

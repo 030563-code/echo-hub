@@ -10,7 +10,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { roundCents } from '@/lib/quote-math'
 import { taxjarCreateOrder } from '@/lib/taxjar'
-import { DEPOT_FROM_ADDRESSES, US_DEPOTS } from '@/lib/customer-invoice/constants'
+import { DEPOT_FROM_ADDRESSES, US_DEPOTS, US_ACCEPTED_DEAL_STATUS, INVOICING_QUEUE_SINCE } from '@/lib/customer-invoice/constants'
 import { sanitizeUSAddress } from '@/lib/us-address'
 import { getAuthorizedUser, type AuthzOk } from '@/lib/authz'
 import type { CustomerInvoiceStatus } from '@/lib/customer-invoice/constants'
@@ -164,6 +164,42 @@ export async function lookupXeroItemCodes(
 }
 
 /**
+ * When each deal was actually moved to Quotation Accepted, from
+ * deal_stage_history (written by the capture_deal_stage_change trigger).
+ *
+ * deals_registry.updated_at is NOT this: it does not move when n8n syncs an
+ * acceptance, and is routinely days to months older than the acceptance (one
+ * deal accepted 2026-08-25 carries updated_at of 2026-06-02), so filtering on
+ * it would hide almost every real deal from the queue.
+ *
+ * A deal with no history row cannot be dated. The trigger has been recording
+ * since 2026-08-19, before the cutover, so an undated deal was necessarily
+ * accepted before the cutover and is correctly treated as ineligible.
+ */
+export async function getAcceptedAt(dealIds: readonly string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  if (dealIds.length === 0) return out
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('deal_stage_history')
+    .select('deal_id, changed_at')
+    .eq('new_status', US_ACCEPTED_DEAL_STATUS)
+    .in('deal_id', [...dealIds])
+  for (const row of data ?? []) {
+    const id = String(row.deal_id)
+    const at = String(row.changed_at)
+    const seen = out.get(id)
+    if (!seen || at > seen) out.set(id, at)
+  }
+  return out
+}
+
+/** True when the deal was accepted on or after the Hub invoicing cutover. */
+export function isAcceptedSinceCutover(acceptedAt: string | undefined): boolean {
+  return Boolean(acceptedAt) && (acceptedAt as string) >= INVOICING_QUEUE_SINCE
+}
+
+/**
  * Record the authorized invoice into TaxJar for filing, one order per
  * ship-from depot (TaxJar transactions take a single from-address). Stubbed
  * in sandbox. transaction_id = the Xero invoice number (suffixed per depot
@@ -186,28 +222,43 @@ export async function recordTaxJarOrders(
     if (!address.ok) return { ok: false, error: address.error }
     const shipTo = address.value
 
-    const depots = US_DEPOTS.filter((d) => lines.some((l) => l.ship_from_depot === d))
+    // Freight is attributed exactly as buildTaxRequests attributed it for the
+    // calculation: a depot carrying only freight has that freight folded into
+    // the first depot that carries goods. Filing it any other way would put
+    // the freight tax in a jurisdiction the calculation never used.
+    const depotsWithGoods = US_DEPOTS.filter((d) => lines.some((l) => l.ship_from_depot === d && !l.is_shipping))
+    if (depotsWithGoods.length === 0) return { ok: false, error: 'invoice has no product lines' }
+    const host = depotsWithGoods[0]
+    const shippingFor = (depot: USDepot) =>
+      lines.filter(
+        (l) =>
+          l.is_shipping &&
+          (l.ship_from_depot === depot ||
+            (depot === host && !depotsWithGoods.includes(l.ship_from_depot))),
+      )
+
     const transactionIds: string[] = []
-    for (const depot of depots) {
+    for (const depot of depotsWithGoods) {
       const from = DEPOT_FROM_ADDRESSES[depot]
       if (!from) return { ok: false, error: `${depot} dispatch address not configured` }
-      const depotLines = lines.filter((l) => l.ship_from_depot === depot)
-      const taxable = depotLines.filter((l) => !l.is_shipping)
-      const shipping = roundCents(depotLines.filter((l) => l.is_shipping).reduce((a, l) => a + Number(l.line_total), 0))
-      const salesTax = roundCents(depotLines.reduce((a, l) => a + Number(l.tax_amount ?? 0), 0))
 
-      // TaxJar rejects the order unless `amount` equals its own sum of the
-      // line items plus shipping, EXCLUDING tax: it computes each line as
-      // quantity x unit_price - discount. Build the lines first and sum
-      // exactly those figures, rather than our own rounded line_total, which
-      // can differ by a cent once a percentage discount is involved.
+      const taxable = lines.filter((l) => l.ship_from_depot === depot && !l.is_shipping)
+      const shippingLines = shippingFor(depot)
+      const shipping = roundCents(shippingLines.reduce((a, l) => a + Number(l.line_total), 0))
+      const salesTax = roundCents(
+        [...taxable, ...shippingLines].reduce((a, l) => a + Number(l.tax_amount ?? 0), 0),
+      )
+
+      // TaxJar sums each line as quantity x unit_price - discount and rejects
+      // the order unless `amount` equals that sum plus shipping, EXCLUDING
+      // tax. Deriving the discount from the stored line_total makes TaxJar's
+      // arithmetic land on exactly our line totals, so the filed amount and
+      // the invoiced amount cannot drift apart by a rounding cent.
       const orderLines = taxable.map((l) => {
         const quantity = Number(l.quantity)
         const unitPrice = Number(l.unit_price)
-        const discount =
-          Number(l.discount_percentage) > 0
-            ? roundCents(quantity * unitPrice * (Number(l.discount_percentage) / 100))
-            : 0
+        const gross = roundCents(quantity * unitPrice)
+        const discount = roundCents(gross - Number(l.line_total))
         return {
           id: l.line_key,
           quantity,
@@ -218,10 +269,8 @@ export async function recordTaxJarOrders(
           sales_tax: Number(l.tax_amount ?? 0),
         }
       })
-      const amount = roundCents(
-        orderLines.reduce((a, l) => a + roundCents(l.quantity * l.unit_price) - (l.discount ?? 0), 0) + shipping,
-      )
-      const transactionId = depots.length > 1 ? `${xeroInvoiceNumber}-${depot}` : xeroInvoiceNumber
+      const amount = roundCents(taxable.reduce((a, l) => a + Number(l.line_total), 0) + shipping)
+      const transactionId = depotsWithGoods.length > 1 ? `${xeroInvoiceNumber}-${depot}` : xeroInvoiceNumber
 
       await taxjarCreateOrder({
         transaction_id: transactionId,

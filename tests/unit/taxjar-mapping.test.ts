@@ -216,3 +216,52 @@ describe('freight-only depot groups', () => {
     expect(result.groups[0].shippingLineKeys).toEqual(['S1', 'S2'])
   })
 })
+
+describe('freight shipping from a depot with no goods', () => {
+  it('folds US-SBD freight into the US-BAL goods group without needing an SBD address', () => {
+    // This is the case the fold exists for: the reviewer moved the freight line
+    // to San Bernardino, whose dispatch address is not configured. It must not
+    // block the calculation, because that from-address is never used.
+    const lines = [
+      line({ line_key: 'L1', ship_from_depot: 'US-BAL' }),
+      line({ line_key: 'S1', ship_from_depot: 'US-SBD', is_shipping: true, line_total: 250, unit_price: 250 }),
+    ]
+    const result = buildTaxRequests(lines, shipTo, null)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.groups).toHaveLength(1)
+    expect(result.groups[0].depot).toBe('US-BAL')
+    expect(result.groups[0].request.shipping).toBe(250)
+    expect(result.groups[0].shippingLineKeys).toContain('S1')
+  })
+
+  it('still refuses when GOODS ship from a depot with no dispatch address', () => {
+    const result = buildTaxRequests([line({ line_key: 'L1', ship_from_depot: 'US-SBD' })], shipTo, null)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toMatch(/US-SBD/)
+  })
+
+  it('allocates the folded freight tax back to the line that carried it', () => {
+    const lines = [
+      line({ line_key: 'L1', ship_from_depot: 'US-BAL' }),
+      line({ line_key: 'S1', ship_from_depot: 'US-SBD', is_shipping: true, line_total: 250 }),
+    ]
+    const built = buildTaxRequests(lines, shipTo, null)
+    if (!built.ok) throw new Error('setup failed')
+    const result = applyTaxResponses(lines, [
+      {
+        group: built.groups[0],
+        response: {
+          tax: {
+            amount_to_collect: 37.63,
+            breakdown: { shipping: { tax_collectable: 26.88 }, line_items: [{ id: 'L1', tax_collectable: 10.75 }] },
+          },
+        },
+      },
+    ])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.lines.find((l) => l.line_key === 'S1')?.tax_amount).toBe(26.88)
+    expect(result.taxTotal).toBe(37.63)
+  })
+})

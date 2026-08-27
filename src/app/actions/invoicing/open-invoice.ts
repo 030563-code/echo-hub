@@ -11,9 +11,14 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildDraftLines, type RawDealLine } from '@/lib/customer-invoice/build-draft'
-import { INVOICING_QUEUE_SINCE, US_ACCEPTED_DEAL_STATUS, isUSDepot } from '@/lib/customer-invoice/constants'
+import { US_ACCEPTED_DEAL_STATUS, isUSDepot } from '@/lib/customer-invoice/constants'
 import { linesHash } from '@/lib/customer-invoice/hash'
-import { requireInvoicingManage, lookupXeroItemCodes } from '@/app/actions/invoicing/shared'
+import {
+  requireInvoicingManage,
+  lookupXeroItemCodes,
+  getAcceptedAt,
+  isAcceptedSinceCutover,
+} from '@/app/actions/invoicing/shared'
 
 const Input = z.object({ dealId: z.string().regex(/^\d+$/) })
 
@@ -42,7 +47,7 @@ export async function openInvoiceForDeal(input: { dealId: string }): Promise<Ope
   const { data: deal, error: dealError } = await admin
     .from('deals_registry')
     .select(
-      'hubspot_deal_id, hubspot_company_id, deal_name, deal_status, depot_code, currency, line_items_raw, quote_reference, updated_at, delivery_street, delivery_city, delivery_state, delivery_zip',
+      'hubspot_deal_id, hubspot_company_id, deal_name, deal_status, depot_code, currency, line_items_raw, quote_reference, delivery_street, delivery_city, delivery_state, delivery_zip',
     )
     .eq('hubspot_deal_id', dealId)
     .maybeSingle()
@@ -61,7 +66,8 @@ export async function openInvoiceForDeal(input: { dealId: string }): Promise<Ope
       error: 'This deal is not marked Quotation Accepted yet, so it cannot be invoiced.',
     }
   }
-  if (String(deal.updated_at ?? '') < INVOICING_QUEUE_SINCE) {
+  const acceptedAt = (await getAcceptedAt([dealId])).get(dealId)
+  if (!isAcceptedSinceCutover(acceptedAt)) {
     return {
       success: false,
       error: 'This deal was accepted before the Hub invoicing cutover and was invoiced through the old Xero flow.',
