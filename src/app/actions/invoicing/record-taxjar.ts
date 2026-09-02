@@ -1,9 +1,11 @@
 'use server'
 
 /**
- * Retry recording an authorized invoice into TaxJar for filing (the
- * post-authorize step is best-effort and can fail independently of Xero).
- * Safe to repeat: TaxJar duplicates return 422 and are updated via PUT.
+ * File the invoice into TaxJar as an order transaction. This is the "Send to
+ * TaxJar" action, and it is the ONLY place an order transaction is created:
+ * calculating tax (/v2/taxes) files nothing, and drafting into Xero files
+ * nothing either. Safe to repeat: TaxJar duplicates return 422 and are updated
+ * via PUT.
  */
 
 import { z } from 'zod'
@@ -32,11 +34,14 @@ export async function retryTaxJarRecord(input: { invoiceId: string }): Promise<R
   if (!loaded.ok) return { success: false, error: loaded.error }
   const { invoice, lines } = loaded
 
-  if (invoice.status !== 'authorized' && invoice.status !== 'sent') {
-    return { success: false, error: `Only an authorized invoice can be recorded (this one is ${invoice.status}).` }
-  }
-  if (!invoice.xero_invoice_number) {
-    return { success: false, error: 'This invoice has no Xero invoice number yet.' }
+  // `raised` is the state the Hub now lands on: the number is allocated and the
+  // Xero DRAFT exists. That is the earliest point at which a sale can honestly
+  // be filed, because the filing is keyed on the invoice number.
+  if (invoice.status !== 'raised' && invoice.status !== 'authorized' && invoice.status !== 'sent') {
+    return {
+      success: false,
+      error: `Only an invoice that has been sent to Xero can be filed to TaxJar (this one is ${invoice.status}).`,
+    }
   }
 
   if (!invoice.invoice_number) {
@@ -59,7 +64,7 @@ export async function retryTaxJarRecord(input: { invoiceId: string }): Promise<R
       updated_at: new Date().toISOString(),
     })
     .eq('id', invoiceId)
-    .in('status', ['authorized', 'sent'])
+    .in('status', ['raised', 'authorized', 'sent'])
   await logInvoiceEvent(invoiceId, 'taxjar_recorded', gate.auth.user.id, { transaction_ids: recorded.transactionIds })
 
   revalidatePath('/invoicing/drafts')

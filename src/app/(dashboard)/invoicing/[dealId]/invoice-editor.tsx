@@ -30,6 +30,7 @@ import type { CustomerInvoiceLineRow, CustomerInvoiceRow } from '@/app/actions/i
 import { saveInvoiceDraft } from '@/app/actions/invoicing/save-draft'
 import { calculateInvoiceTax } from '@/app/actions/invoicing/calculate-tax'
 import { sendInvoiceToXero } from '@/app/actions/invoicing/send-to-xero'
+import { XeroContactCard } from './xero-contact-card'
 import { voidInvoice } from '@/app/actions/invoicing/void-invoice'
 import { rebuildInvoiceFromDeal } from '@/app/actions/invoicing/rebuild-invoice'
 import { retryTaxJarRecord } from '@/app/actions/invoicing/record-taxjar'
@@ -43,7 +44,7 @@ interface EditableLine {
   hs_line_item_id: string | null
   hs_product_id: string | null
   sku: string
-  xero_item_code: string | null
+  xero_item_code: string
   account_code: string
   name: string
   description: string
@@ -76,7 +77,7 @@ function toEditable(line: CustomerInvoiceLineRow): EditableLine {
     hs_line_item_id: line.hs_line_item_id,
     hs_product_id: line.hs_product_id,
     sku: line.sku ?? '',
-    xero_item_code: line.xero_item_code,
+    xero_item_code: line.xero_item_code ?? '',
     account_code: line.account_code ?? '',
     name: line.name,
     description: line.description ?? '',
@@ -212,7 +213,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
         hs_line_item_id: null,
         hs_product_id: null,
         sku: '',
-        xero_item_code: null,
+        xero_item_code: '',
         account_code: '',
         name: '',
         description: '',
@@ -288,6 +289,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
       hs_product_id: row.hs_product_id,
       sku: row.sku || null,
       account_code: row.account_code || null,
+      xero_item_code: row.xero_item_code || null,
       name: row.name || 'Line item',
       description: row.description || null,
       quantity: Number(row.quantity) || 0,
@@ -302,19 +304,12 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
     })),
   })
 
+  // Saving IS the calculate step. TaxJar's /v2/taxes call is a read-only quote:
+  // it files nothing and costs nothing to repeat, so there is no reason to make
+  // Dave press a second button to see the tax. The ORDER TRANSACTION, which is
+  // the actual filing record, is created only by Send to TaxJar.
   const onSave = () =>
     run('save', async () => {
-      const result = await saveInvoiceDraft(buildSavePayload())
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success(result.taxInvalidated ? 'Saved. Tax cleared: recalculate before sending.' : 'Saved.')
-      router.refresh()
-    })
-
-  const onCalculate = () =>
-    run('calculate', async () => {
       const saved = await saveInvoiceDraft(buildSavePayload())
       if (!saved.success) {
         toast.error(saved.error)
@@ -327,7 +322,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
         return
       }
       for (const warning of result.warnings) toast.warning(warning, { duration: 10000 })
-      toast.success(`Tax calculated: ${money.format(result.taxTotal)} (total ${money.format(result.total)}).`)
+      toast.success(`Saved. Tax ${money.format(result.taxTotal)}, total ${money.format(result.total)}.`)
       router.refresh()
     })
 
@@ -460,7 +455,12 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
 
       {/* Header: the Xero invoice fields + TaxJar identity */}
       <Card className="bg-white border-gray-200 p-4 sm:p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-4">Invoice details</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 mb-1">Invoice details</h2>
+        <p className="text-xs text-gray-500 mb-4">
+          The invoice date is blank on purpose: it is the date the invoice is sent, so Send to Xero stamps it.
+          The due date follows from it using the customer&apos;s Xero payment terms, or 30 days if Xero holds
+          none. Set either by hand here to override.
+        </p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <Label htmlFor="invoice_date">Invoice date</Label>
@@ -505,9 +505,15 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
         </div>
       </Card>
 
+      <XeroContactCard
+        accountNumber={header.taxjar_customer_id}
+        companyName={invoice.company_name}
+        editable={editable}
+      />
+
       {/* TaxJar ship-to */}
       <Card className="bg-white border-gray-200 p-4 sm:p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-1">Delivery address</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 mb-1">Delivery address</h2>
         <p className="text-xs text-gray-500 mb-3">
           {header.is_collection
             ? 'Not used for tax on a collected order: the sale is taxed where the goods are picked up.'
@@ -624,7 +630,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
       <Card className="bg-white border-gray-200 p-0 overflow-x-auto">
         <table className="w-full min-w-[960px] text-sm">
           <thead>
-            <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500">
+            <tr className="border-b border-gray-200 text-left text-xs font-semibold uppercase tracking-wide text-gray-700">
               <th className="px-3 py-3">Item</th>
               <th className="px-3 py-3">Description</th>
               <th className="px-3 py-3 w-20">Qty</th>
@@ -653,15 +659,23 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                       disabled={!editable}
                       className="min-w-36"
                     />
-                    <p className="mt-1 text-xs text-gray-400">
-                      {row.sku || 'no SKU'}
-                      {row.xero_item_code ? ` → ${row.xero_item_code}` : ''}
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <span className="text-xs text-gray-500">{row.sku || 'no SKU'}</span>
+                      <span className="text-xs text-gray-400" aria-hidden="true">&rarr;</span>
+                      <Input
+                        value={row.xero_item_code}
+                        onChange={(e) => updateRow(row.line_key, { xero_item_code: e.target.value })}
+                        placeholder="Xero item code"
+                        disabled={!editable}
+                        aria-label="Xero item code"
+                        className="h-7 min-w-28 py-0 text-xs"
+                      />
                       {row.is_shipping && (
-                        <span className="ml-1 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-800">
+                        <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-800">
                           Shipping
                         </span>
                       )}
-                    </p>
+                    </div>
                   </td>
                   <td className="px-3 py-2">
                     <Input
@@ -699,8 +713,16 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                     <Input
                       value={row.account_code}
                       onChange={(e) => updateRow(row.line_key, { account_code: e.target.value })}
-                      placeholder="default"
+                      placeholder="required"
                       disabled={!editable}
+                      aria-label="Xero account code"
+                      aria-invalid={!row.account_code.trim()}
+                      title={
+                        row.account_code.trim()
+                          ? undefined
+                          : 'No Xero account: this revenue would post to the default sales account. Set the item code, or type the account.'
+                      }
+                      className={row.account_code.trim() ? undefined : 'border-amber-400 placeholder-amber-600'}
                     />
                   </td>
                   <td className="px-3 py-2">
@@ -716,7 +738,15 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                       <select
                         className="flex h-9 w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
                         value={row.ship_from_depot}
-                        onChange={(e) => updateRow(row.line_key, { ship_from_depot: e.target.value as 'US-BAL' | 'US-SBD' })}
+                        onChange={(e) =>
+                          updateRow(row.line_key, {
+                            ship_from_depot: e.target.value as 'US-BAL' | 'US-SBD',
+                            // Clearing it makes the save path re-resolve the
+                            // item code for the NEW depot. Keeping it would
+                            // bill a Baltimore item on a California shipment.
+                            xero_item_code: '',
+                          })
+                        }
                         disabled={!editable}
                       >
                         {US_DEPOTS.map((depot) => (
@@ -779,7 +809,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
 
       {taxGroups.length > 0 && (
         <Card className="bg-white border-gray-200 p-4 sm:p-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-1">Tax calculation</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 mb-1">Tax calculation</h2>
           <p className="text-xs text-gray-500 mb-4">
             Where TaxJar decided each shipment was taxed. Check the place, not just the rate: a wrong zip
             returns a different number rather than an error.
@@ -842,13 +872,9 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
           <div className="flex flex-col items-stretch gap-3 sm:items-end">
             {editable && (
               <div className="flex flex-wrap justify-end gap-2">
-                <Button variant="outline" onClick={onSave} disabled={pendingAction !== null}>
+                <Button onClick={onSave} disabled={pendingAction !== null}>
                   {spinner('save')}
                   Save draft
-                </Button>
-                <Button onClick={onCalculate} disabled={pendingAction !== null}>
-                  {spinner('calculate')}
-                  Send to TaxJar
                 </Button>
               </div>
             )}
@@ -875,10 +901,10 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                 Discard draft
               </Button>
             )}
-            {canManage && (status === 'authorized' || status === 'sent') && (
+            {canManage && (status === 'raised' || status === 'authorized' || status === 'sent') && (
               <Button variant="outline" onClick={onRetryRecord} disabled={pendingAction !== null}>
                 {spinner('record')}
-                Record in TaxJar
+                Send to TaxJar
               </Button>
             )}
             {terminal && status !== 'authorizing' && (

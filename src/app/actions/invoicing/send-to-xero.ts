@@ -14,11 +14,12 @@ import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sanitizeUSAddress } from '@/lib/us-address'
 import { linesHash } from '@/lib/customer-invoice/hash'
+import { dueDateFromTerms } from '@/lib/customer-invoice/payment-terms'
+import { xeroFindContact } from '@/lib/xero-hub'
 import {
   requireInvoicingManage,
   loadInvoiceWithLines,
   logInvoiceEvent,
-  recordTaxJarOrders,
 } from '@/app/actions/invoicing/shared'
 
 const Input = z.object({
@@ -62,6 +63,28 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
     return {
       success: false,
       error: 'This company has no Xero account code yet, so the Xero contact cannot be resolved. Fix the account code first.',
+    }
+  }
+
+  // Every line must carry a revenue account. A line with none is NOT rejected
+  // by Xero: the payload builder simply omits AccountCode and Xero posts the
+  // revenue to the org's default sales account, silently and in the wrong
+  // place. That is the failure this blocks.
+  //
+  // It happens when a rep picks a product with no Xero mapping (SKUs like
+  // 01-EBH9 or H8 against 60 US line items today), which is exactly what the
+  // Quotes Hub exists to stop at source. Until every deal comes through it,
+  // the account code is editable in the editor, so this is a prompt to fill it
+  // in rather than a dead end.
+  const unaccounted = lines.filter((l) => !l.account_code?.trim())
+  if (unaccounted.length > 0) {
+    const named = unaccounted.map((l) => `${l.name}${l.sku ? ` (${l.sku})` : ''}`).join(', ')
+    return {
+      success: false,
+      error:
+        `${unaccounted.length} line${unaccounted.length === 1 ? '' : 's'} ha${unaccounted.length === 1 ? 's' : 've'} no Xero account code, ` +
+        `so the revenue would post to the default sales account: ${named}. ` +
+        `Set the account on each line first (the item code drives it, and both are editable).`,
     }
   }
 
@@ -142,6 +165,26 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
   }
   const invoiceNumber = String(raised.invoice_number)
 
+  // The invoice date is the date the invoice actually goes out, NOT the date
+  // the draft was opened, so it is stamped here rather than defaulted at
+  // creation. The due date follows from it: the contact's Xero payment terms
+  // if it has any, otherwise Net 30. A due date Dave set by hand is left alone.
+  // A failed contact lookup falls back to Net 30 rather than blocking a send.
+  const today = new Date().toISOString().slice(0, 10)
+  // Drafts carry NO invoice date: the column has no default and the editor
+  // shows it blank, because the invoice date is the date the invoice goes out.
+  // A date set by hand is respected, exactly as a hand-set due date is.
+  const invoiceDate = invoice.invoice_date ?? today
+  let dueDate = invoice.due_date
+  if (!dueDate) {
+    const contact = await xeroFindContact(invoice.taxjar_customer_id)
+    dueDate = dueDateFromTerms(invoiceDate, contact.ok && contact.data ? contact.data.payment_terms : null)
+  }
+  await admin
+    .from('customer_invoices')
+    .update({ invoice_date: invoiceDate, due_date: dueDate, updated_at: new Date().toISOString() })
+    .eq('id', invoiceId)
+
   const payload = {
     idempotency_key: invoice.idempotency_key,
     invoice_id: invoice.id,
@@ -171,8 +214,8 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
       company_name: invoice.company_name,
     },
     currency: invoice.currency,
-    date: invoice.invoice_date,
-    due_date: invoice.due_date,
+    date: invoiceDate,
+    due_date: dueDate,
     line_amount_types: 'Exclusive',
     lines: lines
       .filter((l) => !l.is_shipping)
@@ -300,24 +343,14 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
     xero_invoice_id: response.xero_invoice_id,
   })
 
-  const warnings: string[] = []
-  const recorded = await recordTaxJarOrders(invoice, lines, invoiceNumber)
-  if (recorded.ok) {
-    await admin
-      .from('customer_invoices')
-      .update({
-        taxjar_transaction_id: recorded.transactionIds.join(','),
-        taxjar_transaction_recorded_at: new Date().toISOString(),
-        status: 'completed',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', invoiceId)
-      .in('status', ['authorized', 'sent'])
-    await logInvoiceEvent(invoiceId, 'taxjar_recorded', gate.auth.user.id, { transaction_ids: recorded.transactionIds })
-  } else {
-    warnings.push(`Invoice created, but recording it in TaxJar for filing failed: ${recorded.error}. Use Retry in the editor.`)
-    await logInvoiceEvent(invoiceId, 'taxjar_record_failed', gate.auth.user.id, { error: recorded.error })
-  }
+  // Filing is deliberately NOT done here. A TaxJar order transaction is the
+  // record that reports the sale on a return, and it is keyed on the invoice
+  // number, so it must not be created as a side effect of drafting: a draft
+  // that is later discarded would leave a filed sale behind. Send to TaxJar
+  // does it explicitly, once the number exists.
+  const warnings: string[] = [
+    `Invoice ${invoiceNumber} is a DRAFT in Xero and has not been filed to TaxJar. Use Send to TaxJar to file it.`,
+  ]
 
   revalidatePath('/invoicing/accepted')
   revalidatePath('/invoicing/drafts')

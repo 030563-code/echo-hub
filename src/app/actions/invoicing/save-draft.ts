@@ -31,6 +31,8 @@ const LineInput = z.object({
   hs_product_id: z.string().max(64).nullable(),
   sku: z.string().max(64).nullable(),
   account_code: z.string().max(32).nullable(),
+  /** Editable: a typed code overrides the SKU-and-depot mapping. */
+  xero_item_code: z.string().max(64).nullable(),
   name: z.string().min(1).max(255),
   description: z.string().max(4000).nullable(),
   quantity: z.number().finite().min(0),
@@ -118,7 +120,11 @@ export async function saveInvoiceDraft(input: z.infer<typeof Input>): Promise<Sa
     hs_line_item_id: l.hs_line_item_id,
     hs_product_id: l.hs_product_id,
     sku: l.sku,
-    xero_item_code: l.sku ? (codes.get(`${l.sku}|${l.ship_from_depot}`) ?? null) : null,
+    // A code typed in the editor wins. Blank falls back to the SKU-and-depot
+    // mapping, which is what makes changing the ship-from depot re-resolve the
+    // code (the editor clears it on that change) instead of shipping H9BALT on
+    // a line that now dispatches from San Bernardino.
+    xero_item_code: l.xero_item_code?.trim() || (l.sku ? (codes.get(`${l.sku}|${l.ship_from_depot}`) ?? null) : null),
     account_code: l.account_code,
     name: l.name,
     description: l.description,
