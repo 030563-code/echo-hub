@@ -14,6 +14,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { computeDraftLineTotal } from '@/lib/customer-invoice/build-draft'
 import { US_DEPOTS, KIT_SHIP_FROM } from '@/lib/customer-invoice/constants'
 import { linesHash } from '@/lib/customer-invoice/hash'
+import { US_STATE_CODES } from '@/lib/us-address'
 import { roundCents } from '@/lib/quote-math'
 import {
   requireInvoicingManage,
@@ -50,8 +51,13 @@ const Input = z.object({
     taxjar_customer_id: z.string().max(64).nullable(),
     delivery_street: z.string().max(255).nullable(),
     delivery_city: z.string().max(100).nullable(),
-    delivery_state: z.string().max(30).nullable(),
-    delivery_zip: z.string().max(12).nullable(),
+    delivery_state: z.enum(US_STATE_CODES).nullable(),
+    delivery_zip: z.string().regex(/^\d{5}(-\d{4})?$/, 'Delivery zip must be 5 digits or ZIP+4.').nullable(),
+    // Required, never defaulted: a stale browser tab that posts without the key
+    // must be REJECTED, not silently treated as a delivered order. Defaulting
+    // it to false would change the jurisdiction the tax is calculated in
+    // without anyone touching the checkbox.
+    is_collection: z.boolean(),
   }),
   lines: z.array(LineInput).min(1).max(200),
 })
@@ -131,6 +137,7 @@ export async function saveInvoiceDraft(input: z.infer<typeof Input>): Promise<Sa
     delivery_state: header.delivery_state,
     delivery_zip: header.delivery_zip,
     taxjar_customer_id: header.taxjar_customer_id,
+    is_collection: header.is_collection,
   })
   const preserveTax = invoice.status === 'tax_calculated' && newHash === invoice.lines_hash
 

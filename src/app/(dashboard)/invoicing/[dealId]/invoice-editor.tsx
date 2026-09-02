@@ -17,7 +17,12 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { US_STATE_CODES } from '@/lib/us-address'
-import { US_DEPOTS, type CustomerInvoiceStatus } from '@/lib/customer-invoice/constants'
+import {
+  US_DEPOTS,
+  DEPOT_FROM_ADDRESSES,
+  type CustomerInvoiceStatus,
+  type USDepot,
+} from '@/lib/customer-invoice/constants'
 import { computeDraftLineTotal } from '@/lib/customer-invoice/build-draft'
 import { roundCents } from '@/lib/quote-math'
 import type { CustomerInvoiceLineRow, CustomerInvoiceRow } from '@/app/actions/invoicing/shared'
@@ -99,6 +104,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
     delivery_city: invoice.delivery_city ?? '',
     delivery_state: invoice.delivery_state ?? '',
     delivery_zip: invoice.delivery_zip ?? '',
+    is_collection: invoice.is_collection,
   })
   const [rows, setRows] = useState<EditableLine[]>(lines.map(toEditable))
   // What TaxJar last returned per line, used to decide whether an edited tax
@@ -111,6 +117,19 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
   // Send, and the editor remounts on every server write, so a default of true
   // could silently undo a reviewer's decision not to email.
   const [emailToCustomer, setEmailToCustomer] = useState(false)
+
+  const goodsDepots = useMemo(
+    () => [...new Set(rows.filter((r) => !r.is_shipping).map((r) => r.ship_from_depot))],
+    [rows],
+  )
+  const collectionDestinations = useMemo(
+    () => goodsDepots.map((d) => DEPOT_FROM_ADDRESSES[d as USDepot]).filter((a) => a !== null && a !== undefined),
+    [goodsDepots],
+  )
+  const unconfiguredCollectionDepots = useMemo(
+    () => goodsDepots.filter((d) => !DEPOT_FROM_ADDRESSES[d as USDepot]),
+    [goodsDepots],
+  )
 
   const status = invoice.status as CustomerInvoiceStatus
   const editable = canManage && (status === 'draft' || status === 'tax_calculated')
@@ -192,6 +211,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
       delivery_city: header.delivery_city || null,
       delivery_state: header.delivery_state || null,
       delivery_zip: header.delivery_zip || null,
+      is_collection: header.is_collection,
     },
     lines: rows.map((row, index) => ({
       line_key: row.line_key,
@@ -422,9 +442,46 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
       {/* TaxJar ship-to */}
       <Card className="p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-1">Delivery address</h2>
-        <p className="text-xs text-gray-500 mb-4">
-          Used to calculate US sales tax: the ship-to address, not the billing address.
+        <p className="text-xs text-gray-500 mb-3">
+          {header.is_collection
+            ? 'Not used for tax on a collected order: the sale is taxed where the goods are picked up.'
+            : 'Used to calculate US sales tax: the ship-to address, not the billing address.'}
         </p>
+
+        <label className="mb-3 flex items-start gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={header.is_collection}
+            onChange={(e) => setHeader({ ...header, is_collection: e.target.checked })}
+            disabled={!editable}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300"
+          />
+          <span>
+            Collected by the customer (Will Call)
+            <span className="block text-xs text-gray-500">
+              Sales tax is charged at the collection depot, not at the address below.
+            </span>
+          </span>
+        </label>
+
+        {header.is_collection && collectionDestinations.length > 0 && (
+          <p className="mb-3 text-xs text-gray-600">
+            Tax destination:{' '}
+            {collectionDestinations.map((d) => `${d.city}, ${d.state} ${d.zip}`).join(' and ')}
+          </p>
+        )}
+        {header.is_collection && unconfiguredCollectionDepots.length > 0 && (
+          <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            {unconfiguredCollectionDepots.join(' and ')} has no configured depot address, so tax cannot be
+            calculated for lines collected from it.
+          </p>
+        )}
+        {header.is_collection !== invoice.is_collection && status === 'tax_calculated' && (
+          <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Changing this clears the calculated tax. Recalculate before sending.
+          </p>
+        )}
+
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="lg:col-span-2">
             <Label htmlFor="street">Street</Label>

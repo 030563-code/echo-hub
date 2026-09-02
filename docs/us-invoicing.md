@@ -32,12 +32,15 @@ records completed orders for filing. The Hub builds and owns the draft invoice.
    inputs, all editable: dates, customer PO (becomes the Xero Reference), Xero account
    number (doubles as the TaxJar customer id), delivery address, and per line: item
    code, description, qty, unit price, discount, account code, ship-from depot, tax
-   (editable after calculation as a flagged manual override).
+   (editable after calculation as a flagged manual override). Plus the
+   **Collected by the customer (Will Call)** toggle: see the Collection section below.
 5. **Send to TaxJar** (`calculateInvoiceTax`). One `/v2/taxes` call per ship-from depot
    group (TaxJar takes a single from-address per call), each carrying its own shipping
    total and the customer id (so reseller exemptions Dave maintains in TaxJar apply).
-   Per-line tax mapped back from the breakdown; all-or-nothing persistence; any
-   reconciliation gap beyond a cent is surfaced as a warning.
+   The destination is the invoice's delivery address, or, on a collected order, each
+   group's own depot address. Per-line tax mapped back from the breakdown;
+   all-or-nothing persistence; any reconciliation gap beyond a cent is surfaced as a
+   warning.
 6. **Send to Xero** (`sendInvoiceToXero`). Compare-and-set to `authorizing`, then the
    n8n webhook `/hub-invoice-authorize` (secret header) creates the AUTHORISED ACCREC
    invoice in the US tenant and optionally emails it via Xero. Xero mints the invoice
@@ -47,6 +50,40 @@ records completed orders for filing. The Hub builds and owns the draft invoice.
 7. **Filing**. After authorization the order is recorded into TaxJar
    (`transaction_id` = the Xero invoice number, one order per depot group), best-effort
    with a retry button. Status becomes `completed`.
+
+## Collection (Will Call)
+
+A collected order is taxed where the customer picks the goods up, not where they live.
+`customer_invoices.is_collection` is a header flag Dave sets in the editor; when it is
+on, each depot group's TaxJar destination becomes that group's own dispatch address, so
+origin and destination are the same place. It falls straight out of the existing
+per-depot grouping.
+
+Three things make this safe rather than merely present:
+
+- **The flag is inside `lines_hash`.** Ticking it after a calculation invalidates the
+  tax and drops the invoice back to draft. Without that, Dave could calculate delivered
+  tax, tick Will Call, and send California tax to Xero while the order was filed to
+  TaxJar as Maryland. That needs no race and no crafted input, just a checkbox.
+- **The filing uses the same destination as the calculation**, per depot, not per
+  invoice. `buildFilingOrders` and `buildTaxRequests` live side by side in
+  `tax-mapping.ts` and `tests/unit/taxjar-filing.test.ts` asserts their `to_*` fields
+  are equal for the same fixture, delivered and collected, including across two depots.
+- **A rebuild carries the flag forward.** `rebuildInvoiceFromDeal` voids and re-opens,
+  and a fresh draft is always delivered, so the flag is passed explicitly into
+  `openInvoiceForDeal`.
+
+The RPC coalesces an absent `is_collection` key onto the STORED value, never onto
+false, and `save-draft.ts` requires the field rather than defaulting it, so a stale
+browser tab is rejected instead of silently changing the jurisdiction. Flipping it
+writes a `collection_changed` event.
+
+Measured in the sandbox on one order (5 x H9 at 185 plus 250 freight): delivered to
+Santa Monica CA returned 10.75% and 99.44 of tax; collected from Jessup MD returned 6%
+and 55.50. Same lines, 43.94 apart.
+
+Freight on a collected order is kept in the tax base and warned about rather than
+dropped, because Xero bills that freight either way.
 
 ## Status machine
 
@@ -147,9 +184,21 @@ acceptances, and put it back before the cutover.
 
 ## Known limits and defaults
 
-- US-SBD dispatch address is not configured yet (blank in `po_delivery_addresses` too):
-  tax calculation refuses San Bernardino groups until Dean supplies it in
-  `src/lib/customer-invoice/constants.ts`.
+- US-SBD dispatch address is not configured yet (the `po_delivery_addresses` row holds
+  a literal "confirm ship-to address" placeholder): tax calculation refuses San
+  Bernardino groups until Dean supplies it in
+  `src/lib/customer-invoice/constants.ts`. The depot is at Rancho Cucamonga, CA; the
+  street and zip are still needed. This now blocks in two ways, since a collected SBD
+  order also has no destination.
+- One delivery address per invoice, and one collection flag for the whole invoice. A
+  part-collected, part-delivered order is two invoices. Nothing in the database has ever
+  recorded a deal delivering to two sites (all `deals_registry.delivery_*` columns were
+  NULL on all 2,062 rows before this build), so this is unproven rather than ruled out.
+- HubSpot holds no delivery address and no collect-versus-deliver field. Of 573 deal
+  properties the only delivery one is `delivery_country`, a country-level enum. The Hub
+  acceptance gate is therefore the sole system of record for the ship-to address, and
+  collection is asked at review. Do not add a second writer to `deals_registry`
+  without reading the trigger notes in the pending guards migration first.
 - Kit price allocation default: hooks carry the kit unit price, bungees are 0.00.
   Revenue-neutral, editable per line, but per-item revenue reporting in Xero skews
   toward hooks. Dave should confirm he is happy with that.

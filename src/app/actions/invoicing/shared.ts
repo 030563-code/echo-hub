@@ -8,9 +8,9 @@ import 'server-only'
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { roundCents } from '@/lib/quote-math'
 import { taxjarCreateOrder } from '@/lib/taxjar'
-import { DEPOT_FROM_ADDRESSES, US_DEPOTS, US_ACCEPTED_DEAL_STATUS, INVOICING_QUEUE_SINCE } from '@/lib/customer-invoice/constants'
+import { US_ACCEPTED_DEAL_STATUS, INVOICING_QUEUE_SINCE } from '@/lib/customer-invoice/constants'
+import { buildFilingOrders, type ShipToAddress } from '@/lib/customer-invoice/tax-mapping'
 import { sanitizeUSAddress } from '@/lib/us-address'
 import { getAuthorizedUser, type AuthzOk } from '@/lib/authz'
 import type { CustomerInvoiceStatus } from '@/lib/customer-invoice/constants'
@@ -33,6 +33,7 @@ export interface CustomerInvoiceRow {
   delivery_state: string | null
   delivery_zip: string | null
   delivery_country: string
+  is_collection: boolean
   subtotal: number | null
   shipping_total: number | null
   tax_total: number | null
@@ -211,87 +212,50 @@ export async function recordTaxJarOrders(
   xeroInvoiceNumber: string,
 ): Promise<{ ok: true; transactionIds: string[] } | { ok: false; error: string }> {
   try {
-    // Same sanitization the calculation used, so the filed transaction and the
-    // calculated tax describe the same destination.
-    const address = sanitizeUSAddress({
-      street: invoice.delivery_street ?? '',
-      city: invoice.delivery_city ?? '',
-      state: invoice.delivery_state ?? '',
-      zip: invoice.delivery_zip ?? '',
-    })
-    if (!address.ok) return { ok: false, error: address.error }
-    const shipTo = address.value
+    // A collected order is taxed at the depot, so it needs no delivery address
+    // and must not be filed against one. Only a delivered order sanitizes the
+    // customer address, and it uses exactly the sanitizer the calculation used
+    // so the filed transaction and the calculated tax describe the same place.
+    let shipTo: ShipToAddress | null = null
+    if (!invoice.is_collection) {
+      const address = sanitizeUSAddress({
+        street: invoice.delivery_street ?? '',
+        city: invoice.delivery_city ?? '',
+        state: invoice.delivery_state ?? '',
+        zip: invoice.delivery_zip ?? '',
+      })
+      if (!address.ok) return { ok: false, error: address.error }
+      shipTo = address.value
+    }
 
-    // Freight is attributed exactly as buildTaxRequests attributed it for the
-    // calculation: a depot carrying only freight has that freight folded into
-    // the first depot that carries goods. Filing it any other way would put
-    // the freight tax in a jurisdiction the calculation never used.
-    const depotsWithGoods = US_DEPOTS.filter((d) => lines.some((l) => l.ship_from_depot === d && !l.is_shipping))
-    if (depotsWithGoods.length === 0) return { ok: false, error: 'invoice has no product lines' }
-    const host = depotsWithGoods[0]
-    const shippingFor = (depot: USDepot) =>
-      lines.filter(
-        (l) =>
-          l.is_shipping &&
-          (l.ship_from_depot === depot ||
-            (depot === host && !depotsWithGoods.includes(l.ship_from_depot))),
-      )
+    const built = buildFilingOrders(
+      lines.map((l) => ({
+        line_key: l.line_key,
+        quantity: Number(l.quantity),
+        unit_price: Number(l.unit_price),
+        discount_percentage: Number(l.discount_percentage),
+        line_total: Number(l.line_total),
+        is_shipping: l.is_shipping,
+        ship_from_depot: l.ship_from_depot as USDepot,
+        sku: l.sku,
+        name: l.name,
+        description: l.description,
+        tax_amount: l.tax_amount === null ? null : Number(l.tax_amount),
+      })),
+      shipTo,
+      invoice.taxjar_customer_id,
+      invoice.is_collection,
+      {
+        transactionDate: invoice.invoice_date ?? new Date().toISOString().slice(0, 10),
+        xeroInvoiceNumber,
+      },
+    )
+    if (!built.ok) return { ok: false, error: built.error }
 
     const transactionIds: string[] = []
-    for (const depot of depotsWithGoods) {
-      const from = DEPOT_FROM_ADDRESSES[depot]
-      if (!from) return { ok: false, error: `${depot} dispatch address not configured` }
-
-      const taxable = lines.filter((l) => l.ship_from_depot === depot && !l.is_shipping)
-      const shippingLines = shippingFor(depot)
-      const shipping = roundCents(shippingLines.reduce((a, l) => a + Number(l.line_total), 0))
-      const salesTax = roundCents(
-        [...taxable, ...shippingLines].reduce((a, l) => a + Number(l.tax_amount ?? 0), 0),
-      )
-
-      // TaxJar sums each line as quantity x unit_price - discount and rejects
-      // the order unless `amount` equals that sum plus shipping, EXCLUDING
-      // tax. Deriving the discount from the stored line_total makes TaxJar's
-      // arithmetic land on exactly our line totals, so the filed amount and
-      // the invoiced amount cannot drift apart by a rounding cent.
-      const orderLines = taxable.map((l) => {
-        const quantity = Number(l.quantity)
-        const unitPrice = Number(l.unit_price)
-        const gross = roundCents(quantity * unitPrice)
-        const discount = roundCents(gross - Number(l.line_total))
-        return {
-          id: l.line_key,
-          quantity,
-          product_identifier: l.sku ?? undefined,
-          description: (l.description || l.name).slice(0, 255),
-          unit_price: unitPrice,
-          ...(discount > 0 ? { discount } : {}),
-          sales_tax: Number(l.tax_amount ?? 0),
-        }
-      })
-      const amount = roundCents(taxable.reduce((a, l) => a + Number(l.line_total), 0) + shipping)
-      const transactionId = depotsWithGoods.length > 1 ? `${xeroInvoiceNumber}-${depot}` : xeroInvoiceNumber
-
-      await taxjarCreateOrder({
-        transaction_id: transactionId,
-        transaction_date: invoice.invoice_date ?? new Date().toISOString().slice(0, 10),
-        from_country: from.country,
-        from_state: from.state,
-        from_zip: from.zip,
-        from_city: from.city,
-        from_street: from.street,
-        to_country: 'US',
-        to_state: shipTo.state,
-        to_zip: shipTo.zip,
-        to_city: shipTo.city,
-        to_street: shipTo.street,
-        amount,
-        shipping,
-        sales_tax: salesTax,
-        ...(invoice.taxjar_customer_id ? { customer_id: invoice.taxjar_customer_id } : {}),
-        line_items: orderLines,
-      })
-      transactionIds.push(transactionId)
+    for (const order of built.orders) {
+      await taxjarCreateOrder(order)
+      transactionIds.push(order.transaction_id)
     }
     return { ok: true, transactionIds }
   } catch (err) {

@@ -20,19 +20,28 @@ import {
   isAcceptedSinceCutover,
 } from '@/app/actions/invoicing/shared'
 
-const Input = z.object({ dealId: z.string().regex(/^\d+$/) })
+const Input = z.object({
+  dealId: z.string().regex(/^\d+$/),
+  // Set only by rebuildInvoiceFromDeal, which must carry a Will Call flag over
+  // to the replacement draft. A fresh draft is always delivered.
+  isCollection: z.boolean().optional(),
+})
 
 export type OpenInvoiceResult =
   | { success: true; invoiceId: string; created: boolean }
   | { success: false; error: string }
 
-export async function openInvoiceForDeal(input: { dealId: string }): Promise<OpenInvoiceResult> {
+export async function openInvoiceForDeal(input: {
+  dealId: string
+  isCollection?: boolean
+}): Promise<OpenInvoiceResult> {
   const gate = await requireInvoicingManage()
   if (!gate.ok) return { success: false, error: gate.error }
 
   const parsed = Input.safeParse(input)
   if (!parsed.success) return { success: false, error: 'Invalid deal id' }
   const { dealId } = parsed.data
+  const isCollection = parsed.data.isCollection ?? false
 
   const admin = createAdminClient()
 
@@ -120,6 +129,7 @@ export async function openInvoiceForDeal(input: { dealId: string }): Promise<Ope
     delivery_state: deal.delivery_state ?? null,
     delivery_zip: deal.delivery_zip ?? null,
     delivery_country: 'US',
+    is_collection: isCollection,
     subtotal: lines.filter((l) => !l.is_shipping).reduce((acc, l) => acc + l.line_total, 0),
     shipping_total: lines.filter((l) => l.is_shipping).reduce((acc, l) => acc + l.line_total, 0),
     source_lines_snapshot: rawLines,
@@ -129,6 +139,7 @@ export async function openInvoiceForDeal(input: { dealId: string }): Promise<Ope
       delivery_state: deal.delivery_state ?? null,
       delivery_zip: deal.delivery_zip ?? null,
       taxjar_customer_id: xeroAccountCode,
+      is_collection: isCollection,
     }),
     created_by_uid: gate.auth.user.id,
   }

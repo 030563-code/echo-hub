@@ -7,6 +7,7 @@ const header: TaxRelevantHeader = {
   delivery_state: 'CA',
   delivery_zip: '90404',
   taxjar_customer_id: 'US123',
+  is_collection: false,
 }
 
 const lineA: TaxRelevantLine = {
@@ -20,6 +21,41 @@ const lineA: TaxRelevantLine = {
 }
 
 describe('linesHash', () => {
+  it('changes when the collection flag flips', () => {
+    const delivered = linesHash([lineA], { ...header, is_collection: false })
+    const collected = linesHash([lineA], { ...header, is_collection: true })
+    expect(delivered).not.toBe(collected)
+    // Each must also be stable, so the difference is the flag and not noise.
+    expect(linesHash([lineA], { ...header, is_collection: false })).toBe(delivered)
+    expect(linesHash([lineA], { ...header, is_collection: true })).toBe(collected)
+  })
+
+  it('does not collapse an undefined flag onto a third value', () => {
+    // JSON.stringify drops an undefined key, so without the `=== true`
+    // coercion an untyped caller would reproduce the pre-collection hash and
+    // the staleness guard would accept a hash never computed for this invoice.
+    const withoutFlag: Partial<TaxRelevantHeader> = { ...header }
+    delete withoutFlag.is_collection
+    expect(linesHash([lineA], withoutFlag as TaxRelevantHeader)).toBe(
+      linesHash([lineA], { ...header, is_collection: false }),
+    )
+  })
+
+  it('keeps the flag independent of the delivery address', () => {
+    // A collected invoice legitimately has no address. Clearing the address
+    // must not make the collected and delivered hashes converge.
+    const cleared = {
+      ...header,
+      delivery_street: null,
+      delivery_city: null,
+      delivery_state: null,
+      delivery_zip: null,
+    }
+    expect(linesHash([lineA], { ...cleared, is_collection: true })).not.toBe(
+      linesHash([lineA], { ...cleared, is_collection: false }),
+    )
+  })
+
   it('is stable across line ordering', () => {
     const lineB: TaxRelevantLine = { ...lineA, line_key: 'L2', sku: 'LTLNA', is_shipping: true }
     expect(linesHash([lineA, lineB], header)).toBe(linesHash([lineB, lineA], header))

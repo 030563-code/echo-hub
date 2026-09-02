@@ -65,13 +65,17 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
     }
   }
 
-  const address = sanitizeUSAddress({
-    street: invoice.delivery_street ?? '',
-    city: invoice.delivery_city ?? '',
-    state: invoice.delivery_state ?? '',
-    zip: invoice.delivery_zip ?? '',
-  })
-  if (!address.ok) return { success: false, error: address.error }
+  // A collected order carries no delivery address requirement: it was taxed
+  // at the depot and is invoiced the same way.
+  if (!invoice.is_collection) {
+    const address = sanitizeUSAddress({
+      street: invoice.delivery_street ?? '',
+      city: invoice.delivery_city ?? '',
+      state: invoice.delivery_state ?? '',
+      zip: invoice.delivery_zip ?? '',
+    })
+    if (!address.ok) return { success: false, error: address.error }
+  }
 
   // Belt-and-braces staleness check against a stale browser tab.
   const currentHash = linesHash(
@@ -90,6 +94,7 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
       delivery_state: invoice.delivery_state,
       delivery_zip: invoice.delivery_zip,
       taxjar_customer_id: invoice.taxjar_customer_id,
+      is_collection: invoice.is_collection,
     },
   )
   if (currentHash !== invoice.lines_hash) {
@@ -106,7 +111,10 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
   if (casError || !cas || cas.length === 0) {
     return { success: false, error: 'This invoice is already being sent.' }
   }
-  await logInvoiceEvent(invoiceId, 'authorize_requested', gate.auth.user.id, { email_to_customer: emailToCustomer })
+  await logInvoiceEvent(invoiceId, 'authorize_requested', gate.auth.user.id, {
+    email_to_customer: emailToCustomer,
+    collected: invoice.is_collection,
+  })
 
   const payload = {
     idempotency_key: invoice.idempotency_key,
@@ -115,6 +123,14 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
     hubspot_deal_id: invoice.hubspot_deal_id,
     quote_reference: null as string | null,
     reference: invoice.customer_po_number ?? '',
+    // Forward-compatible only: n8n never sends an address to Xero, and Xero is
+    // handed per-line TaxAmount with TaxType NONE so it computes nothing. This
+    // lets a later branding change name the collection depot without a Hub
+    // deploy.
+    is_collection: invoice.is_collection,
+    collection_depots: invoice.is_collection
+      ? [...new Set(lines.filter((l) => !l.is_shipping).map((l) => l.ship_from_depot))]
+      : [],
     contact: {
       xero_account_number: invoice.taxjar_customer_id,
       hubspot_company_id: invoice.hubspot_company_id,

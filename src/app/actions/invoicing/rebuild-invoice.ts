@@ -31,7 +31,7 @@ export async function rebuildInvoiceFromDeal(input: { invoiceId: string }): Prom
   const admin = createAdminClient()
   const { data: invoice } = await admin
     .from('customer_invoices')
-    .select('id, status, hubspot_deal_id')
+    .select('id, status, hubspot_deal_id, is_collection')
     .eq('id', invoiceId)
     .maybeSingle()
   if (!invoice) return { success: false, error: 'Invoice not found.' }
@@ -50,7 +50,13 @@ export async function rebuildInvoiceFromDeal(input: { invoiceId: string }): Prom
     return { success: false, error: 'The invoice changed under you. Refresh and try again.' }
   }
 
-  const opened = await openInvoiceForDeal({ dealId: invoice.hubspot_deal_id })
+  // Carry the Will Call flag onto the replacement. Losing it here would
+  // silently re-tax a collected order at the customer's own address the next
+  // time Dave calculated, with nothing on screen to show what changed.
+  const opened = await openInvoiceForDeal({
+    dealId: invoice.hubspot_deal_id,
+    isCollection: invoice.is_collection,
+  })
   if (!opened.success) {
     // Put the reviewed draft back exactly as it was: a refused rebuild must
     // never leave the deal with no invoice at all.
@@ -62,7 +68,11 @@ export async function rebuildInvoiceFromDeal(input: { invoiceId: string }): Prom
     return { success: false, error: `${opened.error} The existing draft was left untouched.` }
   }
 
-  await logInvoiceEvent(invoiceId, 'voided', gate.auth.user.id, { reason: 'rebuilt', replaced_by: opened.invoiceId })
+  await logInvoiceEvent(invoiceId, 'voided', gate.auth.user.id, {
+    reason: 'rebuilt',
+    replaced_by: opened.invoiceId,
+    is_collection: invoice.is_collection,
+  })
   revalidatePath('/invoicing/accepted')
   revalidatePath('/invoicing/drafts')
   revalidatePath(`/invoicing/${invoice.hubspot_deal_id}`)

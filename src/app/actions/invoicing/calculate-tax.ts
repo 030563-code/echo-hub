@@ -14,9 +14,11 @@ import { sanitizeUSAddress } from '@/lib/us-address'
 import {
   buildTaxRequests,
   applyTaxResponses,
+  collectionWarnings,
   type TaxableLine,
   type TaxJarTaxResponse,
   type TaxRequestGroup,
+  type ShipToAddress,
 } from '@/lib/customer-invoice/tax-mapping'
 import { linesHash } from '@/lib/customer-invoice/hash'
 import { roundCents } from '@/lib/quote-math'
@@ -52,13 +54,19 @@ export async function calculateInvoiceTax(input: { invoiceId: string }): Promise
     return { success: false, error: `US sales tax needs a USD invoice (this one is ${invoice.currency}).` }
   }
 
-  const address = sanitizeUSAddress({
-    street: invoice.delivery_street ?? '',
-    city: invoice.delivery_city ?? '',
-    state: invoice.delivery_state ?? '',
-    zip: invoice.delivery_zip ?? '',
-  })
-  if (!address.ok) return { success: false, error: address.error }
+  // A collected order is taxed at the depot it is collected from, so it needs
+  // no delivery address. Only a delivered order requires one.
+  let shipTo: ShipToAddress | null = null
+  if (!invoice.is_collection) {
+    const address = sanitizeUSAddress({
+      street: invoice.delivery_street ?? '',
+      city: invoice.delivery_city ?? '',
+      state: invoice.delivery_state ?? '',
+      zip: invoice.delivery_zip ?? '',
+    })
+    if (!address.ok) return { success: false, error: address.error }
+    shipTo = address.value
+  }
 
   const taxableLines: TaxableLine[] = lines.map((l) => ({
     line_key: l.line_key,
@@ -70,7 +78,7 @@ export async function calculateInvoiceTax(input: { invoiceId: string }): Promise
     ship_from_depot: l.ship_from_depot,
   }))
 
-  const built = buildTaxRequests(taxableLines, address.value, invoice.taxjar_customer_id)
+  const built = buildTaxRequests(taxableLines, shipTo, invoice.taxjar_customer_id, invoice.is_collection)
   if (!built.ok) return { success: false, error: built.error }
 
   const admin = createAdminClient()
@@ -125,6 +133,7 @@ export async function calculateInvoiceTax(input: { invoiceId: string }): Promise
       delivery_state: invoice.delivery_state,
       delivery_zip: invoice.delivery_zip,
       taxjar_customer_id: invoice.taxjar_customer_id,
+      is_collection: invoice.is_collection,
     },
   )
 
@@ -135,7 +144,14 @@ export async function calculateInvoiceTax(input: { invoiceId: string }): Promise
     p_invoice_id: invoiceId,
     p_expected_hash: hash,
     p_line_tax: applied.lines,
-    p_totals: { subtotal, shipping_total: shippingTotal, tax_total: taxTotal, total, warnings: applied.warnings },
+    p_totals: {
+      subtotal,
+      shipping_total: shippingTotal,
+      tax_total: taxTotal,
+      total,
+      collected: invoice.is_collection,
+      warnings: [...collectionWarnings(taxableLines, invoice.is_collection), ...applied.warnings],
+    },
     p_request: results.map((r) => ({ depot: r.group.depot, request: r.group.request })),
     p_response: results.map((r) => ({ depot: r.group.depot, response: r.response })),
     p_actor: gate.auth.user.id,
@@ -152,5 +168,10 @@ export async function calculateInvoiceTax(input: { invoiceId: string }): Promise
   revalidatePath('/invoicing/accepted')
   revalidatePath('/invoicing/drafts')
   revalidatePath(`/invoicing/${invoice.hubspot_deal_id}`)
-  return { success: true, taxTotal, total, warnings: applied.warnings }
+  return {
+    success: true,
+    taxTotal,
+    total,
+    warnings: [...collectionWarnings(taxableLines, invoice.is_collection), ...applied.warnings],
+  }
 }

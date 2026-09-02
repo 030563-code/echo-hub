@@ -2,7 +2,7 @@
  * Staleness detection for draft invoices: a stable hash over exactly the
  * fields that change a tax calculation. Editing a description does not
  * invalidate tax; editing a quantity, price, discount, ship-from depot,
- * delivery address or customer id does.
+ * delivery address, collection flag or customer id does.
  */
 
 import { createHash } from 'node:crypto'
@@ -23,6 +23,10 @@ export interface TaxRelevantHeader {
   delivery_state: string | null
   delivery_zip: string | null
   taxjar_customer_id: string | null
+  /** Required on purpose: an optional field would let a call site be missed
+   *  silently, and a missed call site here means tax calculated in one
+   *  jurisdiction and filed in another. */
+  is_collection: boolean
 }
 
 export function linesHash(lines: readonly TaxRelevantLine[], header: TaxRelevantHeader): string {
@@ -33,6 +37,11 @@ export function linesHash(lines: readonly TaxRelevantLine[], header: TaxRelevant
       state: header.delivery_state ?? '',
       zip: header.delivery_zip ?? '',
       customer: header.taxjar_customer_id ?? '',
+      // `=== true` is load-bearing, not decoration: JSON.stringify drops an
+      // undefined key, so an untyped caller passing undefined would otherwise
+      // reproduce the pre-collection canonical form and the staleness guard
+      // would accept a hash that was never computed for this invoice.
+      collect: header.is_collection === true,
     },
     lines: [...lines]
       .sort((a, b) => a.line_key.localeCompare(b.line_key))

@@ -82,14 +82,25 @@ export type BuildTaxRequestsResult =
   | { ok: true; groups: TaxRequestGroup[] }
   | { ok: false; error: string }
 
+/**
+ * `isCollection` is Will Call: the customer picks the goods up, so the sale is
+ * taxed where the depot is, not where the customer is. Because requests are
+ * already partitioned by ship-from depot, that just makes each group's
+ * destination its own origin. `shipTo` is therefore nullable: a collected
+ * invoice needs no delivery address at all.
+ */
 export function buildTaxRequests(
   lines: readonly TaxableLine[],
-  shipTo: ShipToAddress,
+  shipTo: ShipToAddress | null,
   customerId: string | null,
+  isCollection: boolean,
 ): BuildTaxRequestsResult {
   if (lines.length === 0) return { ok: false, error: 'The invoice has no lines.' }
   if (!lines.some((l) => !l.is_shipping)) {
     return { ok: false, error: 'The invoice has no product lines (only shipping).' }
+  }
+  if (!isCollection && !shipTo) {
+    return { ok: false, error: 'The invoice has no delivery address, so tax cannot be calculated.' }
   }
 
   const groups: TaxRequestGroup[] = []
@@ -116,9 +127,15 @@ export function buildTaxRequests(
     if (!from) {
       return {
         ok: false,
-        error: `The ${depot} dispatch address is not configured yet, so tax cannot be calculated for lines shipping from it.`,
+        error: `The ${depot} dispatch address is not configured yet, so tax cannot be calculated for lines ${
+          isCollection ? 'collected from' : 'shipping from'
+        } it.`,
       }
     }
+
+    // Collected: origin and destination are the same depot. Delivered: the
+    // customer's address, which the guard above proved is present.
+    const to = isCollection ? from : (shipTo as ShipToAddress)
 
     groups.push({
       depot,
@@ -131,10 +148,10 @@ export function buildTaxRequests(
         from_city: from.city,
         from_street: from.street,
         to_country: 'US',
-        to_state: shipTo.state,
-        to_zip: shipTo.zip,
-        to_city: shipTo.city,
-        to_street: shipTo.street,
+        to_state: to.state,
+        to_zip: to.zip,
+        to_city: to.city,
+        to_street: to.street,
         shipping,
         ...(customerId ? { customer_id: customerId } : {}),
         line_items: taxable.map((l) => ({
@@ -260,4 +277,157 @@ export function applyTaxResponses(
   }
 
   return { ok: true, lines: out, taxTotal, warnings }
+}
+
+/**
+ * A collected order that still carries freight is usually a data error, but it
+ * is not an error we should block on: Xero is billing that freight either way,
+ * so dropping it from the tax base would under-collect on a charge the
+ * customer is still paying. Warn, and let the reviewer decide.
+ */
+export function collectionWarnings(lines: readonly TaxableLine[], isCollection: boolean): string[] {
+  if (!isCollection) return []
+  const freight = roundCents(lines.filter((l) => l.is_shipping).reduce((acc, l) => acc + l.line_total, 0))
+  if (freight <= 0) return []
+  return [
+    `This invoice is marked collected but still carries freight lines totalling ${freight.toFixed(2)}. Tax on that freight is being calculated at the collection depot.`,
+  ]
+}
+
+export interface FilingLine extends TaxableLine {
+  sku: string | null
+  name: string
+  description: string | null
+  tax_amount: number | null
+}
+
+export interface TaxJarFilingOrder {
+  transaction_id: string
+  transaction_date: string
+  from_country: string
+  from_state: string
+  from_zip: string
+  from_city?: string
+  from_street?: string
+  to_country: string
+  to_state: string
+  to_zip: string
+  to_city?: string
+  to_street?: string
+  amount: number
+  shipping: number
+  sales_tax: number
+  customer_id?: string
+  line_items: {
+    id: string
+    quantity: number
+    product_identifier?: string
+    description: string
+    unit_price: number
+    discount?: number
+    sales_tax: number
+  }[]
+}
+
+export type BuildFilingOrdersResult =
+  | { ok: true; orders: TaxJarFilingOrder[] }
+  | { ok: false; error: string }
+
+/**
+ * The filing side of the same mapping: one TaxJar order per ship-from depot,
+ * built from the tax that was actually calculated.
+ *
+ * The invariant this exists to protect is that
+ *   buildTaxRequests(...).groups[i].request.to_*
+ * equals
+ *   buildFilingOrders(...).orders[i].to_*
+ * for the same depot. Calculating in one jurisdiction and filing in another
+ * is silent, is only visible at return time, and is exactly what a per-invoice
+ * (rather than per-depot) destination used to cause. tests/unit/taxjar-filing
+ * asserts the equality directly.
+ */
+export function buildFilingOrders(
+  lines: readonly FilingLine[],
+  shipTo: ShipToAddress | null,
+  customerId: string | null,
+  isCollection: boolean,
+  opts: { transactionDate: string; xeroInvoiceNumber: string },
+): BuildFilingOrdersResult {
+  if (!isCollection && !shipTo) {
+    return { ok: false, error: 'The invoice has no delivery address, so it cannot be filed to TaxJar.' }
+  }
+
+  // Freight is attributed exactly as buildTaxRequests attributed it: a depot
+  // carrying only freight has that freight folded into the first depot that
+  // carries goods. Filing it any other way puts the freight tax in a
+  // jurisdiction the calculation never used.
+  const depotsWithGoods = US_DEPOTS.filter((d) => lines.some((l) => l.ship_from_depot === d && !l.is_shipping))
+  if (depotsWithGoods.length === 0) return { ok: false, error: 'invoice has no product lines' }
+  const host = depotsWithGoods[0]
+  const shippingFor = (depot: USDepot) =>
+    lines.filter(
+      (l) =>
+        l.is_shipping &&
+        (l.ship_from_depot === depot || (depot === host && !depotsWithGoods.includes(l.ship_from_depot))),
+    )
+
+  const orders: TaxJarFilingOrder[] = []
+
+  for (const depot of depotsWithGoods) {
+    const from = DEPOT_FROM_ADDRESSES[depot]
+    if (!from) return { ok: false, error: `${depot} dispatch address not configured` }
+
+    // Per depot, not per invoice: a collected two-depot invoice has two
+    // genuinely different destinations.
+    const to = isCollection ? from : { ...(shipTo as ShipToAddress), country: 'US' }
+
+    const taxable = lines.filter((l) => l.ship_from_depot === depot && !l.is_shipping)
+    const shippingLines = shippingFor(depot)
+    const shipping = roundCents(shippingLines.reduce((acc, l) => acc + l.line_total, 0))
+    const salesTax = roundCents(
+      [...taxable, ...shippingLines].reduce((acc, l) => acc + Number(l.tax_amount ?? 0), 0),
+    )
+
+    // TaxJar sums each line as quantity x unit_price - discount and rejects the
+    // order unless `amount` equals that sum plus shipping, EXCLUDING tax.
+    // Deriving the discount from the stored line_total makes their arithmetic
+    // land on exactly our line totals, so the filed amount and the invoiced
+    // amount cannot drift apart by a rounding cent.
+    const orderLines = taxable.map((l) => {
+      const gross = roundCents(l.quantity * l.unit_price)
+      const discount = roundCents(gross - l.line_total)
+      return {
+        id: l.line_key,
+        quantity: l.quantity,
+        ...(l.sku ? { product_identifier: l.sku } : {}),
+        description: (l.description || l.name).slice(0, 255),
+        unit_price: l.unit_price,
+        ...(discount > 0 ? { discount } : {}),
+        sales_tax: Number(l.tax_amount ?? 0),
+      }
+    })
+
+    orders.push({
+      transaction_id:
+        depotsWithGoods.length > 1 ? `${opts.xeroInvoiceNumber}-${depot}` : opts.xeroInvoiceNumber,
+      transaction_date: opts.transactionDate,
+      from_country: from.country,
+      from_state: from.state,
+      from_zip: from.zip,
+      from_city: from.city,
+      from_street: from.street,
+      to_country: to.country,
+      to_state: to.state,
+      to_zip: to.zip,
+      to_city: to.city,
+      to_street: to.street,
+      amount: roundCents(taxable.reduce((acc, l) => acc + l.line_total, 0) + shipping),
+      shipping,
+      sales_tax: salesTax,
+      ...(customerId ? { customer_id: customerId } : {}),
+      line_items: orderLines,
+    })
+  }
+
+  return { ok: true, orders }
 }
