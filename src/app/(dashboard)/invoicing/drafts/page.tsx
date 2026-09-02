@@ -55,14 +55,14 @@ export default async function DraftInvoicesPage() {
           </div>
         </Card>
       ) : rows.length === 0 ? (
-        <Card className="p-10 text-center text-gray-500">
+        <Card className="bg-white border-gray-200 p-10 text-center text-gray-500">
           <FileText className="w-8 h-8 mx-auto mb-3 text-gray-300" />
           <p className="font-medium text-gray-700">No invoices yet</p>
           <p className="text-sm mt-1">Open an accepted quote to build its first draft.</p>
         </Card>
       ) : (
         <>
-          <Card className="hidden md:block overflow-x-auto p-0">
+          <Card className="bg-white border-gray-200 hidden md:block overflow-x-auto p-0">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500">
@@ -101,7 +101,7 @@ export default async function DraftInvoicesPage() {
           <div className="md:hidden space-y-3">
             {rows.map((row) => (
               <Link key={row.id} href={`/invoicing/${row.dealId}`} className="block">
-                <Card className="p-4 space-y-1.5 hover:border-echo-orange">
+                <Card className="bg-white border-gray-200 p-4 space-y-1.5 hover:border-echo-orange">
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-medium text-gray-900">{row.number}</p>
                     <InvoiceStatusChip chip={row.status} />

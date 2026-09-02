@@ -459,7 +459,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
       )}
 
       {/* Header: the Xero invoice fields + TaxJar identity */}
-      <Card className="p-4 sm:p-6">
+      <Card className="bg-white border-gray-200 p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-4">Invoice details</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
@@ -506,7 +506,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
       </Card>
 
       {/* TaxJar ship-to */}
-      <Card className="p-4 sm:p-6">
+      <Card className="bg-white border-gray-200 p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-1">Delivery address</h2>
         <p className="text-xs text-gray-500 mb-3">
           {header.is_collection
@@ -621,7 +621,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
       </Card>
 
       {/* Lines */}
-      <Card className="p-0 overflow-x-auto">
+      <Card className="bg-white border-gray-200 p-0 overflow-x-auto">
         <table className="w-full min-w-[960px] text-sm">
           <thead>
             <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500">
@@ -778,7 +778,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
       </Card>
 
       {taxGroups.length > 0 && (
-        <Card className="p-4 sm:p-6">
+        <Card className="bg-white border-gray-200 p-4 sm:p-6">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-1">Tax calculation</h2>
           <p className="text-xs text-gray-500 mb-4">
             Where TaxJar decided each shipment was taxed. Check the place, not just the rate: a wrong zip
@@ -816,7 +816,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
       )}
 
       {/* Totals + actions */}
-      <Card className="p-4 sm:p-6">
+      <Card className="bg-white border-gray-200 p-4 sm:p-6">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-1 text-sm text-gray-700 sm:min-w-64">
             <div className="flex justify-between gap-8">

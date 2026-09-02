@@ -110,7 +110,7 @@ export default async function AcceptedQueuePage() {
           </div>
         </Card>
       ) : rows.length === 0 ? (
-        <Card className="p-10 text-center text-gray-500">
+        <Card className="bg-white border-gray-200 p-10 text-center text-gray-500">
           <Inbox className="w-8 h-8 mx-auto mb-3 text-gray-300" />
           <p className="font-medium text-gray-700">No accepted US quotes yet</p>
           <p className="text-sm mt-1">
@@ -121,7 +121,7 @@ export default async function AcceptedQueuePage() {
       ) : (
         <>
           {/* Table on md+, stacked cards below */}
-          <Card className="hidden md:block overflow-x-auto p-0">
+          <Card className="bg-white border-gray-200 hidden md:block overflow-x-auto p-0">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500">
@@ -171,7 +171,7 @@ export default async function AcceptedQueuePage() {
 
           <div className="md:hidden space-y-3">
             {rows.map((row) => (
-              <Card key={row.dealId} className="p-4 space-y-2">
+              <Card key={row.dealId} className="bg-white border-gray-200 p-4 space-y-2">
                 <div className="flex items-start justify-between gap-2">
                   <p className="font-medium text-gray-900">{row.dealName}</p>
                   <InvoiceStatusChip chip={row.chip} />

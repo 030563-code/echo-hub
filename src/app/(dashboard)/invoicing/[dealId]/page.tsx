@@ -54,7 +54,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     return (
       <div className="max-w-2xl space-y-4">
         <h1 className="text-2xl font-bold text-gray-900">{String(deal?.deal_name ?? dealId)}</h1>
-        <Card className="p-6 space-y-3">
+        <Card className="bg-white border-gray-200 p-6 space-y-3">
           <p className="text-gray-700">No draft invoice exists for this deal yet.</p>
           <p className="text-sm text-gray-500">
             Building one copies the accepted quote&apos;s line items (fitting kits split into hooks and bungees),

@@ -1,4 +1,5 @@
 import React from 'react';
+import { cn } from '@/lib/utils';
 
 interface CardProps {
   children: React.ReactNode;
@@ -9,7 +10,10 @@ interface CardProps {
 
 export const Card = ({ children, className = '', title, description }: CardProps) => {
   return (
-    <div className={`bg-[#1a1a1a] border border-gray-800 p-8 ${className}`}>
+    // cn() is twMerge: a caller passing p-0 or bg-white MEANS it. Plain string
+    // interpolation left both classes in play and Tailwind's own ordering
+    // decided the winner, so overrides were silently ignored.
+    <div className={cn('bg-[#1a1a1a] border border-gray-800 p-8', className)}>
       {(title || description) && (
         <div className="mb-6 border-b border-gray-800 pb-4">
           {title && (
