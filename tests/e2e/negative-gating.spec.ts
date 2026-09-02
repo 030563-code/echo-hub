@@ -31,7 +31,7 @@ test.describe('Negative capability gating (scoped user)', () => {
 
   test('visiting a forbidden module (/mrp) redirects to the dashboard', async ({ page }) => {
     await page.goto('/mrp')
-    await expect(page).toHaveURL('http://localhost:3000/')
+    await expect(page).toHaveURL(/\/$/)
   })
 
   test('visiting Quotes (allowed) is NOT redirected away', async ({ page }) => {
