@@ -39,7 +39,10 @@ export async function retryTaxJarRecord(input: { invoiceId: string }): Promise<R
     return { success: false, error: 'This invoice has no Xero invoice number yet.' }
   }
 
-  const recorded = await recordTaxJarOrders(invoice, lines, invoice.xero_invoice_number)
+  if (!invoice.invoice_number) {
+    return { success: false, error: 'This invoice has no number yet, so it cannot be filed to TaxJar.' }
+  }
+  const recorded = await recordTaxJarOrders(invoice, lines, invoice.invoice_number)
   if (!recorded.ok) {
     await logInvoiceEvent(invoiceId, 'taxjar_record_failed', gate.auth.user.id, { error: recorded.error })
     return { success: false, error: `Recording in TaxJar failed: ${recorded.error}` }

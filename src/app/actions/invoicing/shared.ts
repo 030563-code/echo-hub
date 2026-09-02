@@ -19,7 +19,11 @@ import type { USDepot } from '@/lib/customer-invoice/constants'
 export interface CustomerInvoiceRow {
   id: string
   hubspot_deal_id: string
-  invoice_number: string
+  /** Internal draft reference (USI...). Gaps are harmless. */
+  holding_reference: string
+  /** Customer-facing EBUS number, null until the invoice is raised. */
+  invoice_number: string | null
+  raised_at: string | null
   status: CustomerInvoiceStatus
   currency: string
   invoice_date: string | null
@@ -209,7 +213,7 @@ export function isAcceptedSinceCutover(acceptedAt: string | undefined): boolean 
 export async function recordTaxJarOrders(
   invoice: CustomerInvoiceRow,
   lines: CustomerInvoiceLineRow[],
-  xeroInvoiceNumber: string,
+  documentNumber: string,
 ): Promise<{ ok: true; transactionIds: string[] } | { ok: false; error: string }> {
   try {
     // A collected order is taxed at the depot, so it needs no delivery address
@@ -247,7 +251,7 @@ export async function recordTaxJarOrders(
       invoice.is_collection,
       {
         transactionDate: invoice.invoice_date ?? new Date().toISOString().slice(0, 10),
-        xeroInvoiceNumber,
+        xeroInvoiceNumber: documentNumber,
       },
     )
     if (!built.ok) return { ok: false, error: built.error }

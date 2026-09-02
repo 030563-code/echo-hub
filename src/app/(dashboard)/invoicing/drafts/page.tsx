@@ -21,7 +21,7 @@ export default async function DraftInvoicesPage() {
   const { data: invoices, error } = await admin
     .from('customer_invoices')
     .select(
-      'id, hubspot_deal_id, invoice_number, xero_invoice_number, status, company_name, subtotal, shipping_total, tax_total, total, updated_at',
+      'id, hubspot_deal_id, invoice_number, holding_reference, status, company_name, subtotal, shipping_total, tax_total, total, updated_at',
     )
     .neq('status', 'voided')
     .order('updated_at', { ascending: false })
@@ -30,7 +30,7 @@ export default async function DraftInvoicesPage() {
   const rows = (invoices ?? []).map((inv) => ({
     id: String(inv.id),
     dealId: String(inv.hubspot_deal_id),
-    number: String(inv.xero_invoice_number ?? inv.invoice_number),
+    number: String(inv.invoice_number ?? inv.holding_reference),
     status: inv.status as CustomerInvoiceStatus,
     company: inv.company_name ? String(inv.company_name) : null,
     total: inv.total === null ? (inv.subtotal === null ? null : Number(inv.subtotal) + Number(inv.shipping_total ?? 0)) : Number(inv.total),

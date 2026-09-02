@@ -51,6 +51,33 @@ records completed orders for filing. The Hub builds and owns the draft invoice.
    (`transaction_id` = the Xero invoice number, one order per depot group), best-effort
    with a retry button. Status becomes `completed`.
 
+## Invoice numbering
+
+The app owns the customer-facing number, `EBUS26-0001`, restarting at
+`EBUS27-0001` on 1 January. Credit notes get their own counter, `CNUS26-0001`.
+
+Three properties, each for a stated reason:
+
+- **The app tells Xero the number.** Xero assigns one from its own live sequence
+  to anything posted without it, and that number is burned even if the invoice is
+  later deleted (a test draft consumed EB1993 that way).
+- **Gapless**, so a counter row in `invoice_number_counters` incremented inside the
+  raising transaction, never a Postgres sequence. `nextval()` does not roll back, so
+  every failed raise would leak a number out of a customer-facing series. Proven
+  live: an inner transaction that allocated `EBUS26-0003` and then failed left
+  `next_value` at 3, not 4.
+- **Allocated at raise, not at draft**, or every abandoned draft burns one. A draft
+  carries a holding reference (`USI2026-00005`) where gaps are harmless.
+
+`raise_customer_invoice` is idempotent: an invoice that already has a number gets
+that number back rather than a second one, so a retry after a timeout cannot double-
+allocate. TaxJar transactions are filed under our number too (`EBUS26-0001-US-BAL`
+per depot), so a return traces straight back to the customer document.
+
+The Xero invoice is created as a **DRAFT** carrying our number. The Hub renders and
+sends the document, and only then is Xero flipped to AUTHORISED, so the ledger never
+carries an invoice that has not gone out.
+
 ## Zip-driven address completion
 
 `GET /v2/rates/{zip}` is the only TaxJar call that needs nothing but a zip, and it

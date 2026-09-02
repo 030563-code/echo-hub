@@ -418,7 +418,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{dealName}</h1>
           <p className="text-gray-500 text-sm mt-1">
-            {invoice.xero_invoice_number ? `Xero invoice ${invoice.xero_invoice_number}` : `Draft ${invoice.invoice_number}`}
+            {invoice.invoice_number ? `Invoice ${invoice.invoice_number}` : `Draft ${invoice.holding_reference}`}
             {quoteReference ? ` · Quote ${quoteReference}` : ''}
             {invoice.company_name ? ` · ${invoice.company_name}` : ''}
           </p>

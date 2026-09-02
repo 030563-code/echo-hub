@@ -54,7 +54,7 @@ export default async function AcceptedQueuePage() {
 
     const { data: invoices } = eligible.length === 0 ? { data: [] } : await admin
       .from('customer_invoices')
-      .select('hubspot_deal_id, status, invoice_number, xero_invoice_number, source_lines_snapshot')
+      .select('hubspot_deal_id, status, invoice_number, holding_reference, source_lines_snapshot')
       .in('hubspot_deal_id', eligible.map((d) => String(d.hubspot_deal_id)))
       .neq('status', 'voided')
     const invoiceByDeal = new Map((invoices ?? []).map((i) => [String(i.hubspot_deal_id), i]))
@@ -87,7 +87,7 @@ export default async function AcceptedQueuePage() {
         updatedAt: acceptedAt.get(String(deal.hubspot_deal_id)) as string,
         chip,
         linesChanged,
-        invoiceNumber: invoice ? String(invoice.xero_invoice_number ?? invoice.invoice_number) : null,
+        invoiceNumber: invoice ? String(invoice.invoice_number ?? invoice.holding_reference) : null,
       }
     })
     rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))

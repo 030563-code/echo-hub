@@ -116,10 +116,44 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
     collected: invoice.is_collection,
   })
 
+  // Allocate the customer-facing EBUS number. Done here, not at draft, so an
+  // abandoned draft never burns one, and done through the RPC so the counter
+  // increments inside a transaction that can give the number back. Idempotent:
+  // an invoice that already has a number keeps it, so a retry after a timeout
+  // cannot produce a second number for the same sale.
+  const { data: raised, error: raiseError } = await admin.rpc('raise_customer_invoice', {
+    p_invoice_id: invoiceId,
+    p_expected_hash: currentHash,
+    p_actor: gate.auth.user.id,
+  })
+  if (raiseError || !raised?.invoice_number) {
+    const detail = raiseError?.message ?? ''
+    const message = /STALE_CALCULATION/.test(detail)
+      ? 'The invoice changed since tax was calculated. Recalculate tax first.'
+      : /INVALID_STATUS/.test(detail)
+        ? 'The invoice changed under you. Refresh and try again.'
+        : 'Could not allocate an invoice number. Nothing was sent.'
+    await admin
+      .from('customer_invoices')
+      .update({ status: 'tax_calculated', error_message: message, updated_at: new Date().toISOString() })
+      .eq('id', invoiceId)
+      .eq('status', 'authorizing')
+    return { success: false, error: message }
+  }
+  const invoiceNumber = String(raised.invoice_number)
+
   const payload = {
     idempotency_key: invoice.idempotency_key,
     invoice_id: invoice.id,
-    invoice_number: invoice.invoice_number,
+    // OUR number, always passed explicitly. Xero assigns one from its own
+    // live sequence to anything posted without it, and that number is then
+    // burned even if the invoice is deleted.
+    invoice_number: invoiceNumber,
+    holding_reference: invoice.holding_reference,
+    // Created as a DRAFT: the Hub renders and sends the document, then flips
+    // it to AUTHORISED, so the ledger only carries invoices that actually went
+    // out.
+    xero_status: 'DRAFT' as const,
     hubspot_deal_id: invoice.hubspot_deal_id,
     quote_reference: null as string | null,
     reference: invoice.customer_po_number ?? '',
@@ -244,29 +278,30 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
     return { success: false, error: message }
   }
 
-  const emailed = Boolean(response.emailed)
+  // The invoice now exists in Xero as a DRAFT carrying our number. It is NOT
+  // authorised: the Hub renders and sends the document, and only then is the
+  // Xero invoice flipped to AUTHORISED, so the ledger never carries an invoice
+  // that has not actually gone out.
   const now = new Date().toISOString()
   await admin
     .from('customer_invoices')
     .update({
-      status: emailed ? 'sent' : 'authorized',
+      status: 'raised',
       xero_invoice_id: response.xero_invoice_id,
       xero_invoice_number: response.xero_invoice_number,
-      authorized_at: now,
-      ...(emailed ? { emailed_at: now } : {}),
       error_message: null,
       updated_by_uid: gate.auth.user.id,
       updated_at: now,
     })
     .eq('id', invoiceId)
     .eq('status', 'authorizing')
-  await logInvoiceEvent(invoiceId, 'authorized', gate.auth.user.id, {
-    xero_invoice_number: response.xero_invoice_number,
-    emailed,
+  await logInvoiceEvent(invoiceId, 'xero_draft_created', gate.auth.user.id, {
+    invoice_number: invoiceNumber,
+    xero_invoice_id: response.xero_invoice_id,
   })
 
   const warnings: string[] = []
-  const recorded = await recordTaxJarOrders(invoice, lines, response.xero_invoice_number)
+  const recorded = await recordTaxJarOrders(invoice, lines, invoiceNumber)
   if (recorded.ok) {
     await admin
       .from('customer_invoices')
@@ -287,6 +322,6 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
   revalidatePath('/invoicing/accepted')
   revalidatePath('/invoicing/drafts')
   revalidatePath(`/invoicing/${invoice.hubspot_deal_id}`)
-  return { success: true, xeroInvoiceNumber: response.xero_invoice_number, emailed, warnings }
+  return { success: true, xeroInvoiceNumber: invoiceNumber, emailed: false, warnings }
 }
 
