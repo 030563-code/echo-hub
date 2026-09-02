@@ -77,3 +77,17 @@ export function parseWinProbability(raw: unknown): number | null {
   const n = cleaned === '' ? Number.NaN : Number(cleaned)
   return Number.isFinite(n) && n >= 0 && n <= 100 ? n : null
 }
+
+/**
+ * The probability options the HubSpot win_probability property actually
+ * carries, verified live: 10% through 100%, none hidden.
+ *
+ * Exported because three surfaces need it and each had its own copy or its own
+ * fetch. It also serves as the fallback when getWinProbabilityOptions fails:
+ * before this, a network blip rendered an empty select, and since the setup
+ * dialog cannot be left until a probability is chosen, that bricked the quote
+ * builder with no error message.
+ */
+export const WIN_PROBABILITY_VALUES: readonly string[] = [
+  '10%', '20%', '30%', '40%', '50%', '60%', '70%', '80%', '90%', '100%',
+]

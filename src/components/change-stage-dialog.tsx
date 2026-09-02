@@ -16,13 +16,14 @@ import {
   stageLabel,
 } from '@/lib/hubspot-constants'
 import { depotLabel } from '@/lib/depot-constants'
+import { WIN_PROBABILITY_VALUES } from '@/lib/quote-math'
 import { isUSDepot } from '@/lib/customer-invoice/constants'
 import { US_STATE_CODES } from '@/lib/us-address'
 import { lookupZipJurisdiction } from '@/app/actions/tax/lookup-zip'
 import { useRouter } from 'next/navigation'
 import { ArrowRightLeft, Loader2, MapPin } from 'lucide-react'
 
-const WIN_PROBABILITY_OPTIONS = ['10%', '20%', '30%', '40%', '50%', '60%', '70%', '80%', '90%', '100%']
+
 const ZIP_RE = /^\d{5}(-\d{4})?$/
 
 interface ChangeStageDialogProps {
@@ -51,7 +52,7 @@ export default function ChangeStageDialog({
   const [tenderDate, setTenderDate] = useState('')
   const [depotForAccepted, setDepotForAccepted] = useState('')
   const [winProbability, setWinProbability] = useState(
-    currentWinProbability && WIN_PROBABILITY_OPTIONS.includes(currentWinProbability) ? currentWinProbability : ''
+    currentWinProbability && WIN_PROBABILITY_VALUES.includes(currentWinProbability) ? currentWinProbability : ''
   )
   const [street, setStreet] = useState(initialDelivery?.street ?? '')
   const [city, setCity] = useState(initialDelivery?.city ?? '')
@@ -238,7 +239,7 @@ export default function ChangeStageDialog({
                       <SelectValue placeholder="Probability of close..." />
                     </SelectTrigger>
                     <SelectContent className="bg-white border-gray-200 text-gray-900">
-                      {WIN_PROBABILITY_OPTIONS.map((option) => (
+                      {WIN_PROBABILITY_VALUES.map((option) => (
                         <SelectItem key={option} value={option} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
                           {option}
                         </SelectItem>

@@ -125,6 +125,7 @@ export default async function CreateQuotePage(props: { params: Promise<{ dealId:
         dealName={deal?.properties?.dealname || ''}
         initialDepot={initialDepot}
         dealCurrency={dealCurrency}
+        initialWinProbability={(deal?.properties?.win_probability || '').trim()}
         settings={settings}
         products={products}
         salesRep={salesRep}

@@ -9,7 +9,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Plus, Trash2, ShoppingCart, ArrowRight, AlertCircle, FileDown, Eye, Search } from 'lucide-react'
+import {
+  Plus, Trash2, ShoppingCart, ArrowRight, ArrowLeft, AlertCircle, FileDown, Eye, Search,
+  Users, Warehouse, FileText, Percent,
+} from 'lucide-react'
 import { SalesProfileSettings } from '@/app/actions/sales/get-profile-settings'
 
 import { createQuote, handleQuoteFileUpload } from '@/app/actions/sales/create-quote'
@@ -19,7 +22,9 @@ import { getWinProbabilityOptions } from '@/app/actions/hubspot/getDealPropertie
 import { updateDealProperties } from '@/app/actions/hubspot/updateDealProperties'
 import { buildQuotePdf, taxRegionForTemplate } from '@/lib/quote-pdf'
 import { depotLabel } from '@/lib/depot-constants'
+import { WIN_PROBABILITY_VALUES } from '@/lib/quote-math'
 import { loadQuoteLogo } from '@/lib/quote-logo'
+import { useRouter } from 'next/navigation'
 
 interface Product {
   id: string
@@ -79,6 +84,8 @@ interface CreateQuoteFormProps {
   /** ISO code from the deal itself. Drives every money figure the rep sees and
    *  the currency printed on the quote. */
   dealCurrency?: string
+  /** win_probability already on the HubSpot deal, e.g. '70%'. */
+  initialWinProbability?: string
 }
 
 // Radix Select can't represent "cleared", so the undecided state gets an
@@ -96,7 +103,7 @@ const mapInitialLineItems = (items: HubSpotLineItem[]): LineItem[] =>
     total: Number(item.properties.amount) || 0,
   }))
 
-export default function CreateQuoteForm({ dealId, dealName, settings, products, salesRep, contact, companyName, initialLineItems = [], initialDepot = '', initialComments = '', dealCurrency = 'USD' }: CreateQuoteFormProps) {
+export default function CreateQuoteForm({ dealId, dealName, settings, products, salesRep, contact, companyName, initialLineItems = [], initialDepot = '', initialComments = '', dealCurrency = 'USD', initialWinProbability = '' }: CreateQuoteFormProps) {
   const money = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: dealCurrency,
@@ -104,7 +111,10 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   })
 
   // State for the Initial Setup Dialog
+  const router = useRouter()
   const [showSetupDialog, setShowSetupDialog] = useState(true)
+  // Distinguishes the first, blocking open from a later re-open via Edit setup.
+  const [hasCompletedSetup, setHasCompletedSetup] = useState(false)
   const [distributor, setDistributor] = useState<string>('none')
   // Seeded from the deal's existing sending_depot (if any and still allowed) so
   // re-opening the builder doesn't misreport a decided deal as "Decide later".
@@ -112,7 +122,16 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     initialDepot && settings.allowed_depots.includes(initialDepot) ? initialDepot : ''
   )
   const [template, setTemplate] = useState<string>('')
-  const [winProbability, setWinProbability] = useState<string>('')
+  // Seeded from the deal's own win_probability, mirroring the depot seeding
+  // above, so re-opening the builder does not re-ask a question the deal has
+  // already answered. Honest limit: once the create-deal wizard stops asking
+  // for it, a Hub-created deal carries none, so this helps HubSpot-originated
+  // deals and re-opens after a Generate (which PATCHes the property).
+  const [winProbability, setWinProbability] = useState<string>(() =>
+    initialWinProbability && WIN_PROBABILITY_VALUES.includes(initialWinProbability)
+      ? initialWinProbability
+      : ''
+  )
   const [winProbabilityOptions, setWinProbabilityOptions] = useState<{ label: string; value: string }[]>([])
   const [setupLoading, setSetupLoading] = useState(false)
 
@@ -143,8 +162,13 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   useEffect(() => {
     async function fetchWinProbability() {
       const result = await getWinProbabilityOptions()
-      if (result.success && result.data) {
+      if (result.success && result.data && result.data.length > 0) {
         setWinProbabilityOptions(result.data)
+      } else {
+        // Fall back to the known option set rather than rendering an empty
+        // select. The dialog cannot be dismissed without a probability, so an
+        // empty list used to brick the builder on a transient network error.
+        setWinProbabilityOptions(WIN_PROBABILITY_VALUES.map((v) => ({ label: v, value: v })))
       }
     }
     fetchWinProbability()
@@ -244,7 +268,25 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   // quote — or backing out of one — leaves the CRM record exactly as it was.
   const handleSetupComplete = () => {
     if (!canProceedFromSetup) return
+    setHasCompletedSetup(true)
     setShowSetupDialog(false)
+  }
+
+  /**
+   * The only exit from the setup dialog.
+   *
+   * showSetupDialog gates the ENTIRE builder, so simply closing it on first
+   * open renders a page containing nothing but the empty summary line. Before
+   * setup is done the only sensible destination is the deal itself; after it,
+   * closing means "I was just re-checking" and the builder is behind it.
+   */
+  const handleSetupOpenChange = (open: boolean) => {
+    if (open) {
+      setShowSetupDialog(true)
+      return
+    }
+    if (hasCompletedSetup) setShowSetupDialog(false)
+    else router.push(`/quotes/deals/${dealId}`)
   }
 
   const addLineItem = () => {
@@ -452,11 +494,13 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   return (
     <div className="space-y-8">
       {/* Setup Dialog */}
-      <Dialog open={showSetupDialog} onOpenChange={setShowSetupDialog}>
+      <Dialog open={showSetupDialog} onOpenChange={handleSetupOpenChange}>
         <DialogContent
-          className="sm:max-w-[500px] bg-white text-gray-900 border-gray-200 shadow-xl [&>button]:hidden"
+          className="sm:max-w-[500px] bg-white text-gray-900 border-gray-200 shadow-xl"
+          // X and Esc are deliberate exit gestures and now work. An overlay
+          // click is usually an accident, and this dialog has four fields, so
+          // that one stays blocked.
           onInteractOutside={(e) => e.preventDefault()}
-          onEscapeKeyDown={(e) => e.preventDefault()}
         >
           <DialogHeader>
             <DialogTitle className="text-xl font-bold uppercase tracking-wide text-gray-900">Quote Setup</DialogTitle>
@@ -465,7 +509,10 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
           <div className="space-y-6 py-4">
             {/* Distributor Selection */}
             <div className="space-y-2">
-              <Label className="text-gray-700 font-medium">Select sales team</Label>
+              <Label className="text-gray-700 font-medium flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-gray-400" />
+                Select sales team
+              </Label>
               <Select
                 value={distributor}
                 onValueChange={setDistributor}
@@ -496,7 +543,10 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
             {/* Depot Selection (Only if no distributor) */}
             {!isDistributorSelected && (
               <div className="space-y-2">
-                <Label className="text-gray-700 font-medium">Sending Depot (optional)</Label>
+                <Label className="text-gray-700 font-medium flex items-center gap-1.5">
+                <Warehouse className="w-3.5 h-3.5 text-gray-400" />
+                Sending Depot (optional)
+              </Label>
                 <Select
                   value={depot === '' ? DEPOT_UNDECIDED : depot}
                   onValueChange={(v) => setDepot(v === DEPOT_UNDECIDED ? '' : v)}
@@ -524,7 +574,10 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
 
             {/* Template Selection */}
             <div className="space-y-2">
-              <Label className="text-gray-700 font-medium">Quote Template *</Label>
+              <Label className="text-gray-700 font-medium flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-gray-400" />
+                Quote Template *
+              </Label>
               <Select value={template} onValueChange={setTemplate}>
                 <SelectTrigger className="bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow focus:border-echo-yellow">
                   <SelectValue placeholder="Select Template..." />
@@ -543,7 +596,10 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
 
             {/* Win Probability Selection */}
             <div className="space-y-2">
-              <Label className="text-gray-700 font-medium">Win Probability *</Label>
+              <Label className="text-gray-700 font-medium flex items-center gap-1.5">
+                <Percent className="w-3.5 h-3.5 text-gray-400" />
+                Win Probability *
+              </Label>
               <Select value={winProbability} onValueChange={setWinProbability}>
                 <SelectTrigger className="bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow focus:border-echo-yellow">
                   <SelectValue placeholder="Select win probability..." />
@@ -559,7 +615,15 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              onClick={() => handleSetupOpenChange(false)}
+              className="w-full min-h-11 whitespace-nowrap sm:min-h-0 sm:w-auto"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              {hasCompletedSetup ? 'Close' : 'Back to deal'}
+            </Button>
             <Button
               onClick={handleSetupComplete}
               disabled={!canProceedFromSetup || setupLoading}
