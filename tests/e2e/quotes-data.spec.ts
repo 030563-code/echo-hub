@@ -17,10 +17,18 @@ test.describe('Quotes — read-only, HubSpot-backed', () => {
     await login(page, c!)
   })
 
-  test('the quote requests queue loads', async ({ page }) => {
+  test('the deals queue loads', async ({ page }) => {
     test.skip(!hasToken, 'Set HUBSPOT_ACCESS_TOKEN to load the HubSpot-backed queue')
+    await page.goto('/quotes/deals')
+    await expect(page.getByRole('heading', { name: 'Incoming Deals' })).toBeVisible()
+  })
+
+  test('the old /quotes/requests path still lands on the deals queue', async ({ page }) => {
+    test.skip(!hasToken, 'Set HUBSPOT_ACCESS_TOKEN to load the HubSpot-backed queue')
+    // The redirect stub is a two-line page that a future cleanup could easily
+    // mistake for dead code. This assertion is what keeps old bookmarks alive.
     await page.goto('/quotes/requests')
-    await expect(page.getByRole('heading', { name: 'Incoming Quote Requests' })).toBeVisible()
+    await expect(page).toHaveURL(/\/quotes\/deals$/)
   })
 
   test('quote-create shows the mandatory probability-of-close field (no submission)', async ({ page }) => {

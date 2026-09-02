@@ -36,6 +36,6 @@ test.describe('Negative capability gating (scoped user)', () => {
 
   test('visiting Quotes (allowed) is NOT redirected away', async ({ page }) => {
     await page.goto('/quotes')
-    await expect(page).toHaveURL(/\/quotes(\/requests)?$/)
+    await expect(page).toHaveURL(/\/quotes(\/deals)?$/)
   })
 })

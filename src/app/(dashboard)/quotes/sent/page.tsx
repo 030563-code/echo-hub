@@ -56,7 +56,7 @@ export default async function SentQuotesPage({
                 ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(deal.properties.amount))
                 : '-',
               badge: { text: 'Sent', className: 'bg-blue-100 text-blue-800 border-blue-200' },
-              action: { href: `/quotes/requests/${deal.id}`, label: 'View Details' },
+              action: { href: `/quotes/deals/${deal.id}`, label: 'View Details' },
             }))}
           />
           <PaginationNav

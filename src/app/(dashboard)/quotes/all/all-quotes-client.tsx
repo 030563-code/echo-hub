@@ -144,7 +144,7 @@ export default function AllQuotesClient({ initialDeals, error, probabilityMap, c
               className: 'bg-gray-100 text-gray-800 border-gray-200',
             },
             probabilityLabel: probabilityMap[deal.id] != null ? `${probabilityMap[deal.id]}%` : '\u2014',
-            action: { href: `/quotes/requests/${deal.id}`, label: 'View Details' },
+            action: { href: `/quotes/deals/${deal.id}`, label: 'View Details' },
           }))}
         />
       ) : (

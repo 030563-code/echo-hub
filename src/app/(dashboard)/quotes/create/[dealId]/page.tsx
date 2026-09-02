@@ -108,7 +108,7 @@ export default async function CreateQuotePage(props: { params: Promise<{ dealId:
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex items-center gap-4 mb-6">
-        <Link href={`/quotes/requests/${params.dealId}`}>
+        <Link href={`/quotes/deals/${params.dealId}`}>
           <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-900">
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Deal

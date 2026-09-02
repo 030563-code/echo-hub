@@ -56,7 +56,7 @@ export default async function AcceptedQuotesPage({
                 ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(deal.properties.amount))
                 : '-',
               badge: { text: 'Accepted', className: 'bg-green-100 text-green-800 border-green-200' },
-              action: { href: `/quotes/requests/${deal.id}`, label: 'View Details' },
+              action: { href: `/quotes/deals/${deal.id}`, label: 'View Details' },
             }))}
           />
           <PaginationNav

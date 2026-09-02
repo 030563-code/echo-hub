@@ -27,7 +27,7 @@ export default async function PendingQuotesPage({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Pending Quotes</h1>
-          <p className="text-gray-500 text-sm mt-1">Deals in progress (excluding requests, sent quotes, and closed deals).</p>
+          <p className="text-gray-500 text-sm mt-1">Deals in progress (excluding new deals, sent quotes, and closed deals).</p>
         </div>
       </div>
 
@@ -56,7 +56,7 @@ export default async function PendingQuotesPage({
                 ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(deal.properties.amount))
                 : '-',
               badge: { text: 'Pending', className: 'bg-gray-100 text-gray-800 border-gray-200' },
-              action: { href: `/quotes/requests/${deal.id}`, label: 'View Details' },
+              action: { href: `/quotes/deals/${deal.id}`, label: 'View Details' },
             }))}
           />
           <PaginationNav

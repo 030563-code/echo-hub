@@ -754,7 +754,7 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
                 <Label className="text-gray-700">Description</Label>
                 <textarea
                   className="flex min-h-[100px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm text-gray-900 ring-offset-background placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-echo-yellow focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  placeholder="Enter details about the request..."
+                  placeholder="Enter details about the deal..."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                 />
@@ -775,11 +775,11 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
 
           {step < 3 ? (
             <Button onClick={handleNext} disabled={isSubmitting} className="w-full sm:w-auto py-3 sm:py-2.5 bg-black text-white hover:bg-gray-800 disabled:opacity-60">
-              {isSubmitting ? 'Creating...' : 'Next Step'}
+              Next Step
             </Button>
           ) : (
             <Button onClick={handleSubmit} disabled={isSubmitting} className="w-full sm:w-auto py-3 sm:py-2.5 bg-echo-yellow text-black hover:bg-echo-yellow/90 font-bold disabled:opacity-60">
-              {isSubmitting ? 'Creating...' : 'Create Request'}
+              {isSubmitting ? 'Creating deal…' : 'Create deal in HubSpot'}
             </Button>
           )}
         </div>
