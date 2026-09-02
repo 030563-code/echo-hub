@@ -11,13 +11,15 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildDraftLines, type RawDealLine } from '@/lib/customer-invoice/build-draft'
-import { US_ACCEPTED_DEAL_STATUS, isUSDepot } from '@/lib/customer-invoice/constants'
+import { isUSDepot } from '@/lib/customer-invoice/constants'
 import { linesHash } from '@/lib/customer-invoice/hash'
+import { xeroItemAccounts } from '@/lib/xero-hub'
 import {
   requireInvoicingManage,
   lookupXeroItemCodes,
   getAcceptedAt,
   isAcceptedSinceCutover,
+  isNotInvoiceableStage,
 } from '@/app/actions/invoicing/shared'
 
 const Input = z.object({
@@ -63,23 +65,22 @@ export async function openInvoiceForDeal(input: {
   if (dealError) return { success: false, error: 'Failed to load the deal from the registry.' }
   if (!deal) return { success: false, error: 'This deal has no registry row yet. It appears a minute or two after acceptance.' }
 
-  // Only an accepted US deal may be invoiced, and only one accepted on or
-  // after the cutover: everything before it was already invoiced through the
-  // old draft-Xero-quote path, and a deal still in negotiation must not be
-  // billable by navigating straight to its URL. The queue applies the same two
-  // filters; this is the enforcement copy, since the action is directly
-  // POSTable.
-  if (String(deal.deal_status ?? '') !== US_ACCEPTED_DEAL_STATUS) {
-    return {
-      success: false,
-      error: 'This deal is not marked Quotation Accepted yet, so it cannot be invoiced.',
-    }
+  // Same rule as the queue, enforced here because this action is directly
+  // POSTable: the deal must have ENTERED Quotation Accepted on or after the
+  // cutover, and must not have ended up Closed Lost.
+  //
+  // The current stage is deliberately NOT required to still be Quotation
+  // Accepted. Deals pass through it in minutes on their way to Closed Won, and
+  // requiring it made them permanently un-invoiceable.
+  if (isNotInvoiceableStage(deal.deal_status as string | null)) {
+    return { success: false, error: 'This deal is Closed Lost, so it cannot be invoiced.' }
   }
   const acceptedAt = (await getAcceptedAt([dealId])).get(dealId)
   if (!isAcceptedSinceCutover(acceptedAt)) {
     return {
       success: false,
-      error: 'This deal was accepted before the Hub invoicing cutover and was invoiced through the old Xero flow.',
+      error:
+        'This deal has not been marked Quotation Accepted since the Hub invoicing cutover, so it cannot be invoiced here.',
     }
   }
 
@@ -119,6 +120,22 @@ export async function openInvoiceForDeal(input: {
     if (line.sku) {
       const mapped = codes.get(`${line.sku}|${line.ship_from_depot}`)
       if (mapped) line.xero_item_code = mapped
+    }
+  }
+
+  // Prefill the Xero sales account per line. The account belongs to the Xero
+  // ITEM and genuinely varies per product (H9 07-4008, H10 07-4014, H9X
+  // 07-4015, hooks and bungees 07-4080, freight 07-4150), so it is read from
+  // Xero rather than derived from a rule here. It stays editable in the editor.
+  //
+  // A failure is deliberately not fatal: the column simply stays empty, which
+  // is exactly how it behaved before, and drafting must not depend on Xero
+  // being reachable.
+  const accounts = await xeroItemAccounts()
+  if (accounts.ok) {
+    for (const line of lines) {
+      const account = line.xero_item_code ? accounts.data[line.xero_item_code] : null
+      if (account) line.account_code = account
     }
   }
 

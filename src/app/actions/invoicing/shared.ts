@@ -10,6 +10,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { taxjarCreateOrder } from '@/lib/taxjar'
 import { US_ACCEPTED_DEAL_STATUS, INVOICING_QUEUE_SINCE } from '@/lib/customer-invoice/constants'
+import { CLOSED_LOST_STAGES } from '@/lib/hubspot-constants'
 import { buildFilingOrders, type ShipToAddress } from '@/lib/customer-invoice/tax-mapping'
 import { sanitizeUSAddress } from '@/lib/us-address'
 import { getAuthorizedUser, type AuthzOk } from '@/lib/authz'
@@ -197,6 +198,45 @@ export async function getAcceptedAt(dealIds: readonly string[]): Promise<Map<str
     if (!seen || at > seen) out.set(id, at)
   }
   return out
+}
+
+/**
+ * Deals that have EVER entered Quotation Accepted on or after the cutover,
+ * mapped to the latest date they did so.
+ *
+ * Eligibility deliberately does NOT look at the deal's CURRENT stage. Deals
+ * move on fast: 64429492377 entered Quotation Accepted at 08:58 on 2026-09-01
+ * and left at 09:03, five minutes later. Filtering on the current stage
+ * silently dropped every deal that progressed to Closed Won, which is the
+ * normal path, and made it permanently un-invoiceable with no error anywhere.
+ *
+ * A deal that has been accepted stays invoiceable; `isNotInvoiceableStage`
+ * removes the one case where that is wrong.
+ */
+export async function getAcceptedSinceCutover(): Promise<Map<string, string>> {
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('deal_stage_history')
+    .select('deal_id, changed_at')
+    .eq('new_status', US_ACCEPTED_DEAL_STATUS)
+    .gte('changed_at', INVOICING_QUEUE_SINCE)
+  const out = new Map<string, string>()
+  for (const row of data ?? []) {
+    const id = String(row.deal_id)
+    const at = String(row.changed_at)
+    const seen = out.get(id)
+    if (!seen || at > seen) out.set(id, at)
+  }
+  return out
+}
+
+/**
+ * A deal that was accepted and then LOST must not be invoiceable. Every other
+ * onward stage (Closed Won above all) must remain invoiceable, which is the
+ * whole point of dating eligibility from history rather than current stage.
+ */
+export function isNotInvoiceableStage(dealStatus: string | null | undefined): boolean {
+  return CLOSED_LOST_STAGES.includes(String(dealStatus ?? ''))
 }
 
 /** True when the deal was accepted on or after the Hub invoicing cutover. */

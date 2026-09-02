@@ -3,8 +3,8 @@ import { AlertCircle, Inbox } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { getAuthorizedUser } from '@/lib/authz'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { US_ACCEPTED_DEAL_STATUS, US_DEPOTS, type CustomerInvoiceStatus } from '@/lib/customer-invoice/constants'
-import { getAcceptedAt, isAcceptedSinceCutover } from '@/app/actions/invoicing/shared'
+import { US_DEPOTS, type CustomerInvoiceStatus } from '@/lib/customer-invoice/constants'
+import { getAcceptedSinceCutover, isNotInvoiceableStage } from '@/app/actions/invoicing/shared'
 import { sourceLinesHash } from '@/lib/customer-invoice/hash'
 import { sanitizeUSAddress } from '@/lib/us-address'
 import { OpenInvoiceButton } from '../open-invoice-button'
@@ -36,21 +36,31 @@ export default async function AcceptedQueuePage() {
   const canManage = auth.capabilities.has('invoicing.manage')
 
   const admin = createAdminClient()
-  const { data: deals, error } = await admin
-    .from('deals_registry')
-    .select(
-      'hubspot_deal_id, deal_name, hubspot_company_id, depot_code, amount, quote_reference, line_items_raw, delivery_street, delivery_city, delivery_state, delivery_zip',
-    )
-    .eq('deal_status', US_ACCEPTED_DEAL_STATUS)
-    .in('depot_code', [...US_DEPOTS])
-    .limit(500)
+
+  // The queue is driven by deal_stage_history, NOT by the deal's current
+  // stage. A deal only passes through Quotation Accepted, often for minutes,
+  // and filtering on the current stage made every deal that moved on to Closed
+  // Won disappear from here permanently. History also dates the acceptance
+  // correctly, which deals_registry.updated_at does not.
+  const acceptedAt = await getAcceptedSinceCutover()
+  const acceptedIds = [...acceptedAt.keys()]
+
+  const { data: deals, error } = acceptedIds.length === 0
+    ? { data: [], error: null }
+    : await admin
+        .from('deals_registry')
+        .select(
+          'hubspot_deal_id, deal_name, hubspot_company_id, depot_code, amount, quote_reference, line_items_raw, deal_status, delivery_street, delivery_city, delivery_state, delivery_zip',
+        )
+        .in('hubspot_deal_id', acceptedIds)
+        .in('depot_code', [...US_DEPOTS])
+        .limit(500)
 
   let rows: QueueRow[] = []
   if (!error && deals && deals.length > 0) {
-    // Eligibility is dated from deal_stage_history, not deals_registry
-    // .updated_at, which does not move when an acceptance syncs in.
-    const acceptedAt = await getAcceptedAt(deals.map((d) => String(d.hubspot_deal_id)))
-    const eligible = deals.filter((d) => isAcceptedSinceCutover(acceptedAt.get(String(d.hubspot_deal_id))))
+    // Accepted and then lost is the one onward stage that must not be
+    // invoiceable. Everything else stays.
+    const eligible = deals.filter((d) => !isNotInvoiceableStage(d.deal_status as string | null))
 
     const { data: invoices } = eligible.length === 0 ? { data: [] } : await admin
       .from('customer_invoices')
@@ -124,7 +134,7 @@ export default async function AcceptedQueuePage() {
           <Card className="bg-white border-gray-200 hidden md:block overflow-x-auto p-0">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500">
+                <tr className="border-b border-gray-200 text-left text-xs font-semibold uppercase tracking-wide text-gray-700">
                   <th className="px-4 py-3">Deal</th>
                   <th className="px-4 py-3">Quote ref</th>
                   <th className="px-4 py-3">Depot</th>
