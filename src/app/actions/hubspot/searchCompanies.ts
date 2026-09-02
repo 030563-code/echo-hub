@@ -71,11 +71,27 @@ export async function searchCompanies(query: string): Promise<{ success: boolean
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          // Groups are ORed, filters within a group are ANDed, so the owner
+          // filter has to be repeated in BOTH groups. Dropping it from either
+          // one would leak other reps' companies, which is exactly what the
+          // fail-closed owner resolution above exists to prevent.
           filterGroups: [
             {
               filters: [
                 { propertyName: 'name', operator: 'CONTAINS_TOKEN', value: query },
-                // Filters within a group are ANDed.
+                ...(ownerScope
+                  ? [{ propertyName: 'hubspot_owner_id', operator: 'EQ', value: ownerScope }]
+                  : []),
+              ]
+            },
+            {
+              filters: [
+                // The trailing wildcard is required. CONTAINS_TOKEN on `domain`
+                // matches whole tokens, so a bare "sunbelt" hits sunbelt.com
+                // alone; "sunbelt*" also finds sunbeltrentals.com and its
+                // country variants. Measured against the live portal: 1 hit
+                // versus 10.
+                { propertyName: 'domain', operator: 'CONTAINS_TOKEN', value: `${query}*` },
                 ...(ownerScope
                   ? [{ propertyName: 'hubspot_owner_id', operator: 'EQ', value: ownerScope }]
                   : []),

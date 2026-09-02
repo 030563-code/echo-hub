@@ -6,6 +6,7 @@ import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { joinFullName, splitFullName } from '@/lib/name'
 import {
   Dialog,
   DialogContent,
@@ -269,8 +270,13 @@ interface CreateContactDialogProps {
 
 export function CreateContactDialog({ companyId, companyName, inFlightRef, onCreated }: CreateContactDialogProps) {
   const [open, setOpen] = useState(false)
+  const [fullName, setFullName] = useState('')
   const [firstname, setFirstname] = useState('')
   const [lastname, setLastname] = useState('')
+  // No sync effect between these three: typing the full name SETS the parts,
+  // typing a part SETS the full name, and neither re-derives the other. That
+  // is what keeps a multi-word surname editable, and it is why no
+  // last-edited guard is needed.
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [touched, setTouched] = useState(false)
@@ -279,6 +285,7 @@ export function CreateContactDialog({ companyId, companyName, inFlightRef, onCre
   const handleOpenChange = (next: boolean) => {
     if (!next && pending) return
     if (next) {
+      setFullName('')
       setFirstname('')
       setLastname('')
       setEmail('')
@@ -359,6 +366,26 @@ export function CreateContactDialog({ companyId, companyName, inFlightRef, onCre
           </DialogHeader>
 
           <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label className="text-gray-700">Full Name</Label>
+              <Input
+                placeholder="John Doe"
+                className="bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow"
+                value={fullName}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setFullName(value)
+                  const split = splitFullName(value)
+                  setFirstname(split.firstname)
+                  setLastname(split.lastname)
+                }}
+              />
+              <p className="text-xs text-gray-500">
+                Split into the two fields below, which HubSpot actually stores. Everything after
+                the first word is treated as the surname, so correct it there if that is wrong.
+              </p>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-gray-700">First Name *</Label>
@@ -366,7 +393,10 @@ export function CreateContactDialog({ companyId, companyName, inFlightRef, onCre
                   placeholder="John"
                   className="bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow"
                   value={firstname}
-                  onChange={(e) => setFirstname(e.target.value)}
+                  onChange={(e) => {
+                    setFirstname(e.target.value)
+                    setFullName(joinFullName(e.target.value, lastname))
+                  }}
                 />
               </div>
               <div className="space-y-2">
@@ -375,7 +405,10 @@ export function CreateContactDialog({ companyId, companyName, inFlightRef, onCre
                   placeholder="Doe"
                   className="bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow"
                   value={lastname}
-                  onChange={(e) => setLastname(e.target.value)}
+                  onChange={(e) => {
+                    setLastname(e.target.value)
+                    setFullName(joinFullName(firstname, e.target.value))
+                  }}
                 />
               </div>
             </div>
