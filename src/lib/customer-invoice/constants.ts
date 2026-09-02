@@ -120,6 +120,9 @@ export const CUSTOMER_INVOICE_STATUSES = [
   'draft',
   'tax_calculated',
   'authorizing',
+  /** Number allocated and the Xero DRAFT created. Nothing has gone to the
+   *  customer yet, and Xero is not authorised. */
+  'raised',
   'authorized',
   'sent',
   'completed',
