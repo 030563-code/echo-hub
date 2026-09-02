@@ -65,7 +65,7 @@ export default async function DraftInvoicesPage() {
           <Card className="bg-white border-gray-200 hidden md:block overflow-x-auto p-0">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500">
+                <tr className="border-b border-gray-200 text-left text-xs font-semibold uppercase tracking-wide text-gray-700">
                   <th className="px-4 py-3">Invoice</th>
                   <th className="px-4 py-3">Company</th>
                   <th className="px-4 py-3">Status</th>

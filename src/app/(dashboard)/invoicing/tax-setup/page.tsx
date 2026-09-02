@@ -122,7 +122,7 @@ export default async function TaxSetupPage() {
           <>
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500">
+                <tr className="border-b border-gray-200 text-left text-xs font-semibold uppercase tracking-wide text-gray-700">
                   <th className="px-4 py-3 font-medium">State</th>
                   <th className="px-4 py-3 font-medium">Registered</th>
                   <th className="px-4 py-3 font-medium">Collecting in TaxJar</th>
