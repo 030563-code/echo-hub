@@ -76,6 +76,9 @@ interface CreateQuoteFormProps {
   initialDepot?: string
   /** Comments already saved for this deal (deals_registry.quote_comments), if any. */
   initialComments?: string
+  /** ISO code from the deal itself. Drives every money figure the rep sees and
+   *  the currency printed on the quote. */
+  dealCurrency?: string
 }
 
 // Radix Select can't represent "cleared", so the undecided state gets an
@@ -93,7 +96,13 @@ const mapInitialLineItems = (items: HubSpotLineItem[]): LineItem[] =>
     total: Number(item.properties.amount) || 0,
   }))
 
-export default function CreateQuoteForm({ dealId, dealName, settings, products, salesRep, contact, companyName, initialLineItems = [], initialDepot = '', initialComments = '' }: CreateQuoteFormProps) {
+export default function CreateQuoteForm({ dealId, dealName, settings, products, salesRep, contact, companyName, initialLineItems = [], initialDepot = '', initialComments = '', dealCurrency = 'USD' }: CreateQuoteFormProps) {
+  const money = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: dealCurrency,
+    currencyDisplay: 'narrowSymbol',
+  })
+
   // State for the Initial Setup Dialog
   const [showSetupDialog, setShowSetupDialog] = useState(true)
   const [distributor, setDistributor] = useState<string>('none')
@@ -370,6 +379,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
       // The quote template doubles as the tax jurisdiction (US / CAN). It is
       // mandatory at setup, so a generated quote always carries the right line.
       taxRegion: taxRegionForTemplate(template),
+      currency: dealCurrency,
       dealName,
       quoteReference: quoteRef,
       createdAt,
@@ -607,7 +617,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                       {filteredProducts.length > 0 ? (
                         filteredProducts.map((p) => (
                           <SelectItem key={p.id} value={p.id} className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
-                            {p.properties.name} ({Number(p.properties.price).toLocaleString('en-US', { style: 'currency', currency: 'USD' })})
+                            {p.properties.name} ({money.format(Number(p.properties.price))})
                           </SelectItem>
                         ))
                       ) : (
@@ -662,7 +672,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                         <div className="sm:w-24 text-left sm:text-right">
                           <Label className="text-xs text-gray-500">Total</Label>
                           <p className="font-mono font-medium pt-1">
-                            {item.total.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                            {money.format(item.total)}
                           </p>
                         </div>
 
@@ -733,7 +743,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
               <div className="flex justify-between items-end mb-6">
                 <span className="text-gray-500 font-medium">Grand Total</span>
                 <span className="text-2xl font-bold text-gray-900">
-                  {calculateGrandTotal().toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                  {money.format(calculateGrandTotal())}
                 </span>
               </div>
 

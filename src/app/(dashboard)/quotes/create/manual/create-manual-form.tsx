@@ -15,7 +15,9 @@ import { COMPANY_CONTACTS_PAGE_SIZE } from '@/lib/hubspot-constants'
 import { CreateCompanyDialog, CreateContactDialog, type CreatedCompany, type CreatedContact } from './hubspot-create-dialogs'
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { getDealCurrencyOptions, getWinProbabilityOptions } from '@/app/actions/hubspot/getDealProperties'
+import { getWinProbabilityOptions } from '@/app/actions/hubspot/getDealProperties'
+import { CURRENCY_FLAG, CURRENCY_NAME } from '@/lib/pipeline-config'
+import { FlagIcon } from '@/components/ui/flag-icon'
 
 interface CompanyResult {
   id: string
@@ -26,7 +28,17 @@ interface CompanyResult {
 
 import { createHubSpotDeal } from '@/app/actions/hubspot/createDeal'
 
-export default function CreateManualRequestForm({ restrictedToOwn = true }: { restrictedToOwn?: boolean }) {
+export default function CreateManualRequestForm({
+  restrictedToOwn = true,
+  allowedCurrencies,
+  defaultCurrency,
+}: {
+  restrictedToOwn?: boolean
+  /** Resolved from the caller's pipeline on the server, so the pipeline id
+   *  never reaches the client. */
+  allowedCurrencies: string[]
+  defaultCurrency: string
+}) {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -75,20 +87,9 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
 
   const [dealName, setDealName] = useState('')
   const [description, setDescription] = useState('')
-  const [currency, setCurrency] = useState('USD')
-  const [currencyOptions, setCurrencyOptions] = useState<{label: string, value: string}[]>([])
+  const [currency, setCurrency] = useState(defaultCurrency)
   const [winProbability, setWinProbability] = useState('')
   const [winProbabilityOptions, setWinProbabilityOptions] = useState<{label: string, value: string}[]>([])
-
-  useEffect(() => {
-    async function fetchCurrencies() {
-      const result = await getDealCurrencyOptions()
-      if (result.success && result.data) {
-        setCurrencyOptions(result.data)
-      }
-    }
-    fetchCurrencies()
-  }, [])
 
   useEffect(() => {
     async function fetchWinProbability() {
@@ -720,15 +721,15 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
                     <SelectValue placeholder="Select Currency" />
                   </SelectTrigger>
                   <SelectContent className="bg-white border-gray-200 text-gray-900">
-                    {currencyOptions.length > 0 ? (
-                      currencyOptions.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
-                          {opt.label}
-                        </SelectItem>
-                      ))
-                    ) : (
-                      <SelectItem value="USD">USD - US Dollar</SelectItem>
-                    )}
+                    {allowedCurrencies.map((code) => (
+                      <SelectItem key={code} value={code} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
+                        <span className="inline-flex items-center gap-2">
+                          {CURRENCY_FLAG[code] ? <FlagIcon code={CURRENCY_FLAG[code]} /> : null}
+                          <span className="font-medium">{code}</span>
+                          {CURRENCY_NAME[code] ? <span className="text-gray-500">{CURRENCY_NAME[code]}</span> : null}
+                        </span>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

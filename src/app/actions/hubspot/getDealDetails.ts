@@ -19,6 +19,9 @@ interface HubSpotDealDetails {
     hubspot_owner_id?: string
     /** Rep-set probability of close, an option value like '70%'. */
     win_probability?: string
+    /** ISO code, e.g. USD or CAD. The deal's own currency, and the only
+     *  trustworthy source for it: the Hub used to assume USD. */
+    deal_currency_code?: string
   }
   associations?: {
     companies?: { results: { id: string }[] }
@@ -53,7 +56,7 @@ export async function getDealDetails(dealId: string): Promise<GetDealDetailsResu
   try {
     // Fetch Deal Details with Associations and Line Items
     // Requesting both singular and plural to be safe
-    const url = `https://api.hubapi.com/crm/v3/objects/deals/${dealId}?properties=dealname,amount,createdate,dealstage,pipeline,description,closedate,sending_depot,hubspot_owner_id,win_probability&associations=companies,contacts,line_item,line_items`
+    const url = `https://api.hubapi.com/crm/v3/objects/deals/${dealId}?properties=dealname,amount,createdate,dealstage,pipeline,description,closedate,sending_depot,hubspot_owner_id,win_probability,deal_currency_code&associations=companies,contacts,line_item,line_items`
 
     const response = await fetch(
       url,

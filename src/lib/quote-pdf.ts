@@ -111,6 +111,11 @@ export interface QuotePdfInput {
    */
   taxRegion?: TaxRegion
   /**
+   * The deal's currency. Defaults to USD, which is what every quote printed
+   * before this existed, so an omitted value is unchanged behaviour.
+   */
+  currency?: string
+  /**
    * The Echo Barrier wordmark as a data URL. Passed in rather than imported so
    * this module stays pure and free of the ~48KB base64 string: the browser
    * fetches /logo-quote.png, Node reads it off disk. When absent the header
@@ -134,11 +139,34 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000
 const LOGO_WIDTH = 58
 const LOGO_HEIGHT = LOGO_WIDTH * (115 / 600)
 // Wide enough for a seven-figure total set at 12pt bold, so the money column
-// never collides with the label to its left.
-const TOTALS_AMOUNT_WIDTH = 40
+// never collides with the label to its left. Widened from 40 for the Totals
+// block, which now prints the ISO code (CAD 1,234,567.89) rather than a bare
+// symbol: the labels are right-aligned AGAINST this width, so an overflowing
+// amount would grow leftwards into its own label.
+const TOTALS_AMOUNT_WIDTH = 48
 
-function formatMoney(value: number): string {
-  return value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+/**
+ * Money for the quote document.
+ *
+ * Exported and pure so the width and symbol decisions are unit-testable
+ * without rendering a PDF.
+ *
+ * `display` is the whole point of the second argument. In the line-item table
+ * autoTable sizes the columns itself, so a narrow symbol is safe and reads
+ * naturally. In the Totals block the column width is fixed, and more
+ * importantly "$1,234.56" on a Canadian quote is genuinely ambiguous to the
+ * customer receiving it, so that block prints the unambiguous ISO code.
+ */
+export function formatQuoteMoney(
+  value: number,
+  currency = 'USD',
+  display: 'narrowSymbol' | 'code' = 'narrowSymbol',
+): string {
+  return value.toLocaleString('en-US', {
+    style: 'currency',
+    currency,
+    currencyDisplay: display,
+  })
 }
 
 function formatDate(date: Date): string {
@@ -146,6 +174,7 @@ function formatDate(date: Date): string {
 }
 
 export async function buildQuotePdf(input: QuotePdfInput): Promise<import('jspdf').jsPDF> {
+  const currency = (input.currency ?? 'USD').trim().toUpperCase() || 'USD'
   const { default: JsPDF } = await import('jspdf')
   const { default: autoTable } = await import('jspdf-autotable')
 
@@ -292,8 +321,8 @@ export async function buildQuotePdf(input: QuotePdfInput): Promise<import('jspdf
   const tableRows = lineItems.map((item) => [
     item.name,
     item.quantity,
-    formatMoney(item.unitPrice),
-    formatMoney(item.total),
+    formatQuoteMoney(item.unitPrice, currency),
+    formatQuoteMoney(item.total, currency),
   ])
 
   autoTable(doc, {
@@ -405,14 +434,14 @@ export async function buildQuotePdf(input: QuotePdfInput): Promise<import('jspdf
   doc.setFontSize(10)
   doc.setTextColor(...BODY_TEXT_COLOR)
   doc.text('One-time subtotal', labelRight, totalsY, { align: 'right' })
-  doc.text(formatMoney(input.grandTotal), amountRight, totalsY, { align: 'right' })
+  doc.text(formatQuoteMoney(input.grandTotal, currency, 'code'), amountRight, totalsY, { align: 'right' })
   totalsY += 8
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(12)
   doc.setTextColor(...HEADING_COLOR)
   doc.text('Total', labelRight, totalsY, { align: 'right' })
-  doc.text(formatMoney(input.grandTotal), amountRight, totalsY, { align: 'right' })
+  doc.text(formatQuoteMoney(input.grandTotal, currency, 'code'), amountRight, totalsY, { align: 'right' })
   totalsY += 6
 
   doc.setDrawColor(...BORDER_COLOR)
@@ -428,6 +457,15 @@ export async function buildQuotePdf(input: QuotePdfInput): Promise<import('jspdf
     doc.setFontSize(9)
     doc.setTextColor(...BODY_TEXT_COLOR)
     doc.text(taxNote, amountRight, totalsY, { align: 'right' })
+  }
+  // Only when it is NOT the default. A "Prices are in USD" line on every US
+  // quote would be noise; on a Canadian one it removes a real ambiguity.
+  if (currency !== 'USD') {
+    totalsY = ensureSpace(totalsY + 6, 8)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(...BODY_TEXT_COLOR)
+    doc.text(`Prices are in ${currency}.`, amountRight, totalsY, { align: 'right' })
   }
 
   // --- Purchase terms ---

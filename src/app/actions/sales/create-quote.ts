@@ -7,7 +7,12 @@ import { addLineItemsToDeal } from '@/app/actions/hubspot/addLineItems'
 import { getProductSkus } from '@/app/actions/hubspot/getProductSkus'
 import { uploadFileToHubSpot, createNoteWithAttachment, createEmailDraftWithAttachment } from '@/app/actions/hubspot/uploadFile'
 import { QUOTATION_SENT_STAGES, HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
-import { computeLineItemsTotal, computeLineTotal, validateLineItems } from '@/lib/quote-math'
+import {
+  computeLineItemsTotal,
+  computeLineTotal,
+  parseWinProbability,
+  validateLineItems,
+} from '@/lib/quote-math'
 import { assertDealAccess } from '@/lib/authz'
 
 interface QuoteLineItem {
@@ -249,12 +254,7 @@ export async function createQuote(params: CreateQuoteParams) {
   // Wrapped in String(...) — winProbability is typed as string, but a numeric
   // value at runtime (e.g. from a caller that skips the client form) has no
   // .trim() and would throw TypeError before ever reaching Number.isFinite below.
-  const probabilityRaw = String(params.winProbability ?? '').trim().replace(/%$/, '').trim()
-  const probabilityNum = probabilityRaw === '' ? Number.NaN : Number(probabilityRaw)
-  const parsedProbability =
-    Number.isFinite(probabilityNum) && probabilityNum >= 0 && probabilityNum <= 100
-      ? probabilityNum
-      : null
+  const parsedProbability = parseWinProbability(params.winProbability)
 
   const displayName = profile.display_name || user.email || 'XX'
   const initials = displayName
@@ -402,7 +402,6 @@ export async function createQuote(params: CreateQuoteParams) {
     deal_name: dealName,
     deal_status: 'Quote Created',
     amount: computedTotal,
-    currency: 'USD',
     quote_reference: quoteReference, // Will preserve existing ref if upserting
     // Written in the SAME key shape the rest of the system uses, not the
     // builder's camelCase. notify_quote_accepted() reads unit_price,
@@ -429,6 +428,17 @@ export async function createQuote(params: CreateQuoteParams) {
     })),
     updated_at: new Date().toISOString(),
   }
+  // The deal's OWN currency, read off the getDealDetails call already made
+  // above rather than taken from the client, so there is no new trust surface.
+  //
+  // The literal 'USD' this replaces was actively corrupting rows: the n8n sync
+  // writes the real currency, and a re-quote through the Hub overwrote it. Six
+  // CA-HAM rows sit at USD against 23 at CAD for exactly this reason.
+  //
+  // When the deal carries no currency the key is OMITTED, never defaulted: on
+  // insert the column default applies, and on update the synced value survives.
+  const dealCurrency = String(deal?.properties?.deal_currency_code ?? '').trim().toUpperCase()
+  if (dealCurrency) registryRow.currency = dealCurrency
   if (pipelineId) registryRow.pipeline_id = pipelineId
   if (parsedProbability !== null) registryRow.deal_probability = parsedProbability
   // Depot follows the same don't-null-a-synced-value rule as probability: an

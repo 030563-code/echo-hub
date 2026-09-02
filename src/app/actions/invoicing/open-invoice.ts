@@ -90,7 +90,17 @@ export async function openInvoiceForDeal(input: {
   }
   const currency = String(deal.currency ?? 'USD').trim().toUpperCase() || 'USD'
   if (currency !== 'USD') {
-    return { success: false, error: `Expected a USD deal but the registry says ${currency}.` }
+    // This check has never fired: create-quote used to write a literal 'USD'
+    // over whatever n8n had synced. Now that the deal's real currency reaches
+    // the registry, a genuinely Canadian deal lands here, so the message has
+    // to say what to do rather than just state a mismatch.
+    return {
+      success: false,
+      error:
+        `This deal is in ${currency}. US invoicing is USD only, because the TaxJar and Xero ` +
+        `flow behind it is a US sales-tax flow. Invoice a ${currency} deal through the Canadian ` +
+        `process instead, or correct the deal's currency in HubSpot if ${currency} is wrong.`,
+    }
   }
 
   // Xero account number doubles as the TaxJar customer id.

@@ -2,6 +2,7 @@
 
 import { getAuthorizedUser } from '@/lib/authz'
 import { HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
+import { allowedCurrenciesForPipeline } from '@/lib/pipeline-config'
 
 interface CreateDealParams {
   dealName: string
@@ -41,6 +42,19 @@ export async function createHubSpotDeal(params: CreateDealParams): Promise<{ suc
     if (!pipelineId) {
       return { success: false, error: 'No pipeline configured for user' }
     }
+
+    // The picker is already restricted, but this is a live CRM write, so the
+    // list is enforced here too rather than trusted from the client. An
+    // unknown pipeline falls back to USD, which narrows rather than widens.
+    const allowed = allowedCurrenciesForPipeline(pipelineId)
+    const requested = String(params.currency ?? '').trim().toUpperCase()
+    if (requested && !allowed.includes(requested)) {
+      return {
+        success: false,
+        error: `${requested} is not an available currency for this region (${allowed.join(', ')}).`,
+      }
+    }
+    const currency = requested || allowed[0]
 
     // 2. Determine Stage (Quote Request)
     let stageId = ''
@@ -149,7 +163,7 @@ export async function createHubSpotDeal(params: CreateDealParams): Promise<{ suc
           dealstage: stageId,
           amount: '0',
           hubspot_owner_id: ownerId, // Assign owner to set team
-          deal_currency_code: params.currency || 'USD',
+          deal_currency_code: currency,
           ...(params.winProbability ? { win_probability: params.winProbability } : {}),
         },
         associations: [

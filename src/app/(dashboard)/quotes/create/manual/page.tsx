@@ -3,11 +3,14 @@ import { Button } from '@/components/ui/button'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { requireCapability, getAuthorizedUser } from '@/lib/authz'
+import { allowedCurrenciesForPipeline } from '@/lib/pipeline-config'
 
 export default async function CreateManualRequestPage() {
   await requireCapability('quotes.create')
   const auth = await getAuthorizedUser()
   const restrictedToOwn = auth.ok ? !auth.profile.is_super_admin : true
+  // Resolved here so the pipeline id stays server-side.
+  const allowedCurrencies = allowedCurrenciesForPipeline(auth.ok ? auth.profile.pipeline_id : null)
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex items-center gap-4 mb-6">
@@ -20,7 +23,11 @@ export default async function CreateManualRequestPage() {
         <h1 className="text-2xl font-bold text-gray-900">Create Deal</h1>
       </div>
 
-      <CreateManualRequestForm restrictedToOwn={restrictedToOwn} />
+      <CreateManualRequestForm
+        restrictedToOwn={restrictedToOwn}
+        allowedCurrencies={allowedCurrencies}
+        defaultCurrency={allowedCurrencies[0]}
+      />
     </div>
   )
 }

@@ -101,6 +101,9 @@ export default async function CreateQuotePage(props: { params: Promise<{ dealId:
   const depotNameToCode = Object.fromEntries(
     Object.entries(DEPOT_MAPPING).map(([code, name]) => [name, code])
   )
+  // The deal's own currency drives the builder's money formatting and the
+  // quote PDF. Falls back to USD only when the deal genuinely has none.
+  const dealCurrency = (deal?.properties?.deal_currency_code || '').trim().toUpperCase() || 'USD'
   const rawSendingDepot = (deal?.properties?.sending_depot || '').trim()
   const initialDepot =
     depotNameToCode[rawSendingDepot] ?? (rawSendingDepot in DEPOT_MAPPING ? rawSendingDepot : '')
@@ -121,6 +124,7 @@ export default async function CreateQuotePage(props: { params: Promise<{ dealId:
         dealId={params.dealId}
         dealName={deal?.properties?.dealname || ''}
         initialDepot={initialDepot}
+        dealCurrency={dealCurrency}
         settings={settings}
         products={products}
         salesRep={salesRep}
