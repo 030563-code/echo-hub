@@ -3,6 +3,7 @@ import { Card } from '@/components/ui/card'
 import { AlertCircle, FileText } from 'lucide-react'
 import { PaginationNav } from '@/components/ui/pagination-nav'
 import { DealList } from '@/components/quotes/deal-list'
+import { formatMoney } from '@/lib/utils'
 
 interface SearchParams {
   page?: string
@@ -53,7 +54,7 @@ export default async function PendingQuotesPage({
                 day: 'numeric'
               }),
               amountFormatted: deal.properties.amount
-                ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(deal.properties.amount))
+                ? formatMoney(Number(deal.properties.amount), deal.properties.deal_currency_code ?? 'USD')
                 : '-',
               badge: { text: 'Pending', className: 'bg-gray-100 text-gray-800 border-gray-200' },
               action: { href: `/quotes/deals/${deal.id}`, label: 'View Details' },

@@ -3,19 +3,11 @@
 import { createServerClient } from '@/lib/supabase/server'
 import { hasAnyCapability } from '@/lib/authz'
 import { QUOTE_REQUEST_STAGES, QUOTATION_SENT_STAGES, CLOSED_WON_STAGES, CLOSED_LOST_STAGES, DISTRIBUTOR_STAGES, QUOTATION_ACCEPTED_STAGES } from '@/lib/hubspot-constants'
+import type { HubSpotDeal } from '@/lib/hubspot-types'
+import { DEAL_LIST_PROPERTIES } from '@/lib/hubspot-types'
 
 const PAGE_SIZE = 25
 
-interface HubSpotDeal {
-  id: string
-  properties: {
-    dealname: string
-    amount: string | null
-    createdate: string
-    dealstage: string
-    pipeline: string
-  }
-}
 
 interface GetDealsResult {
   success: boolean
@@ -128,7 +120,7 @@ export async function getDealsByStage(
           ],
         },
       ],
-      properties: ['dealname', 'amount', 'createdate', 'dealstage', 'pipeline'],
+      properties: [...DEAL_LIST_PROPERTIES],
       sorts: [
         {
           propertyName: 'createdate',

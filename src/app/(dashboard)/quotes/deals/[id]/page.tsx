@@ -38,14 +38,17 @@ function stageChipClass(stageId: string): string {
 import ChangeStageDialog from '@/components/change-stage-dialog'
 import { hasCapability } from '@/lib/authz'
 
-const currencyFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-})
-
-const formatMoney = (value: unknown) => currencyFormatter.format(Number(value) || 0)
+/** Built per render from the deal's own currency, rather than a module-level
+ *  USD formatter: this page shows a Canadian deal's amounts too. */
+const makeMoney = (currency: string) => {
+  const formatter = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+  return (value: unknown) => formatter.format(Number(value) || 0)
+}
 
 const formatDate = (value: unknown) => {
   if (value == null || value === '') return '-'
@@ -160,6 +163,7 @@ export default async function QuoteRequestDetailsPage(props: { params: Promise<{
   }
 
   const isQuoteRequest = QUOTE_REQUEST_STAGES.includes(deal.properties.dealstage)
+  const formatMoney = makeMoney((deal.properties.deal_currency_code || 'USD').trim().toUpperCase() || 'USD')
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">

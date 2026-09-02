@@ -7,17 +7,9 @@ import { AlertCircle, Filter } from 'lucide-react'
 import { HUBSPOT_PIPELINES, stageLabel } from '@/lib/hubspot-constants'
 import { PaginationNav } from '@/components/ui/pagination-nav'
 import { DealList } from '@/components/quotes/deal-list'
+import type { HubSpotDeal } from '@/lib/hubspot-types'
+import { formatMoney } from '@/lib/utils'
 
-interface HubSpotDeal {
-  id: string
-  properties: {
-    dealname: string
-    amount: string | null
-    createdate: string
-    dealstage: string
-    pipeline: string
-  }
-}
 
 interface AllQuotesClientProps {
   initialDeals: HubSpotDeal[]
@@ -133,7 +125,7 @@ export default function AllQuotesClient({ initialDeals, error, probabilityMap, c
               day: 'numeric'
             }),
             amountFormatted: deal.properties.amount
-              ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(deal.properties.amount))
+              ? formatMoney(Number(deal.properties.amount), deal.properties.deal_currency_code ?? 'USD')
               : '-',
             badge: {
               text: getStageLabel(deal.properties.pipeline, deal.properties.dealstage),

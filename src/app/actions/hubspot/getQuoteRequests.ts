@@ -1,17 +1,8 @@
 'use server'
 
 import { getDealsByStage } from './getDeals'
+import type { HubSpotDeal } from '@/lib/hubspot-types'
 
-interface HubSpotDeal {
-  id: string
-  properties: {
-    dealname: string
-    amount: string | null
-    createdate: string
-    dealstage: string
-    pipeline: string
-  }
-}
 
 interface QuoteRequestResult {
   success: boolean
