@@ -31,6 +31,7 @@ import { saveInvoiceDraft } from '@/app/actions/invoicing/save-draft'
 import { calculateInvoiceTax } from '@/app/actions/invoicing/calculate-tax'
 import { sendInvoiceToXero } from '@/app/actions/invoicing/send-to-xero'
 import { XeroContactCard } from './xero-contact-card'
+import { depotLabel } from '@/lib/depot-constants'
 import { voidInvoice } from '@/app/actions/invoicing/void-invoice'
 import { rebuildInvoiceFromDeal } from '@/app/actions/invoicing/rebuild-invoice'
 import { retryTaxJarRecord } from '@/app/actions/invoicing/record-taxjar'
@@ -732,7 +733,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                         title="Fitting-kit components ship from Baltimore"
                       >
                         <Lock className="h-3.5 w-3.5 text-gray-400" />
-                        US-BAL
+                        {depotLabel('US-BAL')}
                       </span>
                     ) : (
                       <select
@@ -751,7 +752,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                       >
                         {US_DEPOTS.map((depot) => (
                           <option key={depot} value={depot}>
-                            {depot}
+                            {depotLabel(depot)}
                           </option>
                         ))}
                       </select>

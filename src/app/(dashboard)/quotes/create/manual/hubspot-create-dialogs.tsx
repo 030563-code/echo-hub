@@ -91,7 +91,7 @@ export function CreateCompanyDialog({ initialName, inFlightRef, onCreated, restr
           toast.error(
             'Could not check for an existing company: ' +
               (existing.error ?? 'unknown error') +
-              ' — please try again.'
+              '. Please try again.'
           )
           return
         }
@@ -316,7 +316,7 @@ export function CreateContactDialog({ companyId, companyName, inFlightRef, onCre
         // will attach to — so say whose record it is rather than echoing input.
         toast.success(
           result.matchedExisting
-            ? `That email already belongs to ${actualName} — linked them to ${companyName}`
+            ? `That email already belongs to ${actualName}, so they were linked to ${companyName}`
             : `Created ${actualName} at ${companyName}`
         )
         onCreated({

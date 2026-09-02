@@ -3,6 +3,7 @@ import { AlertCircle, Inbox } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { getAuthorizedUser } from '@/lib/authz'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { depotLabel } from '@/lib/depot-constants'
 import { US_DEPOTS, type CustomerInvoiceStatus } from '@/lib/customer-invoice/constants'
 import { getAcceptedSinceCutover, isNotInvoiceableStage } from '@/app/actions/invoicing/shared'
 import { sourceLinesHash } from '@/lib/customer-invoice/hash'
@@ -149,7 +150,7 @@ export default async function AcceptedQueuePage() {
                   <tr key={row.dealId} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium text-gray-900">{row.dealName}</td>
                     <td className="px-4 py-3 text-gray-600">{row.quoteRef ?? '—'}</td>
-                    <td className="px-4 py-3 text-gray-600">{row.depot}</td>
+                    <td className="px-4 py-3 text-gray-600">{depotLabel(row.depot)}</td>
                     <td className="px-4 py-3 text-right tabular-nums text-gray-900">
                       {row.amount === null ? '—' : money.format(row.amount)}
                     </td>
@@ -187,7 +188,7 @@ export default async function AcceptedQueuePage() {
                   <InvoiceStatusChip chip={row.chip} />
                 </div>
                 <p className="text-sm text-gray-500">
-                  {row.quoteRef ?? 'No quote ref'} · {row.depot} ·{' '}
+                  {row.quoteRef ?? 'No quote ref'} · {depotLabel(row.depot)} ·{' '}
                   {row.amount === null ? 'no amount' : money.format(row.amount)}
                 </p>
                 {row.linesChanged && (

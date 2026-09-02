@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Card } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { AlertCircle, Filter } from 'lucide-react'
-import { HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
+import { HUBSPOT_PIPELINES, stageLabel } from '@/lib/hubspot-constants'
 import { PaginationNav } from '@/components/ui/pagination-nav'
 import { DealList } from '@/components/quotes/deal-list'
 
@@ -46,14 +46,10 @@ export default function AllQuotesClient({ initialDeals, error, probabilityMap, c
     return true
   })
 
-  // Helper to get stage label
-  const getStageLabel = (pipelineId: string, stageId: string) => {
-    const pipeline = pipelines.find(p => p.id === pipelineId)
-    if (!pipeline) return stageId
-    
-    const stageEntry = Object.entries(pipeline.stages).find(([, id]) => id === stageId)
-    return stageEntry ? stageEntry[0].replace(/_/g, ' ') : stageId
-  }
+  // Both fallbacks here used to return the raw stage id, so a deal whose
+  // pipeline was not in the constants rendered a 36-character GUID at the rep.
+  // stageLabel resolves through every pipeline before giving up.
+  const getStageLabel = (pipelineId: string, stageId: string) => stageLabel(pipelineId, stageId)
 
   // Helper to get pipeline label
   const getPipelineLabel = (pipelineId: string) => {
@@ -97,8 +93,8 @@ export default function AllQuotesClient({ initialDeals, error, probabilityMap, c
               <SelectContent className="bg-white border-gray-200 text-gray-900">
                 <SelectItem value="all">All Stages</SelectItem>
                 {selectedPipeline !== 'all' && pipelines.find(p => p.id === selectedPipeline)?.stages && 
-                  Object.entries(pipelines.find(p => p.id === selectedPipeline)!.stages).map(([key, id]) => (
-                    <SelectItem key={id} value={id}>{key.replace(/_/g, ' ')}</SelectItem>
+                  Object.entries(pipelines.find(p => p.id === selectedPipeline)!.stages).map(([, id]) => (
+                    <SelectItem key={id} value={id}>{stageLabel(selectedPipeline, id)}</SelectItem>
                   ))
                 }
               </SelectContent>

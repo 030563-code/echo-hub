@@ -18,6 +18,7 @@ import { getMappedSkus } from '@/app/actions/sales/get-mapped-skus'
 import { getWinProbabilityOptions } from '@/app/actions/hubspot/getDealProperties'
 import { updateDealProperties } from '@/app/actions/hubspot/updateDealProperties'
 import { buildQuotePdf, taxRegionForTemplate } from '@/lib/quote-pdf'
+import { depotLabel } from '@/lib/depot-constants'
 import { loadQuoteLogo } from '@/lib/quote-logo'
 
 interface Product {
@@ -150,8 +151,8 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     if (prevDepot !== null && prevDepot !== depot && lineItems.length > 0) {
       toast.warning(
         depot
-          ? `Depot changed to ${depot}. Items already in the cart may not be available from this depot — availability will be checked on submit.`
-          : 'Sending depot set to "Decide later" — items in the cart will be checked against all your depots on submit.'
+          ? `Depot changed to ${depotLabel(depot)}. Items already in the cart may not be available from this depot. Availability will be checked on submit.`
+          : 'Sending depot set to "Decide later". Items in the cart will be checked against all your depots on submit.'
       )
     }
     prevDepotRef.current = depot
@@ -454,24 +455,32 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
           <div className="space-y-6 py-4">
             {/* Distributor Selection */}
             <div className="space-y-2">
-              <Label className="text-gray-700 font-medium">Assign to Distributor?</Label>
-              <Select value={distributor} onValueChange={setDistributor}>
+              <Label className="text-gray-700 font-medium">Select sales team</Label>
+              <Select
+                value={distributor}
+                onValueChange={setDistributor}
+                disabled={settings.allowed_distributors.length === 0}
+              >
                 <SelectTrigger className="bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow focus:border-echo-yellow">
-                  <SelectValue placeholder="Select Distributor (Optional)" />
+                  <SelectValue placeholder="Select sales team" />
                 </SelectTrigger>
                 <SelectContent className="bg-white border-gray-200 text-gray-900">
-                  <SelectItem value="none" className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">No Distributor (Direct Sale)</SelectItem>
+                  <SelectItem value="none" className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">Echo Barrier direct</SelectItem>
                   {settings.allowed_distributors.map((dist) => (
                     <SelectItem key={dist} value={dist} className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">{dist}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {isDistributorSelected && (
-                <p className="text-xs text-blue-600 flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" />
-                  Deal will be moved to &quot;Distributor&quot; stage automatically.
+              {isDistributorSelected ? (
+                <p className="text-xs font-medium text-amber-700 flex items-start gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  This deal will be moved to the Passed to Distributor stage, not Quotation Sent.
                 </p>
-              )}
+              ) : settings.allowed_distributors.length === 0 ? (
+                <p className="text-xs text-gray-500">
+                  No partner sales teams are configured for your region, so this is a direct sale.
+                </p>
+              ) : null}
             </div>
 
             {/* Depot Selection (Only if no distributor) */}
@@ -490,12 +499,14 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                       Decide later
                     </SelectItem>
                     {settings.allowed_depots.map((d) => (
-                      <SelectItem key={d} value={d} className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">{d}</SelectItem>
+                      <SelectItem key={d} value={d} className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
+                        {depotLabel(d)} <span className="text-gray-400">({d})</span>
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-gray-500">
-                  The depot is required when the deal is marked Quotation Accepted — it can be
+                  The depot is required when the deal is marked Quotation Accepted, and it can be
                   chosen then. Without one, the product list covers all your depots.
                 </p>
               </div>
@@ -556,7 +567,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600">
           <span>
             <span className="font-medium text-gray-900">
-              {isDistributorSelected ? distributor : depot || '—'}
+              {isDistributorSelected ? distributor : depot ? depotLabel(depot) : '—'}
             </span>{' '}
             · template {template || '—'} · {winProbability || '—'} to close
           </span>
@@ -704,13 +715,13 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
               
               <div className="space-y-3 text-sm border-b border-gray-100 pb-4 mb-4">
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-500">Distributor</span>
-                  <span className="font-medium text-gray-900 text-right">{isDistributorSelected ? distributor : 'Direct Sale'}</span>
+                  <span className="text-gray-500">Sales team</span>
+                  <span className="font-medium text-gray-900 text-right">{isDistributorSelected ? distributor : 'Echo Barrier direct'}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-500">Depot</span>
                   <span className="font-medium text-gray-900 text-right">
-                    {isDistributorSelected ? 'N/A' : depot || 'Decided at acceptance'}
+                    {isDistributorSelected ? 'N/A' : depot ? depotLabel(depot) : 'Decided at acceptance'}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
@@ -762,12 +773,12 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                   ) : attachStatus === 'ok' ? (
                     <p className="text-xs text-green-600 text-center">
                       Attached to the HubSpot deal and downloaded. Nothing has been emailed to the
-                      customer — send it yourself from HubSpot.
+                      customer. Send it yourself from HubSpot.
                     </p>
                   ) : (
                     <div className="text-center space-y-2">
                       <p className="text-xs text-amber-600">
-                        PDF downloaded. Attaching it to the HubSpot deal failed — the quote data is saved.
+                        PDF downloaded. Attaching it to the HubSpot deal failed. The quote data is saved.
                       </p>
                       <Button
                         onClick={handleRetryAttach}

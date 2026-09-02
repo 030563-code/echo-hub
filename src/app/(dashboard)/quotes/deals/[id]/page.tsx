@@ -8,7 +8,33 @@ import { Card } from '@/components/ui/card'
 import { ArrowLeft, Calendar, FileText, Building, User, Phone, MapPin, Mail, Briefcase, ShoppingCart } from 'lucide-react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { QUOTE_REQUEST_STAGES } from '@/lib/hubspot-constants'
+import {
+  STAGE_LABELS_BY_ID,
+  QUOTE_REQUEST_STAGES,
+  QUOTATION_SENT_STAGES,
+  QUOTATION_ACCEPTED_STAGES,
+  CLOSED_WON_STAGES,
+  CLOSED_LOST_STAGES,
+  DISTRIBUTOR_STAGES,
+  TENDER_STAGES,
+} from '@/lib/hubspot-constants'
+
+/**
+ * Colour the stage chip by stage FAMILY, reusing the arrays that already
+ * classify every pipeline's stages. The chip was hardcoded amber and said
+ * either "Quote Request" or "Other Stage", so a Closed Won deal and a Closed
+ * Lost one were indistinguishable.
+ */
+function stageChipClass(stageId: string): string {
+  if (CLOSED_WON_STAGES.includes(stageId)) return 'bg-green-100 text-green-800 border-green-200'
+  if (CLOSED_LOST_STAGES.includes(stageId)) return 'bg-red-100 text-red-800 border-red-200'
+  if (QUOTATION_ACCEPTED_STAGES.includes(stageId)) return 'bg-indigo-100 text-indigo-800 border-indigo-200'
+  if (QUOTATION_SENT_STAGES.includes(stageId)) return 'bg-blue-100 text-blue-800 border-blue-200'
+  if (DISTRIBUTOR_STAGES.includes(stageId)) return 'bg-purple-100 text-purple-800 border-purple-200'
+  if (TENDER_STAGES.includes(stageId)) return 'bg-slate-100 text-slate-800 border-slate-200'
+  if (QUOTE_REQUEST_STAGES.includes(stageId)) return 'bg-yellow-100 text-yellow-800 border-yellow-200'
+  return 'bg-gray-100 text-gray-700 border-gray-200'
+}
 import ChangeStageDialog from '@/components/change-stage-dialog'
 import { hasCapability } from '@/lib/authz'
 
@@ -216,9 +242,8 @@ export default async function QuoteRequestDetailsPage(props: { params: Promise<{
               <div>
                 <label className="text-xs uppercase text-gray-500 font-bold">Stage</label>
                 <div className="mt-1">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
-                    {/* Ideally map stage ID to label */}
-                    {isQuoteRequest ? 'Quote Request' : 'Other Stage'}
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${stageChipClass(deal.properties.dealstage)}`}>
+                    {STAGE_LABELS_BY_ID[deal.properties.dealstage] ?? 'Unknown stage'}
                   </span>
                 </div>
               </div>

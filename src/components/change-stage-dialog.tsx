@@ -9,7 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { updateDealStage } from '@/app/actions/hubspot/updateDealStage'
 import { getSalesProfileSettings } from '@/app/actions/sales/get-profile-settings'
-import { HUBSPOT_PIPELINES, QUOTATION_ACCEPTED_STAGES, TENDER_STAGES } from '@/lib/hubspot-constants'
+import {
+  HUBSPOT_PIPELINES,
+  QUOTATION_ACCEPTED_STAGES,
+  TENDER_STAGES,
+  stageLabel,
+} from '@/lib/hubspot-constants'
+import { depotLabel } from '@/lib/depot-constants'
 import { isUSDepot } from '@/lib/customer-invoice/constants'
 import { US_STATE_CODES } from '@/lib/us-address'
 import { lookupZipJurisdiction } from '@/app/actions/tax/lookup-zip'
@@ -172,9 +178,9 @@ export default function ChangeStageDialog({
                   <SelectValue placeholder="Select stage..." />
                 </SelectTrigger>
                 <SelectContent className="bg-white border-gray-200 text-gray-900">
-                  {Object.entries(pipeline.stages).map(([key, id]) => (
+                  {Object.entries(pipeline.stages).map(([, id]) => (
                     <SelectItem key={id} value={id} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
-                      {key.replace(/_/g, ' ')}
+                      {stageLabel(pipeline.id, id)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -206,7 +212,9 @@ export default function ChangeStageDialog({
                     </SelectTrigger>
                     <SelectContent className="bg-white border-gray-200 text-gray-900">
                       {allowedDepots.map((d) => (
-                        <SelectItem key={d} value={d} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">{d}</SelectItem>
+                        <SelectItem key={d} value={d} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
+                          {depotLabel(d)} <span className="text-gray-400">({d})</span>
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

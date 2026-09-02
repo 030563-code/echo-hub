@@ -479,7 +479,7 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
 
                 {companySearchError ? (
                   <p className="text-xs text-red-600">
-                    {companySearchError} Search again before creating — this company may already exist.
+                    {companySearchError} Search again before creating. This company may already exist.
                   </p>
                 ) : (
                   <p className="text-xs text-gray-500">
@@ -557,7 +557,7 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
                     />
                   </div>
                   <p className="text-xs text-gray-500">
-                    Searches all of {selectedCompany.name}&apos;s contacts in HubSpot — not just the page below.
+                    Searches all of {selectedCompany.name}&apos;s contacts in HubSpot, not just the page below.
                     Someone missing here can still be added with the button underneath; an existing
                     email is linked rather than duplicated.
                   </p>
