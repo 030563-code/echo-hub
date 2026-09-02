@@ -164,3 +164,77 @@ export async function taxjarCreateOrder(order: TaxJarOrderRequest): Promise<unkn
 
   throw new TaxJarError(created.status, await readError(created))
 }
+
+export interface TaxJarZipRate {
+  zip: string
+  state: string
+  city: string | null
+  county: string | null
+  combined_rate: number
+  freight_taxable: boolean
+}
+
+/**
+ * GET /v2/rates/{zip} — the jurisdiction a zip resolves to.
+ *
+ * This is the only TaxJar call that needs nothing but a zip: /v2/taxes refuses
+ * a US request without BOTH to_zip and to_state ("No to state/province,
+ * required when country is US"). So a zip alone cannot price an invoice, but
+ * it CAN complete an address, which is what the acceptance gate uses it for.
+ *
+ * Use it to prefill and to verify, never to price: a zip can straddle tax
+ * districts and the street decides which one. The authoritative number is
+ * always the /v2/taxes response for the full address.
+ */
+export async function taxjarRatesForZip(zip: string): Promise<TaxJarZipRate | null> {
+  const clean = zip.trim().replace(/\s+/g, '')
+  if (!/^\d{5}(-\d{4})?$/.test(clean)) return null
+  // The rates endpoint keys on the 5-digit zip; a ZIP+4 suffix 404s.
+  const response = await taxjarFetch(`/v2/rates/${encodeURIComponent(clean.slice(0, 5))}`, { method: 'GET' })
+  if (response.status === 404) return null
+  if (!response.ok) throw new TaxJarError(response.status, await readError(response))
+
+  const body = (await response.json()) as {
+    rate?: {
+      zip?: string
+      state?: string
+      city?: string | null
+      county?: string | null
+      combined_rate?: string | number
+      freight_taxable?: boolean
+    }
+  }
+  const rate = body.rate
+  if (!rate?.state) return null
+
+  // TaxJar returns city and county UPPERCASED, and null where a state has no
+  // local component (Maryland's flat 6%, for instance).
+  const titleCase = (v: string | null | undefined) =>
+    v ? v.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase()) : null
+
+  return {
+    zip: String(rate.zip ?? clean.slice(0, 5)),
+    state: String(rate.state).toUpperCase(),
+    city: titleCase(rate.city),
+    county: titleCase(rate.county),
+    combined_rate: Number(rate.combined_rate ?? 0),
+    freight_taxable: rate.freight_taxable === true,
+  }
+}
+
+/**
+ * GET /v2/nexus/regions — the states TaxJar will actually collect for.
+ *
+ * Read live rather than mirrored in code, so switching Maryland on in the
+ * TaxJar account is the only action needed to clear the registered-but-held
+ * block. Compare against US_REGISTERED_STATES, never assume the two match.
+ */
+export async function taxjarNexusRegions(): Promise<string[]> {
+  const response = await taxjarFetch('/v2/nexus/regions', { method: 'GET' })
+  if (!response.ok) throw new TaxJarError(response.status, await readError(response))
+  const body = (await response.json()) as { regions?: { region_code?: string; country_code?: string }[] }
+  return (body.regions ?? [])
+    .filter((r) => (r.country_code ?? 'US').toUpperCase() === 'US')
+    .map((r) => String(r.region_code ?? '').toUpperCase())
+    .filter(Boolean)
+}

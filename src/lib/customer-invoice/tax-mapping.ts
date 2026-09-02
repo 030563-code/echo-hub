@@ -7,7 +7,12 @@
  */
 
 import { roundCents } from '@/lib/quote-math'
-import { DEPOT_FROM_ADDRESSES, US_DEPOTS, type USDepot } from '@/lib/customer-invoice/constants'
+import {
+  DEPOT_FROM_ADDRESSES,
+  US_DEPOTS,
+  US_REGISTERED_STATES,
+  type USDepot,
+} from '@/lib/customer-invoice/constants'
 
 export interface TaxableLine {
   line_key: string
@@ -57,6 +62,16 @@ export interface TaxJarTaxResponse {
     has_nexus?: boolean
     freight_taxable?: boolean
     exemption_type?: string
+    /** Where TaxJar decided the sale happened. Shown to the reviewer: a bad
+     *  zip returns a different number rather than an error, so the resolved
+     *  place is the check, not the rate. */
+    jurisdictions?: {
+      country?: string
+      state?: string
+      county?: string
+      city?: string
+    }
+    tax_source?: string
     breakdown?: {
       shipping?: { tax_collectable?: number }
       line_items?: TaxJarLineBreakdown[]
@@ -212,8 +227,19 @@ export function applyTaxResponses(
     expectedTotal += tax.amount_to_collect ?? 0
 
     if (tax.has_nexus === false) {
+      // Registered but not switched on in TaxJar is the dangerous shape: real
+      // tax is due and TaxJar returns zero with no error. Maryland is exactly
+      // that today, and US-BAL sits in Jessup MD, so every order collected
+      // from Baltimore is a Maryland sale. Refuse rather than warn.
+      const destination = group.request.to_state
+      if (US_REGISTERED_STATES.includes(destination)) {
+        return {
+          ok: false,
+          error: `Echo Barrier is registered for sales tax in ${destination}, but TaxJar reports no nexus there, so it returned zero tax for the ${group.depot} lines. This invoice would under-collect. Switch ${destination} on in the TaxJar account, then recalculate.`,
+        }
+      }
       warnings.push(
-        `TaxJar reports no nexus for the ${group.depot} group's calculation — no tax collected for those lines. Check the TaxJar account's state settings if that looks wrong.`,
+        `TaxJar reports no nexus in ${destination} for the ${group.depot} group, so no tax was collected on those lines. That is expected where Echo Barrier is not registered.`,
       )
     }
 

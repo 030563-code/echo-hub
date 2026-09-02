@@ -103,7 +103,11 @@ export async function openInvoiceForDeal(input: {
       .eq('hubspot_company_id', Number(companyIdClean))
       .maybeSingle()
     companyName = account?.hubspot_company_name ?? null
-    xeroAccountCode = account?.usa_xero_account_code ?? null
+    // `?? null` is not enough: account_registry holds 15,335 EMPTY STRINGS
+    // against only 48 real codes, so `is not null` lies. Coerce blanks to null
+    // here or the invoice stores '' and every "has an account code?" check
+    // downstream has to remember to be falsy rather than null-checked.
+    xeroAccountCode = account?.usa_xero_account_code?.trim() || null
   }
 
   const rawLines = (Array.isArray(deal.line_items_raw) ? deal.line_items_raw : []) as RawDealLine[]

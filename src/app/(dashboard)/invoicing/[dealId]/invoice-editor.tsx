@@ -11,12 +11,13 @@
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { AlertTriangle, Loader2, Lock, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, Loader2, Lock, MapPin, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { US_STATE_CODES } from '@/lib/us-address'
+import { lookupZipJurisdiction } from '@/app/actions/tax/lookup-zip'
 import {
   US_DEPOTS,
   DEPOT_FROM_ADDRESSES,
@@ -106,6 +107,9 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
     delivery_zip: invoice.delivery_zip ?? '',
     is_collection: invoice.is_collection,
   })
+  const [zipLookup, setZipLookup] = useState<
+    { status: 'idle' } | { status: 'loading' } | { status: 'ok'; place: string; state: string } | { status: 'error'; message: string }
+  >({ status: 'idle' })
   const [rows, setRows] = useState<EditableLine[]>(lines.map(toEditable))
   // What TaxJar last returned per line, used to decide whether an edited tax
   // cell is genuinely a manual override.
@@ -134,6 +138,45 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
   const status = invoice.status as CustomerInvoiceStatus
   const editable = canManage && (status === 'draft' || status === 'tax_calculated')
   const terminal = status === 'authorized' || status === 'sent' || status === 'completed' || status === 'authorizing'
+
+  // What TaxJar actually decided, per ship-from depot. The handover is explicit
+  // that the reviewer must see the resolved JURISDICTION and not just the rate:
+  // a wrong zip returns a different number with no error, so the place is the
+  // check. Read from the stored response, never recomputed here.
+  const taxGroups = useMemo(() => {
+    const raw = invoice.taxjar_response
+    if (!Array.isArray(raw)) return []
+    return raw.flatMap((entry) => {
+      const e = entry as {
+        depot?: string
+        response?: {
+          tax?: {
+            rate?: number
+            has_nexus?: boolean
+            freight_taxable?: boolean
+            tax_source?: string
+            amount_to_collect?: number
+            jurisdictions?: { state?: string; county?: string; city?: string }
+          }
+        }
+      }
+      const tax = e.response?.tax
+      if (!e.depot || !tax) return []
+      const j = tax.jurisdictions ?? {}
+      const titled = (v?: string) =>
+        v ? v.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase()) : null
+      return [{
+        depot: e.depot,
+        from: DEPOT_FROM_ADDRESSES[e.depot as USDepot] ?? null,
+        place: [titled(j.city), titled(j.county), j.state].filter(Boolean).join(', ') || 'not returned',
+        rate: typeof tax.rate === 'number' ? tax.rate : null,
+        collected: typeof tax.amount_to_collect === 'number' ? tax.amount_to_collect : null,
+        hasNexus: tax.has_nexus !== false,
+        freightTaxable: tax.freight_taxable === true,
+        source: tax.tax_source ?? null,
+      }]
+    })
+  }, [invoice.taxjar_response])
 
   const totals = useMemo(() => {
     let subtotal = 0
@@ -198,6 +241,29 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
         setPendingAction(null)
       }
     })
+  }
+
+  const resolveZip = async (raw: string) => {
+    const value = raw.trim()
+    if (!/^\d{5}(-\d{4})?$/.test(value)) {
+      setZipLookup({ status: 'idle' })
+      return
+    }
+    setZipLookup({ status: 'loading' })
+    const result = await lookupZipJurisdiction({ zip: value })
+    if (!result.success) {
+      setZipLookup({ status: 'error', message: result.error })
+      return
+    }
+    const place = [result.city, result.county && `${result.county} County`, result.state].filter(Boolean).join(', ')
+    setZipLookup({ status: 'ok', place, state: result.state })
+    // Fill blanks only. Never overwrite a reviewer's own entry: a zip can
+    // straddle jurisdictions and the street decides which one.
+    setHeader((current) => ({
+      ...current,
+      delivery_state: current.delivery_state || result.state,
+      delivery_city: current.delivery_city || result.city || '',
+    }))
   }
 
   const buildSavePayload = () => ({
@@ -525,12 +591,33 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                 id="zip"
                 value={header.delivery_zip}
                 onChange={(e) => setHeader({ ...header, delivery_zip: e.target.value })}
+                onBlur={(e) => resolveZip(e.target.value)}
                 placeholder="20794"
                 disabled={!editable}
               />
             </div>
           </div>
         </div>
+        {zipLookup.status === 'loading' && (
+          <p className="mt-3 flex items-center gap-1.5 text-xs text-gray-500">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Looking up the zip...
+          </p>
+        )}
+        {zipLookup.status === 'ok' && (
+          <p className="mt-3 flex items-start gap-1.5 text-xs text-gray-600">
+            <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-gray-400" />
+            <span>
+              {header.delivery_zip.trim()} is <span className="font-medium text-gray-900">{zipLookup.place}</span>
+              {header.delivery_state && header.delivery_state !== zipLookup.state && (
+                <span className="font-semibold text-red-600">
+                  {' '}but the state is set to {header.delivery_state}. Tax would be calculated for the wrong place.
+                </span>
+              )}
+            </span>
+          </p>
+        )}
+        {zipLookup.status === 'error' && <p className="mt-3 text-xs text-amber-700">{zipLookup.message}</p>}
       </Card>
 
       {/* Lines */}
@@ -689,6 +776,44 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
           </div>
         )}
       </Card>
+
+      {taxGroups.length > 0 && (
+        <Card className="p-4 sm:p-6">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-1">Tax calculation</h2>
+          <p className="text-xs text-gray-500 mb-4">
+            Where TaxJar decided each shipment was taxed. Check the place, not just the rate: a wrong zip
+            returns a different number rather than an error.
+          </p>
+          <div className="space-y-3">
+            {taxGroups.map((g) => (
+              <div key={g.depot} className="rounded-md border border-gray-200 p-3 text-sm">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="font-medium text-gray-900">
+                    {header.is_collection ? 'Collected from' : 'Ships from'} {g.depot}
+                  </span>
+                  <span className="tabular-nums text-gray-600">
+                    {g.rate === null ? 'no rate' : `${(g.rate * 100).toFixed(3).replace(/0+$/, '').replace(/\.$/, '')}%`}
+                    {g.collected !== null && ` · ${money.format(g.collected)}`}
+                  </span>
+                </div>
+                {g.from && (
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    {g.from.street}, {g.from.city}, {g.from.state} {g.from.zip}
+                  </p>
+                )}
+                <p className="mt-1.5 text-gray-700">
+                  Taxed in <span className="font-medium text-gray-900">{g.place}</span>
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                  <span>Freight {g.freightTaxable ? 'taxable' : 'not taxable'}</span>
+                  {g.source && <span>Sourcing: {g.source}</span>}
+                  {!g.hasNexus && <span className="font-semibold text-amber-700">No nexus, zero tax</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Totals + actions */}
       <Card className="p-4 sm:p-6">

@@ -6,7 +6,8 @@ import {
   type TaxableLine,
   type TaxJarTaxResponse,
 } from '@/lib/customer-invoice/tax-mapping'
-import { DEPOT_FROM_ADDRESSES } from '@/lib/customer-invoice/constants'
+import { DEPOT_FROM_ADDRESSES, US_REGISTERED_STATES } from '@/lib/customer-invoice/constants'
+import { US_STATE_CODES } from '@/lib/us-address'
 
 const shipTo = { street: '1218 Broadway', city: 'Santa Monica', state: 'CA', zip: '90404' }
 
@@ -49,10 +50,24 @@ describe('buildTaxRequests', () => {
     expect(result.groups[0].request.customer_id).toBeUndefined()
   })
 
-  it('refuses US-SBD groups until the San Bernardino dispatch address is configured', () => {
+  it('builds a US-SBD group now that Rancho Cucamonga is configured', () => {
     const result = buildTaxRequests([line({ ship_from_depot: 'US-SBD' })], shipTo, null, false)
-    expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error).toMatch(/US-SBD/)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.groups[0].request.from_zip).toBe('91730')
+    expect(result.groups[0].request.from_state).toBe('CA')
+  })
+
+  it('refuses goods from a depot whose dispatch address is not configured', () => {
+    const saved = DEPOT_FROM_ADDRESSES['US-SBD']
+    DEPOT_FROM_ADDRESSES['US-SBD'] = null
+    try {
+      const result = buildTaxRequests([line({ ship_from_depot: 'US-SBD' })], shipTo, null, false)
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.error).toMatch(/US-SBD/)
+    } finally {
+      DEPOT_FROM_ADDRESSES['US-SBD'] = saved
+    }
   })
 
   it('refuses an empty invoice and a shipping-only invoice', () => {
@@ -98,8 +113,13 @@ describe('applyTaxResponses', () => {
   })
 
   it('zeroes tax and warns when there is no nexus (breakdown absent)', () => {
+    // Nevada deliberately: no registration is held there, so zero tax is the
+    // right answer. A REGISTERED state with no nexus is refused instead, which
+    // the registered-but-no-nexus block below covers.
+    const nevadaBuilt = buildTaxRequests(twoLines, { street: '100 N Sierra St', city: 'Reno', state: 'NV', zip: '89501' }, null, false)
+    if (!nevadaBuilt.ok) throw new Error('setup failed')
     const result = applyTaxResponses(twoLines, [
-      { group: group(), response: response({ amount_to_collect: 0, has_nexus: false }) },
+      { group: nevadaBuilt.groups[0], response: response({ amount_to_collect: 0, has_nexus: false }) },
     ])
     expect(result.ok).toBe(true)
     if (!result.ok) return
@@ -239,9 +259,15 @@ describe('freight shipping from a depot with no goods', () => {
   })
 
   it('still refuses when GOODS ship from a depot with no dispatch address', () => {
-    const result = buildTaxRequests([line({ line_key: 'L1', ship_from_depot: 'US-SBD' })], shipTo, null, false)
-    expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error).toMatch(/US-SBD/)
+    const saved = DEPOT_FROM_ADDRESSES['US-SBD']
+    DEPOT_FROM_ADDRESSES['US-SBD'] = null
+    try {
+      const result = buildTaxRequests([line({ line_key: 'L1', ship_from_depot: 'US-SBD' })], shipTo, null, false)
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.error).toMatch(/US-SBD/)
+    } finally {
+      DEPOT_FROM_ADDRESSES['US-SBD'] = saved
+    }
   })
 
   it('allocates the folded freight tax back to the line that carried it', () => {
@@ -326,7 +352,14 @@ describe('collected orders (Will Call)', () => {
   })
 
   it('refuses collected goods from a depot with no configured address', () => {
-    const result = buildTaxRequests([line({ ship_from_depot: 'US-SBD' })], null, null, true)
+    const saved = DEPOT_FROM_ADDRESSES['US-SBD']
+    DEPOT_FROM_ADDRESSES['US-SBD'] = null
+    let result
+    try {
+      result = buildTaxRequests([line({ ship_from_depot: 'US-SBD' })], null, null, true)
+    } finally {
+      DEPOT_FROM_ADDRESSES['US-SBD'] = saved
+    }
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.error).toMatch(/US-SBD/)
@@ -384,5 +417,64 @@ describe('collected orders (Will Call)', () => {
     } finally {
       DEPOT_FROM_ADDRESSES['US-SBD'] = original
     }
+  })
+})
+
+
+describe('registered-but-no-nexus block', () => {
+  // TaxJar returns has_nexus:false and ZERO tax for a state it is not
+  // configured for, with no error. Where Echo Barrier holds a registration
+  // that is real tax being under-collected, so it must refuse rather than warn.
+  // Maryland is exactly this today, and US-BAL is in Jessup MD, so every
+  // COLLECTED Baltimore order is a Maryland sale.
+  const noNexus = (): TaxJarTaxResponse => ({
+    tax: { has_nexus: false, amount_to_collect: 0, breakdown: undefined },
+  })
+
+  const groupFor = (collected: boolean, depot: 'US-BAL' | 'US-SBD') => {
+    const built = buildTaxRequests([line({ ship_from_depot: depot })], shipTo, null, collected)
+    if (!built.ok) throw new Error('setup failed')
+    return built.groups[0]
+  }
+
+  it('refuses a collected Baltimore order while Maryland is switched off', () => {
+    const group = groupFor(true, 'US-BAL')
+    expect(group.request.to_state).toBe('MD')
+    const result = applyTaxResponses([line({ ship_from_depot: 'US-BAL' })], [{ group, response: noNexus() }])
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error).toMatch(/MD/)
+      expect(result.error).toMatch(/under-collect/i)
+    }
+  })
+
+  it('refuses a delivery into a registered state with no nexus', () => {
+    // shipTo is Santa Monica CA, and CA is a registered state.
+    const group = groupFor(false, 'US-BAL')
+    expect(group.request.to_state).toBe('CA')
+    const result = applyTaxResponses([line({})], [{ group, response: noNexus() }])
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toMatch(/CA/)
+  })
+
+  it('only warns where no registration is held', () => {
+    // Nevada: no registration, so zero tax is the correct answer, not a fault.
+    const nevada = { street: '100 N Sierra St', city: 'Reno', state: 'NV', zip: '89501' }
+    const built = buildTaxRequests([line({})], nevada, null, false)
+    expect(built.ok).toBe(true)
+    if (!built.ok) return
+    const result = applyTaxResponses([line({})], [{ group: built.groups[0], response: noNexus() }])
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.warnings.join(' ')).toMatch(/no nexus in NV/)
+      expect(result.warnings.join(' ')).toMatch(/not registered/i)
+    }
+  })
+
+  it('every registered state is a real two-letter code', () => {
+    for (const code of US_REGISTERED_STATES) {
+      expect(US_STATE_CODES).toContain(code)
+    }
+    expect(US_REGISTERED_STATES).toContain('MD')
   })
 })

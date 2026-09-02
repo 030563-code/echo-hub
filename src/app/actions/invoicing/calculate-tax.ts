@@ -22,7 +22,8 @@ import {
 } from '@/lib/customer-invoice/tax-mapping'
 import { linesHash } from '@/lib/customer-invoice/hash'
 import { roundCents } from '@/lib/quote-math'
-import { taxjarCalculateTax, TaxJarError, TaxJarConfigError } from '@/lib/taxjar'
+import { taxjarCalculateTax, taxjarNexusRegions, TaxJarError, TaxJarConfigError } from '@/lib/taxjar'
+import { US_REGISTERED_STATES } from '@/lib/customer-invoice/constants'
 import {
   requireInvoicingManage,
   loadInvoiceWithLines,
@@ -81,7 +82,38 @@ export async function calculateInvoiceTax(input: { invoiceId: string }): Promise
   const built = buildTaxRequests(taxableLines, shipTo, invoice.taxjar_customer_id, invoice.is_collection)
   if (!built.ok) return { success: false, error: built.error }
 
+  // Fail fast, before spending any calculation calls: refuse a destination in a
+  // state Echo Barrier is registered in but that TaxJar is not switched on for.
+  // Checked against the LIVE nexus list rather than the has_nexus flag on the
+  // calculation, because that flag does not reliably reflect nexus settings
+  // (the sandbox returns true for Maryland while /v2/nexus/regions excludes
+  // it). Reading it live also means switching Maryland on in TaxJar clears
+  // this by itself, with no deploy.
   const admin = createAdminClient()
+  try {
+    const liveNexus = new Set(await taxjarNexusRegions())
+    const blocked = [
+      ...new Set(
+        built.groups
+          .map((g) => g.request.to_state)
+          .filter((state) => US_REGISTERED_STATES.includes(state) && !liveNexus.has(state)),
+      ),
+    ]
+    if (blocked.length > 0) {
+      const states = blocked.join(' and ')
+      const message = `Echo Barrier is registered for sales tax in ${states}, but TaxJar is not collecting there, so this invoice would charge zero and under-collect. Switch ${states} on in the TaxJar account, then recalculate.`
+      await logInvoiceEvent(invoiceId, 'tax_failed', gate.auth.user.id, { error: message, blocked })
+      return { success: false, error: message }
+    }
+  } catch (err) {
+    // A nexus read failure must not silently skip the guard.
+    const message =
+      err instanceof TaxJarConfigError
+        ? 'The TaxJar API token is not configured on the server.'
+        : 'TaxJar could not be reached to check which states it collects for. Try again in a minute.'
+    return { success: false, error: message }
+  }
+
   const results: { group: TaxRequestGroup; response: TaxJarTaxResponse }[] = []
   try {
     for (const group of built.groups) {

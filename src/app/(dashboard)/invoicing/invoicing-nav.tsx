@@ -7,6 +7,7 @@ import { LinkSpinner } from '@/components/nav/link-spinner'
 const TABS = [
   { href: '/invoicing/accepted', label: 'Accepted Quotes' },
   { href: '/invoicing/drafts', label: 'Draft Invoices' },
+  { href: '/invoicing/tax-setup', label: 'Tax Setup' },
 ] as const
 
 export function InvoicingNav() {

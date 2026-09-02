@@ -12,8 +12,9 @@ import { getSalesProfileSettings } from '@/app/actions/sales/get-profile-setting
 import { HUBSPOT_PIPELINES, QUOTATION_ACCEPTED_STAGES, TENDER_STAGES } from '@/lib/hubspot-constants'
 import { isUSDepot } from '@/lib/customer-invoice/constants'
 import { US_STATE_CODES } from '@/lib/us-address'
+import { lookupZipJurisdiction } from '@/app/actions/tax/lookup-zip'
 import { useRouter } from 'next/navigation'
-import { ArrowRightLeft } from 'lucide-react'
+import { ArrowRightLeft, Loader2, MapPin } from 'lucide-react'
 
 const WIN_PROBABILITY_OPTIONS = ['10%', '20%', '30%', '40%', '50%', '60%', '70%', '80%', '90%', '100%']
 const ZIP_RE = /^\d{5}(-\d{4})?$/
@@ -50,9 +51,34 @@ export default function ChangeStageDialog({
   const [city, setCity] = useState(initialDelivery?.city ?? '')
   const [stateCode, setStateCode] = useState(initialDelivery?.state ?? '')
   const [zip, setZip] = useState(initialDelivery?.zip ?? '')
+  // Zip-driven completion. TaxJar's rates endpoint resolves a bare zip to its
+  // state, city and county, so the rep types the one piece of geography a deal
+  // usually carries and confirms the rest instead of guessing it.
+  const [zipLookup, setZipLookup] = useState<
+    { status: 'idle' } | { status: 'loading' } | { status: 'ok'; city: string | null; county: string | null; state: string } | { status: 'error'; message: string }
+  >({ status: 'idle' })
   const [allowedDepots, setAllowedDepots] = useState<string[]>([])
   const [depotsError, setDepotsError] = useState(false)
   const router = useRouter()
+
+  const resolveZip = async (raw: string) => {
+    const value = raw.trim()
+    if (!ZIP_RE.test(value)) {
+      setZipLookup({ status: 'idle' })
+      return
+    }
+    setZipLookup({ status: 'loading' })
+    const result = await lookupZipJurisdiction({ zip: value })
+    if (!result.success) {
+      setZipLookup({ status: 'error', message: result.error })
+      return
+    }
+    setZipLookup({ status: 'ok', city: result.city, county: result.county, state: result.state })
+    // Fill what is empty, never overwrite what the rep typed. A zip can
+    // straddle jurisdictions, so their street-level knowledge wins.
+    setStateCode((current) => current || result.state)
+    setCity((current) => current || result.city || '')
+  }
 
   useEffect(() => {
     async function fetchDepots() {
@@ -245,12 +271,40 @@ export default function ChangeStageDialog({
                         placeholder="Zip"
                         value={zip}
                         onChange={(e) => setZip(e.target.value)}
+                        onBlur={(e) => resolveZip(e.target.value)}
                         className="bg-white border-gray-300 text-gray-900"
                       />
                     </div>
                   </div>
                   {zip.trim() !== '' && !ZIP_RE.test(zip.trim()) && (
                     <p className="text-xs text-red-600">Zip must be 5 digits (or ZIP+4, e.g. 20794-1234).</p>
+                  )}
+                  {zipLookup.status === 'loading' && (
+                    <p className="flex items-center gap-1.5 text-xs text-gray-500">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Looking up the zip...
+                    </p>
+                  )}
+                  {zipLookup.status === 'ok' && (
+                    <p className="flex items-start gap-1.5 text-xs text-gray-600">
+                      <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-gray-400" />
+                      <span>
+                        {zip.trim()} is{' '}
+                        <span className="font-medium text-gray-900">
+                          {[zipLookup.city, zipLookup.county && `${zipLookup.county} County`, zipLookup.state]
+                            .filter(Boolean)
+                            .join(', ')}
+                        </span>
+                        {stateCode && stateCode !== zipLookup.state && (
+                          <span className="font-semibold text-red-600">
+                            {' '}but the state is set to {stateCode}. Tax will be calculated for the wrong place.
+                          </span>
+                        )}
+                      </span>
+                    </p>
+                  )}
+                  {zipLookup.status === 'error' && (
+                    <p className="text-xs text-amber-700">{zipLookup.message}</p>
                   )}
                   <p className="text-xs text-gray-500">
                     Used to calculate US sales tax: the ship-to address, not the billing address.

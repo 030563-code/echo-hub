@@ -51,6 +51,23 @@ records completed orders for filing. The Hub builds and owns the draft invoice.
    (`transaction_id` = the Xero invoice number, one order per depot group), best-effort
    with a retry button. Status becomes `completed`.
 
+## Zip-driven address completion
+
+`GET /v2/rates/{zip}` is the only TaxJar call that needs nothing but a zip, and it
+returns the state, city, county and combined rate. `POST /v2/taxes` will not accept a
+US request without BOTH `to_zip` and `to_state`, so a zip alone can never price an
+invoice, but it can complete an address. Both the rep's acceptance dialog and Dave's
+invoice editor call `lookupZipJurisdiction` on zip blur: it fills whatever is blank and
+never overwrites what a human typed, because a zip can straddle tax districts and their
+street-level knowledge wins.
+
+It also catches the mismatch class that a database constraint cannot. TaxJar itself
+rejects a wrong pair outright, `to_zip 90404 is not used within to_state TX`, so no
+ZIP-to-state lookup table is needed in the app.
+
+The `/invoicing/tax-setup` tab shows both dispatch addresses and the live nexus states,
+and flags any state that is registered but not collecting.
+
 ## Collection (Will Call)
 
 A collected order is taxed where the customer picks the goods up, not where they live.
@@ -184,12 +201,24 @@ acceptances, and put it back before the cutover.
 
 ## Known limits and defaults
 
-- US-SBD dispatch address is not configured yet (the `po_delivery_addresses` row holds
-  a literal "confirm ship-to address" placeholder): tax calculation refuses San
-  Bernardino groups until Dean supplies it in
-  `src/lib/customer-invoice/constants.ts`. The depot is at Rancho Cucamonga, CA; the
-  street and zip are still needed. This now blocks in two ways, since a collected SBD
-  order also has no destination.
+- Both dispatch addresses are configured: US-BAL 8125 Stayton Drive, Jessup MD 20794
+  and US-SBD 9119 Milliken Ave, Rancho Cucamonga CA 91730 (from the EBUSA
+  order-to-invoice handover, 2026-09-02). Each zip was verified against TaxJar
+  `GET /v2/rates/{zip}`, and a live two-depot calculation returns 10.75% delivered to
+  Santa Monica, 6% collected at Jessup and 7.75% collected at Rancho Cucamonga.
+- **Maryland is registered but switched off in TaxJar**, so a Maryland destination
+  returns zero tax with no error. Calculation refuses it: `US_REGISTERED_STATES` in
+  `constants.ts` is compared against the LIVE `GET /v2/nexus/regions` list before any
+  calculation call. It clears itself when Maryland is switched on, with no deploy.
+  This matters most for collections, because US-BAL is in Jessup, Maryland, so every
+  order collected at Baltimore is a Maryland sale. Note the flag on the calculation
+  response cannot be used for this: the sandbox returns `has_nexus: true` for Maryland
+  while the nexus list excludes it.
+- **Never bulk-update `account_registry`.** It carries an unconditional AFTER INSERT OR
+  UPDATE trigger that POSTs every touched row to the n8n `xero-code` webhook, so
+  "cleaning up" its 15,335 empty-string account codes would fire 15,335 account-code
+  generations. The empty strings are handled in code instead
+  (`open-invoice.ts` coerces blank to null); only 48 of 44,170 rows hold a real code.
 - One delivery address per invoice, and one collection flag for the whole invoice. A
   part-collected, part-delivered order is two invoices. Nothing in the database has ever
   recorded a deal delivering to two sites (all `deals_registry.delivery_*` columns were
