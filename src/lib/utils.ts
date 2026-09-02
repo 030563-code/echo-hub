@@ -5,13 +5,21 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function formatCurrency(amount: number | null, currency = "USD") {
+/**
+ * Money for the screen, in the deal's own currency.
+ *
+ * Replaces formatCurrency, which had zero callers and hardcoded
+ * maximumFractionDigits: 0, so it silently dropped cents and was unusable for
+ * a quote. Locale stays en-US because the documents are English; only the
+ * currency varies.
+ */
+export function formatMoney(amount: number | null | undefined, currency = "USD") {
   if (amount == null) return "—"
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(amount)
 }
 
