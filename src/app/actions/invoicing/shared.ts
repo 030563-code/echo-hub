@@ -22,6 +22,14 @@ export interface CustomerInvoiceRow {
   hubspot_deal_id: string
   /** Internal draft reference (USI...). Gaps are harmless. */
   holding_reference: string
+  /** Snapshotted at Send to TaxJar. An issued invoice must not change its
+   *  printed terms because someone edited the Xero contact afterwards. */
+  payment_terms_label: string | null
+  pdf_generated_at: string | null
+  pdf_sha256: string | null
+  xero_attachment_id: string | null
+  emailed_to: string | null
+  emailed_was_test: boolean
   /** Customer-facing EBUS number, null until the invoice is raised. */
   invoice_number: string | null
   raised_at: string | null

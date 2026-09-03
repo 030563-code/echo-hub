@@ -36,6 +36,21 @@ const NEXT_STEP: Record<CustomerInvoiceStatus, string> = {
   voided: 'Discarded.',
 }
 
+/** The button reads as the step it opens, so the row says what happens next
+ *  rather than a uniform "View". */
+const ACTION_LABEL: Record<CustomerInvoiceStatus, string> = {
+  draft: 'Open',
+  tax_calculated: 'Preview and file',
+  filed: 'Generate PDF',
+  documented: 'Email to customer',
+  sent: 'Send to Xero',
+  authorizing: 'Reconcile',
+  completed: 'View invoice',
+  raised: 'Open',
+  authorized: 'Open',
+  voided: 'Open',
+}
+
 export async function InvoiceStageQueue({ stage }: { stage: InvoiceStage }) {
   const auth = await getAuthorizedUser()
   if (!auth.ok || !(auth.capabilities.has('invoicing.view') || auth.capabilities.has('invoicing.manage'))) {
@@ -109,6 +124,7 @@ export async function InvoiceStageQueue({ stage }: { stage: InvoiceStage }) {
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3 text-right">Total</th>
                   <th className="px-4 py-3">Updated</th>
+                  <th className="px-4 py-3 text-right">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -131,6 +147,18 @@ export async function InvoiceStageQueue({ stage }: { stage: InvoiceStage }) {
                     <td className="px-4 py-3 text-gray-500">
                       {new Date(row.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                     </td>
+                    {/* Every queue row ends in the same button in the same
+                        place. Before this the stage queues only linked the
+                        invoice number, so Accepted Quotes had an action on the
+                        right and these did not. */}
+                    <td className="px-4 py-3 text-right">
+                      <Link
+                        href={`/invoicing/${row.dealId}`}
+                        className="inline-flex items-center whitespace-nowrap rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:border-echo-orange hover:text-gray-900"
+                      >
+                        {ACTION_LABEL[stage.status]}
+                      </Link>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -149,6 +177,7 @@ export async function InvoiceStageQueue({ stage }: { stage: InvoiceStage }) {
                     {row.company ?? 'No company'} ·{' '}
                     {row.total === null ? 'no total yet' : `${money.format(row.total)}${row.taxed ? '' : ' ex tax'}`}
                   </p>
+                  <p className="pt-1 text-sm font-medium text-echo-orange">{ACTION_LABEL[stage.status]}</p>
                 </Card>
               </Link>
             ))}

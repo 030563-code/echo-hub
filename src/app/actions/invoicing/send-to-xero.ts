@@ -51,8 +51,13 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
   if (!loaded.ok) return { success: false, error: loaded.error }
   const { invoice, lines } = loaded
 
-  if (invoice.status !== 'tax_calculated') {
-    return { success: false, error: `Only a tax-calculated invoice can be sent (this one is ${invoice.status}).` }
+  // Xero is now the LAST step, after the customer already has their PDF. The
+  // ledger should only carry invoices that actually went out.
+  if (invoice.status !== 'sent') {
+    return {
+      success: false,
+      error: `The invoice has to be emailed to the customer before it goes to Xero (this one is ${invoice.status}).`,
+    }
   }
   if (invoice.xero_invoice_id) {
     return { success: false, error: `This invoice is already in Xero as ${invoice.xero_invoice_number ?? invoice.xero_invoice_id}.` }
@@ -127,10 +132,10 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
     .from('customer_invoices')
     .update({ status: 'authorizing', updated_by_uid: gate.auth.user.id, updated_at: new Date().toISOString() })
     .eq('id', invoiceId)
-    .eq('status', 'tax_calculated')
+    .eq('status', 'sent')
     .select('id')
   if (casError || !cas || cas.length === 0) {
-    return { success: false, error: 'This invoice is already being sent.' }
+    return { success: false, error: 'This invoice is already being sent to Xero.' }
   }
   await logInvoiceEvent(invoiceId, 'authorize_requested', gate.auth.user.id, {
     collected: invoice.is_collection,
@@ -155,7 +160,7 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
         : 'Could not allocate an invoice number. Nothing was sent.'
     await admin
       .from('customer_invoices')
-      .update({ status: 'tax_calculated', error_message: message, updated_at: new Date().toISOString() })
+      .update({ status: 'sent', error_message: message, updated_at: new Date().toISOString() })
       .eq('id', invoiceId)
       .eq('status', 'authorizing')
     return { success: false, error: message }
@@ -314,7 +319,7 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
     await admin
       .from('customer_invoices')
       .update({
-        ...(dispatched ? {} : { status: 'tax_calculated' }),
+        ...(dispatched ? {} : { status: 'sent' }),
         error_message: message,
         updated_at: new Date().toISOString(),
       })
@@ -332,7 +337,7 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
   await admin
     .from('customer_invoices')
     .update({
-      status: 'raised',
+      status: 'completed',
       xero_invoice_id: response.xero_invoice_id,
       xero_invoice_number: response.xero_invoice_number,
       error_message: null,
@@ -355,8 +360,8 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
     `Invoice ${invoiceNumber} is a DRAFT in Xero and has not been filed to TaxJar. Use Send to TaxJar to file it.`,
   ]
 
-  revalidatePath('/invoicing/accepted')
-  revalidatePath('/invoicing/drafts')
+  revalidatePath('/invoicing/sent')
+  revalidatePath('/invoicing/completed')
   revalidatePath(`/invoicing/${invoice.hubspot_deal_id}`)
   return { success: true, xeroInvoiceNumber: invoiceNumber, warnings }
 }

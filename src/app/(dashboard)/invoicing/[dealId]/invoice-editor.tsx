@@ -35,7 +35,10 @@ import { XeroContactCard } from './xero-contact-card'
 import { depotLabel } from '@/lib/depot-constants'
 import { voidInvoice } from '@/app/actions/invoicing/void-invoice'
 import { rebuildInvoiceFromDeal } from '@/app/actions/invoicing/rebuild-invoice'
-import { retryTaxJarRecord } from '@/app/actions/invoicing/record-taxjar'
+import { sendOrderToTaxJar } from '@/app/actions/invoicing/record-taxjar'
+import { previewInvoicePdf } from '@/app/actions/invoicing/preview-invoice'
+import { generateInvoicePdf } from '@/app/actions/invoicing/generate-invoice-pdf'
+import { emailInvoiceToCustomer } from '@/app/actions/invoicing/email-invoice'
 import { reconcileStuckInvoice } from '@/app/actions/invoicing/reset-authorizing'
 import { InvoiceStatusChip } from '../status-chip'
 
@@ -135,7 +138,9 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
 
   const status = invoice.status as CustomerInvoiceStatus
   const editable = canManage && (status === 'draft' || status === 'tax_calculated')
-  const terminal = status === 'authorized' || status === 'sent' || status === 'completed' || status === 'authorizing'
+  // Only the end of the line is terminal now. 'sent' means the customer has the
+  // document but Xero has not been told yet, so it still has a button.
+  const terminal = status === 'completed' || status === 'authorizing'
 
   // What TaxJar actually decided, per ship-from depot. The handover is explicit
   // that the reviewer must see the resolved JURISDICTION and not just the rate:
@@ -391,14 +396,79 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
       router.refresh()
     })
 
-  const onRetryRecord = () =>
-    run('record', async () => {
-      const result = await retryTaxJarRecord({ invoiceId: invoice.id })
+  /** Open PDF bytes in a new tab. The retired quote flow proved this works
+   *  under the app's CSP: a blob URL opened with window.open needs no
+   *  frame-src, where an inline preview would. */
+  const openPdf = (base64: string, filename: string) => {
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }))
+    const tab = window.open(url, '_blank')
+    if (!tab) {
+      // Popup blocked. Fall back to a download so the rep still gets the
+      // document rather than silently nothing.
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+    }
+    // Revoked late: revoking immediately races the new tab's own load.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
+
+  const onPreview = () =>
+    run('preview', async () => {
+      const result = await previewInvoicePdf({ invoiceId: invoice.id })
       if (!result.success) {
         toast.error(result.error)
         return
       }
-      toast.success('Recorded in TaxJar for filing.')
+      if (result.remittanceIncomplete) {
+        toast.warning('The bank details are not configured, so the payment instructions show placeholders.', {
+          duration: 10000,
+        })
+      }
+      openPdf(result.pdfBase64, result.filename)
+    })
+
+  const onSendToTaxJar = () =>
+    run('taxjar', async () => {
+      const result = await sendOrderToTaxJar({ invoiceId: invoice.id })
+      if (!result.success) {
+        toast.error(result.error)
+        router.refresh()
+        return
+      }
+      for (const warning of result.warnings) toast.warning(warning, { duration: 12000 })
+      toast.success(`Filed with TaxJar as ${result.transactionIds.join(', ')}. Invoice number ${result.invoiceNumber}.`)
+      router.refresh()
+    })
+
+  const onGeneratePdf = () =>
+    run('pdf', async () => {
+      const result = await generateInvoicePdf({ invoiceId: invoice.id })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      for (const warning of result.warnings) toast.warning(warning, { duration: 12000 })
+      toast.success('Invoice document generated.')
+      openPdf(result.pdfBase64, result.filename)
+      router.refresh()
+    })
+
+  const onEmail = () =>
+    run('email', async () => {
+      const result = await emailInvoiceToCustomer({ invoiceId: invoice.id })
+      if (!result.success) {
+        toast.error(result.error, { duration: 12000 })
+        return
+      }
+      toast.success(
+        result.wasTest
+          ? `TEST SEND. The invoice went to ${result.sentTo}, not to the customer.`
+          : `Invoice emailed to ${result.sentTo}.`,
+        { duration: 12000 },
+      )
       router.refresh()
     })
 
@@ -877,28 +947,73 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                 </Button>
               </div>
             )}
-            {editable && status === 'tax_calculated' && (
-              <div className="flex flex-wrap items-center justify-end gap-3">
-                {/* The "Email the customer via Xero" checkbox was retired on
-                    2026-09-03. Xero is the books only: the customer-facing
-                    invoice is a PDF from the Hub, emailed to the contact by us,
-                    so there is no longer a decision to make here. */}
-                <Button onClick={onSend} disabled={pendingAction !== null} className="bg-green-700 hover:bg-green-800">
-                  {spinner('send')}
-                  Send to Xero
+            {/* The pipeline, in order. Exactly one step is the next one, so
+                only that button is offered: a rep should never have to work out
+                which of five actions comes now. Xero is LAST because the
+                customer-facing document is the Hub's PDF and Xero is the book
+                of record (Dean, 2026-09-03). */}
+            {canManage && status === 'tax_calculated' && (
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button variant="outline" onClick={onPreview} disabled={pendingAction !== null}>
+                  {spinner('preview')}
+                  Preview invoice
+                </Button>
+                <Button onClick={onSendToTaxJar} disabled={pendingAction !== null} className="bg-green-700 hover:bg-green-800">
+                  {spinner('taxjar')}
+                  Send to TaxJar
                 </Button>
               </div>
             )}
+            {canManage && status === 'tax_calculated' && (
+              <p className="text-xs text-gray-500 sm:text-right">
+                Sending to TaxJar files the sale and allocates the invoice number. Preview first: it changes nothing.
+              </p>
+            )}
+
+            {canManage && status === 'filed' && (
+              <Button onClick={onGeneratePdf} disabled={pendingAction !== null} className="bg-green-700 hover:bg-green-800">
+                {spinner('pdf')}
+                Generate invoice PDF
+              </Button>
+            )}
+
+            {canManage && status === 'documented' && (
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button variant="outline" onClick={onPreview} disabled={pendingAction !== null}>
+                  {spinner('preview')}
+                  View PDF
+                </Button>
+                <Button onClick={onEmail} disabled={pendingAction !== null} className="bg-green-700 hover:bg-green-800">
+                  {spinner('email')}
+                  Email to customer
+                </Button>
+              </div>
+            )}
+
+            {canManage && status === 'sent' && (
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button variant="outline" onClick={onPreview} disabled={pendingAction !== null}>
+                  {spinner('preview')}
+                  View PDF
+                </Button>
+                <Button onClick={onSend} disabled={pendingAction !== null} className="bg-green-700 hover:bg-green-800">
+                  {spinner('send')}
+                  Send to Xero and attach PDF
+                </Button>
+              </div>
+            )}
+
+            {canManage && status === 'completed' && (
+              <Button variant="outline" onClick={onPreview} disabled={pendingAction !== null}>
+                {spinner('preview')}
+                View PDF
+              </Button>
+            )}
+
             {editable && (
               <Button variant="ghost" onClick={onVoid} disabled={pendingAction !== null} className="text-red-600 hover:bg-red-50">
                 {spinner('void')}
                 Discard draft
-              </Button>
-            )}
-            {canManage && (status === 'raised' || status === 'authorized' || status === 'sent') && (
-              <Button variant="outline" onClick={onRetryRecord} disabled={pendingAction !== null}>
-                {spinner('record')}
-                Send to TaxJar
               </Button>
             )}
             {terminal && status !== 'authorizing' && (
