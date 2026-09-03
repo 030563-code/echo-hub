@@ -356,20 +356,20 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
 
   const onSend = () =>
     run('send', async () => {
-      // Save first: the editor holds unsaved edits in local state, and the
-      // server sends Xero what is STORED. Saving here means a change that
-      // affects tax invalidates the calculation instead of quietly shipping a
-      // stale invoice.
-      const saved = await saveInvoiceDraft(buildSavePayload())
-      if (!saved.success) {
-        toast.error(saved.error)
-        return
-      }
-      if (saved.taxInvalidated) {
-        toast.warning('Your edits changed the tax base. Recalculate tax before sending.')
-        router.refresh()
-        return
-      }
+      // NOT save-first. That was right when Xero was the step straight after
+      // Save draft and the row could still hold unsaved edits. Xero is now
+      // LAST, reachable only once the invoice has passed through Send to
+      // TaxJar and Generate and Email, all of which require status
+      // 'tax_calculated' or later, at which point editable is already false
+      // and the row IS the frozen source of truth the PDF was hashed from.
+      //
+      // Calling saveInvoiceDraft here doesn't just do nothing: it actively
+      // breaks the button. Its own guard rejects any status other than
+      // 'draft' or 'tax_calculated', and this button is only shown at
+      // 'sent', so every call failed with "This invoice is sent and can no
+      // longer be edited" before sendInvoiceToXero was ever reached. n8n
+      // never saw the request, and the button looked identical to a Xero
+      // failure while nothing had actually gone out to the network.
       const result = await sendInvoiceToXero({ invoiceId: invoice.id })
       if (!result.success) {
         toast.error(result.error)
@@ -377,9 +377,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
         return
       }
       for (const warning of result.warnings) toast.warning(warning, { duration: 12000 })
-      toast.success(
-        `Invoice ${result.xeroInvoiceNumber} created in Xero as a draft. Nothing has been emailed to the customer.`,
-      )
+      toast.success(`Invoice ${result.xeroInvoiceNumber} sent to Xero and closed out.`)
       router.refresh()
     })
 
