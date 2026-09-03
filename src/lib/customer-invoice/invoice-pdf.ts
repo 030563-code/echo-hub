@@ -35,6 +35,7 @@ export interface InvoicePdfInput {
   /** Seller letterhead lines, from seller.ts. */
   sellerLines: readonly string[]
   sellerPhone?: string
+  sellerEmail?: string
   /**
    * The Echo Barrier wordmark as a data URL. Passed in rather than imported so
    * this module stays free of the base64 string: a browser fetches it, the
@@ -103,7 +104,11 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<import('j
   // customer got a sheet carrying nothing but our address. A letterhead cannot
   // overflow because nothing above it varies in height.
   {
-    const sellerBlock = [...input.sellerLines, ...(input.sellerPhone ? [input.sellerPhone] : [])]
+    const sellerBlock = [
+      ...input.sellerLines,
+      ...(input.sellerPhone ? [input.sellerPhone] : []),
+      ...(input.sellerEmail ? [input.sellerEmail] : []),
+    ]
     if (input.document.remittance.ein) sellerBlock.push(`EIN ${input.document.remittance.ein}`)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8)

@@ -7,6 +7,7 @@ import { buildInvoicePdf, invoicePdfFilename } from '@/lib/customer-invoice/invo
 import {
   SELLER_ADDRESS_LINES,
   SELLER_PHONE,
+  SELLER_EMAIL,
   remittanceFromEnv,
   remittanceIsIncomplete,
 } from '@/lib/customer-invoice/seller'
@@ -109,6 +110,7 @@ export async function renderInvoicePdf(
     document,
     sellerLines: SELLER_ADDRESS_LINES,
     sellerPhone: SELLER_PHONE,
+    sellerEmail: SELLER_EMAIL,
     logoDataUrl: await logoDataUrl(),
   })
 

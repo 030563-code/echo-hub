@@ -33,10 +33,14 @@ export const SELLER_LEGAL_NAME = 'Echo Barrier USA LLC'
 
 /**
  * The North American toll-free carried by the US and Canadian quote templates.
- * Confirm before treating it as an accounts-receivable line: it is a group
- * number that happens to have been printed on US quotes, not an AR desk.
+ * It is a group number that happens to have been printed on US quotes rather
+ * than an AR desk, which is why the email below sits under it: a customer with
+ * a billing question needs somewhere that reads the invoice, not switchboard.
  */
 export const SELLER_PHONE = '+1 (800) 728 9098'
+
+/** Where a customer replies about an invoice. Dean, 2026-09-03. */
+export const SELLER_EMAIL = 'accounts@echobarrier.com'
 
 export interface RemittanceDetails {
   /** The name the account is held in. Must match the bank's own record exactly,
