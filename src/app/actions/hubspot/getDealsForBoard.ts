@@ -6,6 +6,7 @@ import { resolveHubSpotOwnerId } from '@/lib/hubspot-owner'
 import { boardColumns, groupDealsByStage, type BoardColumn } from '@/lib/deals-board'
 import { DEAL_LIST_PROPERTIES, type HubSpotDeal } from '@/lib/hubspot-types'
 import { EMPTY_DEAL_FILTERS, buildDealFilterGroup, type HubSpotSearchFilter, type DealFilters } from '@/lib/deal-filters'
+import { resolveAssociationFilters } from '@/lib/hubspot-association-filter'
 import { getOwnerIndex } from '@/app/actions/hubspot/getOwners'
 import type { OwnerIndex } from '@/lib/hubspot-owners'
 
@@ -43,6 +44,10 @@ export interface GetBoardResult {
   scope?: BoardScope
   pipelineId?: string
   owners?: OwnerIndex
+  /** A successful search that legitimately found nothing, with the reason.
+   *  A company filter matching no company empties the board honestly; an
+   *  unexplained set of empty columns just looks broken. */
+  notice?: string
 }
 
 export async function getDealsForBoard(input: {
@@ -111,7 +116,28 @@ export async function getDealsForBoard(input: {
     pinned.push({ propertyName: 'hubspot_owner_id', operator: 'EQ', value: ownerId })
   }
 
-  const group = buildDealFilterGroup(pinned, effectiveFilters)
+  // Company and contact are typed as text and have to become HubSpot ids
+  // before the search can filter on them.
+  const associations = await resolveAssociationFilters(effectiveFilters)
+  if (!associations.ok) {
+    // Matching no record is an empty board, not a failure. Matching more
+    // records than an IN list holds IS a failure: using the first hundred
+    // would quietly hide the rest.
+    if (associations.kind === 'no_matches') {
+      return {
+        success: true,
+        groups: groupDealsByStage([], columns),
+        truncated: false,
+        isAdmin,
+        scope,
+        pipelineId,
+        notice: associations.error,
+      }
+    }
+    return { success: false, error: associations.error }
+  }
+
+  const group = buildDealFilterGroup(pinned, effectiveFilters, associations.resolved)
   if (!group.ok) return { success: false, error: group.error }
   const filters = group.filters
 

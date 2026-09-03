@@ -30,7 +30,7 @@ export default async function AllQuotesPage({
   // carries between tabs. getDealsByStage puts a non-admin back to 'mine'.
   const scope = params.scope === 'mine' ? 'mine' : 'all'
   const dealFilters = parseDealFilters(params)
-  const { data: deals, error, hasNextPage, nextAfter, isAdmin } = await getDealsByStage(
+  const { data: deals, error, hasNextPage, nextAfter, isAdmin, notice } = await getDealsByStage(
     'all',
     page,
     after,
@@ -71,6 +71,7 @@ export default async function AllQuotesPage({
     <AllQuotesClient
       initialDeals={deals || []}
       error={error}
+      notice={notice}
       probabilityMap={probabilityMap}
       currentPage={page}
       hasNextPage={!!hasNextPage}

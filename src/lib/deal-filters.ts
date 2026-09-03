@@ -72,7 +72,36 @@ export interface DealFilters {
   /** yyyy-mm-dd, inclusive at both ends. */
   createdFrom: string
   createdTo: string
+  /**
+   * Free text the rep typed for the associated company, matched against the
+   * company's name and domain. Not a HubSpot id: the rep types "Sunbelt", and
+   * a resolver turns that into the ids the search filters on. This portal
+   * duplicates company records per owner, so one typed name legitimately maps
+   * to several ids, which is why the filter is an IN rather than an EQ.
+   */
+  company: string
+  /** Free text for the associated contact, matched against email, first name
+   *  and last name. Resolved to ids the same way as `company`. */
+  contact: string
 }
+
+/**
+ * The pseudo-properties the deal search accepts for associations. Both are
+ * SINGULAR: 'associations.companies' returns a 400 whose message is only
+ * "There was a problem with the request.", so a typo here fails loudly but
+ * says nothing useful. Pinned in a constant and asserted in the tests.
+ *
+ * Verified live on 2026-09-03: EQ and IN both work, and an id that matches
+ * nothing returns total 0 rather than an error.
+ */
+export const ASSOCIATION_FILTER_PROPERTIES = {
+  company: 'associations.company',
+  contact: 'associations.contact',
+} as const
+
+/** HubSpot's cap on one IN list, verified live: 120 values returns 400,
+ *  "too many IN list values (count: 120, max allowed: 100)". */
+export const HUBSPOT_MAX_IN_VALUES = 100
 
 export const EMPTY_DEAL_FILTERS: DealFilters = {
   q: '',
@@ -84,6 +113,8 @@ export const EMPTY_DEAL_FILTERS: DealFilters = {
   amountMax: '',
   createdFrom: '',
   createdTo: '',
+  company: '',
+  contact: '',
 }
 
 /** The URL parameter name for each field, so the bar, the links and the
@@ -98,6 +129,8 @@ export const DEAL_FILTER_PARAMS = {
   amountMax: 'amountMax',
   createdFrom: 'createdFrom',
   createdTo: 'createdTo',
+  company: 'company',
+  contact: 'contact',
 } as const
 
 type RawParams = Record<string, string | string[] | undefined>
@@ -129,6 +162,8 @@ export function parseDealFilters(params: RawParams): DealFilters {
     amountMax: one(params[DEAL_FILTER_PARAMS.amountMax]),
     createdFrom: one(params[DEAL_FILTER_PARAMS.createdFrom]),
     createdTo: one(params[DEAL_FILTER_PARAMS.createdTo]),
+    company: one(params[DEAL_FILTER_PARAMS.company]),
+    contact: one(params[DEAL_FILTER_PARAMS.contact]),
   }
 }
 
@@ -308,11 +343,55 @@ export type DealFilterGroupResult =
  *
  * Both callers go through here so the two cannot disagree about the budget.
  */
+/**
+ * Company and contact ids already resolved from the free text the rep typed.
+ *
+ * The resolution is a HubSpot search, so it cannot happen in this pure module.
+ * The caller resolves first and passes the ids in, which keeps the translation
+ * testable and keeps the network call where the other network calls live.
+ *
+ * An EMPTY array is not the same as an absent one. Absent means the rep left
+ * the box blank; empty means they typed a name that matches no company, and
+ * the caller must return no deals rather than dropping the filter, or the
+ * filter lies in exactly the way the note at the top of this file warns about.
+ * Callers short-circuit on that case before reaching here.
+ */
+export interface ResolvedAssociationIds {
+  companyIds?: readonly string[]
+  contactIds?: readonly string[]
+}
+
 export function buildDealFilterGroup(
   fixed: HubSpotSearchFilter[],
   filters: DealFilters,
+  resolved: ResolvedAssociationIds = {},
 ): DealFilterGroupResult {
   const translated = translateDealFilters(filters)
+
+  // One IN entry per association, however many ids it holds, so filtering to a
+  // company that this portal keeps as four duplicate records still costs one
+  // filter out of the six.
+  if (resolved.companyIds && resolved.companyIds.length > 0) {
+    translated.push({
+      filter: {
+        propertyName: ASSOCIATION_FILTER_PROPERTIES.company,
+        operator: 'IN',
+        values: resolved.companyIds,
+      },
+      label: 'company',
+    })
+  }
+  if (resolved.contactIds && resolved.contactIds.length > 0) {
+    translated.push({
+      filter: {
+        propertyName: ASSOCIATION_FILTER_PROPERTIES.contact,
+        operator: 'IN',
+        values: resolved.contactIds,
+      },
+      label: 'contact',
+    })
+  }
+
   const total = fixed.length + translated.length
 
   if (total <= HUBSPOT_MAX_FILTERS_PER_GROUP) {
@@ -341,6 +420,8 @@ export function activeDealFilterCount(filters: DealFilters): number {
   if (filters.amountMax.trim() !== '') count++
   if (filters.createdFrom.trim() !== '') count++
   if (filters.createdTo.trim() !== '') count++
+  if (filters.company.trim() !== '') count++
+  if (filters.contact.trim() !== '') count++
   return count
 }
 
@@ -359,5 +440,7 @@ export function dealFiltersToQuery(filters: DealFilters): Record<string, string>
   if (filters.amountMax.trim() !== '') out[DEAL_FILTER_PARAMS.amountMax] = filters.amountMax.trim()
   if (filters.createdFrom.trim() !== '') out[DEAL_FILTER_PARAMS.createdFrom] = filters.createdFrom.trim()
   if (filters.createdTo.trim() !== '') out[DEAL_FILTER_PARAMS.createdTo] = filters.createdTo.trim()
+  if (filters.company.trim() !== '') out[DEAL_FILTER_PARAMS.company] = filters.company.trim()
+  if (filters.contact.trim() !== '') out[DEAL_FILTER_PARAMS.contact] = filters.contact.trim()
   return out
 }

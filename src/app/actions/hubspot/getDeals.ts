@@ -6,6 +6,7 @@ import { QUOTE_REQUEST_STAGES, QUOTATION_SENT_STAGES, CLOSED_WON_STAGES, QUOTATI
 import type { HubSpotDeal } from '@/lib/hubspot-types'
 import { DEAL_LIST_PROPERTIES } from '@/lib/hubspot-types'
 import { EMPTY_DEAL_FILTERS, buildDealFilterGroup, type HubSpotSearchFilter, type DealFilters } from '@/lib/deal-filters'
+import { resolveAssociationFilters } from '@/lib/hubspot-association-filter'
 
 const PAGE_SIZE = 25
 
@@ -19,6 +20,11 @@ interface GetDealsResult {
    *  whether to offer the toggle. */
   isAdmin?: boolean
   nextAfter?: string
+  /** A successful search that legitimately found nothing, with the reason.
+   *  A company filter matching no company is not an error: the answer really
+   *  is "no deals", and saying which filter emptied the list beats an empty
+   *  table with no explanation. */
+  notice?: string
 }
 
 export async function getDealsByStage(
@@ -126,7 +132,25 @@ export async function getDealsByStage(
     // An admin viewing every rep can filter to one owner. On a 'mine' list the
     // owner is already pinned above, so a second EQ would AND to an empty page
     // instead of being ignored.
-    const group = buildDealFilterGroup(pinned, allReps ? dealFilters : { ...dealFilters, ownerId: '' })
+    // Company and contact are typed as text and have to become HubSpot ids
+    // before the search can filter on them.
+    const associations = await resolveAssociationFilters(dealFilters)
+    if (!associations.ok) {
+      // Text that matches no record is an empty result, not a failure. Text
+      // that matches more records than an IN list holds IS a failure, because
+      // silently using the first hundred would return a plausible subset with
+      // no sign that anything was left out.
+      if (associations.kind === 'no_matches') {
+        return { success: true, data: [], hasNextPage: false, isAdmin, notice: associations.error }
+      }
+      return { success: false, error: associations.error }
+    }
+
+    const group = buildDealFilterGroup(
+      pinned,
+      allReps ? dealFilters : { ...dealFilters, ownerId: '' },
+      associations.resolved,
+    )
     if (!group.ok) return { success: false, error: group.error }
 
     const requestBody: HubSpotSearchRequest = {

@@ -4,6 +4,7 @@ import { getDealsForBoard, type BoardScope } from '@/app/actions/hubspot/getDeal
 import { DealsBoard } from '@/components/quotes/deals-board'
 import { PIPELINE_CONFIG } from '@/lib/pipeline-config'
 import { Card } from '@/components/ui/card'
+import { FilterNotice } from '@/components/quotes/filter-notice'
 import { DealFilterBar } from '@/components/quotes/deal-filter-bar'
 import { dealFiltersToQuery, parseBoardDealFilters } from '@/lib/deal-filters'
 import { HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
@@ -141,6 +142,8 @@ export default async function DealsBoardPage({
         ownerNameById={result.owners?.ownerNameById}
         showOwner={scope === 'all'}
       />
+
+      <FilterNotice notice={result.notice} />
 
       <DealsBoard groups={result.groups} owners={result.owners} showOwner={scope === 'all'} />
 

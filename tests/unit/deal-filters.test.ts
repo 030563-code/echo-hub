@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   EMPTY_DEAL_FILTERS,
+  ASSOCIATION_FILTER_PROPERTIES,
   HUBSPOT_MAX_FILTERS_PER_GROUP,
+  HUBSPOT_MAX_IN_VALUES,
   buildDealFilterGroup,
   parseBoardDealFilters,
   parseStageQueueDealFilters,
@@ -38,6 +40,8 @@ describe('parseDealFilters', () => {
       amountMax: '900',
       createdFrom: '2026-08-01',
       createdTo: '2026-08-31',
+      company: '',
+      contact: '',
     })
   })
 
@@ -280,5 +284,77 @@ describe('buildDealFilterGroup', () => {
 
   it('never reports an empty filter list as over the cap', () => {
     expect(buildDealFilterGroup(pinned(6), EMPTY_DEAL_FILTERS).ok).toBe(true)
+  })
+})
+
+/**
+ * HubSpot's deal Search does not RETURN associations, but it does FILTER on
+ * them. These pseudo-properties are the whole reason the company and contact
+ * filters need no batch association read and no local post-filtering.
+ *
+ * The property names are SINGULAR. Live on 2026-09-03, 'associations.companies'
+ * returns 400 with the message "There was a problem with the request." and
+ * nothing else, so a typo here fails loudly and says nothing about why. Pinning
+ * the strings and asserting them is what makes that debuggable.
+ */
+describe('association filters', () => {
+  it('uses the singular pseudo-property names', () => {
+    expect(ASSOCIATION_FILTER_PROPERTIES.company).toBe('associations.company')
+    expect(ASSOCIATION_FILTER_PROPERTIES.contact).toBe('associations.contact')
+  })
+
+  it('adds one IN filter per association, whatever the id count', () => {
+    const result = buildDealFilterGroup([], EMPTY_DEAL_FILTERS, {
+      companyIds: ['1', '2', '3', '4'],
+      contactIds: ['9'],
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    // Four company records collapse into ONE filter. This portal duplicates a
+    // company per owner, so a single typed name routinely resolves to several.
+    expect(result.filters).toEqual([
+      { propertyName: 'associations.company', operator: 'IN', values: ['1', '2', '3', '4'] },
+      { propertyName: 'associations.contact', operator: 'IN', values: ['9'] },
+    ])
+  })
+
+  it('adds nothing for an absent or empty id list', () => {
+    expect(buildDealFilterGroup([], EMPTY_DEAL_FILTERS, {})).toEqual({ ok: true, filters: [] })
+    expect(buildDealFilterGroup([], EMPTY_DEAL_FILTERS, { companyIds: [] })).toEqual({ ok: true, filters: [] })
+  })
+
+  it('counts association filters against the six-filter budget', () => {
+    const pinned = [
+      { propertyName: 'a', operator: 'EQ', value: '1' },
+      { propertyName: 'b', operator: 'EQ', value: '1' },
+      { propertyName: 'c', operator: 'EQ', value: '1' },
+    ]
+    const three = filters({ q: 'x', depot: 'US Baltimore' })
+    expect(buildDealFilterGroup(pinned, three, { companyIds: ['1'] }).ok).toBe(true)
+
+    const over = buildDealFilterGroup(pinned, three, { companyIds: ['1'], contactIds: ['2'] })
+    expect(over.ok).toBe(false)
+    if (over.ok) return
+    expect(over.error).toContain('company')
+    expect(over.error).toContain('contact')
+  })
+
+  it('counts company and contact text in the active filter badge', () => {
+    expect(activeDealFilterCount(filters({ company: 'sunbelt' }))).toBe(1)
+    expect(activeDealFilterCount(filters({ company: 'sunbelt', contact: 'jane@x.com' }))).toBe(2)
+  })
+
+  it('carries company and contact through the query string', () => {
+    expect(dealFiltersToQuery(filters({ company: ' sunbelt ', contact: 'jane' }))).toEqual({
+      company: 'sunbelt',
+      contact: 'jane',
+    })
+  })
+
+  it('pins HubSpot\'s IN-list cap', () => {
+    // Live: 120 values returns 400, "too many IN list values (count: 120,
+    // max allowed: 100)". The resolver refuses above this rather than
+    // truncating, which would return a plausible subset of the matches.
+    expect(HUBSPOT_MAX_IN_VALUES).toBe(100)
   })
 })
