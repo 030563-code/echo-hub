@@ -5,6 +5,7 @@ import { hubspotFetch } from '@/lib/hubspot-client'
 import { resolveHubSpotOwnerId } from '@/lib/hubspot-owner'
 import { boardColumns, groupDealsByStage, type BoardColumn } from '@/lib/deals-board'
 import { DEAL_LIST_PROPERTIES, type HubSpotDeal } from '@/lib/hubspot-types'
+import { EMPTY_DEAL_FILTERS, dealFiltersToHubSpot, type DealFilters } from '@/lib/deal-filters'
 import { getOwnerIndex } from '@/app/actions/hubspot/getOwners'
 import type { OwnerIndex } from '@/lib/hubspot-owners'
 
@@ -49,6 +50,11 @@ export async function getDealsForBoard(input: {
   pipelineId?: string
   /** How far back to look. The board is for work in progress. */
   windowDays?: number
+  /** Rep-set filters, folded into the SAME search call as everything else so
+   *  HubSpot narrows before the 400-deal cap applies. Filtering the loaded
+   *  cards instead would report "no such deal" for anything outside the
+   *  window. */
+  dealFilters?: DealFilters
 }): Promise<GetBoardResult> {
   const auth = await getAuthorizedUser()
   if (!auth.ok) return { success: false, error: auth.error }
@@ -68,18 +74,29 @@ export async function getDealsForBoard(input: {
     return { success: false, error: 'Your profile has no region set, so there is no pipeline to show.' }
   }
 
+  // The owner filter is meaningless on a 'mine' board and actively harmful:
+  // the scope below already pins hubspot_owner_id, so a second EQ on a
+  // different owner ANDs to an empty board rather than being ignored. Only the
+  // all-reps view can choose an owner.
+  // The board pins its own pipeline above, so a pipeline filter is stripped for
+  // the same reason as the owner one: a second EQ on a different value empties
+  // the board instead of being ignored.
+  const requested: DealFilters = { ...(input.dealFilters ?? EMPTY_DEAL_FILTERS), pipelineId: '' }
+  const effectiveFilters: DealFilters = scope === 'all' ? requested : { ...requested, ownerId: '' }
+
   const columns = boardColumns(pipelineId)
   if (columns.length === 0) {
     return { success: false, error: 'That pipeline is not one the Hub knows about.' }
   }
 
-  const filters: { propertyName: string; operator: string; value: string }[] = [
+  const filters: { propertyName: string; operator: string; value?: string; values?: string[] }[] = [
     { propertyName: 'pipeline', operator: 'EQ', value: pipelineId },
     {
       propertyName: 'hs_lastmodifieddate',
       operator: 'GTE',
       value: String(Date.now() - (input.windowDays ?? 60) * 86_400_000),
     },
+    ...dealFiltersToHubSpot(effectiveFilters),
   ]
 
   if (scope === 'mine') {

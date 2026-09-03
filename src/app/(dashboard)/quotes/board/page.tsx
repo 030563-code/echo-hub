@@ -4,6 +4,8 @@ import { getDealsForBoard, type BoardScope } from '@/app/actions/hubspot/getDeal
 import { DealsBoard } from '@/components/quotes/deals-board'
 import { PIPELINE_CONFIG } from '@/lib/pipeline-config'
 import { Card } from '@/components/ui/card'
+import { DealFilterBar } from '@/components/quotes/deal-filter-bar'
+import { dealFiltersToQuery, parseDealFilters } from '@/lib/deal-filters'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,16 +25,18 @@ export const dynamic = 'force-dynamic'
 export default async function DealsBoardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ scope?: string; pipeline?: string; window?: string }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   await requireCapability(['quotes.view', 'quotes.create'])
   const params = await searchParams
 
   const windowDays = Number(params.window) || 60
+  const dealFilters = parseDealFilters(params)
   const result = await getDealsForBoard({
     scope: params.scope === 'all' ? 'all' : 'mine',
-    pipelineId: params.pipeline,
+    pipelineId: typeof params.pipeline === 'string' ? params.pipeline : undefined,
     windowDays,
+    dealFilters,
   })
 
   if (!result.success || !result.groups) {
@@ -50,6 +54,9 @@ export default async function DealsBoardPage({
       scope,
       ...(result.pipelineId ? { pipeline: result.pipelineId } : {}),
       window: String(windowDays),
+      // Switching scope or window must not silently drop the filters, which
+      // would look like the filter had been ignored.
+      ...dealFiltersToQuery(dealFilters),
       ...next,
     })
     return `/quotes/board?${q.toString()}`
@@ -88,6 +95,9 @@ export default async function DealsBoardPage({
             <form action="/quotes/board" method="get" className="flex items-center gap-1">
               <input type="hidden" name="scope" value={scope} />
               <input type="hidden" name="window" value={windowDays} />
+              {Object.entries(dealFiltersToQuery(dealFilters)).map(([name, value]) => (
+                <input key={name} type="hidden" name={name} value={value} />
+              ))}
               <select
                 name="pipeline"
                 defaultValue={result.pipelineId}
@@ -102,6 +112,22 @@ export default async function DealsBoardPage({
           )}
         </div>
       </div>
+
+      <DealFilterBar
+        action="/quotes/board"
+        filters={dealFilters}
+        hidden={{
+          scope,
+          ...(result.pipelineId ? { pipeline: result.pipelineId } : {}),
+          window: String(windowDays),
+        }}
+        stages={result.groups
+          .map((g) => g.column)
+          .filter((c) => c.stageId !== '')
+          .map((c) => ({ id: c.stageId, label: c.label }))}
+        ownerNameById={result.owners?.ownerNameById}
+        showOwner={scope === 'all'}
+      />
 
       <DealsBoard groups={result.groups} owners={result.owners} showOwner={scope === 'all'} />
 
