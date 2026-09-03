@@ -14,6 +14,13 @@ export interface AcceptanceExtras {
   winProbability?: string
   /** US delivery (ship-to) address, captured at acceptance for TaxJar. */
   delivery?: Partial<USDeliveryAddress>
+  /**
+   * Will Call. When true the delivery address is neither required nor written:
+   * a collected order is taxed at the depot it is collected from. Absent falls
+   * back to what the registry holds, the same rule the address and probability
+   * already follow.
+   */
+  isCollection?: boolean
 }
 
 export async function updateDealStage(dealId: string, pipelineId: string, stageId: string, sendingDepot?: string, amount?: number, tenderDate?: string, acceptance?: AcceptanceExtras) {
@@ -138,22 +145,31 @@ export async function updateDealStage(dealId: string, pipelineId: string, stageI
     const supabase = await createServerClient()
     const { data: regRow, error: regError } = await supabase
       .from('deals_registry')
-      .select('delivery_street, delivery_city, delivery_state, delivery_zip, deal_probability')
+      .select('delivery_street, delivery_city, delivery_state, delivery_zip, deal_probability, is_collection')
       .eq('hubspot_deal_id', dealId)
       .maybeSingle()
     if (regError) {
       return { success: false, error: 'Could not load the saved delivery address. Please try again.' }
     }
-    const address = sanitizeUSAddress(
-      acceptance?.delivery ?? {
-        street: regRow?.delivery_street ?? '',
-        city: regRow?.delivery_city ?? '',
-        state: regRow?.delivery_state ?? '',
-        zip: regRow?.delivery_zip ?? '',
-      },
-    )
-    if (!address.ok) {
-      return { success: false, error: address.error }
+    // Will Call short-circuits the whole address requirement: a collected order
+    // is taxed at the depot the customer collects from (calculate-tax.ts skips
+    // the address for exactly this case), so demanding one would block the
+    // acceptance for a deal that legitimately has none.
+    const isCollection = acceptance?.isCollection ?? regRow?.is_collection === true
+    let address: USDeliveryAddress | null = null
+    if (!isCollection) {
+      const sanitized = sanitizeUSAddress(
+        acceptance?.delivery ?? {
+          street: regRow?.delivery_street ?? '',
+          city: regRow?.delivery_city ?? '',
+          state: regRow?.delivery_state ?? '',
+          zip: regRow?.delivery_zip ?? '',
+        },
+      )
+      if (!sanitized.ok) {
+        return { success: false, error: sanitized.error }
+      }
+      address = sanitized.value
     }
 
     // 3) Probability of close (the backbone): submitted or already stored.
@@ -170,11 +186,19 @@ export async function updateDealStage(dealId: string, pipelineId: string, stageI
       {
         hubspot_deal_id: dealId,
         pipeline_id: pipelineId,
-        delivery_street: address.value.street,
-        delivery_city: address.value.city,
-        delivery_state: address.value.state,
-        delivery_zip: address.value.zip,
-        delivery_country: 'US',
+        is_collection: isCollection,
+        // Written only for a delivered order. A collected one keeps whatever is
+        // already stored (zero fields or five), which is what the pending
+        // all-or-none delivery guard allows.
+        ...(address
+          ? {
+              delivery_street: address.street,
+              delivery_city: address.city,
+              delivery_state: address.state,
+              delivery_zip: address.zip,
+              delivery_country: 'US',
+            }
+          : {}),
         ...(parsedProbability !== null ? { deal_probability: parsedProbability } : {}),
         updated_at: new Date().toISOString(),
       },
