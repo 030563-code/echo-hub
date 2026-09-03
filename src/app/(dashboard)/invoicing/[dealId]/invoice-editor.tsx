@@ -1070,6 +1070,15 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                   {spinner('preview')}
                   View PDF
                 </Button>
+                {/* Regenerate has to be reachable HERE, not only from the
+                    previous step. Emailing re-renders and refuses if the bytes
+                    no longer match the hash taken at Generate, which is exactly
+                    what should happen when the document has changed. Without
+                    this button that refusal was a dead end. */}
+                <Button variant="outline" onClick={onGeneratePdf} disabled={pendingAction !== null}>
+                  {spinner('pdf')}
+                  Regenerate PDF
+                </Button>
                 <Button onClick={onEmail} disabled={pendingAction !== null} className="bg-green-700 hover:bg-green-800">
                   {spinner('email')}
                   Email to customer

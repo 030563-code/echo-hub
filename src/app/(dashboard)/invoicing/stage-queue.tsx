@@ -27,7 +27,7 @@ const NEXT_STEP: Record<CustomerInvoiceStatus, string> = {
   draft: 'Add the tax to move this on.',
   tax_calculated: 'Preview the invoice, then send the order to TaxJar. That allocates the EBUS number.',
   filed: 'Filed and numbered. Generate the invoice PDF next.',
-  documented: 'The document exists. Email it to the customer next.',
+  documented: 'The document exists. Check it, regenerate if anything changed, then email it to the customer.',
   sent: 'The customer has it. Send it to Xero and attach the PDF to close it out.',
   authorizing: 'Being sent to Xero. If this has not settled in ten minutes, reconcile it.',
   completed: 'Done. In Xero with the PDF attached.',

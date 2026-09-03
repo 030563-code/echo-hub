@@ -91,7 +91,9 @@ export async function emailInvoiceToCustomer(input: { invoiceId: string }): Prom
   if (invoice.pdf_sha256 && invoice.pdf_sha256 !== rendered.sha256) {
     return {
       success: false,
-      error: 'The document no longer matches the one that was generated. Generate it again and check it before sending.',
+      error:
+        'The document has changed since it was generated, so it was not sent. ' +
+        'Press Regenerate PDF, check it, then email it.',
     }
   }
 
