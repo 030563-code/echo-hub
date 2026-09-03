@@ -182,11 +182,20 @@ the Hub: corrections happen in Xero as credit notes.
 |---|---|---|
 | `TAXJAR_SANDBOX_TOKEN` | local + Netlify | sandbox token, used until go-live |
 | `TAXJAR_API_TOKEN` | Netlify at go-live | production token, takes precedence |
-| `TAXJAR_API_BASE` | Netlify at go-live | `https://api.taxjar.com` |
+| `TAXJAR_API_BASE` | leave UNSET | override only, see below |
 | `N8N_CUSTOMER_INVOICE_WEBHOOK_URL` | local + Netlify | `/webhook/hub-invoice-authorize` |
 | `N8N_CUSTOMER_INVOICE_WEBHOOK_SECRET` | local + Netlify | matches the n8n workflow check |
 
 Never add these to `SECRETS_SCAN_OMIT_KEYS`.
+
+**Go-live is setting `TAXJAR_API_TOKEN` and nothing else.** The presence of that
+token is the switch: `config()` in `src/lib/taxjar.ts` then defaults the host to
+`PRODUCTION_BASE`, which is already `https://api.taxjar.com`. Setting
+`TAXJAR_API_BASE` as well is at best redundant and at worst breaks the whole
+integration, because `taxjarFetch` builds every URL as `base + path` and every
+path already starts with `/v2`. A base of `https://api.taxjar.com/v2`, which is
+the natural thing to paste from TaxJar's own docs, produces `/v2/v2/taxes` and
+404s on every call. Leave it blank.
 
 ## Testing note: the queue starts empty on purpose
 
