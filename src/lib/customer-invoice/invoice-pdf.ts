@@ -37,6 +37,23 @@ export interface InvoicePdfInput {
   sellerPhone?: string
   sellerEmail?: string
   /**
+   * What makes the render REPRODUCIBLE, and both are required for it.
+   *
+   * jsPDF stamps a wall-clock /CreationDate and a random /ID into every
+   * document, so two renders of identical data are never byte-identical.
+   * Verified: back-to-back renders differed only in those two fields. The
+   * invoicing flow hashes the PDF at Generate and re-renders at Email to check
+   * the customer is getting the document that was checked, and that comparison
+   * could never pass while these varied.
+   *
+   * Pinned from stable values (the invoice id and a date already on the row),
+   * so identical data renders identical bytes while a change to the DATA or to
+   * the RENDERER still changes them. Weakening the check to a content hash
+   * would have lost the second half of that.
+   */
+  documentId: string
+  createdAt: Date
+  /**
    * The Echo Barrier wordmark as a data URL. Passed in rather than imported so
    * this module stays free of the base64 string: a browser fetches it, the
    * server reads it off disk. Absent means the header falls back to type, so a
@@ -59,6 +76,19 @@ function formatDate(iso: string | null): string {
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
 }
 
+/**
+ * A PDF /ID is 32 hex characters. Derived from the invoice id so it is stable
+ * for a given invoice and different between invoices, which is what the field
+ * is for.
+ */
+function stableFileId(documentId: string): string {
+  let hex = ''
+  for (let i = 0; i < documentId.length && hex.length < 32; i++) {
+    hex += documentId.charCodeAt(i).toString(16).padStart(2, '0')
+  }
+  return (hex + '0'.repeat(32)).slice(0, 32).toUpperCase()
+}
+
 export async function buildInvoicePdf(input: InvoicePdfInput): Promise<import('jspdf').jsPDF> {
   const { document: inv } = input
   const currency = inv.currency || 'USD'
@@ -66,6 +96,11 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<import('j
   const { default: autoTable } = await import('jspdf-autotable')
 
   const doc = new JsPDF()
+  // Both pinned before anything is drawn. See the field docs above: without
+  // this the same invoice hashes differently every time it is rendered.
+  doc.setCreationDate(input.createdAt)
+  doc.setFileId(stableFileId(input.documentId))
+
   const pageWidth = doc.internal.pageSize.width
   const pageHeight = doc.internal.pageSize.height
   const right = pageWidth - MARGIN

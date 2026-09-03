@@ -112,6 +112,11 @@ export async function renderInvoicePdf(
     sellerPhone: SELLER_PHONE,
     sellerEmail: SELLER_EMAIL,
     logoDataUrl: await logoDataUrl(),
+    // Stable per invoice, never the clock. The invoice date is what the
+    // document itself says it was issued on; created_at covers a draft
+    // preview, which has no invoice date yet.
+    documentId: invoice.id,
+    createdAt: new Date(invoice.invoice_date ?? invoice.created_at),
   })
 
   const bytes = Buffer.from(pdf.output('arraybuffer'))
