@@ -19,6 +19,7 @@ const header = (over: Partial<InvoiceDocumentHeaderRow> = {}): InvoiceDocumentHe
   delivery_state: 'CA',
   delivery_zip: '90066',
   delivery_street: '5310 Beethoven St',
+  delivery_country: 'US',
   is_collection: false,
   billing_name: 'Apex Construction LLC',
   billing_line1: '1200 Wilshire Blvd',
@@ -193,7 +194,7 @@ describe('addresses on the document', () => {
     // Previously only "Los Angeles, CA 90066" printed. A delivery address with
     // no street is not a delivery address, and it is what the tax was
     // calculated against.
-    expect(doc.shipTo).toEqual(['5310 Beethoven St', 'Los Angeles, CA 90066'])
+    expect(doc.shipTo).toEqual(['5310 Beethoven St', 'Los Angeles, CA 90066', 'USA'])
   })
 
   it('prints the Xero contact as the bill-to', () => {

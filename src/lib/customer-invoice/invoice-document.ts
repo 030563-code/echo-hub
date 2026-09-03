@@ -11,7 +11,7 @@
  */
 
 import { depotLabel } from '@/lib/depot-constants'
-import { normalizeUSState } from '@/lib/us-address'
+import { normalizeUSState, DELIVERY_COUNTRIES } from '@/lib/us-address'
 import { DEPOT_FROM_ADDRESSES, type USDepot } from './constants'
 import { depotShipments, filingTransactionId } from './tax-mapping'
 import { summariseTaxResponse, type DepotTaxBreakdown } from './tax-breakdown'
@@ -54,6 +54,7 @@ export interface InvoiceDocumentHeaderRow {
   delivery_state: string | null
   delivery_zip: string | null
   delivery_street: string | null
+  delivery_country: string | null
   is_collection: boolean
   billing_name: string | null
   billing_line1: string | null
@@ -137,15 +138,27 @@ export interface InvoiceDocument {
  * field the tax was calculated against, so it is the one the customer is most
  * likely to want to check.
  */
+/** 'US' is what the column stores and what TaxJar wants; 'USA' is what a
+ *  reader expects to see. An unknown code prints as itself rather than
+ *  vanishing. */
+function countryLabel(code: string | null): string {
+  const raw = (code ?? '').trim()
+  if (raw === '') return ''
+  return DELIVERY_COUNTRIES.find((c) => c.value === raw)?.label ?? raw
+}
+
 function shipToLines(header: InvoiceDocumentHeaderRow): string[] {
   if (header.is_collection) return ['Collected by the customer']
   const street = (header.delivery_street ?? '').trim()
-  const cityState = [header.delivery_city, header.delivery_state]
+  const cityState = [header.delivery_city, normalizeUSState(header.delivery_state)]
     .map((p) => (p ?? '').trim())
     .filter((p) => p !== '')
     .join(', ')
   const last = [cityState, (header.delivery_zip ?? '').trim()].filter((p) => p !== '').join(' ')
-  return [street, last].filter((p) => p !== '')
+  // The country belongs on a shipping address like any other. It is stored as
+  // the ISO code the tax API wants and printed as the form a reader expects.
+  const country = countryLabel(header.delivery_country)
+  return [street, last, country].filter((p) => p !== '')
 }
 
 /**

@@ -14,6 +14,7 @@ import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sanitizeUSAddress } from '@/lib/us-address'
 import { linesHash } from '@/lib/customer-invoice/hash'
+import { parseLineTracking, toXeroTracking } from '@/lib/customer-invoice/tracking'
 import { dueDateFromTerms } from '@/lib/customer-invoice/payment-terms'
 import { xeroFindContact } from '@/lib/xero-hub'
 import {
@@ -229,6 +230,10 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
         unit_amount: Number(l.unit_price),
         discount_rate: Number(l.discount_percentage),
         tax_amount: Number(l.tax_amount ?? 0),
+        // Xero's LineItem.Tracking shape, built here rather than in n8n so the
+        // mapping is versioned and testable. Xero's own spec caps this at two
+        // elements per line; toXeroTracking enforces that.
+        tracking: toXeroTracking(parseLineTracking(l.tracking)),
       })),
     shipping_lines: lines
       .filter((l) => l.is_shipping)
@@ -243,6 +248,7 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
         // discounted one.
         discount_rate: Number(l.discount_percentage),
         tax_amount: Number(l.tax_amount ?? 0),
+        tracking: toXeroTracking(parseLineTracking(l.tracking)),
       })),
     totals: {
       subtotal: Number(invoice.subtotal ?? 0),

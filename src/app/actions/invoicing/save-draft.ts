@@ -13,6 +13,7 @@ import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { computeDraftLineTotal } from '@/lib/customer-invoice/build-draft'
 import { US_DEPOTS, KIT_SHIP_FROM } from '@/lib/customer-invoice/constants'
+import { MAX_TRACKING_PER_LINE } from '@/lib/customer-invoice/tracking'
 import { linesHash } from '@/lib/customer-invoice/hash'
 import { US_STATE_CODES } from '@/lib/us-address'
 import { roundCents } from '@/lib/quote-math'
@@ -40,6 +41,20 @@ const LineInput = z.object({
   discount_percentage: z.number().finite().min(0).max(100),
   is_shipping: z.boolean(),
   ship_from_depot: z.enum(US_DEPOTS),
+  // Xero's own limit: "Any LineItem can have a maximum of 2 <TrackingCategory>
+  // elements." Refused here as well as by a CHECK constraint, so a bad payload
+  // never reaches the database or n8n.
+  tracking: z
+    .array(
+      z.object({
+        categoryId: z.string().min(1),
+        categoryName: z.string(),
+        optionId: z.string().min(1),
+        optionName: z.string(),
+      }),
+    )
+    .max(MAX_TRACKING_PER_LINE)
+    .optional(),
   /** Present only when the reviewer manually edited the tax amount. */
   tax_amount_override: z.number().finite().min(0).nullable().optional(),
 })
@@ -134,6 +149,7 @@ export async function saveInvoiceDraft(input: z.infer<typeof Input>): Promise<Sa
     line_total: computeDraftLineTotal(l.quantity, l.unit_price, l.discount_percentage),
     is_shipping: l.is_shipping,
     ship_from_depot: l.ship_from_depot,
+    tracking: l.tracking ?? [],
     ship_from_locked: l.ship_from_locked,
   }))
 

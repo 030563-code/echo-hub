@@ -8,7 +8,7 @@
  * pending state and is disabled while in flight.
  */
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { AlertTriangle, Loader2, Lock, MapPin, Plus, Trash2 } from 'lucide-react'
@@ -26,6 +26,13 @@ import {
 } from '@/lib/customer-invoice/constants'
 import { computeDraftLineTotal } from '@/lib/customer-invoice/build-draft'
 import { TaxDetail } from './tax-detail'
+import { getTrackingCategories } from '@/app/actions/invoicing/tracking-categories'
+import {
+  parseLineTracking,
+  setLineTracking,
+  type LineTracking,
+  type TrackingCategory,
+} from '@/lib/customer-invoice/tracking'
 import { roundCents } from '@/lib/quote-math'
 import type { CustomerInvoiceLineRow, CustomerInvoiceRow } from '@/app/actions/invoicing/shared'
 import { saveInvoiceDraft } from '@/app/actions/invoicing/save-draft'
@@ -61,6 +68,7 @@ interface EditableLine {
   ship_from_locked: boolean
   tax_amount: string
   tax_override: boolean
+  tracking: LineTracking[]
 }
 
 interface InvoiceEditorProps {
@@ -94,6 +102,7 @@ function toEditable(line: CustomerInvoiceLineRow): EditableLine {
     ship_from_locked: line.ship_from_locked,
     tax_amount: line.tax_amount === null ? '' : String(line.tax_amount),
     tax_override: line.tax_override,
+    tracking: parseLineTracking(line.tracking),
   }
 }
 
@@ -117,6 +126,21 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
     { status: 'idle' } | { status: 'loading' } | { status: 'ok'; place: string; state: string } | { status: 'error'; message: string }
   >({ status: 'idle' })
   const [rows, setRows] = useState<EditableLine[]>(lines.map(toEditable))
+  // Read from Xero once per editor. Empty is a valid answer: an organisation
+  // that uses no tracking simply gets no pickers, which is why a failure here
+  // is logged rather than shown as an error over the whole invoice.
+  const [trackingCategories, setTrackingCategories] = useState<TrackingCategory[]>([])
+  useEffect(() => {
+    let cancelled = false
+    getTrackingCategories().then((result) => {
+      if (cancelled) return
+      if (result.success) setTrackingCategories(result.categories)
+      else console.error('Tracking categories could not be loaded:', result.error)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
   // What TaxJar last returned per line, used to decide whether an edited tax
   // cell is genuinely a manual override.
   const calculatedTaxByKey = useMemo(
@@ -227,6 +251,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
         ship_from_locked: false,
         tax_amount: '',
         tax_override: false,
+        tracking: [],
       },
     ])
   }
@@ -299,6 +324,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
       discount_percentage: Number(row.discount_percentage) || 0,
       is_shipping: row.is_shipping,
       ship_from_depot: row.ship_from_depot,
+      tracking: row.tracking,
       tax_amount_override:
         row.tax_override && row.tax_amount !== '' && row.tax_amount !== calculatedTaxByKey.get(row.line_key)
           ? Number(row.tax_amount) || 0
@@ -728,6 +754,9 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
               <th className="px-3 py-3 w-20">Disc %</th>
               <th className="px-3 py-3 w-24">Account</th>
               <th className="px-3 py-3 w-32">Ships from</th>
+              {/* Only rendered when Xero actually has tracking configured, so
+                  an organisation that uses none does not get a dead column. */}
+              {trackingCategories.length > 0 && <th className="px-3 py-3 w-44">Tracking</th>}
               <th className="px-3 py-3 w-28 text-right">Line total</th>
               <th className="px-3 py-3 w-28 text-right">Tax</th>
               <th className="px-3 py-3 w-10" />
@@ -847,6 +876,41 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                       </select>
                     )}
                   </td>
+                  {trackingCategories.length > 0 && (
+                    <td className="px-3 py-2">
+                      {/* One picker per ACTIVE category. Xero allows at most two
+                          categories per organisation and at most two tracking
+                          elements per line, so the two limits coincide and
+                          there is nothing to cap here beyond what Xero offers. */}
+                      <div className="space-y-1.5">
+                        {trackingCategories.map((category) => {
+                          const chosen = row.tracking.find((t) => t.categoryId === category.categoryId)
+                          return (
+                            <select
+                              key={category.categoryId}
+                              aria-label={category.name}
+                              title={category.name}
+                              className="flex h-8 w-full rounded-md border border-gray-300 bg-white px-2 py-0 text-xs shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                              value={chosen?.optionId ?? ''}
+                              onChange={(e) =>
+                                updateRow(row.line_key, {
+                                  tracking: setLineTracking(row.tracking, category, e.target.value),
+                                })
+                              }
+                              disabled={!editable}
+                            >
+                              <option value="">{category.name}: none</option>
+                              {category.options.map((option) => (
+                                <option key={option.optionId} value={option.optionId}>
+                                  {category.name}: {option.name}
+                                </option>
+                              ))}
+                            </select>
+                          )
+                        })}
+                      </div>
+                    </td>
+                  )}
                   <td className="px-3 py-2 text-right tabular-nums pt-4">{money.format(lineTotal)}</td>
                   <td className="px-3 py-2">
                     <Input

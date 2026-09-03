@@ -92,6 +92,19 @@ export async function xeroItemAccounts(): Promise<XeroCall<Record<string, string
   return res.ok ? { ok: true, data: res.data.accounts ?? {} } : res
 }
 
+/**
+ * The organisation's tracking categories, straight from Xero.
+ *
+ * Read live rather than cached in our schema: a category or option added in
+ * Xero must be pickable immediately, and unlike a bill-to there is nothing here
+ * that an issued invoice needs frozen. What IS frozen is the rep's selection,
+ * which stores the id and the name together on the line.
+ */
+export async function xeroTrackingCategories(): Promise<XeroCall<unknown[]>> {
+  const res = await callXero<{ categories?: unknown[] }>({ action: 'lookup_tracking_categories' })
+  return res.ok ? { ok: true, data: res.data.categories ?? [] } : res
+}
+
 /** The Xero contact for an account number, or null when Xero has none. */
 export async function xeroFindContact(accountNumber: string): Promise<XeroCall<XeroContact | null>> {
   const account = accountNumber.trim()

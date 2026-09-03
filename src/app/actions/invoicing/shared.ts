@@ -103,6 +103,8 @@ export interface CustomerInvoiceLineRow {
   tax_amount: number | null
   taxable_amount: number | null
   combined_tax_rate: number | null
+  /** Xero tracking, max 2 per line. Read back with parseLineTracking. */
+  tracking: unknown
   tax_override: boolean
 }
 
