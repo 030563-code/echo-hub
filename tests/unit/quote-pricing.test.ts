@@ -174,3 +174,26 @@ describe('toRegistryLine keeps every key the rest of the system reads', () => {
     expect(draft.line_total).toBe(cash.lines[0].lineTotal)
   })
 })
+
+describe('the SKU decides the price, so the caller must supply an authoritative one', () => {
+  it('prices the SAME product completely differently depending on the sku it is given', () => {
+    // This is why createQuote resolves the sku from HubSpot by productId before
+    // calling here, rather than passing the browser's. With a real sku the line
+    // takes the 178.00 list price. With the sku blank it falls to the manual
+    // branch and honours whatever unit price came in, which for a crafted
+    // request was a way to sell a listed item at any number it liked.
+    const withSku = priceCart({ ...base, lines: [line({ sku: 'EBH9NA', unitPrice: 5 })] })
+    const withoutSku = priceCart({ ...base, lines: [line({ sku: '', unitPrice: 5 })] })
+
+    expect(withSku.ok && withSku.lines[0].priceSource).toBe('list')
+    expect(withSku.ok && withSku.lines[0].priced.netUnitPrice).toBe(178)
+
+    expect(withoutSku.ok && withoutSku.lines[0].priceSource).toBe('manual')
+    expect(withoutSku.ok && withoutSku.lines[0].priced.netUnitPrice).toBe(5)
+  })
+
+  it('also loses the floor when the sku is missing, so the cap has nothing to bite on', () => {
+    const withoutSku = priceCart({ ...base, lines: [line({ sku: '', unitPrice: 5 })] })
+    expect(withoutSku.ok && withoutSku.lines[0].floorPrice).toBeNull()
+  })
+})

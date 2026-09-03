@@ -10,6 +10,7 @@ import { parseWinProbability, validateLineItems } from '@/lib/quote-math'
 import { priceCart, toRegistryLine } from '@/lib/quote-pricing'
 import { runQuotePipeline, type PublishedQuote } from '@/app/actions/sales/publish-quote'
 import { nextQuoteNumber } from '@/lib/hubspot-quote'
+import { quoteTemplateIdFor } from '@/lib/pipeline-config'
 import { splitFullName } from '@/lib/name'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { loadPricingForQuote } from '@/app/actions/pricing/get-pricing'
@@ -163,6 +164,28 @@ export async function createQuote(params: CreateQuoteParams) {
   // which is exactly the cross-location case this guard exists to stop. The one
   // exception is the SKU derivation itself: if we can't reach HubSpot to derive
   // SKUs, we FAIL CLOSED (below) rather than silently trusting the client.
+  // Derived for EVERY caller, not just the ones the depot guard runs for,
+  // because pricing needs it too. A line's SKU decides which list or contract
+  // price applies, and taking that from the browser let a crafted request send
+  // a real productId with a blank sku, fall through to the "no Supabase price"
+  // branch, and name its own unit price. Fetched once and used by both.
+  const productIds = Array.from(
+    new Set(
+      params.lineItems
+        .map((li) => li.productId?.trim())
+        .filter((id): id is string => !!id)
+    )
+  )
+  const skuResult = productIds.length > 0
+    ? await getProductSkus(productIds)
+    : { success: true as const, data: {} as Record<string, string> }
+  if (!skuResult.success) {
+    console.error('getProductSkus failed:', skuResult.error)
+    return { success: false, error: 'Could not verify products with HubSpot. Please try again.' }
+  }
+  /** productId to the SKU HubSpot holds. The authority on what each line IS. */
+  const skuByProductId: Record<string, string> = skuResult.data ?? {}
+
   if (!profile.is_super_admin && isDirectSale) {
     // With no depot chosen yet, validate against the union of the caller's own
     // depots — cross-region SKUs (EB-SRO's manufacturing codes above all) stay
@@ -170,21 +193,8 @@ export async function createQuote(params: CreateQuoteParams) {
     const depotScope: string[] = effectiveDepot
       ? [effectiveDepot]
       : ((profile.allowed_depots as string[] | null) ?? [])
-    const productIds = Array.from(
-      new Set(
-        params.lineItems
-          .map((li) => li.productId?.trim())
-          .filter((id): id is string => !!id)
-      )
-    )
 
-    const skuResult = await getProductSkus(productIds)
-    if (!skuResult.success) {
-      console.error('getProductSkus failed:', skuResult.error)
-      return { success: false, error: 'Could not verify products for this depot. Please try again.' }
-    }
-
-    const derivedSkus = Object.values(skuResult.data ?? {})
+    const derivedSkus = Object.values(skuByProductId)
     const clientSkus = params.lineItems
       .map((li) => li.sku?.trim())
       .filter((s): s is string => !!s)
@@ -272,7 +282,13 @@ export async function createQuote(params: CreateQuoteParams) {
     userId: user.id,
   })
   const pricedCart = priceCart({
-    lines: params.lineItems,
+    // The SKU comes from HubSpot, never from the browser. Falling back to the
+    // client value only when HubSpot has none keeps a genuinely SKU-less
+    // product quotable, which is the case the manual price path exists for.
+    lines: params.lineItems.map((li) => ({
+      ...li,
+      sku: skuByProductId[String(li.productId ?? '').trim()] ?? li.sku,
+    })),
     currency: dealCurrencyForPricing,
     companyId,
     listPrices: pricing.listPrices,
@@ -286,6 +302,26 @@ export async function createQuote(params: CreateQuoteParams) {
     return { success: false, error: pricedCart.error }
   }
   const computedTotal = pricedCart.total
+
+  // 3c. The HubSpot quote template, checked HERE rather than at publish time.
+  //
+  // A quote cannot be published without one and the association cannot be added
+  // after creation, so a missing template is fatal. It used to be discovered at
+  // the very end, after the deal had been moved to Quotation sent, its line
+  // items replaced and the registry row written, and after a refusal that
+  // happened before the deal_quotes row existed, which left Retry with nothing
+  // to resume. The rep was stuck with a half-applied deal and no way forward.
+  //
+  // Six of eight live profiles carry no allowed_quote_templates at all and fall
+  // through to the value 'default', which has no template id, so this is the
+  // common case rather than an edge one.
+  const quoteTemplateId = quoteTemplateIdFor(params.template)
+  if (!quoteTemplateId) {
+    return {
+      success: false,
+      error: `No HubSpot quote template is mapped to "${params.template || 'none'}", so a quote cannot be branded or published. Choose the US or Canada template in Quote Setup, or ask for this one to be mapped. Nothing has been changed.`,
+    }
+  }
 
   let createdLineItemIds: string[] = []
 
