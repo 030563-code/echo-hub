@@ -2,9 +2,10 @@
 -- quote ledger. Target project korylyniwsqtsvzuzydg ("Hubspot Shipping and
 -- Stocks"). Design: ~/.claude/plans (Phase B plan, 2026-09-02).
 --
--- NOT YET APPLIED. Lives in migrations/pending/ so migrations/ stays a mirror
--- of live. Apply via MCP apply_migration, then MOVE this file into
--- migrations/. Never `db push`.
+-- APPLIED LIVE via MCP apply_migration (quotes_phase_b_pricing_and_deal_quotes)
+-- on korylyniwsqtsvzuzydg, 2026-09-03. This file is the repo mirror.
+-- Never `db push`. Rollback:
+-- supabase/migrations/rollback/20260903000000_pricing_and_deal_quotes.down.sql
 --
 -- Additive only: six new tables, two capability catalogue rows. It does not
 -- touch deals_registry. That is deliberate: deals_registry carries an
