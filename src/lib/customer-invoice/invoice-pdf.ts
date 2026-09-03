@@ -142,15 +142,16 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<import('j
     // due date yet, and "—  ·  Net 30" reads as a broken field rather than as
     // terms that have not been applied to a date.
     ['DUE', [inv.dueOn ? formatDate(inv.dueOn) : null, inv.paymentTerms].filter((p) => p).join('  ·  ') || '—'],
-    ['CUSTOMER', inv.customerName],
-    [inv.isCollection ? 'COLLECTION' : 'SHIP TO', inv.shipTo],
   ]
   if (inv.customerPoNumber) metaPairs.push(['CUSTOMER PO', inv.customerPoNumber])
-  metaPairs.push(
+  // Depots are named by PLACE, never by our internal code (Dean, 2026-09-03).
+  // "EX US-BAL" means nothing to a buyer; "Jessup MD" does.
+  metaPairs.push([
+    'DESPATCHED FROM',
     inv.isSplit
-      ? ['SHIPMENTS', `${inv.shipments.length} — ${inv.shipments.map((s) => s.depot).join(' and ')}`]
-      : ['EX DEPOT', inv.shipments[0]?.label ?? '—'],
-  )
+      ? `${inv.shipments.length} shipments, ${inv.shipments.map((s) => s.label).join(' and ')}`
+      : (inv.shipments[0]?.label ?? '—'),
+  ])
 
   const boxWidth = pageWidth - MARGIN * 2
   const columns = 3
@@ -177,7 +178,38 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<import('j
     doc.setTextColor(0, 0, 0)
     doc.text(doc.splitTextToSize(value, colWidth - 8) as string[], x, cellY + 5)
   })
-  y += boxHeight + 10
+  y += boxHeight + 8
+
+  // --- Bill to and ship to, side by side ---
+  // Both in full. They are routinely different (a head office pays, a site
+  // receives), and the delivery address is the one the tax was calculated
+  // against, so a customer checking the rate needs to see it.
+  {
+    const addrColWidth = (pageWidth - MARGIN * 2) / 2
+    const blocks: [string, string[]][] = [
+      ['BILL TO', inv.billTo.length > 0 ? inv.billTo : [inv.customerName]],
+      [inv.isCollection ? 'COLLECTION' : 'SHIP TO', inv.shipTo.length > 0 ? inv.shipTo : ['—']],
+    ]
+    let tallest = 0
+    blocks.forEach(([label, lines], i) => {
+      const x = MARGIN + i * addrColWidth
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(7)
+      doc.setTextColor(...LABEL_COLOR)
+      doc.text(label, x, y)
+      doc.setFontSize(10)
+      doc.setTextColor(0, 0, 0)
+      let lineY = y + 5
+      for (const text of lines) {
+        for (const wrapped of doc.splitTextToSize(text, addrColWidth - 8) as string[]) {
+          doc.text(wrapped, x, lineY)
+          lineY += 4.6
+        }
+      }
+      tallest = Math.max(tallest, lineY - y)
+    })
+    y += tallest + 6
+  }
 
   // --- Lines ---
   // A single-depot invoice is a flat table. A split one groups by shipment,
@@ -192,7 +224,7 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<import('j
       const ref = shipment.taxjarTransactionId ? `   ·   TaxJar ${shipment.taxjarTransactionId}` : ''
       body.push([
         {
-          content: `EX ${shipment.label}${ref}`,
+          content: `${shipment.label}${ref}`,
           colSpan: 7,
           styles: { fontStyle: 'bold', fillColor: [244, 246, 243], textColor: HEADING_COLOR, fontSize: 8 },
         },
@@ -213,7 +245,7 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<import('j
     }
     if (inv.isSplit) {
       body.push([
-        { content: `Shipment subtotal, ex ${shipment.depot}`, colSpan: 3, styles: { fontStyle: 'bold' } },
+        { content: `Subtotal, ${shipment.label}`, colSpan: 3, styles: { fontStyle: 'bold' } },
         { content: money(shipment.net, currency), styles: { fontStyle: 'bold' } },
         '',
         { content: money(shipment.tax, currency), styles: { fontStyle: 'bold' } },
@@ -318,7 +350,8 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<import('j
     doc.setTextColor(...LABEL_COLOR)
     for (const detail of inv.taxDetail) {
       if (!detail.resolvedPlace) continue
-      const prefix = inv.isSplit ? `${detail.depot}: ` : ''
+      const place = inv.shipments.find((sh) => sh.depot === detail.depot)?.label ?? detail.depot
+      const prefix = inv.isSplit ? `${place}: ` : ''
       doc.text(`${prefix}Tax jurisdiction ${detail.resolvedPlace}`, MARGIN, y)
       y += 4
     }

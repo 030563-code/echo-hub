@@ -20,6 +20,14 @@ const header = (over: Partial<InvoiceDocumentHeaderRow> = {}): InvoiceDocumentHe
   delivery_zip: '90066',
   delivery_street: '5310 Beethoven St',
   is_collection: false,
+  billing_name: 'Apex Construction LLC',
+  billing_line1: '1200 Wilshire Blvd',
+  billing_line2: null,
+  billing_city: 'Los Angeles',
+  billing_region: 'CA',
+  billing_postal_code: '90017',
+  billing_country: 'US',
+  billing_email: 'ap@apex.example',
   subtotal: 22295, shipping_total: 1303.64, tax_total: 2173.76, total: 25772.4,
   taxjar_response: null,
   ...over,
@@ -62,7 +70,8 @@ describe('the live Apex invoice', () => {
   it('is a single shipment, so the table stays flat', () => {
     expect(doc.isSplit).toBe(false)
     expect(doc.shipments).toHaveLength(1)
-    expect(doc.shipments[0].label).toBe('US-BAL, Jessup MD')
+    // The customer reads a place, not our depot code.
+    expect(doc.shipments[0].label).toBe('Jessup MD')
   })
 
   it('puts goods before the freight they were shipped with', () => {
@@ -163,12 +172,59 @@ describe('edge cases', () => {
       [line({ line_key: 'L1', name: 'H8', quantity: 1, unit_price: 100, line_total: 100 })],
       { remittance: REMIT },
     )
-    expect(doc.shipTo).toBe('Collected by the customer')
+    expect(doc.shipTo).toEqual(['Collected by the customer'])
   })
 
   it('renders nothing rather than throwing when there are no product lines', () => {
     const doc = buildInvoiceDocument(header(), [], { remittance: REMIT })
     expect(doc.shipments).toEqual([])
     expect(doc.totalDue).toBe(0)
+  })
+})
+
+describe('addresses on the document', () => {
+  const doc = buildInvoiceDocument(
+    header(),
+    [line({ line_key: 'L1', name: 'H8', quantity: 1, unit_price: 100, line_total: 100 })],
+    { remittance: REMIT },
+  )
+
+  it('prints the delivery address in full, street included', () => {
+    // Previously only "Los Angeles, CA 90066" printed. A delivery address with
+    // no street is not a delivery address, and it is what the tax was
+    // calculated against.
+    expect(doc.shipTo).toEqual(['5310 Beethoven St', 'Los Angeles, CA 90066'])
+  })
+
+  it('prints the Xero contact as the bill-to', () => {
+    expect(doc.billTo).toEqual([
+      'Apex Construction LLC',
+      '1200 Wilshire Blvd',
+      'Los Angeles, CA 90017',
+      'US',
+      'ap@apex.example',
+    ])
+  })
+
+  it('falls back to the company name and skips what Xero does not hold', () => {
+    const bare = buildInvoiceDocument(
+      header({ billing_name: null, billing_line1: null, billing_line2: null, billing_city: null,
+               billing_region: null, billing_postal_code: null, billing_country: null, billing_email: null }),
+      [line({ line_key: 'L1', name: 'H8', quantity: 1, unit_price: 100, line_total: 100 })],
+      { remittance: REMIT },
+    )
+    expect(bare.billTo).toEqual(['Apex'])
+  })
+
+  it('names the depot by place, never by code', () => {
+    const split = buildInvoiceDocument(
+      header({ invoice_number: 'EBUS26-0007' }),
+      [
+        line({ line_key: 'A', name: 'H20', quantity: 1, unit_price: 1, line_total: 1, ship_from_depot: 'US-BAL' }),
+        line({ line_key: 'B', name: 'H20', quantity: 1, unit_price: 1, line_total: 1, ship_from_depot: 'US-SBD' }),
+      ],
+      { remittance: REMIT },
+    )
+    expect(split.shipments.map((s) => s.label)).toEqual(['Jessup MD', 'Rancho Cucamonga CA'])
   })
 })

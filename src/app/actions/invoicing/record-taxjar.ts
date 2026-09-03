@@ -30,6 +30,7 @@ import {
   loadInvoiceWithLines,
   logInvoiceEvent,
   recordTaxJarOrders,
+  snapshotBillingContact,
 } from '@/app/actions/invoicing/shared'
 
 const Input = z.object({ invoiceId: z.string().uuid() })
@@ -70,9 +71,13 @@ export async function sendOrderToTaxJar(input: { invoiceId: string }): Promise<R
   let dueDate = invoice.due_date
   let termsLabel = invoice.payment_terms_label
 
-  if (!dueDate || !termsLabel) {
+  if (!dueDate || !termsLabel || !invoice.billing_snapshot_at) {
     const contact = invoice.taxjar_customer_id ? await xeroFindContact(invoice.taxjar_customer_id) : null
     const terms = contact && contact.ok && contact.data ? contact.data.payment_terms : null
+    // The bill-to block is frozen here too, in the same lookup. From this point
+    // the invoice prints from its own copy, so an edit in Xero afterwards
+    // cannot change what an issued document says.
+    if (contact && contact.ok && contact.data) await snapshotBillingContact(invoiceId, contact.data)
     dueDate = dueDate ?? dueDateFromTerms(invoiceDate, terms)
     // Snapshotted as WORDS as well as a date. Re-deriving it from Xero at print
     // time would let an edit there change the terms on an issued invoice.

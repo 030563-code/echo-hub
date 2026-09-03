@@ -12,7 +12,7 @@
 
 import { z } from 'zod'
 import { getAuthorizedUser } from '@/lib/authz'
-import { requireInvoicingManage } from '@/app/actions/invoicing/shared'
+import { requireInvoicingManage, snapshotBillingContact } from '@/app/actions/invoicing/shared'
 import { xeroFindContact, xeroSaveContact, type XeroContact } from '@/lib/xero-hub'
 
 const AccountNumber = z.string().trim().min(1).max(64)
@@ -39,6 +39,8 @@ const SaveInput = z.object({
     .object({ day: z.number().int().min(0).max(365), type: z.string().trim().min(1).max(40) })
     .nullable()
     .optional(),
+  /** When present the saved contact is frozen onto this invoice. */
+  invoiceId: z.string().uuid().optional(),
 })
 
 export type ContactLookupResult =
@@ -48,7 +50,9 @@ export type ContactLookupResult =
 
 export type ContactSaveResult = { success: true; contact: XeroContact } | { success: false; error: string }
 
-export async function lookupInvoiceContact(input: { accountNumber: string }): Promise<ContactLookupResult> {
+export async function lookupInvoiceContact(
+  input: { accountNumber: string; invoiceId?: string },
+): Promise<ContactLookupResult> {
   const auth = await getAuthorizedUser()
   if (!auth.ok) return { success: false, error: auth.error }
   if (!(auth.capabilities.has('invoicing.view') || auth.capabilities.has('invoicing.manage'))) {
@@ -60,6 +64,9 @@ export async function lookupInvoiceContact(input: { accountNumber: string }): Pr
 
   const res = await xeroFindContact(parsed.data)
   if (!res.ok) return { success: false, error: res.error }
+  // Looking the contact up on the invoice page IS the moment the rep confirms
+  // who is being billed, so that is when it gets frozen onto the invoice.
+  if (res.data && input.invoiceId) await snapshotBillingContact(input.invoiceId, res.data)
   return res.data ? { success: true, found: true, contact: res.data } : { success: true, found: false }
 }
 
@@ -84,5 +91,6 @@ export async function saveInvoiceContact(input: z.input<typeof SaveInput>): Prom
     paymentTerms: d.paymentTerms ?? null,
   })
   if (!res.ok) return { success: false, error: res.error }
+  if (d.invoiceId) await snapshotBillingContact(d.invoiceId, res.data)
   return { success: true, contact: res.data }
 }

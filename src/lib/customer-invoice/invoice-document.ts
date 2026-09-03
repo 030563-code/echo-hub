@@ -54,6 +54,14 @@ export interface InvoiceDocumentHeaderRow {
   delivery_zip: string | null
   delivery_street: string | null
   is_collection: boolean
+  billing_name: string | null
+  billing_line1: string | null
+  billing_line2: string | null
+  billing_city: string | null
+  billing_region: string | null
+  billing_postal_code: string | null
+  billing_country: string | null
+  billing_email: string | null
   subtotal: number | string | null
   shipping_total: number | string | null
   tax_total: number | string | null
@@ -98,7 +106,12 @@ export interface InvoiceDocument {
   paymentTerms: string | null
   customerName: string
   customerPoNumber: string | null
-  shipTo: string
+  /** The delivery address in full. Empty on a collected order except for the
+   *  line saying so. */
+  shipTo: string[]
+  /** The Xero contact, snapshotted. Empty when it has not been captured yet,
+   *  which a preview shows rather than hides. */
+  billTo: string[]
   isCollection: boolean
   currency: string
   shipments: InvoiceDocumentShipment[]
@@ -115,18 +128,55 @@ export interface InvoiceDocument {
   remittance: RemittanceDetails
 }
 
-function shipToLine(header: InvoiceDocumentHeaderRow): string {
-  if (header.is_collection) return 'Collected by the customer'
-  const parts = [header.delivery_city, header.delivery_state].filter((p) => p && p.trim() !== '')
-  const line = parts.join(', ')
-  const zip = (header.delivery_zip ?? '').trim()
-  return [line, zip].filter((p) => p !== '').join(' ')
+/**
+ * The delivery address in full, as lines.
+ *
+ * The street was previously dropped and only "Los Angeles, CA 90066" printed.
+ * A delivery address without a street is not a delivery address, and it is the
+ * field the tax was calculated against, so it is the one the customer is most
+ * likely to want to check.
+ */
+function shipToLines(header: InvoiceDocumentHeaderRow): string[] {
+  if (header.is_collection) return ['Collected by the customer']
+  const street = (header.delivery_street ?? '').trim()
+  const cityState = [header.delivery_city, header.delivery_state]
+    .map((p) => (p ?? '').trim())
+    .filter((p) => p !== '')
+    .join(', ')
+  const last = [cityState, (header.delivery_zip ?? '').trim()].filter((p) => p !== '').join(' ')
+  return [street, last].filter((p) => p !== '')
 }
 
-function depotLine(depot: USDepot): string {
+/** The Xero contact as printed lines, skipping whatever Xero does not hold. */
+function billToLines(header: InvoiceDocumentHeaderRow): string[] {
+  const cityRegion = [header.billing_city, header.billing_region]
+    .map((p) => (p ?? '').trim())
+    .filter((p) => p !== '')
+    .join(', ')
+  const last = [cityRegion, (header.billing_postal_code ?? '').trim()].filter((p) => p !== '').join(' ')
+  return [
+    header.billing_name ?? header.company_name,
+    header.billing_line1,
+    header.billing_line2,
+    last,
+    header.billing_country,
+    header.billing_email,
+  ]
+    .map((p) => (p ?? '').trim())
+    .filter((p) => p !== '')
+}
+
+/**
+ * The depot as the CUSTOMER should read it: "Jessup MD", not "EX US-BAL".
+ *
+ * Dean, 2026-09-03. The code is ours, it means nothing to a buyer, and on a
+ * document whose whole job is to be understood by someone outside the company
+ * it is noise. Falls back to the code only when a depot has no configured
+ * address, where a code is still better than a blank.
+ */
+function depotPlace(depot: USDepot): string {
   const from = DEPOT_FROM_ADDRESSES[depot]
-  const place = from ? `${from.city} ${from.state}` : ''
-  return place === '' ? depotLabel(depot) : `${depot}, ${place}`
+  return from ? `${from.city} ${from.state}` : depotLabel(depot)
 }
 
 function toDocumentLine(row: InvoiceDocumentLineRow): InvoiceDocumentLine {
@@ -174,7 +224,7 @@ export function buildInvoiceDocument(
     const tax = roundCents(docLines.reduce((acc, l) => acc + l.tax, 0))
     return {
       depot: group.depot,
-      label: depotLine(group.depot),
+      label: depotPlace(group.depot),
       taxjarTransactionId: header.invoice_number
         ? filingTransactionId(header.invoice_number, group.depot, grouped.length)
         : null,
@@ -214,7 +264,8 @@ export function buildInvoiceDocument(
     paymentTerms: opts.paymentTerms ?? null,
     customerName: header.company_name ?? 'Customer',
     customerPoNumber: header.customer_po_number,
-    shipTo: shipToLine(header),
+    shipTo: shipToLines(header),
+    billTo: billToLines(header),
     isCollection: header.is_collection,
     currency: header.currency || 'USD',
     shipments,
