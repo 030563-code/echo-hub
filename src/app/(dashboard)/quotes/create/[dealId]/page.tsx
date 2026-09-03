@@ -1,4 +1,5 @@
 import { getSalesProfileSettings } from '@/app/actions/sales/get-profile-settings'
+import { loadPricingForQuote } from '@/app/actions/pricing/get-pricing'
 import { getHubSpotProducts } from '@/app/actions/hubspot/getProducts'
 import { getDealDetails } from '@/app/actions/hubspot/getDealDetails'
 import { getContactDetails } from '@/app/actions/hubspot/getContactDetails'
@@ -17,7 +18,7 @@ import type { ComponentProps } from 'react'
 type FormProps = ComponentProps<typeof CreateQuoteForm>
 
 export default async function CreateQuotePage(props: { params: Promise<{ dealId: string }> }) {
-  await requireCapability('quotes.create')
+  const auth = await requireCapability('quotes.create')
   const params = await props.params;
   const supabase = await createServerClient()
   
@@ -104,6 +105,15 @@ export default async function CreateQuotePage(props: { params: Promise<{ dealId:
   // The deal's own currency drives the builder's money formatting and the
   // quote PDF. Falls back to USD only when the deal genuinely has none.
   const dealCurrency = (deal?.properties?.deal_currency_code || '').trim().toUpperCase() || 'USD'
+  // The price list, this customer's contract prices and this rep's discount
+  // limit, loaded once and handed to the builder so the browser prices the cart
+  // with exactly the rows createQuote will price it with.
+  const pricing = await loadPricingForQuote({
+    companyId: companyId ?? null,
+    currency: dealCurrency,
+    userId: auth.user.id,
+  })
+
   const rawSendingDepot = (deal?.properties?.sending_depot || '').trim()
   const initialDepot =
     depotNameToCode[rawSendingDepot] ?? (rawSendingDepot in DEPOT_MAPPING ? rawSendingDepot : '')
@@ -133,6 +143,14 @@ export default async function CreateQuotePage(props: { params: Promise<{ dealId:
         companyName={companyName}
         initialLineItems={existingLineItems}
         initialComments={initialComments}
+        companyId={companyId ?? null}
+        pricing={{
+          listPrices: pricing.listPrices,
+          contractPrices: pricing.contractPrices,
+          cap: pricing.cap,
+          contractorName: pricing.contractorName,
+          isSuperAdmin: auth.profile.is_super_admin === true,
+        }}
       />
     </div>
   )

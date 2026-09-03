@@ -7,22 +7,26 @@ import { addLineItemsToDeal } from '@/app/actions/hubspot/addLineItems'
 import { getProductSkus } from '@/app/actions/hubspot/getProductSkus'
 import { uploadFileToHubSpot, createNoteWithAttachment, createEmailDraftWithAttachment } from '@/app/actions/hubspot/uploadFile'
 import { QUOTATION_SENT_STAGES, HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
-import {
-  computeLineItemsTotal,
-  computeLineTotal,
-  parseWinProbability,
-  validateLineItems,
-} from '@/lib/quote-math'
+import { parseWinProbability, validateLineItems } from '@/lib/quote-math'
+import { priceCart, toRegistryLine } from '@/lib/quote-pricing'
+import { loadPricingForQuote } from '@/app/actions/pricing/get-pricing'
+import type { DiscountMode } from '@/lib/pricing'
 import { assertDealAccess } from '@/lib/authz'
 
 interface QuoteLineItem {
   productId: string
   name: string
   quantity: number
+  /** A PROPOSAL. Honoured only for a SKU with no Supabase price; otherwise the
+   *  server resolves the price itself and this is ignored. */
   unitPrice: number
   total: number
   sku?: string
   description?: string
+  /** The rep's discount entry, as a percentage or as money off each unit. Also
+   *  a proposal: the cap is enforced server-side against the resolved base. */
+  discountMode?: DiscountMode
+  discountValue?: number
 }
 
 interface CreateQuoteParams {
@@ -240,10 +244,6 @@ export async function createQuote(params: CreateQuoteParams) {
     }
   }
 
-  // 1b. Recompute the amount server-side from the line items — never trust the
-  // client-supplied totalAmount (finding #10).
-  const computedTotal = computeLineItemsTotal(params.lineItems)
-
   // 1c. Probability of close (the backbone). Parse the HubSpot win_probability
   // option value to a number for deals_registry.deal_probability; null if absent
   // or non-numeric (don't clobber an n8n-synced value with null on re-quote).
@@ -280,6 +280,38 @@ export async function createQuote(params: CreateQuoteParams) {
   const pipelineId = deal?.properties?.pipeline
 
   /** HubSpot ids of the line items created below, in the order they were sent. */
+  // 3b. Price the cart server-side. The client's unit prices and percentages
+  // are proposals: the price comes from Supabase (contract, then list) and the
+  // cap is checked against the resolved base, so a crafted request can neither
+  // name its own price nor discount past what Dave allowed. The only figure
+  // still taken from the browser is the unit price of a SKU with no Supabase
+  // row at all, which is exactly today's behaviour and stays legal while the
+  // price list is being filled.
+  //
+  // Reads the SAME rows the builder was given, through the same loader, so the
+  // two cannot disagree about what the list price was.
+  const dealCurrencyForPricing = String(deal?.properties?.deal_currency_code ?? 'USD').trim().toUpperCase() || 'USD'
+  const pricing = await loadPricingForQuote({
+    companyId,
+    currency: dealCurrencyForPricing,
+    userId: user.id,
+  })
+  const pricedCart = priceCart({
+    lines: params.lineItems,
+    currency: dealCurrencyForPricing,
+    companyId,
+    listPrices: pricing.listPrices,
+    contractPrices: pricing.contractPrices,
+    cap: pricing.cap,
+    isSuperAdmin: profile.is_super_admin === true,
+    today: new Date().toISOString().slice(0, 10),
+  })
+  if (!pricedCart.ok) {
+    // Before any HubSpot write, so a refused discount leaves nothing behind.
+    return { success: false, error: pricedCart.error }
+  }
+  const computedTotal = pricedCart.total
+
   let createdLineItemIds: string[] = []
 
   // Without a pipeline there is no stage to move the deal to, so every HubSpot
@@ -360,7 +392,23 @@ export async function createQuote(params: CreateQuoteParams) {
     // C. Add Line Items to HubSpot Deal. The cart is guaranteed non-empty by
     // the pre-write guard above.
     {
-      const r = await addLineItemsToDeal(params.dealId, params.lineItems)
+      const r = await addLineItemsToDeal(
+        params.dealId,
+        pricedCart.lines.map((l) => ({
+          productId: l.productId,
+          name: l.name,
+          quantity: l.quantity,
+          // The base, with the discount as its own property: HubSpot derives
+          // the line amount itself and would discount the net a second time.
+          unitPrice: l.priced.hubspot.price,
+          total: l.lineTotal,
+          sku: l.sku,
+          description: l.description,
+          discountPercentage: l.priced.hubspot.hs_discount_percentage,
+          discountPerUnit: l.priced.hubspot.discount,
+        })),
+        dealCurrencyForPricing,
+      )
       if (r.success) createdLineItemIds = r.lineItemIds ?? []
       // addLineItemsToDeal now replaces rather than appends, so retrying here is
       // safe — the specific HubSpot error (if any) is already logged inside it;
@@ -410,22 +458,20 @@ export async function createQuote(params: CreateQuoteParams) {
     // draft Xero quote and an MCS contract with every price and line total at
     // zero. n8n's own sync writes snake_case, which is why the mismatch has
     // never shown up: no Hub quote has reached acceptance yet.
-    line_items_raw: params.lineItems.map((item, i) => ({
-      name: item.name,
-      sku: item.sku,
-      quantity: item.quantity,
-      unit_price: item.unitPrice,
-      // Derived, never the browser's number: this value reaches the deal
-      // amount and the Xero/MCS payload.
-      total_amount: computeLineTotal(item),
-      hs_product_id: item.productId,
-      // Present only when HubSpot accepted the batch create; the deep sync
-      // fills it in later otherwise.
-      ...(createdLineItemIds[i] ? { hs_line_item_id: createdLineItemIds[i] } : {}),
-      // Rep-edited copy. The enrichment trigger merges rather than replaces, so
-      // this survives; HubSpot remains the durable home for it either way.
-      ...(item.description ? { description: item.description } : {}),
-    })),
+    // Written in the SAME key shape the rest of the system uses, not the
+    // builder's camelCase. notify_quote_accepted() reads unit_price,
+    // total_amount and hs_product_id straight off these elements and COALESCEs
+    // a miss to 0, so a camelCase row reaching Quotation Accepted would post a
+    // draft Xero quote and an MCS contract with every price and line total at
+    // zero.
+    //
+    // unit_price is the PRE-discount base and discount_percentage carries the
+    // cut, which is the pair buildDraftLines bills with. A cash discount stores
+    // the net with a zero percentage instead, so the invoice charges an exact
+    // figure rather than re-deriving one. The BEFORE trigger on this table
+    // merges its Xero fields into each element rather than rebuilding it, so
+    // the new audit keys survive.
+    line_items_raw: pricedCart.lines.map((line, i) => toRegistryLine(line, createdLineItemIds[i])),
     updated_at: new Date().toISOString(),
   }
   // The deal's OWN currency, read off the getDealDetails call already made

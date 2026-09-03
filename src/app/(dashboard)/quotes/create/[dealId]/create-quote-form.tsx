@@ -23,6 +23,8 @@ import { updateDealProperties } from '@/app/actions/hubspot/updateDealProperties
 import { buildQuotePdf, taxRegionForTemplate } from '@/lib/quote-pdf'
 import { depotLabel } from '@/lib/depot-constants'
 import { WIN_PROBABILITY_VALUES } from '@/lib/quote-math'
+import { priceCart } from '@/lib/quote-pricing'
+import { describeCap, type ContractPriceRow, type DiscountCap, type DiscountMode, type ListPriceRow } from '@/lib/pricing'
 import { loadQuoteLogo } from '@/lib/quote-logo'
 import { useRouter } from 'next/navigation'
 
@@ -42,8 +44,12 @@ interface LineItem {
   sku?: string
   description?: string
   quantity: number
+  /** What the rep typed. Only used for a SKU with no Supabase price; for
+   *  everything else the resolved base wins on both sides. */
   unitPrice: number
   total: number
+  discountMode?: DiscountMode
+  discountValue?: number
 }
 
 interface QuoteContact {
@@ -86,6 +92,19 @@ interface CreateQuoteFormProps {
   dealCurrency?: string
   /** win_probability already on the HubSpot deal, e.g. '70%'. */
   initialWinProbability?: string
+  /** The price list, the customer's contract prices and this rep's discount
+   *  limit, loaded once by the page. The browser prices the cart with the same
+   *  pure function the server does, so it never offers a discount the server
+   *  will refuse. */
+  pricing?: {
+    listPrices: ListPriceRow[]
+    contractPrices: ContractPriceRow[]
+    cap: DiscountCap | null
+    contractorName: string | null
+    isSuperAdmin: boolean
+  }
+  /** The deal's HubSpot company, which is what a contract price is keyed to. */
+  companyId?: string | null
 }
 
 // Radix Select can't represent "cleared", so the undecided state gets an
@@ -103,7 +122,7 @@ const mapInitialLineItems = (items: HubSpotLineItem[]): LineItem[] =>
     total: Number(item.properties.amount) || 0,
   }))
 
-export default function CreateQuoteForm({ dealId, dealName, settings, products, salesRep, contact, companyName, initialLineItems = [], initialDepot = '', initialComments = '', dealCurrency = 'USD', initialWinProbability = '' }: CreateQuoteFormProps) {
+export default function CreateQuoteForm({ dealId, dealName, settings, products, salesRep, contact, companyName, initialLineItems = [], initialDepot = '', initialComments = '', dealCurrency = 'USD', initialWinProbability = '', pricing, companyId = null }: CreateQuoteFormProps) {
   const money = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: dealCurrency,
@@ -315,6 +334,19 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     setSelectedProduct('')
   }
 
+  /** A discount is stored as the rep entered it, percentage or money off each
+   *  unit, and resolved into prices by priceCart. Storing the entry rather than
+   *  the result keeps one source of truth for what they chose. */
+  const updateLineItemDiscount = (index: number, patch: { mode?: DiscountMode; value?: number }) => {
+    const newItems = [...lineItems]
+    newItems[index] = {
+      ...newItems[index],
+      ...(patch.mode !== undefined ? { discountMode: patch.mode } : {}),
+      ...(patch.value !== undefined ? { discountValue: Math.max(0, patch.value) } : {}),
+    }
+    setLineItems(newItems)
+  }
+
   const updateLineItem = (index: number, field: keyof LineItem, value: number) => {
     const newItems = [...lineItems]
     const item = newItems[index]
@@ -342,14 +374,39 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     setLineItems(lineItems.filter((_, i) => i !== index))
   }
 
+  /**
+   * Price every line with the SAME pure function createQuote runs, one line at
+   * a time so a refusal can be shown against the row that caused it.
+   *
+   * Prices come from Supabase, so the number the rep sees is the number the
+   * server will use. Before this, the browser's figure WAS the price, which is
+   * how a 1.00 HubSpot placeholder could reach a customer quote.
+   */
+  const today = new Date().toISOString().slice(0, 10)
+  const pricedLines = lineItems.map((item) =>
+    priceCart({
+      lines: [item],
+      currency: dealCurrency,
+      companyId,
+      listPrices: pricing?.listPrices,
+      contractPrices: pricing?.contractPrices,
+      cap: pricing?.cap,
+      isSuperAdmin: pricing?.isSuperAdmin,
+      today,
+    }),
+  )
+
   const calculateGrandTotal = () => {
-    const sum = lineItems.reduce((acc, item) => acc + (Number(item.total) || 0), 0)
+    const sum = pricedLines.reduce((acc, r) => acc + (r.ok ? r.lines[0].lineTotal : 0), 0)
     return Math.round(sum * 100) / 100
   }
 
   // Friendly-layer validation: the server re-validates on submit, but there's
-  // no reason to let Generate fire with a line item that can't possibly be valid.
-  const hasInvalidLineItems = lineItems.some((item) => item.quantity < 1 || item.unitPrice < 0)
+  // no reason to let Generate fire with a line item that can't possibly be
+  // valid, or with a discount the server is going to refuse anyway.
+  const hasInvalidLineItems =
+    lineItems.some((item) => item.quantity < 1 || item.unitPrice < 0) ||
+    pricedLines.some((r) => !r.ok)
 
   const generatePDF = async (previewMode = false) => {
     // In-flight guard: prevent double-submit duplicating HubSpot line items + note.
@@ -431,13 +488,19 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
       contactPhone: contact?.properties.phone,
       salesRep,
       comments,
-      lineItems: lineItems.map((item) => ({
-        name: item.name,
-        description: item.description,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        total: item.total,
-      })),
+      // The DISCOUNTED figures, not the raw cart. item.unitPrice is only what
+      // the rep typed, which for a priced SKU is not what is being charged.
+      lineItems: lineItems.map((item, i) => {
+        const result = pricedLines[i]
+        const priced = result?.ok ? result.lines[0] : null
+        return {
+          name: item.name,
+          description: item.description,
+          quantity: item.quantity,
+          unitPrice: priced?.priced.netUnitPrice ?? item.unitPrice,
+          total: priced?.lineTotal ?? item.total,
+        }
+      }),
       grandTotal,
     })
 
@@ -702,12 +765,39 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {lineItems.map((item, index) => (
+                  {lineItems.map((item, index) => {
+                    const result = pricedLines[index]
+                    const priced = result?.ok ? result.lines[0] : null
+                    const priceError = result && !result.ok ? result.error : null
+                    // A SKU nobody has priced yet keeps the free price box, which
+                    // is exactly today's behaviour. Everything else shows the
+                    // resolved base and discounts from it.
+                    const isManual = priced ? priced.priceSource === 'manual' : true
+                    return (
                     <div key={index} className="p-4 bg-gray-50 rounded-lg border border-gray-100 space-y-3">
                       <div className="grid grid-cols-2 gap-3 sm:flex sm:items-center sm:gap-4">
                         <div className="col-span-2 max-sm:min-w-0 sm:flex-1">
                           <p className="font-medium text-gray-900 break-words">{item.name}</p>
-                          <p className="text-xs text-gray-500">SKU: {item.sku || 'N/A'}</p>
+                          <p className="text-xs text-gray-500">
+                            SKU: {item.sku || 'N/A'}
+                            {priced && (
+                              <span
+                                className={
+                                  priced.priceSource === 'contract'
+                                    ? 'ml-2 rounded bg-indigo-100 px-1.5 py-0.5 text-indigo-800'
+                                    : priced.priceSource === 'list'
+                                      ? 'ml-2 rounded bg-green-100 px-1.5 py-0.5 text-green-800'
+                                      : 'ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-amber-800'
+                                }
+                              >
+                                {priced.priceSource === 'contract'
+                                  ? `Contract price${pricing?.contractorName ? `: ${pricing.contractorName}` : ''}`
+                                  : priced.priceSource === 'list'
+                                    ? 'List price'
+                                    : 'No list price, you set it'}
+                              </span>
+                            )}
+                          </p>
                         </div>
 
                         <div className="max-sm:min-w-0 sm:w-24">
@@ -722,21 +812,60 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                         </div>
 
                         <div className="max-sm:min-w-0 sm:w-32">
-                          <Label className="text-xs text-gray-500">Price</Label>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={item.unitPrice}
-                            onChange={(e) => updateLineItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                            className="h-11 sm:h-8"
-                          />
+                          <Label className="text-xs text-gray-500">{isManual ? 'Price' : 'List price'}</Label>
+                          {isManual ? (
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={item.unitPrice}
+                              onChange={(e) => updateLineItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+                              className="h-11 sm:h-8"
+                            />
+                          ) : (
+                            <p className="pt-1 font-mono text-gray-500 line-through decoration-gray-300">
+                              {money.format(priced?.priced.listUnitPrice ?? 0)}
+                            </p>
+                          )}
+                        </div>
+
+                        {!isManual && (
+                          <div className="max-sm:min-w-0 sm:w-36">
+                            <Label className="text-xs text-gray-500">Discount</Label>
+                            <div className="flex gap-1">
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={item.discountValue ?? ''}
+                                placeholder="0"
+                                onChange={(e) => updateLineItemDiscount(index, { value: parseFloat(e.target.value) || 0 })}
+                                className="h-11 sm:h-8"
+                              />
+                              <select
+                                aria-label="Discount type"
+                                value={item.discountMode ?? 'percent'}
+                                onChange={(e) => updateLineItemDiscount(index, { mode: e.target.value as DiscountMode })}
+                                className="h-11 sm:h-8 rounded border border-gray-300 bg-white px-1 text-sm text-gray-900"
+                              >
+                                <option value="percent">%</option>
+                                <option value="amount">{money.format(0).replace(/[\d.,\s]/g, '') || '$'}</option>
+                              </select>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="sm:w-24 text-left sm:text-right">
+                          <Label className="text-xs text-gray-500">Unit</Label>
+                          <p className="font-mono font-medium pt-1">
+                            {money.format(priced?.priced.netUnitPrice ?? item.unitPrice)}
+                          </p>
                         </div>
 
                         <div className="sm:w-24 text-left sm:text-right">
                           <Label className="text-xs text-gray-500">Total</Label>
                           <p className="font-mono font-medium pt-1">
-                            {money.format(item.total)}
+                            {money.format(priced?.lineTotal ?? 0)}
                           </p>
                         </div>
 
@@ -750,6 +879,12 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                         </Button>
                       </div>
 
+                      {priceError && (
+                        <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                          {priceError}
+                        </p>
+                      )}
+
                       <div>
                         <Label className="text-xs text-gray-500">Description (shown on the quote, under the item name)</Label>
                         <Input
@@ -760,7 +895,16 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                         />
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
+
+                  {/* What this rep is allowed to do, stated once under the cart
+                      rather than repeated on every row. */}
+                  <p className="text-xs text-gray-500">
+                    {pricing?.isSuperAdmin
+                      ? 'You can discount without a limit.'
+                      : describeCap(pricing?.cap, dealCurrency)}
+                  </p>
                 </div>
               )}
             </Card>
