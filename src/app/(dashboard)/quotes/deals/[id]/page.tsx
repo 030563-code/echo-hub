@@ -1,5 +1,7 @@
 import { getDealDetails } from '@/app/actions/hubspot/getDealDetails'
 import { createServerClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { DealQuotesCard, type DealQuoteRow } from '@/components/quotes/deal-quotes-card'
 import { getCompanyDetails } from '@/app/actions/hubspot/getCompanyDetails'
 import { getContactDetails } from '@/app/actions/hubspot/getContactDetails'
 import { getLineItems } from '@/app/actions/hubspot/getLineItems'
@@ -121,6 +123,16 @@ export default async function QuoteRequestDetailsPage(props: { params: Promise<{
   const associations = (deal.associations ?? {}) as Record<string, HubSpotAssociationGroup | undefined>
   const lineItemsAssoc = associations.line_items || associations.line_item || associations['line items']
   const lineItemIds = lineItemsAssoc?.results?.map((i) => i.id) || []
+
+  // deal_quotes is service-role only (the customer_invoices doctrine), and
+  // getDealDetails above has already refused a deal outside this caller scope,
+  // so the admin client is safe here and RLS has nothing to add.
+  const { data: dealQuoteRows } = await createAdminClient()
+    .from('deal_quotes')
+    .select('id, hubspot_quote_id, quote_number, title, status, failed_step, error_message, quote_link, pdf_link, amount, hub_amount, currency, expires_on, created_at, created_by_label')
+    .eq('hubspot_deal_id', params.id)
+    .order('created_at', { ascending: false })
+  const dealQuotes = (dealQuoteRows ?? []) as DealQuoteRow[]
 
   const supabase = await createServerClient()
   const { data: registryEntry } = await supabase
@@ -259,6 +271,15 @@ export default async function QuoteRequestDetailsPage(props: { params: Promise<{
               </div>
             </div>
           </Card>
+
+          {/* HubSpot quotes published from the Hub. Read with the admin client
+              because deal_quotes is service-role only; getDealDetails above has
+              already enforced that this caller may see this deal. */}
+          <DealQuotesCard
+            dealId={params.id}
+            quotes={dealQuotes}
+            canRetry={canChangeStage}
+          />
 
           {/* Line Items Card */}
           <Card className="p-6 bg-white border-gray-200">

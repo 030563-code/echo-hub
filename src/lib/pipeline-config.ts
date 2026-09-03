@@ -135,3 +135,29 @@ export const PIPELINE_CONFIG: PipelineConfig[] = [
 export function allowedCurrenciesForPipeline(pipelineId: string | null | undefined): string[] {
   return PIPELINE_CONFIG.find((p) => p.pipelineId === pipelineId)?.allowedCurrencies ?? ['USD']
 }
+
+/**
+ * HubSpot quote_template object ids, keyed by the profile's own template value.
+ *
+ * The template decides the quote's branding, its language and locale, and the
+ * domain its public link is served from, and the association CAN ONLY BE SET AT
+ * CREATION. A quote created without one cannot be published and has to be
+ * deleted by hand in the portal, so this map is a hard requirement rather than
+ * a nicety.
+ *
+ * Verified live 2026-09-02. NOTE that quote templates in this portal are per
+ * REP ("Jillian USA", "USA Jon", "Geoff USA", "Devis France"), not per region,
+ * so this map is correct only while Jillian is the only US rep on the Hub.
+ * Before a second one is onboarded the id belongs on their profile row.
+ */
+export const QUOTE_TEMPLATE_IDS: Record<string, string> = {
+  US: '454422093232', // "Jillian USA"
+  CAN: '456904456263', // "Jillian CAD"
+}
+
+/** The template id for a profile's template value, or null when there is none.
+ *  Never guesses: publishing under the wrong branding is worse than refusing. */
+export function quoteTemplateIdFor(templateValue: string | null | undefined): string | null {
+  const key = String(templateValue ?? '').trim().toUpperCase()
+  return QUOTE_TEMPLATE_IDS[key] ?? null
+}

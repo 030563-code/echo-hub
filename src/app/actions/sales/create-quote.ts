@@ -5,10 +5,13 @@ import { getDealDetails } from '@/app/actions/hubspot/getDealDetails'
 import { updateDealStage, getDistributorStageForPipeline } from '@/app/actions/hubspot/updateDealStage'
 import { addLineItemsToDeal } from '@/app/actions/hubspot/addLineItems'
 import { getProductSkus } from '@/app/actions/hubspot/getProductSkus'
-import { uploadFileToHubSpot, createNoteWithAttachment, createEmailDraftWithAttachment } from '@/app/actions/hubspot/uploadFile'
 import { QUOTATION_SENT_STAGES, HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
 import { parseWinProbability, validateLineItems } from '@/lib/quote-math'
 import { priceCart, toRegistryLine } from '@/lib/quote-pricing'
+import { runQuotePipeline, type PublishedQuote } from '@/app/actions/sales/publish-quote'
+import { nextQuoteNumber } from '@/lib/hubspot-quote'
+import { splitFullName } from '@/lib/name'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { loadPricingForQuote } from '@/app/actions/pricing/get-pricing'
 import type { DiscountMode } from '@/lib/pricing'
 import { assertDealAccess } from '@/lib/authz'
@@ -51,34 +54,6 @@ interface CreateQuoteParams {
   pdfBlob?: Blob // We can't pass Blob to server action directly, need FormData or base64
 }
 
-// Helper to handle file upload separately
-export async function handleQuoteFileUpload(formData: FormData) {
-  const dealId = formData.get('dealId') as string
-  if (!dealId) return { success: false, error: 'Missing dealId' }
-
-  // IDOR guard: verify deal access (quotes.create capability + pipeline) BEFORE
-  // uploading the file, so an out-of-pipeline dealId can't litter a PDF into the
-  // shared portal.
-  const access = await assertDealAccess(dealId, 'quotes.create')
-  if (!access.ok) return { success: false, error: access.error }
-
-  const uploadResult = await uploadFileToHubSpot(formData)
-  if (!uploadResult.success || !uploadResult.fileId) {
-    return { success: false, error: uploadResult.error }
-  }
-
-  // Attach to Deal via Note
-  const noteResult = await createNoteWithAttachment(dealId, uploadResult.fileId)
-  if (!noteResult.success) {
-    return { success: false, error: noteResult.error || 'Failed to attach quote to deal' }
-  }
-
-  // Create Email Engagement (Removed as per request)
-  // await createEmailDraftWithAttachment(dealId, uploadResult.fileId)
-
-  return { success: true, fileId: uploadResult.fileId }
-}
-
 export async function createQuote(params: CreateQuoteParams) {
   // If it's a preview, we DO NOT update HubSpot or Supabase
   if (params.isPreview) {
@@ -104,7 +79,7 @@ export async function createQuote(params: CreateQuoteParams) {
   // 1. Get user profile + access restrictions
   const { data: profile } = await supabase
     .from('profiles')
-    .select('display_name, is_super_admin, pipeline_id, allowed_depots, allowed_distributors, allowed_quote_templates')
+    .select('display_name, phone, is_super_admin, pipeline_id, allowed_depots, allowed_distributors, allowed_quote_templates')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -511,5 +486,50 @@ export async function createQuote(params: CreateQuoteParams) {
     }
   }
 
-  return { success: true, quoteReference }
+  // 6. LAST: the HubSpot quote itself.
+  //
+  // Deliberately after everything else. The deal stage, its line items and the
+  // registry row are the parts other systems depend on, and a quote that fails
+  // to publish must not leave any of them half applied. A failure here returns
+  // success with a quoteError instead, so the rep is offered Retry quote rather
+  // than a second Generate that would redo all the writes above.
+  const admin = createAdminClient()
+  const { count: existingQuoteCount } = await admin
+    .from('deal_quotes')
+    .select('id', { count: 'exact', head: true })
+    .eq('hubspot_deal_id', params.dealId)
+    .eq('status', 'published')
+
+  const contactId = deal?.associations?.contacts?.results?.[0]?.id ?? null
+  const senderName = splitFullName(profile.display_name || '')
+  const quoteResult = await runQuotePipeline({
+    dealId: params.dealId,
+    title: dealName,
+    currency: dealCurrencyForPricing,
+    templateKey: params.template,
+    contactId,
+    companyId: companyId === 'UNKNOWN' ? null : companyId,
+    comments: trimmedComments,
+    // One number across the quote, the deal and the Xero invoice. A regenerate
+    // makes a NEW quote object rather than editing the published one, so the
+    // second carries a suffix: two live quotes with the same number is what the
+    // rep would otherwise send.
+    quoteNumber: nextQuoteNumber(quoteReference, existingQuoteCount ?? 0),
+    sender: {
+      firstname: senderName.firstname,
+      lastname: senderName.lastname,
+      email: user.email,
+      phone: profile.phone,
+    },
+    lines: pricedCart.lines,
+    hubAmount: computedTotal,
+    createdByUid: user.id,
+    createdByLabel: user.email ?? 'Hub user',
+  })
+
+  if (!quoteResult.success) {
+    return { success: true, quoteReference, quoteError: quoteResult.error }
+  }
+
+  return { success: true, quoteReference, quote: quoteResult.quote satisfies PublishedQuote }
 }

@@ -3,6 +3,7 @@ import {
   PIPELINE_CONFIG,
   TEAM_PIPELINE_MAP,
   allowedCurrenciesForPipeline,
+  quoteTemplateIdFor,
 } from '@/lib/pipeline-config'
 import { DEPOT_MAPPING } from '@/lib/depot-constants'
 
@@ -86,5 +87,24 @@ describe('USA SALES quote templates match what taxRegionForTemplate accepts', ()
   it('offers US and CAN, not the unrecognised "default"', () => {
     const usa = PIPELINE_CONFIG.find((p) => p.label === 'USA SALES')
     expect(usa?.allowedTemplates.map((t) => t.value)).toEqual(['US', 'CAN'])
+  })
+})
+
+describe('quote template ids', () => {
+  it('maps the two USA templates verified in the portal', () => {
+    expect(quoteTemplateIdFor('US')).toBe('454422093232')
+    expect(quoteTemplateIdFor('CAN')).toBe('456904456263')
+  })
+
+  it('is forgiving about how the value is typed', () => {
+    expect(quoteTemplateIdFor('  us ')).toBe('454422093232')
+  })
+
+  it('returns null rather than guessing for a template with no id', () => {
+    // Publishing under another rep's branding is worse than refusing to
+    // publish, and the association cannot be corrected after creation.
+    expect(quoteTemplateIdFor('default')).toBeNull()
+    expect(quoteTemplateIdFor('')).toBeNull()
+    expect(quoteTemplateIdFor(null)).toBeNull()
   })
 })

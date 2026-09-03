@@ -10,22 +10,26 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import {
-  Plus, Trash2, ShoppingCart, ArrowRight, ArrowLeft, AlertCircle, FileDown, Eye, Search,
+  Plus, Trash2, ShoppingCart, ArrowRight, ArrowLeft, AlertCircle, Search, Send,
   Users, Warehouse, FileText, Percent,
 } from 'lucide-react'
 import { SalesProfileSettings } from '@/app/actions/sales/get-profile-settings'
 
-import { createQuote, handleQuoteFileUpload } from '@/app/actions/sales/create-quote'
+import { createQuote } from '@/app/actions/sales/create-quote'
 import { searchHubSpotProducts } from '@/app/actions/hubspot/searchProducts'
 import { getMappedSkus } from '@/app/actions/sales/get-mapped-skus'
 import { getWinProbabilityOptions } from '@/app/actions/hubspot/getDealProperties'
 import { updateDealProperties } from '@/app/actions/hubspot/updateDealProperties'
-import { buildQuotePdf, taxRegionForTemplate } from '@/lib/quote-pdf'
 import { depotLabel } from '@/lib/depot-constants'
 import { WIN_PROBABILITY_VALUES } from '@/lib/quote-math'
 import { priceCart } from '@/lib/quote-pricing'
+import { retryHubSpotQuote } from '@/app/actions/sales/publish-quote'
+import {
+  QuoteFailedPanel,
+  QuotePublishedPanel,
+  type PublishedQuoteView,
+} from '@/components/quotes/quote-published-panel'
 import { describeCap, type ContractPriceRow, type DiscountCap, type DiscountMode, type ListPriceRow } from '@/lib/pricing'
-import { loadQuoteLogo } from '@/lib/quote-logo'
 import { useRouter } from 'next/navigation'
 
 interface Product {
@@ -105,6 +109,9 @@ interface CreateQuoteFormProps {
   }
   /** The deal's HubSpot company, which is what a contract price is keyed to. */
   companyId?: string | null
+  /** HubSpot's per-portal BCC logging address, so a quote emailed from Gmail
+   *  lands on the deal timeline. Absent just means the email is not logged. */
+  bccAddress?: string | null
 }
 
 // Radix Select can't represent "cleared", so the undecided state gets an
@@ -122,7 +129,7 @@ const mapInitialLineItems = (items: HubSpotLineItem[]): LineItem[] =>
     total: Number(item.properties.amount) || 0,
   }))
 
-export default function CreateQuoteForm({ dealId, dealName, settings, products, salesRep, contact, companyName, initialLineItems = [], initialDepot = '', initialComments = '', dealCurrency = 'USD', initialWinProbability = '', pricing, companyId = null }: CreateQuoteFormProps) {
+export default function CreateQuoteForm({ dealId, dealName, settings, products, salesRep, contact, companyName, initialLineItems = [], initialDepot = '', initialComments = '', dealCurrency = 'USD', initialWinProbability = '', pricing, companyId = null, bccAddress = null }: CreateQuoteFormProps) {
   const money = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: dealCurrency,
@@ -171,11 +178,13 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   // Tracks whether the attach-to-HubSpot step (run after the quote itself is
   // saved) actually succeeded, so the success message can't render next to a
   // failed upload just because `submitted` flipped first.
-  const [attachStatus, setAttachStatus] = useState<'pending' | 'ok' | 'failed'>('pending')
-  const [retryingAttach, setRetryingAttach] = useState(false)
+  // What HubSpot came back with, or why it did not. Both are terminal states
+  // for this page: the deal writes are already done either way.
+  const [publishedQuote, setPublishedQuote] = useState<PublishedQuoteView | null>(null)
+  const [quoteError, setQuoteError] = useState<string | null>(null)
+  const [retrying, setRetrying] = useState(false)
   // Holds the last generated PDF so "Retry attach" can re-run just the upload
   // step without regenerating (and re-saving) the whole quote.
-  const lastPdfRef = useRef<{ blob: Blob; filename: string } | null>(null)
   const prevDepotRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -408,149 +417,76 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     lineItems.some((item) => item.quantity < 1 || item.unitPrice < 0) ||
     pricedLines.some((r) => !r.ok)
 
-  const generatePDF = async (previewMode = false) => {
-    // In-flight guard: prevent double-submit duplicating HubSpot line items + note.
-    if (!previewMode) {
-      if (submittingRef.current) return
-      submittingRef.current = true
-      setSubmitting(true)
-    }
-
+  const generate = async () => {
+    // In-flight guard against a double click. The server has its own, on the
+    // deal_quotes row, because this one is client state and dies on refresh.
+    if (submittingRef.current) return
+    submittingRef.current = true
+    setSubmitting(true)
     try {
-      await runGeneratePDF(previewMode)
+      await runGenerate()
     } finally {
-      if (!previewMode) {
-        submittingRef.current = false
-        setSubmitting(false)
-      }
+      submittingRef.current = false
+      setSubmitting(false)
     }
   }
 
-  const runGeneratePDF = async (previewMode: boolean) => {
-    let quoteRef = 'PREVIEW'
-
-    if (!previewMode) {
-      // 1. Save Quote to Database (Only if NOT preview)
-      const result = await createQuote({
-        dealId,
-        distributor: isDistributorSelected ? distributor : 'Direct Sale',
-        depot: depot || undefined,
-        template,
-        lineItems,
-        totalAmount: calculateGrandTotal(),
-        winProbability, // backbone: persisted to deals_registry.deal_probability
-        comments,
-        isPreview: false
-      })
-
-      if (!result.success) {
-        toast.error('Failed to save quote: ' + result.error)
-        return
-      }
-
-      // Now that the quote is committed, mirror the win probability onto the
-      // HubSpot deal. Non-fatal: the value is already persisted to
-      // deals_registry.deal_probability, which is what the forecasting engine reads.
-      const probResult = await updateDealProperties(dealId, { win_probability: winProbability })
-      if (!probResult.success) {
-        console.error('win_probability sync failed:', probResult.error)
-      }
-
-      setSubmitted(true)
-
-      quoteRef = result.quoteReference || 'DRAFT'
-    } else {
-      // Preview Mode: Just generate PDF, don't call server action
-      quoteRef = 'PREVIEW'
-    }
-
-    // 2. Build the PDF. Drawing lives in the pure quote-pdf module; this
-    // component only supplies the facts (including the clock, since the
-    // module must not read it itself) and then handles preview/save/upload.
-    const contactName = contact
-      ? [contact.properties.firstname, contact.properties.lastname].filter(Boolean).join(' ') || undefined
-      : undefined
-    const grandTotal = calculateGrandTotal()
-    const createdAt = new Date()
-    const logoDataUrl = await loadQuoteLogo()
-    const doc = await buildQuotePdf({
-      logoDataUrl,
-      // The quote template doubles as the tax jurisdiction (US / CAN). It is
-      // mandatory at setup, so a generated quote always carries the right line.
-      taxRegion: taxRegionForTemplate(template),
-      currency: dealCurrency,
-      dealName,
-      quoteReference: quoteRef,
-      createdAt,
-      companyName,
-      contactName,
-      contactEmail: contact?.properties.email,
-      contactPhone: contact?.properties.phone,
-      salesRep,
+  const runGenerate = async () => {
+    const result = await createQuote({
+      dealId,
+      distributor: isDistributorSelected ? distributor : 'Direct Sale',
+      depot: depot || undefined,
+      template,
+      lineItems,
+      totalAmount: calculateGrandTotal(),
+      winProbability, // backbone: persisted to deals_registry.deal_probability
       comments,
-      // The DISCOUNTED figures, not the raw cart. item.unitPrice is only what
-      // the rep typed, which for a priced SKU is not what is being charged.
-      lineItems: lineItems.map((item, i) => {
-        const result = pricedLines[i]
-        const priced = result?.ok ? result.lines[0] : null
-        return {
-          name: item.name,
-          description: item.description,
-          quantity: item.quantity,
-          unitPrice: priced?.priced.netUnitPrice ?? item.unitPrice,
-          total: priced?.lineTotal ?? item.total,
-        }
-      }),
-      grandTotal,
+      isPreview: false,
     })
 
-    if (previewMode) {
-      // Open in new tab for preview
-      const pdfBlob = doc.output('blob')
-      const pdfUrl = URL.createObjectURL(pdfBlob)
-      window.open(pdfUrl, '_blank')
-    } else {
-      // Download for final generation
-      doc.save(`quote_${quoteRef}.pdf`)
+    if (!result.success) {
+      toast.error('Failed to save quote: ' + result.error)
+      return
+    }
 
-      // 4. Upload to HubSpot (Only if NOT preview)
-      const pdfBlob = doc.output('blob')
-      const filename = `quote_${quoteRef}.pdf`
-      lastPdfRef.current = { blob: pdfBlob, filename }
-      await attemptQuoteUpload(pdfBlob, filename)
+    // The deal, its line items and the Hub record are committed from here on,
+    // whatever HubSpot does with the quote, so the button latches.
+    setSubmitted(true)
+
+    // Mirror the probability onto the HubSpot deal. Non-fatal: the value is
+    // already in deals_registry.deal_probability, which is what the forecasting
+    // engine reads.
+    const probResult = await updateDealProperties(dealId, { win_probability: winProbability })
+    if (!probResult.success) {
+      console.error('win_probability sync failed:', probResult.error)
+    }
+
+    if (result.quote) {
+      setPublishedQuote({ ...result.quote, currency: dealCurrency })
+      setQuoteError(null)
+      toast.success('Quote published in HubSpot')
+    } else {
+      setQuoteError(result.quoteError ?? 'HubSpot did not accept the quote.')
     }
   }
 
-  // Shared by the initial upload and "Retry attach" — keeps the attach outcome
-  // (attachStatus) honest instead of borrowing the quote-saved state (submitted).
-  const attemptQuoteUpload = async (pdfBlob: Blob, filename: string) => {
-    const formData = new FormData()
-    formData.append('file', pdfBlob, filename)
-    formData.append('dealId', dealId)
-
-    const uploadResult = await handleQuoteFileUpload(formData)
-    if (uploadResult.success) {
-      setAttachStatus('ok')
-      // Redirect to HubSpot Deal Record in new tab
-      // Note: Using the portal ID from env or default
-      const portalId = process.env.NEXT_PUBLIC_HUBSPOT_PORTAL_ID
-      if (portalId) {
-        window.open(`https://app.hubspot.com/contacts/${portalId}/deal/${dealId}`, '_blank')
-      }
-    } else {
-      setAttachStatus('failed')
-      console.error('Failed to upload PDF:', uploadResult.error)
-      toast.error('Quote saved but failed to upload to HubSpot: ' + uploadResult.error)
-    }
-  }
-
-  const handleRetryAttach = async () => {
-    if (!lastPdfRef.current || retryingAttach) return
-    setRetryingAttach(true)
+  /** Resumes the quote from wherever it stopped. Never re-runs the deal writes:
+   *  those succeeded, and repeating them would replace the line items again. */
+  const handleRetryQuote = async () => {
+    if (retrying) return
+    setRetrying(true)
     try {
-      await attemptQuoteUpload(lastPdfRef.current.blob, lastPdfRef.current.filename)
+      const result = await retryHubSpotQuote(dealId)
+      if (result.success) {
+        setPublishedQuote({ ...result.quote, currency: dealCurrency })
+        setQuoteError(null)
+        toast.success('Quote published in HubSpot')
+      } else {
+        setQuoteError(result.error)
+        toast.error(result.error)
+      }
     } finally {
-      setRetryingAttach(false)
+      setRetrying(false)
     }
   }
 
@@ -957,61 +893,44 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
 
               <div className="flex flex-col gap-3">
                 <Button
-                  onClick={() => generatePDF(true)}
-                  disabled={lineItems.length === 0 || submitting}
-                  variant="outline"
-                  className="w-full border-gray-300 text-gray-700 hover:bg-gray-50 font-bold min-h-12 sm:h-12 max-sm:text-base"
-                >
-                  <Eye className="w-5 h-5 mr-2" />
-                  Preview Quote
-                </Button>
-
-                <Button
-                  onClick={() => generatePDF(false)}
+                  onClick={generate}
                   disabled={lineItems.length === 0 || submitting || submitted || hasInvalidLineItems}
                   className="w-full bg-echo-yellow text-white hover:bg-[#4a5e29] font-bold min-h-12 sm:h-12 max-sm:text-base"
                 >
-                  <FileDown className="w-5 h-5 mr-2" />
+                  <Send className="w-5 h-5 mr-2" />
                   {submitting
-                    ? 'Generating...'
+                    ? 'Publishing...'
                     : submitted
-                      ? 'Quote generated'
-                      : 'Generate Quote & Attach to HubSpot'}
+                      ? 'Quote published'
+                      : 'Publish quote in HubSpot'}
                 </Button>
                 {hasInvalidLineItems && !submitted && (
                   <p className="text-xs text-red-600 text-center">
                     Fix line item quantities (at least 1) and prices (0 or more) to generate.
                   </p>
                 )}
-                {submitted ? (
-                  attachStatus === 'pending' ? (
-                    <p className="text-xs text-gray-500 text-center">
-                      Quote saved. Attaching the PDF to the HubSpot deal…
-                    </p>
-                  ) : attachStatus === 'ok' ? (
-                    <p className="text-xs text-green-600 text-center">
-                      Attached to the HubSpot deal and downloaded. Nothing has been emailed to the
-                      customer. Send it yourself from HubSpot.
-                    </p>
-                  ) : (
-                    <div className="text-center space-y-2">
-                      <p className="text-xs text-amber-600">
-                        PDF downloaded. Attaching it to the HubSpot deal failed. The quote data is saved.
-                      </p>
-                      <Button
-                        onClick={handleRetryAttach}
-                        disabled={retryingAttach}
-                        variant="outline"
-                        size="sm"
-                        className="min-h-11 sm:min-h-0 border-gray-300 text-gray-700 hover:bg-gray-50"
-                      >
-                        {retryingAttach ? 'Retrying...' : 'Retry attach'}
-                      </Button>
-                    </div>
-                  )
+                {publishedQuote ? (
+                  <QuotePublishedPanel
+                    quote={publishedQuote}
+                    email={{
+                      contactFirstName: contact?.properties.firstname,
+                      contactEmail: contact?.properties.email,
+                      companyName,
+                      dealName,
+                      repName: salesRep.name,
+                      repPhone: salesRep.phone,
+                      repEmail: salesRep.email,
+                      bccAddress,
+                    }}
+                  />
+                ) : quoteError ? (
+                  <QuoteFailedPanel error={quoteError} onRetry={handleRetryQuote} retrying={retrying} />
+                ) : submitted ? (
+                  <p className="text-xs text-gray-500 text-center">Publishing the quote in HubSpot...</p>
                 ) : (
                   <p className="text-xs text-gray-500 text-center">
-                    Attaches the PDF to the HubSpot deal and downloads a copy. Does not email the customer.
+                    Moves the deal to Quotation sent, replaces its line items and publishes a HubSpot
+                    quote. Does not email the customer.
                   </p>
                 )}
               </div>

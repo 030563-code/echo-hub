@@ -144,6 +144,7 @@ export default async function CreateQuotePage(props: { params: Promise<{ dealId:
         initialLineItems={existingLineItems}
         initialComments={initialComments}
         companyId={companyId ?? null}
+        bccAddress={process.env.HUBSPOT_BCC_LOG_ADDRESS ?? null}
         pricing={{
           listPrices: pricing.listPrices,
           contractPrices: pricing.contractPrices,
