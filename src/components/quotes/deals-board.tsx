@@ -75,9 +75,12 @@ export function DealsBoard({
             }`}
           >
             <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2">
-              <span className={`text-sm font-semibold ${closed ? 'text-gray-500' : 'text-gray-900'}`}>
+              {/* A heading, not a span: it names a region of the board, and
+                  it is how a screen reader (and a test) tells a column apart
+                  from the Move menu that repeats the same stage names. */}
+              <h2 className={`text-sm font-semibold ${closed ? 'text-gray-500' : 'text-gray-900'}`}>
                 {column.label}
-              </span>
+              </h2>
               <span className="rounded-full bg-white px-2 py-0.5 text-xs text-gray-600">{deals.length}</span>
             </div>
 
