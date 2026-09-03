@@ -25,6 +25,7 @@ import {
   type USDepot,
 } from '@/lib/customer-invoice/constants'
 import { computeDraftLineTotal } from '@/lib/customer-invoice/build-draft'
+import { TaxDetail } from './tax-detail'
 import { roundCents } from '@/lib/quote-math'
 import type { CustomerInvoiceLineRow, CustomerInvoiceRow } from '@/app/actions/invoicing/shared'
 import { saveInvoiceDraft } from '@/app/actions/invoicing/save-draft'
@@ -863,6 +864,8 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                 {totals.tax === null ? '—' : money.format(roundCents(totals.subtotal + totals.shipping + totals.tax))}
               </span>
             </div>
+
+            <TaxDetail taxjarResponse={invoice.taxjar_response} currency={invoice.currency} />
           </div>
 
           <div className="flex flex-col items-stretch gap-3 sm:items-end">
