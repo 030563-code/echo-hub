@@ -27,7 +27,10 @@ export async function login(page: Page, c: Creds) {
   await page.getByPlaceholder('name@echobarrier.com').fill(c.email)
   await page.getByPlaceholder('••••••••').fill(c.password)
   await page.getByRole('button', { name: 'Sign In' }).click()
-  await page.waitForURL('http://localhost:3000/', { timeout: 15_000 })
+  // Relative, so the suite follows the config's baseURL. An absolute
+  // localhost:3000 pinned it to one port and broke on any machine where
+  // something else already held it.
+  await page.waitForURL((url) => url.pathname === '/', { timeout: 15_000 })
   await expect(page.getByText('Welcome to the Echo Barrier Hub')).toBeVisible()
 }
 

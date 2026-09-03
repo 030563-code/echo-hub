@@ -30,6 +30,6 @@ test.describe('Authentication + session gate', () => {
   test('valid credentials land on the dashboard', async ({ page }) => {
     test.skip(!c, 'Set E2E_USERNAME/PASSWORD or E2E_LIMITED_USERNAME/PASSWORD')
     await login(page, c!)
-    await expect(page).toHaveURL('http://localhost:3000/')
+    await expect(page).toHaveURL(/\/$/)
   })
 })

@@ -9,25 +9,94 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { updateDealStage } from '@/app/actions/hubspot/updateDealStage'
 import { getSalesProfileSettings } from '@/app/actions/sales/get-profile-settings'
-import { HUBSPOT_PIPELINES, QUOTATION_ACCEPTED_STAGES, TENDER_STAGES } from '@/lib/hubspot-constants'
+import {
+  HUBSPOT_PIPELINES,
+  QUOTATION_ACCEPTED_STAGES,
+  TENDER_STAGES,
+  stageLabel,
+} from '@/lib/hubspot-constants'
+import { depotLabel } from '@/lib/depot-constants'
+import { WIN_PROBABILITY_VALUES } from '@/lib/quote-math'
+import { isUSDepot } from '@/lib/customer-invoice/constants'
+import { US_STATE_CODES } from '@/lib/us-address'
+import { lookupZipJurisdiction } from '@/app/actions/tax/lookup-zip'
 import { useRouter } from 'next/navigation'
-import { ArrowRightLeft } from 'lucide-react'
+import { ArrowRightLeft, Loader2, MapPin } from 'lucide-react'
+
+
+const ZIP_RE = /^\d{5}(-\d{4})?$/
 
 interface ChangeStageDialogProps {
   dealId: string
   currentStageId: string
   pipelineId: string
+  /** The deal has at least one associated company (the invoice customer). */
+  hasAssociatedCompany?: boolean
+  /** HubSpot win_probability option value already on the deal, if any. */
+  currentWinProbability?: string | null
+  /** Delivery address already stored on deals_registry, if any. */
+  initialDelivery?: { street: string; city: string; state: string; zip: string } | null
+  /**
+   * A stage to preselect, and open on. This is how a drop on the deals board
+   * arrives: the board navigates here with ?stage= rather than PATCHing HubSpot
+   * itself, so every guard in this dialog still runs, including the depot rule
+   * at Quotation Accepted and the US delivery address.
+   */
+  initialStageId?: string | null
 }
 
-export default function ChangeStageDialog({ dealId, currentStageId, pipelineId }: ChangeStageDialogProps) {
-  const [isOpen, setIsOpen] = useState(false)
-  const [selectedStage, setSelectedStage] = useState(currentStageId)
+export default function ChangeStageDialog({
+  dealId,
+  currentStageId,
+  pipelineId,
+  hasAssociatedCompany = true,
+  currentWinProbability = null,
+  initialDelivery = null,
+  initialStageId = null,
+}: ChangeStageDialogProps) {
+  // A preselected stage means the rep arrived here to make that change, so the
+  // dialog opens on it rather than making them find the button again.
+  const preselected = initialStageId && initialStageId !== currentStageId ? initialStageId : null
+  const [isOpen, setIsOpen] = useState(preselected !== null)
+  const [selectedStage, setSelectedStage] = useState(preselected ?? currentStageId)
   const [loading, setLoading] = useState(false)
   const [tenderDate, setTenderDate] = useState('')
   const [depotForAccepted, setDepotForAccepted] = useState('')
+  const [winProbability, setWinProbability] = useState(
+    currentWinProbability && WIN_PROBABILITY_VALUES.includes(currentWinProbability) ? currentWinProbability : ''
+  )
+  const [street, setStreet] = useState(initialDelivery?.street ?? '')
+  const [city, setCity] = useState(initialDelivery?.city ?? '')
+  const [stateCode, setStateCode] = useState(initialDelivery?.state ?? '')
+  const [zip, setZip] = useState(initialDelivery?.zip ?? '')
+  // Zip-driven completion. TaxJar's rates endpoint resolves a bare zip to its
+  // state, city and county, so the rep types the one piece of geography a deal
+  // usually carries and confirms the rest instead of guessing it.
+  const [zipLookup, setZipLookup] = useState<
+    { status: 'idle' } | { status: 'loading' } | { status: 'ok'; city: string | null; county: string | null; state: string } | { status: 'error'; message: string }
+  >({ status: 'idle' })
   const [allowedDepots, setAllowedDepots] = useState<string[]>([])
   const [depotsError, setDepotsError] = useState(false)
   const router = useRouter()
+
+  const resolveZip = async (raw: string) => {
+    const value = raw.trim()
+    if (!ZIP_RE.test(value)) {
+      setZipLookup({ status: 'idle' })
+      return
+    }
+    setZipLookup({ status: 'loading' })
+    const result = await lookupZipJurisdiction({ zip: value })
+    if (!result.success) {
+      setZipLookup({ status: 'error', message: result.error })
+      return
+    }
+    setZipLookup({ status: 'ok', city: result.city, county: result.county, state: result.state })
+    // Fill what is empty, never overwrite what the rep typed. A zip can
+    // straddle jurisdictions, so their street-level knowledge wins.
+    setStateCode((current) => current || result.state)
+    setCity((current) => current || result.city || '')
+  }
 
   useEffect(() => {
     async function fetchDepots() {
@@ -57,10 +126,22 @@ export default function ChangeStageDialog({ dealId, currentStageId, pipelineId }
 
   const isTenderStage = TENDER_STAGES.includes(selectedStage)
   const isQuoteAcceptedStage = QUOTATION_ACCEPTED_STAGES.includes(selectedStage)
+  // A US depot routes the deal into the US invoicing flow (TaxJar destination
+  // tax), so acceptance additionally needs the probability, a full ship-to
+  // address and an associated company. All re-validated server-side.
+  const isUSAcceptance = isQuoteAcceptedStage && isUSDepot(depotForAccepted)
+  const usFieldsComplete =
+    winProbability !== '' &&
+    street.trim() !== '' &&
+    city.trim() !== '' &&
+    stateCode !== '' &&
+    ZIP_RE.test(zip.trim()) &&
+    hasAssociatedCompany
   const canUpdate =
     selectedStage !== currentStageId &&
     (!isTenderStage || tenderDate !== '') &&
-    (!isQuoteAcceptedStage || depotForAccepted !== '')
+    (!isQuoteAcceptedStage || depotForAccepted !== '') &&
+    (!isUSAcceptance || usFieldsComplete)
 
   const handleUpdateStage = async () => {
     setLoading(true)
@@ -70,7 +151,13 @@ export default function ChangeStageDialog({ dealId, currentStageId, pipelineId }
       selectedStage,
       isQuoteAcceptedStage ? depotForAccepted : undefined,
       undefined,
-      isTenderStage ? tenderDate : undefined
+      isTenderStage ? tenderDate : undefined,
+      isUSAcceptance
+        ? {
+            winProbability,
+            delivery: { street: street.trim(), city: city.trim(), state: stateCode, zip: zip.trim() },
+          }
+        : undefined
     )
     setLoading(false)
 
@@ -103,9 +190,9 @@ export default function ChangeStageDialog({ dealId, currentStageId, pipelineId }
                   <SelectValue placeholder="Select stage..." />
                 </SelectTrigger>
                 <SelectContent className="bg-white border-gray-200 text-gray-900">
-                  {Object.entries(pipeline.stages).map(([key, id]) => (
+                  {Object.entries(pipeline.stages).map(([, id]) => (
                     <SelectItem key={id} value={id} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
-                      {key.replace(/_/g, ' ')}
+                      {stageLabel(pipeline.id, id)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -137,13 +224,113 @@ export default function ChangeStageDialog({ dealId, currentStageId, pipelineId }
                     </SelectTrigger>
                     <SelectContent className="bg-white border-gray-200 text-gray-900">
                       {allowedDepots.map((d) => (
-                        <SelectItem key={d} value={d} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">{d}</SelectItem>
+                        <SelectItem key={d} value={d} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
+                          {depotLabel(d)} <span className="text-gray-400">({d})</span>
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 )}
                 <p className="text-xs text-gray-500">Required before marking as Quote Accepted.</p>
               </div>
+            )}
+
+            {isUSAcceptance && !hasAssociatedCompany && (
+              <p className="text-sm text-red-600">
+                Associate a company with this deal in HubSpot first: the US invoice needs a customer.
+              </p>
+            )}
+
+            {isUSAcceptance && hasAssociatedCompany && (
+              <>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700">Deal Probability *</Label>
+                  <Select value={winProbability} onValueChange={setWinProbability}>
+                    <SelectTrigger className="h-11 sm:h-10 bg-white border-gray-300 text-gray-900">
+                      <SelectValue placeholder="Probability of close..." />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border-gray-200 text-gray-900">
+                      {WIN_PROBABILITY_VALUES.map((option) => (
+                        <SelectItem key={option} value={option} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700">Delivery Address *</Label>
+                  <Input
+                    placeholder="Street address"
+                    value={street}
+                    onChange={(e) => setStreet(e.target.value)}
+                    className="bg-white border-gray-300 text-gray-900"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      placeholder="City"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      className="bg-white border-gray-300 text-gray-900"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <Select value={stateCode} onValueChange={setStateCode}>
+                        <SelectTrigger className="h-11 sm:h-10 bg-white border-gray-300 text-gray-900">
+                          <SelectValue placeholder="State" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-gray-200 text-gray-900 max-h-64">
+                          {US_STATE_CODES.map((code) => (
+                            <SelectItem key={code} value={code} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
+                              {code}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        placeholder="Zip"
+                        value={zip}
+                        onChange={(e) => setZip(e.target.value)}
+                        onBlur={(e) => resolveZip(e.target.value)}
+                        className="bg-white border-gray-300 text-gray-900"
+                      />
+                    </div>
+                  </div>
+                  {zip.trim() !== '' && !ZIP_RE.test(zip.trim()) && (
+                    <p className="text-xs text-red-600">Zip must be 5 digits (or ZIP+4, e.g. 20794-1234).</p>
+                  )}
+                  {zipLookup.status === 'loading' && (
+                    <p className="flex items-center gap-1.5 text-xs text-gray-500">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Looking up the zip...
+                    </p>
+                  )}
+                  {zipLookup.status === 'ok' && (
+                    <p className="flex items-start gap-1.5 text-xs text-gray-600">
+                      <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-gray-400" />
+                      <span>
+                        {zip.trim()} is{' '}
+                        <span className="font-medium text-gray-900">
+                          {[zipLookup.city, zipLookup.county && `${zipLookup.county} County`, zipLookup.state]
+                            .filter(Boolean)
+                            .join(', ')}
+                        </span>
+                        {stateCode && stateCode !== zipLookup.state && (
+                          <span className="font-semibold text-red-600">
+                            {' '}but the state is set to {stateCode}. Tax will be calculated for the wrong place.
+                          </span>
+                        )}
+                      </span>
+                    </p>
+                  )}
+                  {zipLookup.status === 'error' && (
+                    <p className="text-xs text-amber-700">{zipLookup.message}</p>
+                  )}
+                  <p className="text-xs text-gray-500">
+                    Used to calculate US sales tax: the ship-to address, not the billing address.
+                  </p>
+                </div>
+              </>
             )}
           </div>
 

@@ -1,34 +1,36 @@
 'use server'
 
 import { createServerClient } from '@/lib/supabase/server'
-import { hasAnyCapability } from '@/lib/authz'
-import { QUOTE_REQUEST_STAGES, QUOTATION_SENT_STAGES, CLOSED_WON_STAGES, CLOSED_LOST_STAGES, DISTRIBUTOR_STAGES, QUOTATION_ACCEPTED_STAGES } from '@/lib/hubspot-constants'
+import { getAuthorizedUser, hasAnyCapability } from '@/lib/authz'
+import { QUOTE_REQUEST_STAGES, QUOTATION_SENT_STAGES, CLOSED_WON_STAGES, QUOTATION_ACCEPTED_STAGES } from '@/lib/hubspot-constants'
+import type { HubSpotDeal } from '@/lib/hubspot-types'
+import { DEAL_LIST_PROPERTIES } from '@/lib/hubspot-types'
 
 const PAGE_SIZE = 25
 
-interface HubSpotDeal {
-  id: string
-  properties: {
-    dealname: string
-    amount: string | null
-    createdate: string
-    dealstage: string
-    pipeline: string
-  }
-}
 
 interface GetDealsResult {
   success: boolean
   data?: HubSpotDeal[]
   error?: string
   hasNextPage?: boolean
+  /** Whether the caller may ask for every rep's deals, so the page knows
+   *  whether to offer the toggle. */
+  isAdmin?: boolean
   nextAfter?: string
 }
 
 export async function getDealsByStage(
-  category: 'quote_requests' | 'quotation_sent' | 'pending' | 'all' | 'accepted' | 'won',
+  category: 'quote_requests' | 'quotation_sent' | 'all' | 'accepted' | 'won',
   page: number = 1,
-  after?: string
+  after?: string,
+  /**
+   * 'all' drops the owner filter so an admin sees every rep's deals. Dean asked
+   * that "Dave should have access to also view all the deals in Hubspot".
+   * Decided server-side from the caller's own profile: this arrives from a URL
+   * parameter, and widening it is exactly the thing to try.
+   */
+  scope: 'mine' | 'all' = 'mine'
 ): Promise<GetDealsResult> {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -40,6 +42,10 @@ export async function getDealsByStage(
   if (!(await hasAnyCapability(['quotes.view', 'quotes.create']))) {
     return { success: false, error: 'Forbidden: missing quotes capability' }
   }
+
+  const auth = await getAuthorizedUser()
+  const isAdmin = auth.ok && (auth.profile.is_super_admin === true || auth.capabilities.has('admin'))
+  const allReps = scope === 'all' && isAdmin
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
   if (!accessToken) {
@@ -86,18 +92,10 @@ export async function getDealsByStage(
       stageFilters = [{ propertyName: 'dealstage', operator: 'IN', values: QUOTATION_ACCEPTED_STAGES }]
     } else if (category === 'won') {
       stageFilters = [{ propertyName: 'dealstage', operator: 'IN', values: CLOSED_WON_STAGES }]
-    } else if (category === 'pending') {
-      // Pending = NOT (Quote Request OR Quotation Sent OR Won OR Lost OR Distributor OR Accepted)
-      const excludedStages = [
-        ...QUOTE_REQUEST_STAGES,
-        ...QUOTATION_SENT_STAGES,
-        ...CLOSED_WON_STAGES,
-        ...CLOSED_LOST_STAGES,
-        ...DISTRIBUTOR_STAGES,
-        ...QUOTATION_ACCEPTED_STAGES
-      ]
-      stageFilters = [{ propertyName: 'dealstage', operator: 'NOT_IN', values: excludedStages }]
     } else {
+      // The 'pending' category is gone with the tab it fed. It was defined as
+      // NOT six stage families, which swept up Tender and General pricing and
+      // then labelled every row "Pending". Real stages are on the board now.
       // All deals for this owner (no stage filter)
       stageFilters = []
     }
@@ -119,16 +117,16 @@ export async function getDealsByStage(
       filterGroups: [
         {
           filters: [
-            {
-              propertyName: 'hubspot_owner_id',
-              operator: 'EQ',
-              value: ownerId,
-            },
+            // Dropped only for an admin who asked for every rep. A non-admin,
+            // or an admin who did not ask, still sees their own deals.
+            ...(allReps
+              ? []
+              : [{ propertyName: 'hubspot_owner_id', operator: 'EQ', value: ownerId }]),
             ...stageFilters
           ],
         },
       ],
-      properties: ['dealname', 'amount', 'createdate', 'dealstage', 'pipeline'],
+      properties: [...DEAL_LIST_PROPERTIES],
       sorts: [
         {
           propertyName: 'createdate',
@@ -171,6 +169,7 @@ export async function getDealsByStage(
       data: searchData.results,
       hasNextPage,
       nextAfter,
+      isAdmin,
     }
 
   } catch (error: unknown) {

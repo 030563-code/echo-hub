@@ -5,19 +5,32 @@ import { getDealDetails } from '@/app/actions/hubspot/getDealDetails'
 import { updateDealStage, getDistributorStageForPipeline } from '@/app/actions/hubspot/updateDealStage'
 import { addLineItemsToDeal } from '@/app/actions/hubspot/addLineItems'
 import { getProductSkus } from '@/app/actions/hubspot/getProductSkus'
-import { uploadFileToHubSpot, createNoteWithAttachment, createEmailDraftWithAttachment } from '@/app/actions/hubspot/uploadFile'
 import { QUOTATION_SENT_STAGES, HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
-import { computeLineItemsTotal, computeLineTotal, validateLineItems } from '@/lib/quote-math'
+import { parseWinProbability, validateLineItems } from '@/lib/quote-math'
+import { priceCart, toRegistryLine } from '@/lib/quote-pricing'
+import { runQuotePipeline, type PublishedQuote } from '@/app/actions/sales/publish-quote'
+import { nextQuoteNumber } from '@/lib/hubspot-quote'
+import { quoteTemplateIdFor } from '@/lib/pipeline-config'
+import { splitFullName } from '@/lib/name'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { loadPricingForQuote } from '@/app/actions/pricing/get-pricing'
+import type { DiscountMode } from '@/lib/pricing'
 import { assertDealAccess } from '@/lib/authz'
 
 interface QuoteLineItem {
   productId: string
   name: string
   quantity: number
+  /** A PROPOSAL. Honoured only for a SKU with no Supabase price; otherwise the
+   *  server resolves the price itself and this is ignored. */
   unitPrice: number
   total: number
   sku?: string
   description?: string
+  /** The rep's discount entry, as a percentage or as money off each unit. Also
+   *  a proposal: the cap is enforced server-side against the resolved base. */
+  discountMode?: DiscountMode
+  discountValue?: number
 }
 
 interface CreateQuoteParams {
@@ -40,34 +53,6 @@ interface CreateQuoteParams {
   comments?: string
   isPreview?: boolean
   pdfBlob?: Blob // We can't pass Blob to server action directly, need FormData or base64
-}
-
-// Helper to handle file upload separately
-export async function handleQuoteFileUpload(formData: FormData) {
-  const dealId = formData.get('dealId') as string
-  if (!dealId) return { success: false, error: 'Missing dealId' }
-
-  // IDOR guard: verify deal access (quotes.create capability + pipeline) BEFORE
-  // uploading the file, so an out-of-pipeline dealId can't litter a PDF into the
-  // shared portal.
-  const access = await assertDealAccess(dealId, 'quotes.create')
-  if (!access.ok) return { success: false, error: access.error }
-
-  const uploadResult = await uploadFileToHubSpot(formData)
-  if (!uploadResult.success || !uploadResult.fileId) {
-    return { success: false, error: uploadResult.error }
-  }
-
-  // Attach to Deal via Note
-  const noteResult = await createNoteWithAttachment(dealId, uploadResult.fileId)
-  if (!noteResult.success) {
-    return { success: false, error: noteResult.error || 'Failed to attach quote to deal' }
-  }
-
-  // Create Email Engagement (Removed as per request)
-  // await createEmailDraftWithAttachment(dealId, uploadResult.fileId)
-
-  return { success: true, fileId: uploadResult.fileId }
 }
 
 export async function createQuote(params: CreateQuoteParams) {
@@ -95,7 +80,7 @@ export async function createQuote(params: CreateQuoteParams) {
   // 1. Get user profile + access restrictions
   const { data: profile } = await supabase
     .from('profiles')
-    .select('display_name, is_super_admin, pipeline_id, allowed_depots, allowed_distributors, allowed_quote_templates')
+    .select('display_name, phone, is_super_admin, pipeline_id, allowed_depots, allowed_distributors, allowed_quote_templates')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -179,6 +164,28 @@ export async function createQuote(params: CreateQuoteParams) {
   // which is exactly the cross-location case this guard exists to stop. The one
   // exception is the SKU derivation itself: if we can't reach HubSpot to derive
   // SKUs, we FAIL CLOSED (below) rather than silently trusting the client.
+  // Derived for EVERY caller, not just the ones the depot guard runs for,
+  // because pricing needs it too. A line's SKU decides which list or contract
+  // price applies, and taking that from the browser let a crafted request send
+  // a real productId with a blank sku, fall through to the "no Supabase price"
+  // branch, and name its own unit price. Fetched once and used by both.
+  const productIds = Array.from(
+    new Set(
+      params.lineItems
+        .map((li) => li.productId?.trim())
+        .filter((id): id is string => !!id)
+    )
+  )
+  const skuResult = productIds.length > 0
+    ? await getProductSkus(productIds)
+    : { success: true as const, data: {} as Record<string, string> }
+  if (!skuResult.success) {
+    console.error('getProductSkus failed:', skuResult.error)
+    return { success: false, error: 'Could not verify products with HubSpot. Please try again.' }
+  }
+  /** productId to the SKU HubSpot holds. The authority on what each line IS. */
+  const skuByProductId: Record<string, string> = skuResult.data ?? {}
+
   if (!profile.is_super_admin && isDirectSale) {
     // With no depot chosen yet, validate against the union of the caller's own
     // depots — cross-region SKUs (EB-SRO's manufacturing codes above all) stay
@@ -186,21 +193,8 @@ export async function createQuote(params: CreateQuoteParams) {
     const depotScope: string[] = effectiveDepot
       ? [effectiveDepot]
       : ((profile.allowed_depots as string[] | null) ?? [])
-    const productIds = Array.from(
-      new Set(
-        params.lineItems
-          .map((li) => li.productId?.trim())
-          .filter((id): id is string => !!id)
-      )
-    )
 
-    const skuResult = await getProductSkus(productIds)
-    if (!skuResult.success) {
-      console.error('getProductSkus failed:', skuResult.error)
-      return { success: false, error: 'Could not verify products for this depot. Please try again.' }
-    }
-
-    const derivedSkus = Object.values(skuResult.data ?? {})
+    const derivedSkus = Object.values(skuByProductId)
     const clientSkus = params.lineItems
       .map((li) => li.sku?.trim())
       .filter((s): s is string => !!s)
@@ -235,10 +229,6 @@ export async function createQuote(params: CreateQuoteParams) {
     }
   }
 
-  // 1b. Recompute the amount server-side from the line items — never trust the
-  // client-supplied totalAmount (finding #10).
-  const computedTotal = computeLineItemsTotal(params.lineItems)
-
   // 1c. Probability of close (the backbone). Parse the HubSpot win_probability
   // option value to a number for deals_registry.deal_probability; null if absent
   // or non-numeric (don't clobber an n8n-synced value with null on re-quote).
@@ -249,12 +239,7 @@ export async function createQuote(params: CreateQuoteParams) {
   // Wrapped in String(...) — winProbability is typed as string, but a numeric
   // value at runtime (e.g. from a caller that skips the client form) has no
   // .trim() and would throw TypeError before ever reaching Number.isFinite below.
-  const probabilityRaw = String(params.winProbability ?? '').trim().replace(/%$/, '').trim()
-  const probabilityNum = probabilityRaw === '' ? Number.NaN : Number(probabilityRaw)
-  const parsedProbability =
-    Number.isFinite(probabilityNum) && probabilityNum >= 0 && probabilityNum <= 100
-      ? probabilityNum
-      : null
+  const parsedProbability = parseWinProbability(params.winProbability)
 
   const displayName = profile.display_name || user.email || 'XX'
   const initials = displayName
@@ -280,6 +265,64 @@ export async function createQuote(params: CreateQuoteParams) {
   const pipelineId = deal?.properties?.pipeline
 
   /** HubSpot ids of the line items created below, in the order they were sent. */
+  // 3b. Price the cart server-side. The client's unit prices and percentages
+  // are proposals: the price comes from Supabase (contract, then list) and the
+  // cap is checked against the resolved base, so a crafted request can neither
+  // name its own price nor discount past what Dave allowed. The only figure
+  // still taken from the browser is the unit price of a SKU with no Supabase
+  // row at all, which is exactly today's behaviour and stays legal while the
+  // price list is being filled.
+  //
+  // Reads the SAME rows the builder was given, through the same loader, so the
+  // two cannot disagree about what the list price was.
+  const dealCurrencyForPricing = String(deal?.properties?.deal_currency_code ?? 'USD').trim().toUpperCase() || 'USD'
+  const pricing = await loadPricingForQuote({
+    companyId,
+    currency: dealCurrencyForPricing,
+    userId: user.id,
+  })
+  const pricedCart = priceCart({
+    // The SKU comes from HubSpot, never from the browser. Falling back to the
+    // client value only when HubSpot has none keeps a genuinely SKU-less
+    // product quotable, which is the case the manual price path exists for.
+    lines: params.lineItems.map((li) => ({
+      ...li,
+      sku: skuByProductId[String(li.productId ?? '').trim()] ?? li.sku,
+    })),
+    currency: dealCurrencyForPricing,
+    companyId,
+    listPrices: pricing.listPrices,
+    contractPrices: pricing.contractPrices,
+    cap: pricing.cap,
+    isSuperAdmin: profile.is_super_admin === true,
+    today: new Date().toISOString().slice(0, 10),
+  })
+  if (!pricedCart.ok) {
+    // Before any HubSpot write, so a refused discount leaves nothing behind.
+    return { success: false, error: pricedCart.error }
+  }
+  const computedTotal = pricedCart.total
+
+  // 3c. The HubSpot quote template, checked HERE rather than at publish time.
+  //
+  // A quote cannot be published without one and the association cannot be added
+  // after creation, so a missing template is fatal. It used to be discovered at
+  // the very end, after the deal had been moved to Quotation sent, its line
+  // items replaced and the registry row written, and after a refusal that
+  // happened before the deal_quotes row existed, which left Retry with nothing
+  // to resume. The rep was stuck with a half-applied deal and no way forward.
+  //
+  // Six of eight live profiles carry no allowed_quote_templates at all and fall
+  // through to the value 'default', which has no template id, so this is the
+  // common case rather than an edge one.
+  const quoteTemplateId = quoteTemplateIdFor(params.template)
+  if (!quoteTemplateId) {
+    return {
+      success: false,
+      error: `No HubSpot quote template is mapped to "${params.template || 'none'}", so a quote cannot be branded or published. Choose the US or Canada template in Quote Setup, or ask for this one to be mapped. Nothing has been changed.`,
+    }
+  }
+
   let createdLineItemIds: string[] = []
 
   // Without a pipeline there is no stage to move the deal to, so every HubSpot
@@ -360,7 +403,23 @@ export async function createQuote(params: CreateQuoteParams) {
     // C. Add Line Items to HubSpot Deal. The cart is guaranteed non-empty by
     // the pre-write guard above.
     {
-      const r = await addLineItemsToDeal(params.dealId, params.lineItems)
+      const r = await addLineItemsToDeal(
+        params.dealId,
+        pricedCart.lines.map((l) => ({
+          productId: l.productId,
+          name: l.name,
+          quantity: l.quantity,
+          // The base, with the discount as its own property: HubSpot derives
+          // the line amount itself and would discount the net a second time.
+          unitPrice: l.priced.hubspot.price,
+          total: l.lineTotal,
+          sku: l.sku,
+          description: l.description,
+          discountPercentage: l.priced.hubspot.hs_discount_percentage,
+          discountPerUnit: l.priced.hubspot.discount,
+        })),
+        dealCurrencyForPricing,
+      )
       if (r.success) createdLineItemIds = r.lineItemIds ?? []
       // addLineItemsToDeal now replaces rather than appends, so retrying here is
       // safe — the specific HubSpot error (if any) is already logged inside it;
@@ -402,7 +461,6 @@ export async function createQuote(params: CreateQuoteParams) {
     deal_name: dealName,
     deal_status: 'Quote Created',
     amount: computedTotal,
-    currency: 'USD',
     quote_reference: quoteReference, // Will preserve existing ref if upserting
     // Written in the SAME key shape the rest of the system uses, not the
     // builder's camelCase. notify_quote_accepted() reads unit_price,
@@ -411,24 +469,33 @@ export async function createQuote(params: CreateQuoteParams) {
     // draft Xero quote and an MCS contract with every price and line total at
     // zero. n8n's own sync writes snake_case, which is why the mismatch has
     // never shown up: no Hub quote has reached acceptance yet.
-    line_items_raw: params.lineItems.map((item, i) => ({
-      name: item.name,
-      sku: item.sku,
-      quantity: item.quantity,
-      unit_price: item.unitPrice,
-      // Derived, never the browser's number: this value reaches the deal
-      // amount and the Xero/MCS payload.
-      total_amount: computeLineTotal(item),
-      hs_product_id: item.productId,
-      // Present only when HubSpot accepted the batch create; the deep sync
-      // fills it in later otherwise.
-      ...(createdLineItemIds[i] ? { hs_line_item_id: createdLineItemIds[i] } : {}),
-      // Rep-edited copy. The enrichment trigger merges rather than replaces, so
-      // this survives; HubSpot remains the durable home for it either way.
-      ...(item.description ? { description: item.description } : {}),
-    })),
+    // Written in the SAME key shape the rest of the system uses, not the
+    // builder's camelCase. notify_quote_accepted() reads unit_price,
+    // total_amount and hs_product_id straight off these elements and COALESCEs
+    // a miss to 0, so a camelCase row reaching Quotation Accepted would post a
+    // draft Xero quote and an MCS contract with every price and line total at
+    // zero.
+    //
+    // unit_price is the PRE-discount base and discount_percentage carries the
+    // cut, which is the pair buildDraftLines bills with. A cash discount stores
+    // the net with a zero percentage instead, so the invoice charges an exact
+    // figure rather than re-deriving one. The BEFORE trigger on this table
+    // merges its Xero fields into each element rather than rebuilding it, so
+    // the new audit keys survive.
+    line_items_raw: pricedCart.lines.map((line, i) => toRegistryLine(line, createdLineItemIds[i])),
     updated_at: new Date().toISOString(),
   }
+  // The deal's OWN currency, read off the getDealDetails call already made
+  // above rather than taken from the client, so there is no new trust surface.
+  //
+  // The literal 'USD' this replaces was actively corrupting rows: the n8n sync
+  // writes the real currency, and a re-quote through the Hub overwrote it. Six
+  // CA-HAM rows sit at USD against 23 at CAD for exactly this reason.
+  //
+  // When the deal carries no currency the key is OMITTED, never defaulted: on
+  // insert the column default applies, and on update the synced value survives.
+  const dealCurrency = String(deal?.properties?.deal_currency_code ?? '').trim().toUpperCase()
+  if (dealCurrency) registryRow.currency = dealCurrency
   if (pipelineId) registryRow.pipeline_id = pipelineId
   if (parsedProbability !== null) registryRow.deal_probability = parsedProbability
   // Depot follows the same don't-null-a-synced-value rule as probability: an
@@ -455,5 +522,50 @@ export async function createQuote(params: CreateQuoteParams) {
     }
   }
 
-  return { success: true, quoteReference }
+  // 6. LAST: the HubSpot quote itself.
+  //
+  // Deliberately after everything else. The deal stage, its line items and the
+  // registry row are the parts other systems depend on, and a quote that fails
+  // to publish must not leave any of them half applied. A failure here returns
+  // success with a quoteError instead, so the rep is offered Retry quote rather
+  // than a second Generate that would redo all the writes above.
+  const admin = createAdminClient()
+  const { count: existingQuoteCount } = await admin
+    .from('deal_quotes')
+    .select('id', { count: 'exact', head: true })
+    .eq('hubspot_deal_id', params.dealId)
+    .eq('status', 'published')
+
+  const contactId = deal?.associations?.contacts?.results?.[0]?.id ?? null
+  const senderName = splitFullName(profile.display_name || '')
+  const quoteResult = await runQuotePipeline({
+    dealId: params.dealId,
+    title: dealName,
+    currency: dealCurrencyForPricing,
+    templateKey: params.template,
+    contactId,
+    companyId: companyId === 'UNKNOWN' ? null : companyId,
+    comments: trimmedComments,
+    // One number across the quote, the deal and the Xero invoice. A regenerate
+    // makes a NEW quote object rather than editing the published one, so the
+    // second carries a suffix: two live quotes with the same number is what the
+    // rep would otherwise send.
+    quoteNumber: nextQuoteNumber(quoteReference, existingQuoteCount ?? 0),
+    sender: {
+      firstname: senderName.firstname,
+      lastname: senderName.lastname,
+      email: user.email,
+      phone: profile.phone,
+    },
+    lines: pricedCart.lines,
+    hubAmount: computedTotal,
+    createdByUid: user.id,
+    createdByLabel: user.email ?? 'Hub user',
+  })
+
+  if (!quoteResult.success) {
+    return { success: true, quoteReference, quoteError: quoteResult.error }
+  }
+
+  return { success: true, quoteReference, quote: quoteResult.quote satisfies PublishedQuote }
 }

@@ -1,0 +1,116 @@
+{
+  "demo_today": "2026-08-09",
+  "batch_tag": "andy-demo-2026-08-09",
+  "row_counts": {
+    "mrp_demand_events": 453,
+    "mrp_stage_weights": 1,
+    "mrp_lead_time_actuals": 48,
+    "deals_registry": 9,
+    "purchase_orders": 5,
+    "purchase_order_lines": 26,
+    "po_line_receipts": 23,
+    "shipment_contents_inserted": 3,
+    "warehouse_stock_levels_updated": 23,
+    "mrp_buffer_profile_updated": 14
+  },
+  "per_sku_window_totals": [
+    {
+      "sku": "EBH9NA",
+      "annual_2026_target": 5800,
+      "synthetic_window_total": 6069,
+      "real_window_total": 3451,
+      "combined_window_total": 9520
+    },
+    {
+      "sku": "HKNA",
+      "annual_2026_target": 1500,
+      "synthetic_window_total": 1431,
+      "real_window_total": 1189,
+      "combined_window_total": 2620
+    },
+    {
+      "sku": "EBH10HERCNA",
+      "annual_2026_target": 1100,
+      "synthetic_window_total": 1123,
+      "real_window_total": 910,
+      "combined_window_total": 2033
+    },
+    {
+      "sku": "BUNNA",
+      "annual_2026_target": 950,
+      "synthetic_window_total": 1150,
+      "real_window_total": 808,
+      "combined_window_total": 1958
+    },
+    {
+      "sku": "EBH10NA",
+      "annual_2026_target": 750,
+      "synthetic_window_total": 1050,
+      "real_window_total": 280,
+      "combined_window_total": 1330
+    },
+    {
+      "sku": "EBH9XNA",
+      "annual_2026_target": 520,
+      "synthetic_window_total": 676,
+      "real_window_total": 387,
+      "combined_window_total": 1063
+    },
+    {
+      "sku": "EBH9ERNA",
+      "annual_2026_target": 200,
+      "synthetic_window_total": 250,
+      "real_window_total": 124,
+      "combined_window_total": 374
+    },
+    {
+      "sku": "EBVFKNA",
+      "annual_2026_target": 150,
+      "synthetic_window_total": 154,
+      "real_window_total": 100,
+      "combined_window_total": 254
+    },
+    {
+      "sku": "EBH8NA",
+      "annual_2026_target": 130,
+      "synthetic_window_total": 181,
+      "real_window_total": 50,
+      "combined_window_total": 231
+    },
+    {
+      "sku": "EBH9WNA",
+      "annual_2026_target": 60,
+      "synthetic_window_total": 87,
+      "real_window_total": 0,
+      "combined_window_total": 87
+    },
+    {
+      "sku": "M1NA",
+      "annual_2026_target": 45,
+      "synthetic_window_total": 64,
+      "real_window_total": 0,
+      "combined_window_total": 64
+    },
+    {
+      "sku": "V2NA",
+      "annual_2026_target": 30,
+      "synthetic_window_total": 42,
+      "real_window_total": 0,
+      "combined_window_total": 42
+    },
+    {
+      "sku": "CCSNA",
+      "annual_2026_target": 15,
+      "synthetic_window_total": 21,
+      "real_window_total": 4,
+      "combined_window_total": 25
+    },
+    {
+      "sku": "FSCNA",
+      "annual_2026_target": 12,
+      "synthetic_window_total": 16,
+      "real_window_total": 2,
+      "combined_window_total": 18
+    }
+  ]
+}

@@ -16,6 +16,8 @@
 }
 
 :root {
+  color-scheme: light;
+
   /* Echo Barrier Brand Identity — matches echobarrier.com */
   --echo-orange: #FF7026;
   --echo-orange-hover: #f2641b;
@@ -27,12 +29,13 @@
   --foreground: #353433;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* No dark palette. Every surface in this app is a hardcoded light one
+   (bg-white cards, text-gray-* copy), so flipping --foreground to near-white on
+   a dark-mode machine did not theme the app, it just made every element that
+   INHERITS its colour invisible: Label sets no text colour, so "Invoice date"
+   and the ship-from <select> rendered #ededed on a white card, about 1.1:1.
+   color-scheme: light also keeps native controls (date pickers, selects,
+   scrollbars) light, so they match the surfaces they sit on. */
 
 body {
   background: var(--background);

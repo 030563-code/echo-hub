@@ -1,0 +1,126 @@
+begin;
+
+set local session_replication_role = replica;
+
+insert into public.purchase_orders (id, parent_po_id, master_ref, leg, from_entity, to_entity, status, notes, po_number, source, created_at) values
+  ('00000000-de30-4000-8000-000000000001', null, 'MR-DEMO-EBUS26090', 'DEPOT_TO_EB_GROUP', 'US-BAL', 'EB-GROUP', 'delivered', 'DEMO seed — opening stock (US-BAL)', 'DEMO-EBUS26090', 'hub', '2026-07-01T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000015', null, 'MR-DEMO-EBUS26091', 'DEPOT_TO_EB_GROUP', 'US-SBD', 'EB-GROUP', 'delivered', 'DEMO seed — opening stock (US-SBD)', 'DEMO-EBUS26091', 'hub', '2026-07-01T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000021', null, 'MR-DEMO-EBUS26092', 'DEPOT_TO_EB_GROUP', 'CA-HAM', 'EB-GROUP', 'delivered', 'DEMO seed — opening stock (CA-HAM)', 'DEMO-EBUS26092', 'hub', '2026-07-01T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000027', null, 'MR-DEMO-EBUS26101', 'DEPOT_TO_EB_GROUP', 'US-BAL', 'EB-GROUP', 'approved', 'DEMO seed — open order (US-BAL)', 'DEMO-EBUS26101', 'hub', '2026-07-20T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000030', null, 'MR-DEMO-EBUS26102', 'DEPOT_TO_EB_GROUP', 'US-BAL', 'EB-GROUP', 'shipped', 'DEMO seed — open order (US-BAL)', 'DEMO-EBUS26102', 'hub', '2026-07-20T00:00:00Z')
+on conflict (po_number) do nothing;
+
+insert into public.mrp_demo_seed_registry (batch_tag, op, table_name, pk, prior) values
+  ('andy-demo-2026-08-09', 'insert', 'purchase_orders', '{"po_number":"DEMO-EBUS26090"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_orders', '{"po_number":"DEMO-EBUS26091"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_orders', '{"po_number":"DEMO-EBUS26092"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_orders', '{"po_number":"DEMO-EBUS26101"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_orders', '{"po_number":"DEMO-EBUS26102"}'::jsonb, null);
+
+insert into public.purchase_order_lines (id, po_id, sku, product_name, quantity) values
+  ('00000000-de30-4000-8000-000000000002', '00000000-de30-4000-8000-000000000001', 'EBH9NA', 'Echo Barrier H9', 350),
+  ('00000000-de30-4000-8000-000000000003', '00000000-de30-4000-8000-000000000001', 'HKNA', 'Hooks', 480),
+  ('00000000-de30-4000-8000-000000000004', '00000000-de30-4000-8000-000000000001', 'BUNNA', 'Bungies', 420),
+  ('00000000-de30-4000-8000-000000000005', '00000000-de30-4000-8000-000000000001', 'EBH10HERCNA', 'Echo Barrier H10 HERC', 340),
+  ('00000000-de30-4000-8000-000000000006', '00000000-de30-4000-8000-000000000001', 'EBH10NA', 'Echo Barrier H10', 60),
+  ('00000000-de30-4000-8000-000000000007', '00000000-de30-4000-8000-000000000001', 'EBH9XNA', 'Echo Barrier H9X', 170),
+  ('00000000-de30-4000-8000-000000000008', '00000000-de30-4000-8000-000000000001', 'EBVFKNA', 'Vertical Fitting Kits', 12),
+  ('00000000-de30-4000-8000-000000000009', '00000000-de30-4000-8000-000000000001', 'EBH8NA', 'Echo Barrier H8', 90),
+  ('00000000-de30-4000-8000-000000000010', '00000000-de30-4000-8000-000000000001', 'EBH9WNA', 'Echo Barrier H9W', 30),
+  ('00000000-de30-4000-8000-000000000011', '00000000-de30-4000-8000-000000000001', 'M1NA', 'M1 Mini Gen Set', 20),
+  ('00000000-de30-4000-8000-000000000012', '00000000-de30-4000-8000-000000000001', 'V2NA', 'Echo Barrier V2', 15),
+  ('00000000-de30-4000-8000-000000000013', '00000000-de30-4000-8000-000000000001', 'CCSNA', 'Compact Cutting Station', 6),
+  ('00000000-de30-4000-8000-000000000014', '00000000-de30-4000-8000-000000000001', 'FSCNA', 'Full Size Cutting Station', 5),
+  ('00000000-de30-4000-8000-000000000016', '00000000-de30-4000-8000-000000000015', 'EBH9NA', 'Echo Barrier H9', 100),
+  ('00000000-de30-4000-8000-000000000017', '00000000-de30-4000-8000-000000000015', 'EBH10NA', 'Echo Barrier H10', 40),
+  ('00000000-de30-4000-8000-000000000018', '00000000-de30-4000-8000-000000000015', 'EBH9ERNA', 'Echo Barrier H9 Ex Rental', 70),
+  ('00000000-de30-4000-8000-000000000019', '00000000-de30-4000-8000-000000000015', 'EBH9XNA', 'Echo Barrier H9X', 60),
+  ('00000000-de30-4000-8000-000000000020', '00000000-de30-4000-8000-000000000015', 'EBH8NA', 'Echo Barrier H8', 35),
+  ('00000000-de30-4000-8000-000000000022', '00000000-de30-4000-8000-000000000021', 'EBH9NA', 'Echo Barrier H9', 50),
+  ('00000000-de30-4000-8000-000000000023', '00000000-de30-4000-8000-000000000021', 'EBH10NA', 'Echo Barrier H10', 35),
+  ('00000000-de30-4000-8000-000000000024', '00000000-de30-4000-8000-000000000021', 'HKNA', 'Hooks', 130),
+  ('00000000-de30-4000-8000-000000000025', '00000000-de30-4000-8000-000000000021', 'BUNNA', 'Bungies', 90),
+  ('00000000-de30-4000-8000-000000000026', '00000000-de30-4000-8000-000000000021', 'EBH10HERCNA', 'Echo Barrier H10 HERC', 110),
+  ('00000000-de30-4000-8000-000000000028', '00000000-de30-4000-8000-000000000027', 'HKNA', 'Hooks', 260),
+  ('00000000-de30-4000-8000-000000000029', '00000000-de30-4000-8000-000000000027', 'EBH10NA', 'Echo Barrier H10', 280),
+  ('00000000-de30-4000-8000-000000000031', '00000000-de30-4000-8000-000000000030', 'EBH9NA', 'Echo Barrier H9', 560);
+
+insert into public.mrp_demo_seed_registry (batch_tag, op, table_name, pk, prior) values
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000002"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000003"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000004"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000005"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000006"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000007"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000008"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000009"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000010"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000011"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000012"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000013"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000014"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000016"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000017"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000018"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000019"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000020"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000022"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000023"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000024"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000025"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000026"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000028"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000029"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'purchase_order_lines', '{"id":"00000000-de30-4000-8000-000000000031"}'::jsonb, null);
+
+insert into public.po_line_receipts (po_id, po_line_id, qty_received, note, received_at) values
+  ('00000000-de30-4000-8000-000000000001', '00000000-de30-4000-8000-000000000002', 350, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000001', '00000000-de30-4000-8000-000000000003', 480, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000001', '00000000-de30-4000-8000-000000000004', 420, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000001', '00000000-de30-4000-8000-000000000005', 340, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000001', '00000000-de30-4000-8000-000000000006', 60, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000001', '00000000-de30-4000-8000-000000000007', 170, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000001', '00000000-de30-4000-8000-000000000008', 12, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000001', '00000000-de30-4000-8000-000000000009', 90, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000001', '00000000-de30-4000-8000-000000000010', 30, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000001', '00000000-de30-4000-8000-000000000011', 20, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000001', '00000000-de30-4000-8000-000000000012', 15, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000001', '00000000-de30-4000-8000-000000000013', 6, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000001', '00000000-de30-4000-8000-000000000014', 5, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000015', '00000000-de30-4000-8000-000000000016', 100, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000015', '00000000-de30-4000-8000-000000000017', 40, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000015', '00000000-de30-4000-8000-000000000018', 70, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000015', '00000000-de30-4000-8000-000000000019', 60, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000015', '00000000-de30-4000-8000-000000000020', 35, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000021', '00000000-de30-4000-8000-000000000022', 50, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000021', '00000000-de30-4000-8000-000000000023', 35, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000021', '00000000-de30-4000-8000-000000000024', 130, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000021', '00000000-de30-4000-8000-000000000025', 90, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z'),
+  ('00000000-de30-4000-8000-000000000021', '00000000-de30-4000-8000-000000000026', 110, 'DEMO seed — opening stock receipt', '2026-07-15T00:00:00Z');
+
+insert into public.mrp_demo_seed_registry (batch_tag, op, table_name, pk, prior) values
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000001","po_line_id":"00000000-de30-4000-8000-000000000002"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000001","po_line_id":"00000000-de30-4000-8000-000000000003"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000001","po_line_id":"00000000-de30-4000-8000-000000000004"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000001","po_line_id":"00000000-de30-4000-8000-000000000005"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000001","po_line_id":"00000000-de30-4000-8000-000000000006"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000001","po_line_id":"00000000-de30-4000-8000-000000000007"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000001","po_line_id":"00000000-de30-4000-8000-000000000008"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000001","po_line_id":"00000000-de30-4000-8000-000000000009"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000001","po_line_id":"00000000-de30-4000-8000-000000000010"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000001","po_line_id":"00000000-de30-4000-8000-000000000011"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000001","po_line_id":"00000000-de30-4000-8000-000000000012"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000001","po_line_id":"00000000-de30-4000-8000-000000000013"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000001","po_line_id":"00000000-de30-4000-8000-000000000014"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000015","po_line_id":"00000000-de30-4000-8000-000000000016"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000015","po_line_id":"00000000-de30-4000-8000-000000000017"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000015","po_line_id":"00000000-de30-4000-8000-000000000018"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000015","po_line_id":"00000000-de30-4000-8000-000000000019"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000015","po_line_id":"00000000-de30-4000-8000-000000000020"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000021","po_line_id":"00000000-de30-4000-8000-000000000022"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000021","po_line_id":"00000000-de30-4000-8000-000000000023"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000021","po_line_id":"00000000-de30-4000-8000-000000000024"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000021","po_line_id":"00000000-de30-4000-8000-000000000025"}'::jsonb, null),
+  ('andy-demo-2026-08-09', 'insert', 'po_line_receipts', '{"po_id":"00000000-de30-4000-8000-000000000021","po_line_id":"00000000-de30-4000-8000-000000000026"}'::jsonb, null);
+
+commit;

@@ -42,9 +42,20 @@ test.describe('Navigation + RBAC (privileged user)', () => {
     })
   }
 
-  test('admin can open Quotes (routes to the requests queue)', async ({ page }) => {
+  test('admin can open Quotes (routes to the board)', async ({ page }) => {
     await page.locator('aside').getByRole('link', { name: 'Quotes', exact: true }).click()
-    await expect(page).toHaveURL(/\/quotes(\/requests)?$/)
+    await expect(page).toHaveURL(/\/quotes(\/board)?/)
     await expect(page).not.toHaveURL(/\/login$/)
+  })
+
+  test('admin can open Pricing, and lands on the list with all three tabs', async ({ page }) => {
+    // Read only: the specs never open an edit dialog, because saving writes a
+    // real price the quote builder would then charge.
+    await page.locator('aside').getByRole('link', { name: 'Pricing', exact: true }).click()
+    await expect(page).toHaveURL(/\/pricing(\/list)?$/)
+    await expect(page.getByRole('heading', { name: 'List prices' })).toBeVisible()
+    for (const tab of ['List prices', 'Contract prices', 'Discount caps']) {
+      await expect(page.getByRole('navigation', { name: 'Pricing' }).getByRole('link', { name: tab })).toBeVisible()
+    }
   })
 })

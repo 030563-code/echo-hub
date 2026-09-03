@@ -113,6 +113,33 @@ export const HUBSPOT_PIPELINES = {
       TENDER: "744147",
       QUOTATION_ACCEPTED: "1170409275",
       GENERAL_PRICING: "1172530569"
+    },
+    /**
+     * Rep-facing stage names, verbatim from HubSpot in displayOrder, verified
+     * live 2026-09-02.
+     *
+     * Keyed by the same KEY as `stages`, deliberately NOT folded into it:
+     * seven exported stage arrays and four call sites index `stages` as
+     * Record<string,string>, and turning the values into objects breaks all of
+     * them.
+     *
+     * Only USA SALES is verified, so it is the only pipeline with a map. Every
+     * other pipeline falls back to the title-cased key, which is what the UI
+     * showed for all of them before. Note "Closed Won by Distributor": the
+     * lower-case "by" is why a derived label is not good enough here.
+     */
+    stageLabels: {
+      QUOTE_REQUEST: "Quote Request",
+      CALL: "Call",
+      QUOTATION_SENT: "Quotation sent",
+      CLOSED_LOST: "Closed lost",
+      CLOSED_WON: "Closed won",
+      PASSED_TO_DISTRIBUTOR: "Passed to Distributor",
+      CLOSED_WON_DISTRIBUTOR: "Closed Won by Distributor",
+      CLOSED_LOST_DISTRIBUTOR: "Closed Lost By Distributor",
+      TENDER: "Tender",
+      QUOTATION_ACCEPTED: "Quotation Accepted",
+      GENERAL_PRICING: "General pricing"
     }
   },
   DEMO_SALES: {
@@ -246,3 +273,62 @@ export const TENDER_STAGES = [
 
 /** Page size for the company-contacts picker in the manual quote-request flow. */
 export const COMPANY_CONTACTS_PAGE_SIZE = 10
+
+/* -------------------------------------------------------------------------- */
+/* Stage labels                                                               */
+/* -------------------------------------------------------------------------- */
+
+interface PipelineEntry {
+  label: string
+  id: string
+  stages: Record<string, string>
+  stageLabels?: Record<string, string>
+}
+
+const ALL_PIPELINES: PipelineEntry[] = Object.values(HUBSPOT_PIPELINES)
+
+/** QUOTE_REQUEST -> "Quote Request". The fallback for every pipeline whose
+ *  real HubSpot labels have not been verified. */
+function titleCaseStageKey(key: string): string {
+  return key
+    .toLowerCase()
+    .split("_")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ")
+}
+
+/**
+ * Every stage id in every pipeline, mapped to its rep-facing name.
+ *
+ * Safe to build as a flat map: all 92 stage ids across the 14 pipelines are
+ * distinct (asserted in tests/unit/hubspot-stage-labels.test.ts), so there is
+ * no collision to resolve.
+ */
+export const STAGE_LABELS_BY_ID: Record<string, string> = (() => {
+  const out: Record<string, string> = {}
+  for (const pipeline of ALL_PIPELINES) {
+    for (const [key, id] of Object.entries(pipeline.stages)) {
+      out[id] = pipeline.stageLabels?.[key] ?? titleCaseStageKey(key)
+    }
+  }
+  return out
+})()
+
+/**
+ * The rep-facing name for a stage.
+ *
+ * Never returns a raw id. The previous implementation fell through to the
+ * GUID whenever the pipeline or stage was not found, so a deal that had moved
+ * pipelines rendered a 36-character identifier in the UI. A mismatched
+ * pipeline/stage pair now resolves through the global map before giving up,
+ * and only a genuinely unknown id yields "Unknown stage".
+ */
+export function stageLabel(pipelineId: string, stageId: string): string {
+  const pipeline = ALL_PIPELINES.find((entry) => entry.id === pipelineId)
+  if (pipeline) {
+    const key = Object.keys(pipeline.stages).find((k) => pipeline.stages[k] === stageId)
+    if (key) return pipeline.stageLabels?.[key] ?? titleCaseStageKey(key)
+  }
+  return STAGE_LABELS_BY_ID[stageId] ?? "Unknown stage"
+}

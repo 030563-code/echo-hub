@@ -34,24 +34,10 @@ async function fetchHubSpotProperty(slug: string, accessToken: string): Promise<
   }
 }
 
-export async function getDealCurrencyOptions(): Promise<{ success: boolean; data?: PropertyOption[]; error?: string }> {
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { success: false, error: 'Unauthorized' }
-  if (!(await hasAnyCapability(['quotes.view', 'quotes.create']))) {
-    return { success: false, error: 'Forbidden: missing quotes capability' }
-  }
-
-  const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
-  if (!accessToken) return { success: false, error: 'Token Missing' }
-
-  const result = await fetchHubSpotProperty('deal_currency_code', accessToken)
-  if (!result.ok) return { success: false, error: result.error }
-
-  const options = (result.data?.options || []).filter((opt: PropertyOption) => !opt.hidden)
-  return { success: true, data: options }
-}
-
+/* getDealCurrencyOptions removed 2026-09-02: deal_currency_code is
+ * externalOptions:true with an empty options array, so HubSpot serves the
+ * choices from portal settings and this endpoint could only ever return [].
+ * The currency list now comes from PIPELINE_CONFIG.allowedCurrencies. */
 export async function getWinProbabilityOptions(): Promise<{ success: boolean; data?: { label: string; value: string }[]; error?: string }> {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()

@@ -1,0 +1,135 @@
+{
+ "family": "EBH9",
+ "window": {
+  "start": "2025-01-06",
+  "end": "2026-07-27",
+  "weeks": 82
+ },
+ "trials": 574,
+ "skipped": 0,
+ "calibration": [
+  {
+   "loPct": 0,
+   "hiPct": 10,
+   "n": 84,
+   "meanPredicted": 0.026517857142857138,
+   "observedRate": 0.023809523809523808
+  },
+  {
+   "loPct": 10,
+   "hiPct": 20,
+   "n": 80,
+   "meanPredicted": 0.15529374999999998,
+   "observedRate": 0.175
+  },
+  {
+   "loPct": 20,
+   "hiPct": 30,
+   "n": 24,
+   "meanPredicted": 0.2767291666666667,
+   "observedRate": 0.4166666666666667
+  },
+  {
+   "loPct": 30,
+   "hiPct": 40,
+   "n": 58,
+   "meanPredicted": 0.3231724137931034,
+   "observedRate": 0.3275862068965517
+  },
+  {
+   "loPct": 40,
+   "hiPct": 50,
+   "n": 14,
+   "meanPredicted": 0.47525,
+   "observedRate": 0.35714285714285715
+  },
+  {
+   "loPct": 50,
+   "hiPct": 60,
+   "n": 67,
+   "meanPredicted": 0.540223880597015,
+   "observedRate": 0.6119402985074627
+  },
+  {
+   "loPct": 60,
+   "hiPct": 70,
+   "n": 3,
+   "meanPredicted": 0.6709999999999999,
+   "observedRate": 1
+  },
+  {
+   "loPct": 70,
+   "hiPct": 80,
+   "n": 65,
+   "meanPredicted": 0.7566153846153845,
+   "observedRate": 0.7846153846153846
+  },
+  {
+   "loPct": 80,
+   "hiPct": 90,
+   "n": 20,
+   "meanPredicted": 0.834625,
+   "observedRate": 0.95
+  },
+  {
+   "loPct": 90,
+   "hiPct": 100,
+   "n": 159,
+   "meanPredicted": 0.9634119496855348,
+   "observedRate": 0.9937106918238994
+  }
+ ],
+ "brier": 0.11459463675958192,
+ "policies": [
+  {
+   "label": "zone",
+   "orders": 8,
+   "unitsOrdered": 5295,
+   "stockoutWeeks": 8,
+   "demandMet": 4569,
+   "demandTotal": 4970,
+   "avgOnHand": 459.0853658536585,
+   "peakOnHand": 913,
+   "fillRate": 0.9193158953722333
+  },
+  {
+   "label": "mc:0.03",
+   "orders": 17,
+   "unitsOrdered": 5736,
+   "stockoutWeeks": 3,
+   "demandMet": 4899,
+   "demandTotal": 4970,
+   "avgOnHand": 586.2073170731708,
+   "peakOnHand": 1099,
+   "fillRate": 0.9857142857142858
+  },
+  {
+   "label": "mc:0.08",
+   "orders": 11,
+   "unitsOrdered": 5347,
+   "stockoutWeeks": 3,
+   "demandMet": 4899,
+   "demandTotal": 4970,
+   "avgOnHand": 552.5487804878048,
+   "peakOnHand": 1038,
+   "fillRate": 0.9857142857142858
+  },
+  {
+   "label": "mc:0.12",
+   "orders": 10,
+   "unitsOrdered": 5736,
+   "stockoutWeeks": 3,
+   "demandMet": 4899,
+   "demandTotal": 4970,
+   "avgOnHand": 524.5365853658536,
+   "peakOnHand": 1111,
+   "fillRate": 0.9857142857142858
+  }
+ ],
+ "openingStock": 560,
+ "zoneInputs": {
+  "moq": 70,
+  "containerQty": 560,
+  "source": "EBH9NA"
+ }
+}

@@ -4,8 +4,19 @@ import { assertDealAccess } from '@/lib/authz'
 import { createServerClient } from '@/lib/supabase/server'
 import { HUBSPOT_PIPELINES, QUOTATION_ACCEPTED_STAGES } from '@/lib/hubspot-constants'
 import { DEPOT_MAPPING } from '@/lib/depot-constants'
+import { isUSDepot } from '@/lib/customer-invoice/constants'
+import { sanitizeUSAddress, type USDeliveryAddress } from '@/lib/us-address'
+import { parseWinProbability } from '@/lib/quote-math'
 
-export async function updateDealStage(dealId: string, pipelineId: string, stageId: string, sendingDepot?: string, amount?: number, tenderDate?: string) {
+export interface AcceptanceExtras {
+  /** HubSpot win_probability option value ('10%'..'100%'). Written to HubSpot
+   *  and deals_registry when provided. */
+  winProbability?: string
+  /** US delivery (ship-to) address, captured at acceptance for TaxJar. */
+  delivery?: Partial<USDeliveryAddress>
+}
+
+export async function updateDealStage(dealId: string, pipelineId: string, stageId: string, sendingDepot?: string, amount?: number, tenderDate?: string, acceptance?: AcceptanceExtras) {
   // IDOR guard (finding #5): the deal must belong to the caller's pipeline.
   // This is a write path, so require quotes.create explicitly — the default
   // ('quotes.view') would let a view-only user push stage/depot/amount changes.
@@ -94,6 +105,89 @@ export async function updateDealStage(dealId: string, pipelineId: string, stageI
     return { success: false, error: 'HubSpot Access Token not configured' }
   }
 
+  // US acceptance gate: a US dispatch depot means this deal enters the US
+  // invoicing flow (destination-based sales tax via TaxJar), so a complete
+  // delivery address, a probability of close, and an associated company are
+  // mandatory BEFORE the stage moves. Keyed on the depot, not the pipeline:
+  // CA-HAM and EU acceptances keep the depot-only requirement above. The
+  // registry write happens BEFORE the HubSpot PATCH so the row is already
+  // complete when the acceptance echoes back into the admin queue (and a
+  // failed PATCH leaves nothing worse than a saved address).
+  const parsedProbability = parseWinProbability(acceptance?.winProbability)
+  if (QUOTATION_ACCEPTED_STAGES.includes(stageId) && isUSDepot(sendingDepot)) {
+    // 1) The deal must have an associated company (the invoice customer).
+    const assocRes = await fetch(
+      `https://api.hubapi.com/crm/v3/objects/deals/${dealId}?properties=dealname&associations=companies`,
+      { headers: { Authorization: `Bearer ${accessToken}` }, cache: 'no-store' },
+    )
+    if (!assocRes.ok) {
+      return { success: false, error: 'Could not verify the deal in HubSpot. Please try again.' }
+    }
+    const assocBody = (await assocRes.json()) as {
+      associations?: { companies?: { results?: unknown[] } }
+    }
+    if (!assocBody.associations?.companies?.results?.length) {
+      return {
+        success: false,
+        error: 'Associate a company with this deal in HubSpot before accepting: the invoice needs a customer.',
+      }
+    }
+
+    // 2) Delivery address: the submitted one, falling back to what the
+    //    registry already holds. Sanitized to TaxJar's format either way.
+    const supabase = await createServerClient()
+    const { data: regRow, error: regError } = await supabase
+      .from('deals_registry')
+      .select('delivery_street, delivery_city, delivery_state, delivery_zip, deal_probability')
+      .eq('hubspot_deal_id', dealId)
+      .maybeSingle()
+    if (regError) {
+      return { success: false, error: 'Could not load the saved delivery address. Please try again.' }
+    }
+    const address = sanitizeUSAddress(
+      acceptance?.delivery ?? {
+        street: regRow?.delivery_street ?? '',
+        city: regRow?.delivery_city ?? '',
+        state: regRow?.delivery_state ?? '',
+        zip: regRow?.delivery_zip ?? '',
+      },
+    )
+    if (!address.ok) {
+      return { success: false, error: address.error }
+    }
+
+    // 3) Probability of close (the backbone): submitted or already stored.
+    const effectiveProbability = parsedProbability ?? (regRow?.deal_probability === null || regRow?.deal_probability === undefined ? null : Number(regRow.deal_probability))
+    if (effectiveProbability === null || !Number.isFinite(effectiveProbability)) {
+      return { success: false, error: 'Set the deal probability before accepting.' }
+    }
+
+    // 4) Persist to the registry (session client, RLS-enforced). Never writes
+    //    deal_status or depot_code: those keep flowing HubSpot -> n8n, so the
+    //    Hub's own write can never fire the accepted-quote trigger or race
+    //    the sync. Upsert only sets the columns provided.
+    const { error: writeError } = await supabase.from('deals_registry').upsert(
+      {
+        hubspot_deal_id: dealId,
+        pipeline_id: pipelineId,
+        delivery_street: address.value.street,
+        delivery_city: address.value.city,
+        delivery_state: address.value.state,
+        delivery_zip: address.value.zip,
+        delivery_country: 'US',
+        ...(parsedProbability !== null ? { deal_probability: parsedProbability } : {}),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'hubspot_deal_id' },
+    )
+    if (writeError) {
+      return {
+        success: false,
+        error: 'Could not save the delivery address for this deal. If the deal is outside your pipeline it cannot be accepted from the Hub.',
+      }
+    }
+  }
+
   try {
     const properties: Record<string, string> = {
       dealstage: stageId,
@@ -113,6 +207,11 @@ export async function updateDealStage(dealId: string, pipelineId: string, stageI
 
     if (tenderDate) {
       properties.tender_date = tenderDate
+    }
+
+    // Piggyback the probability onto the same PATCH (one write, no extra call).
+    if (acceptance?.winProbability && parsedProbability !== null) {
+      properties.win_probability = acceptance.winProbability
     }
 
     const response = await fetch(`https://api.hubapi.com/crm/v3/objects/deals/${dealId}`, {

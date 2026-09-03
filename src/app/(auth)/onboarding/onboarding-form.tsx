@@ -108,7 +108,7 @@ export default function OnboardingForm({ defaultDisplayName, suggestedPipelineId
             <p className="text-gray-400 font-medium uppercase tracking-wider mb-2">Region Access</p>
             <p className="text-gray-300">
               <span className="text-gray-500">Depots: </span>
-              {selectedPipeline.allowedDepots.map((d) => d.label).join(', ')}
+              {selectedPipeline.allowedDepots.map((d) => d.value).join(', ')}
             </p>
             {selectedPipeline.allowedDistributors.length > 0 && (
               <p className="text-gray-300">

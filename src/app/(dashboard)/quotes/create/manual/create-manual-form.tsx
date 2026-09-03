@@ -8,14 +8,20 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Building, User, FileText, Search, Check, ChevronLeft, ChevronRight } from 'lucide-react'
+import {
+  Building2, UserRound, FileText, Search, Check, ChevronLeft, ChevronRight,
+  ExternalLink, Coins, AlertTriangle,
+} from 'lucide-react'
+import { hubspotRecordUrl } from '@/lib/hubspot-links'
+import { ConfirmPanel } from '@/components/ui/confirm-panel'
 import { searchCompanies } from '@/app/actions/hubspot/searchCompanies'
 import { getCompanyContacts, type CompanyContact } from '@/app/actions/hubspot/getCompanyContacts'
 import { COMPANY_CONTACTS_PAGE_SIZE } from '@/lib/hubspot-constants'
 import { CreateCompanyDialog, CreateContactDialog, type CreatedCompany, type CreatedContact } from './hubspot-create-dialogs'
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { getDealCurrencyOptions, getWinProbabilityOptions } from '@/app/actions/hubspot/getDealProperties'
+import { CURRENCY_FLAG, CURRENCY_NAME } from '@/lib/pipeline-config'
+import { FlagIcon } from '@/components/ui/flag-icon'
 
 interface CompanyResult {
   id: string
@@ -26,7 +32,17 @@ interface CompanyResult {
 
 import { createHubSpotDeal } from '@/app/actions/hubspot/createDeal'
 
-export default function CreateManualRequestForm({ restrictedToOwn = true }: { restrictedToOwn?: boolean }) {
+export default function CreateManualRequestForm({
+  restrictedToOwn = true,
+  allowedCurrencies,
+  defaultCurrency,
+}: {
+  restrictedToOwn?: boolean
+  /** Resolved from the caller's pipeline on the server, so the pipeline id
+   *  never reaches the client. */
+  allowedCurrencies: string[]
+  defaultCurrency: string
+}) {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -75,30 +91,7 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
 
   const [dealName, setDealName] = useState('')
   const [description, setDescription] = useState('')
-  const [currency, setCurrency] = useState('USD')
-  const [currencyOptions, setCurrencyOptions] = useState<{label: string, value: string}[]>([])
-  const [winProbability, setWinProbability] = useState('')
-  const [winProbabilityOptions, setWinProbabilityOptions] = useState<{label: string, value: string}[]>([])
-
-  useEffect(() => {
-    async function fetchCurrencies() {
-      const result = await getDealCurrencyOptions()
-      if (result.success && result.data) {
-        setCurrencyOptions(result.data)
-      }
-    }
-    fetchCurrencies()
-  }, [])
-
-  useEffect(() => {
-    async function fetchWinProbability() {
-      const result = await getWinProbabilityOptions()
-      if (result.success && result.data) {
-        setWinProbabilityOptions(result.data)
-      }
-    }
-    fetchWinProbability()
-  }, [])
+  const [currency, setCurrency] = useState(defaultCurrency)
 
   // Keep the timer-visible refs in step with the current render.
   useEffect(() => {
@@ -330,10 +323,6 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
       toast.error('Please enter a deal name.')
       return
     }
-    if (!winProbability) {
-      toast.error('Please select a Win Probability before creating the deal.')
-      return
-    }
     inFlightRef.current = true
     setIsSubmitting(true)
     let createdDealId: string | null = null
@@ -362,7 +351,6 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
         companyId: finalCompanyId,
         contactId: finalContactId,
         currency,
-        winProbability
       })
 
       if (result.success && result.dealId) {
@@ -413,7 +401,7 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
         {step === 1 && (
           <div className="space-y-6">
             <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
-              <Building className="w-6 h-6 text-gray-400" />
+              <Building2 className="w-6 h-6 text-gray-400" />
               <h2 className="text-xl font-bold text-gray-900">Company Information</h2>
             </div>
 
@@ -467,6 +455,9 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
                         onClick={() => handleSelectCompany(company)}
                       >
                         <p className="font-medium text-gray-900 max-sm:truncate">{company.name}</p>
+                        <p className="text-xs text-gray-500 max-sm:truncate">
+                          {company.domain || <span className="italic text-gray-400">no domain</span>}
+                        </p>
                         <div className="flex items-center gap-2 mt-1">
                           <span className={`text-xs px-2 py-0.5 rounded-full ${company.source === 'supabase' ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'}`}>
                             {company.source === 'supabase' ? 'Account Registry' : 'HubSpot'}
@@ -479,7 +470,7 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
 
                 {companySearchError ? (
                   <p className="text-xs text-red-600">
-                    {companySearchError} Search again before creating — this company may already exist.
+                    {companySearchError} Search again before creating. This company may already exist.
                   </p>
                 ) : (
                   <p className="text-xs text-gray-500">
@@ -494,6 +485,16 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
                 <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 flex items-center justify-between gap-3">
                   <span className="min-w-0 break-words">
                     Selected: <span className="font-semibold">{companyName}</span>
+                    {hubspotRecordUrl('company', selectedCompany.id) && (
+                      <a
+                        href={hubspotRecordUrl('company', selectedCompany.id) ?? undefined}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ml-2 inline-flex items-center gap-1 text-xs font-medium underline hover:no-underline"
+                      >
+                        Open in HubSpot <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
                   </span>
                   <Button
                     variant="outline"
@@ -519,7 +520,7 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
         {step === 2 && (
           <div className="space-y-6">
             <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
-              <User className="w-6 h-6 text-gray-400" />
+              <UserRound className="w-6 h-6 text-gray-400" />
               <h2 className="text-xl font-bold text-gray-900">Contact Information</h2>
             </div>
 
@@ -542,6 +543,16 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
                   <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 break-words">
                     Selected: <span className="font-semibold">{contactName}</span>
                     {contactEmail ? ` — ${contactEmail}` : ''}
+                    {hubspotRecordUrl('contact', selectedContact.id) && (
+                      <a
+                        href={hubspotRecordUrl('contact', selectedContact.id) ?? undefined}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ml-2 inline-flex items-center gap-1 text-xs font-medium underline hover:no-underline"
+                      >
+                        Open in HubSpot <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
                   </div>
                 )}
 
@@ -557,7 +568,7 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
                     />
                   </div>
                   <p className="text-xs text-gray-500">
-                    Searches all of {selectedCompany.name}&apos;s contacts in HubSpot — not just the page below.
+                    Searches all of {selectedCompany.name}&apos;s contacts in HubSpot, not just the page below.
                     Someone missing here can still be added with the button underneath; an existing
                     email is linked rather than duplicated.
                   </p>
@@ -714,51 +725,75 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
               </div>
 
               <div className="space-y-2">
-                <Label className="text-gray-700">Currency</Label>
+                <Label className="text-gray-700 flex items-center gap-1.5">
+                  <Coins className="w-3.5 h-3.5 text-gray-400" />
+                  Currency
+                </Label>
                 <Select value={currency} onValueChange={setCurrency}>
                   <SelectTrigger className="bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow">
                     <SelectValue placeholder="Select Currency" />
                   </SelectTrigger>
                   <SelectContent className="bg-white border-gray-200 text-gray-900">
-                    {currencyOptions.length > 0 ? (
-                      currencyOptions.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
-                          {opt.label}
-                        </SelectItem>
-                      ))
-                    ) : (
-                      <SelectItem value="USD">USD - US Dollar</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-gray-700">Win Probability *</Label>
-                <Select value={winProbability} onValueChange={setWinProbability}>
-                  <SelectTrigger className="bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow">
-                    <SelectValue placeholder="Select win probability..." />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white border-gray-200 text-gray-900">
-                    {winProbabilityOptions.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
-                        {opt.label}
+                    {allowedCurrencies.map((code) => (
+                      <SelectItem key={code} value={code} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
+                        <span className="inline-flex items-center gap-2">
+                          {CURRENCY_FLAG[code] ? <FlagIcon code={CURRENCY_FLAG[code]} /> : null}
+                          <span className="font-medium">{code}</span>
+                          {CURRENCY_NAME[code] ? <span className="text-gray-500">{CURRENCY_NAME[code]}</span> : null}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-gray-500">Required for all non-tender deals.</p>
               </div>
 
               <div className="space-y-2">
                 <Label className="text-gray-700">Description</Label>
                 <textarea
                   className="flex min-h-[100px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm text-gray-900 ring-offset-background placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-echo-yellow focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  placeholder="Enter details about the request..."
+                  placeholder="Enter details about the deal..."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                 />
               </div>
+
+              {dealName.trim() && selectedCompany && selectedContact && (
+                <ConfirmPanel>
+                  <p className="mb-2 flex items-center gap-1.5 font-semibold text-gray-900">
+                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                    You are about to create this deal in HubSpot
+                  </p>
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+                    <dt className="text-gray-500">Company</dt>
+                    <dd className="font-medium text-gray-900 break-words">
+                      {companyName}
+                      {selectedCompany.domain ? ` (${selectedCompany.domain})` : ''}
+                    </dd>
+                    <dt className="text-gray-500">Contact</dt>
+                    <dd className="font-medium text-gray-900 break-words">
+                      {contactName}
+                      {contactEmail ? ` (${contactEmail})` : ''}
+                    </dd>
+                    <dt className="text-gray-500">Deal</dt>
+                    <dd className="font-medium text-gray-900 break-words">{dealName.trim()}</dd>
+                    <dt className="text-gray-500">Currency</dt>
+                    <dd className="font-medium text-gray-900 inline-flex items-center gap-1.5">
+                      {CURRENCY_FLAG[currency] ? <FlagIcon code={CURRENCY_FLAG[currency]} /> : null}
+                      {currency}
+                    </dd>
+                    <dt className="text-gray-500">Description</dt>
+                    <dd className="text-gray-700 break-words">
+                      {description.trim()
+                        ? description.trim().slice(0, 120) + (description.trim().length > 120 ? '…' : '')
+                        : <span className="italic text-gray-400">no description</span>}
+                    </dd>
+                  </dl>
+                  <p className="mt-2 text-xs text-gray-500">
+                    This writes to the live shared CRM. The win probability is asked on the next
+                    screen, when you build the quote.
+                  </p>
+                </ConfirmPanel>
+              )}
             </div>
           </div>
         )}
@@ -775,11 +810,11 @@ export default function CreateManualRequestForm({ restrictedToOwn = true }: { re
 
           {step < 3 ? (
             <Button onClick={handleNext} disabled={isSubmitting} className="w-full sm:w-auto py-3 sm:py-2.5 bg-black text-white hover:bg-gray-800 disabled:opacity-60">
-              {isSubmitting ? 'Creating...' : 'Next Step'}
+              Next Step
             </Button>
           ) : (
             <Button onClick={handleSubmit} disabled={isSubmitting} className="w-full sm:w-auto py-3 sm:py-2.5 bg-echo-yellow text-black hover:bg-echo-yellow/90 font-bold disabled:opacity-60">
-              {isSubmitting ? 'Creating...' : 'Create Request'}
+              {isSubmitting ? 'Creating deal…' : 'Create deal in HubSpot'}
             </Button>
           )}
         </div>

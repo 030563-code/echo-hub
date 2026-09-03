@@ -14,6 +14,29 @@ export interface PipelineConfig {
   allowedDepots: { label: string; value: string }[]
   allowedTemplates: { label: string; value: string }[]
   allowedDistributors: string[]
+  /** Currencies a deal in this pipeline may be raised in. Constrains both the
+   *  picker and the server-side check in createDeal. */
+  allowedCurrencies: string[]
+}
+
+/**
+ * Flag and name for each currency the picker can offer.
+ *
+ * Separate from allowedCurrencies so a pipeline can be given a currency
+ * without anyone having to remember to add its display strings too: a missing
+ * entry degrades to the bare ISO code, which is still unambiguous.
+ */
+export const CURRENCY_FLAG: Record<string, 'US' | 'CA'> = {
+  USD: 'US',
+  CAD: 'CA',
+}
+
+export const CURRENCY_NAME: Record<string, string> = {
+  USD: 'US Dollar',
+  CAD: 'Canadian Dollar',
+  EUR: 'Euro',
+  GBP: 'British Pound',
+  AUD: 'Australian Dollar',
 }
 
 // HubSpot team ID → pipeline ID (for pre-suggesting a region on invite).
@@ -36,8 +59,17 @@ export const PIPELINE_CONFIG: PipelineConfig[] = [
       { label: 'US-SBD', value: 'US California' },
       { label: 'CA-HAM', value: 'CA - Hamilton' },
     ],
-    allowedTemplates: [{ label: 'Standard Quote Template', value: 'default' }],
+    // Live profiles carry ['US','CAN']; this said ['default'], which
+    // taxRegionForTemplate does not recognise, so re-running onboarding would
+    // have silently stripped the US tax note and printed the Dublin group
+    // address on every US quote.
+    allowedTemplates: [
+      { label: 'US Quote Template', value: 'US' },
+      { label: 'Canada Quote Template', value: 'CAN' },
+    ],
     allowedDistributors: [],
+    // Verified against the portal: 85 CAD deals exist, some in USA SALES.
+    allowedCurrencies: ['USD', 'CAD'],
   },
   {
     pipelineId: 'd739df20-18b4-4e4b-b183-943038071da1',
@@ -58,6 +90,8 @@ export const PIPELINE_CONFIG: PipelineConfig[] = [
       'GEBU Tech AG (Switzerland)',
       'Brodrene Dahl AS (Norway)',
     ],
+    // TODO confirm with Dean. Only the US list is verified against the portal.
+    allowedCurrencies: ['EUR'],
   },
   {
     pipelineId: '2cfa0ec9-937b-44dc-9ee7-146d8745ab33',
@@ -65,6 +99,8 @@ export const PIPELINE_CONFIG: PipelineConfig[] = [
     allowedDepots: [{ label: 'GB-BSE', value: 'GB-Bury St Edmunds' }],
     allowedTemplates: [{ label: 'Standard Quote Template', value: 'default' }],
     allowedDistributors: [],
+    // TODO confirm with Dean. Only the US list is verified against the portal.
+    allowedCurrencies: ['GBP'],
   },
   {
     pipelineId: '6f942aab-15a9-4cdb-a684-53e78b36c424',
@@ -80,6 +116,8 @@ export const PIPELINE_CONFIG: PipelineConfig[] = [
       'Itochu (Japan)',
       'Takamiya (Japan)',
     ],
+    // TODO confirm with Dean. Only the US list is verified against the portal.
+    allowedCurrencies: ['GBP'],
   },
   {
     pipelineId: '14520121',
@@ -87,5 +125,39 @@ export const PIPELINE_CONFIG: PipelineConfig[] = [
     allowedDepots: [{ label: 'AU-SYD', value: 'AU-Sydney' }],
     allowedTemplates: [{ label: 'Standard Quote Template', value: 'default' }],
     allowedDistributors: [],
+    // TODO confirm with Dean. Only the US list is verified against the portal.
+    allowedCurrencies: ['AUD'],
   },
 ]
+
+/** The currencies a pipeline may raise a deal in, falling back to USD for an
+ *  unknown pipeline so a misconfigured profile cannot widen the allowlist. */
+export function allowedCurrenciesForPipeline(pipelineId: string | null | undefined): string[] {
+  return PIPELINE_CONFIG.find((p) => p.pipelineId === pipelineId)?.allowedCurrencies ?? ['USD']
+}
+
+/**
+ * HubSpot quote_template object ids, keyed by the profile's own template value.
+ *
+ * The template decides the quote's branding, its language and locale, and the
+ * domain its public link is served from, and the association CAN ONLY BE SET AT
+ * CREATION. A quote created without one cannot be published and has to be
+ * deleted by hand in the portal, so this map is a hard requirement rather than
+ * a nicety.
+ *
+ * Verified live 2026-09-02. NOTE that quote templates in this portal are per
+ * REP ("Jillian USA", "USA Jon", "Geoff USA", "Devis France"), not per region,
+ * so this map is correct only while Jillian is the only US rep on the Hub.
+ * Before a second one is onboarded the id belongs on their profile row.
+ */
+export const QUOTE_TEMPLATE_IDS: Record<string, string> = {
+  US: '454422093232', // "Jillian USA"
+  CAN: '456904456263', // "Jillian CAD"
+}
+
+/** The template id for a profile's template value, or null when there is none.
+ *  Never guesses: publishing under the wrong branding is worse than refusing. */
+export function quoteTemplateIdFor(templateValue: string | null | undefined): string | null {
+  const key = String(templateValue ?? '').trim().toUpperCase()
+  return QUOTE_TEMPLATE_IDS[key] ?? null
+}

@@ -64,3 +64,30 @@ export function validateLineItems(items: { quantity: number; unitPrice: number }
   }
   return null
 }
+
+/**
+ * Parse HubSpot's win_probability option value ('10%' … '100%') to a number,
+ * or null when absent/non-numeric/out of range. Shared by createQuote and the
+ * US acceptance gate so deals_registry.deal_probability is written the same
+ * way from both paths. Wrapped in String(...) because a numeric runtime value
+ * (caller skipping the client form) has no .trim().
+ */
+export function parseWinProbability(raw: unknown): number | null {
+  const cleaned = String(raw ?? '').trim().replace(/%$/, '').trim()
+  const n = cleaned === '' ? Number.NaN : Number(cleaned)
+  return Number.isFinite(n) && n >= 0 && n <= 100 ? n : null
+}
+
+/**
+ * The probability options the HubSpot win_probability property actually
+ * carries, verified live: 10% through 100%, none hidden.
+ *
+ * Exported because three surfaces need it and each had its own copy or its own
+ * fetch. It also serves as the fallback when getWinProbabilityOptions fails:
+ * before this, a network blip rendered an empty select, and since the setup
+ * dialog cannot be left until a probability is chosen, that bricked the quote
+ * builder with no error message.
+ */
+export const WIN_PROBABILITY_VALUES: readonly string[] = [
+  '10%', '20%', '30%', '40%', '50%', '60%', '70%', '80%', '90%', '100%',
+]

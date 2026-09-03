@@ -1,4 +1,5 @@
 import { getSalesProfileSettings } from '@/app/actions/sales/get-profile-settings'
+import { loadPricingForQuote } from '@/app/actions/pricing/get-pricing'
 import { getHubSpotProducts } from '@/app/actions/hubspot/getProducts'
 import { getDealDetails } from '@/app/actions/hubspot/getDealDetails'
 import { getContactDetails } from '@/app/actions/hubspot/getContactDetails'
@@ -17,7 +18,7 @@ import type { ComponentProps } from 'react'
 type FormProps = ComponentProps<typeof CreateQuoteForm>
 
 export default async function CreateQuotePage(props: { params: Promise<{ dealId: string }> }) {
-  await requireCapability('quotes.create')
+  const auth = await requireCapability('quotes.create')
   const params = await props.params;
   const supabase = await createServerClient()
   
@@ -101,6 +102,18 @@ export default async function CreateQuotePage(props: { params: Promise<{ dealId:
   const depotNameToCode = Object.fromEntries(
     Object.entries(DEPOT_MAPPING).map(([code, name]) => [name, code])
   )
+  // The deal's own currency drives the builder's money formatting and the
+  // quote PDF. Falls back to USD only when the deal genuinely has none.
+  const dealCurrency = (deal?.properties?.deal_currency_code || '').trim().toUpperCase() || 'USD'
+  // The price list, this customer's contract prices and this rep's discount
+  // limit, loaded once and handed to the builder so the browser prices the cart
+  // with exactly the rows createQuote will price it with.
+  const pricing = await loadPricingForQuote({
+    companyId: companyId ?? null,
+    currency: dealCurrency,
+    userId: auth.user.id,
+  })
+
   const rawSendingDepot = (deal?.properties?.sending_depot || '').trim()
   const initialDepot =
     depotNameToCode[rawSendingDepot] ?? (rawSendingDepot in DEPOT_MAPPING ? rawSendingDepot : '')
@@ -108,7 +121,7 @@ export default async function CreateQuotePage(props: { params: Promise<{ dealId:
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex items-center gap-4 mb-6">
-        <Link href={`/quotes/requests/${params.dealId}`}>
+        <Link href={`/quotes/deals/${params.dealId}`}>
           <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-900">
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Deal
@@ -121,6 +134,8 @@ export default async function CreateQuotePage(props: { params: Promise<{ dealId:
         dealId={params.dealId}
         dealName={deal?.properties?.dealname || ''}
         initialDepot={initialDepot}
+        dealCurrency={dealCurrency}
+        initialWinProbability={(deal?.properties?.win_probability || '').trim()}
         settings={settings}
         products={products}
         salesRep={salesRep}
@@ -128,6 +143,15 @@ export default async function CreateQuotePage(props: { params: Promise<{ dealId:
         companyName={companyName}
         initialLineItems={existingLineItems}
         initialComments={initialComments}
+        companyId={companyId ?? null}
+        bccAddress={process.env.HUBSPOT_BCC_LOG_ADDRESS ?? null}
+        pricing={{
+          listPrices: pricing.listPrices,
+          contractPrices: pricing.contractPrices,
+          cap: pricing.cap,
+          contractorName: pricing.contractorName,
+          isSuperAdmin: auth.profile.is_super_admin === true,
+        }}
       />
     </div>
   )

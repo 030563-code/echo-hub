@@ -24,6 +24,10 @@ export const CAPABILITY_KEYS = [
   'transport.view',
   'mrp.view',
   'stock.edit',
+  'invoicing.view',
+  'invoicing.manage',
+  'pricing.view',
+  'pricing.manage',
   'admin',
 ] as const
 
@@ -47,6 +51,10 @@ export const CAPABILITIES: CapabilityMeta[] = [
   { key: 'transport.view', module: 'transport', description: 'View shipments and transport tracking' },
   { key: 'mrp.view', module: 'mrp', description: 'View the MRP reorder/manufacturing dashboard' },
   { key: 'stock.edit', module: 'mrp', description: 'Override warehouse stock levels (the dummy-stock override path)' },
+  { key: 'invoicing.view', module: 'invoicing', description: 'View the US accepted-quotes queue and draft invoices' },
+  { key: 'invoicing.manage', module: 'invoicing', description: 'Edit drafts, calculate tax, and authorize US customer invoices' },
+  { key: 'pricing.view', module: 'pricing', description: 'See list prices, contract prices and own discount cap' },
+  { key: 'pricing.manage', module: 'pricing', description: 'Edit list prices, contractors, contract prices and rep discount caps' },
   { key: 'admin', module: 'admin', description: 'Full administrative access (implies all capabilities)' },
 ]
 
@@ -66,6 +74,8 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Purchase Orders', href: '/purchase-orders', icon: 'ShoppingCart', requires: ['po.view', 'po.create', 'po.approve'] },
   { label: 'Bill of Materials', href: '/bom', icon: 'Layers', requires: ['bom.view'] },
   { label: 'Transport', href: '/transport', icon: 'Truck', requires: ['transport.view'] },
+  { label: 'Invoicing', href: '/invoicing', icon: 'ReceiptText', requires: ['invoicing.view', 'invoicing.manage'] },
+  { label: 'Pricing', href: '/pricing', icon: 'Tags', requires: ['pricing.view', 'pricing.manage'] },
   { label: 'MRP', href: '/mrp', icon: 'Gauge', requires: ['mrp.view'] },
 ]
 

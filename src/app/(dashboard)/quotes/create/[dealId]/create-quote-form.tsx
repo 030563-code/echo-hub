@@ -9,16 +9,28 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Plus, Trash2, ShoppingCart, ArrowRight, AlertCircle, FileDown, Eye, Search } from 'lucide-react'
+import {
+  Plus, Trash2, ShoppingCart, ArrowRight, ArrowLeft, AlertCircle, Search, Send,
+  Users, Warehouse, FileText, Percent,
+} from 'lucide-react'
 import { SalesProfileSettings } from '@/app/actions/sales/get-profile-settings'
 
-import { createQuote, handleQuoteFileUpload } from '@/app/actions/sales/create-quote'
+import { createQuote } from '@/app/actions/sales/create-quote'
 import { searchHubSpotProducts } from '@/app/actions/hubspot/searchProducts'
 import { getMappedSkus } from '@/app/actions/sales/get-mapped-skus'
 import { getWinProbabilityOptions } from '@/app/actions/hubspot/getDealProperties'
 import { updateDealProperties } from '@/app/actions/hubspot/updateDealProperties'
-import { buildQuotePdf, taxRegionForTemplate } from '@/lib/quote-pdf'
-import { loadQuoteLogo } from '@/lib/quote-logo'
+import { depotLabel } from '@/lib/depot-constants'
+import { WIN_PROBABILITY_VALUES } from '@/lib/quote-math'
+import { priceCart } from '@/lib/quote-pricing'
+import { retryHubSpotQuote } from '@/app/actions/sales/publish-quote'
+import {
+  QuoteFailedPanel,
+  QuotePublishedPanel,
+  type PublishedQuoteView,
+} from '@/components/quotes/quote-published-panel'
+import { describeCap, type ContractPriceRow, type DiscountCap, type DiscountMode, type ListPriceRow } from '@/lib/pricing'
+import { useRouter } from 'next/navigation'
 
 interface Product {
   id: string
@@ -36,8 +48,12 @@ interface LineItem {
   sku?: string
   description?: string
   quantity: number
+  /** What the rep typed. Only used for a SKU with no Supabase price; for
+   *  everything else the resolved base wins on both sides. */
   unitPrice: number
   total: number
+  discountMode?: DiscountMode
+  discountValue?: number
 }
 
 interface QuoteContact {
@@ -75,6 +91,27 @@ interface CreateQuoteFormProps {
   initialDepot?: string
   /** Comments already saved for this deal (deals_registry.quote_comments), if any. */
   initialComments?: string
+  /** ISO code from the deal itself. Drives every money figure the rep sees and
+   *  the currency printed on the quote. */
+  dealCurrency?: string
+  /** win_probability already on the HubSpot deal, e.g. '70%'. */
+  initialWinProbability?: string
+  /** The price list, the customer's contract prices and this rep's discount
+   *  limit, loaded once by the page. The browser prices the cart with the same
+   *  pure function the server does, so it never offers a discount the server
+   *  will refuse. */
+  pricing?: {
+    listPrices: ListPriceRow[]
+    contractPrices: ContractPriceRow[]
+    cap: DiscountCap | null
+    contractorName: string | null
+    isSuperAdmin: boolean
+  }
+  /** The deal's HubSpot company, which is what a contract price is keyed to. */
+  companyId?: string | null
+  /** HubSpot's per-portal BCC logging address, so a quote emailed from Gmail
+   *  lands on the deal timeline. Absent just means the email is not logged. */
+  bccAddress?: string | null
 }
 
 // Radix Select can't represent "cleared", so the undecided state gets an
@@ -92,9 +129,18 @@ const mapInitialLineItems = (items: HubSpotLineItem[]): LineItem[] =>
     total: Number(item.properties.amount) || 0,
   }))
 
-export default function CreateQuoteForm({ dealId, dealName, settings, products, salesRep, contact, companyName, initialLineItems = [], initialDepot = '', initialComments = '' }: CreateQuoteFormProps) {
+export default function CreateQuoteForm({ dealId, dealName, settings, products, salesRep, contact, companyName, initialLineItems = [], initialDepot = '', initialComments = '', dealCurrency = 'USD', initialWinProbability = '', pricing, companyId = null, bccAddress = null }: CreateQuoteFormProps) {
+  const money = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: dealCurrency,
+    currencyDisplay: 'narrowSymbol',
+  })
+
   // State for the Initial Setup Dialog
+  const router = useRouter()
   const [showSetupDialog, setShowSetupDialog] = useState(true)
+  // Distinguishes the first, blocking open from a later re-open via Edit setup.
+  const [hasCompletedSetup, setHasCompletedSetup] = useState(false)
   const [distributor, setDistributor] = useState<string>('none')
   // Seeded from the deal's existing sending_depot (if any and still allowed) so
   // re-opening the builder doesn't misreport a decided deal as "Decide later".
@@ -102,7 +148,16 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     initialDepot && settings.allowed_depots.includes(initialDepot) ? initialDepot : ''
   )
   const [template, setTemplate] = useState<string>('')
-  const [winProbability, setWinProbability] = useState<string>('')
+  // Seeded from the deal's own win_probability, mirroring the depot seeding
+  // above, so re-opening the builder does not re-ask a question the deal has
+  // already answered. Honest limit: once the create-deal wizard stops asking
+  // for it, a Hub-created deal carries none, so this helps HubSpot-originated
+  // deals and re-opens after a Generate (which PATCHes the property).
+  const [winProbability, setWinProbability] = useState<string>(() =>
+    initialWinProbability && WIN_PROBABILITY_VALUES.includes(initialWinProbability)
+      ? initialWinProbability
+      : ''
+  )
   const [winProbabilityOptions, setWinProbabilityOptions] = useState<{ label: string; value: string }[]>([])
   const [setupLoading, setSetupLoading] = useState(false)
 
@@ -123,18 +178,25 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   // Tracks whether the attach-to-HubSpot step (run after the quote itself is
   // saved) actually succeeded, so the success message can't render next to a
   // failed upload just because `submitted` flipped first.
-  const [attachStatus, setAttachStatus] = useState<'pending' | 'ok' | 'failed'>('pending')
-  const [retryingAttach, setRetryingAttach] = useState(false)
+  // What HubSpot came back with, or why it did not. Both are terminal states
+  // for this page: the deal writes are already done either way.
+  const [publishedQuote, setPublishedQuote] = useState<PublishedQuoteView | null>(null)
+  const [quoteError, setQuoteError] = useState<string | null>(null)
+  const [retrying, setRetrying] = useState(false)
   // Holds the last generated PDF so "Retry attach" can re-run just the upload
   // step without regenerating (and re-saving) the whole quote.
-  const lastPdfRef = useRef<{ blob: Blob; filename: string } | null>(null)
   const prevDepotRef = useRef<string | null>(null)
 
   useEffect(() => {
     async function fetchWinProbability() {
       const result = await getWinProbabilityOptions()
-      if (result.success && result.data) {
+      if (result.success && result.data && result.data.length > 0) {
         setWinProbabilityOptions(result.data)
+      } else {
+        // Fall back to the known option set rather than rendering an empty
+        // select. The dialog cannot be dismissed without a probability, so an
+        // empty list used to brick the builder on a transient network error.
+        setWinProbabilityOptions(WIN_PROBABILITY_VALUES.map((v) => ({ label: v, value: v })))
       }
     }
     fetchWinProbability()
@@ -150,8 +212,8 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     if (prevDepot !== null && prevDepot !== depot && lineItems.length > 0) {
       toast.warning(
         depot
-          ? `Depot changed to ${depot}. Items already in the cart may not be available from this depot — availability will be checked on submit.`
-          : 'Sending depot set to "Decide later" — items in the cart will be checked against all your depots on submit.'
+          ? `Depot changed to ${depotLabel(depot)}. Items already in the cart may not be available from this depot. Availability will be checked on submit.`
+          : 'Sending depot set to "Decide later". Items in the cart will be checked against all your depots on submit.'
       )
     }
     prevDepotRef.current = depot
@@ -234,7 +296,25 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   // quote — or backing out of one — leaves the CRM record exactly as it was.
   const handleSetupComplete = () => {
     if (!canProceedFromSetup) return
+    setHasCompletedSetup(true)
     setShowSetupDialog(false)
+  }
+
+  /**
+   * The only exit from the setup dialog.
+   *
+   * showSetupDialog gates the ENTIRE builder, so simply closing it on first
+   * open renders a page containing nothing but the empty summary line. Before
+   * setup is done the only sensible destination is the deal itself; after it,
+   * closing means "I was just re-checking" and the builder is behind it.
+   */
+  const handleSetupOpenChange = (open: boolean) => {
+    if (open) {
+      setShowSetupDialog(true)
+      return
+    }
+    if (hasCompletedSetup) setShowSetupDialog(false)
+    else router.push(`/quotes/deals/${dealId}`)
   }
 
   const addLineItem = () => {
@@ -261,6 +341,19 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
 
     setLineItems([...lineItems, newItem])
     setSelectedProduct('')
+  }
+
+  /** A discount is stored as the rep entered it, percentage or money off each
+   *  unit, and resolved into prices by priceCart. Storing the entry rather than
+   *  the result keeps one source of truth for what they chose. */
+  const updateLineItemDiscount = (index: number, patch: { mode?: DiscountMode; value?: number }) => {
+    const newItems = [...lineItems]
+    newItems[index] = {
+      ...newItems[index],
+      ...(patch.mode !== undefined ? { discountMode: patch.mode } : {}),
+      ...(patch.value !== undefined ? { discountValue: Math.max(0, patch.value) } : {}),
+    }
+    setLineItems(newItems)
   }
 
   const updateLineItem = (index: number, field: keyof LineItem, value: number) => {
@@ -290,162 +383,123 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     setLineItems(lineItems.filter((_, i) => i !== index))
   }
 
+  /**
+   * Price every line with the SAME pure function createQuote runs, one line at
+   * a time so a refusal can be shown against the row that caused it.
+   *
+   * Prices come from Supabase, so the number the rep sees is the number the
+   * server will use. Before this, the browser's figure WAS the price, which is
+   * how a 1.00 HubSpot placeholder could reach a customer quote.
+   */
+  const today = new Date().toISOString().slice(0, 10)
+  const pricedLines = lineItems.map((item) =>
+    priceCart({
+      lines: [item],
+      currency: dealCurrency,
+      companyId,
+      listPrices: pricing?.listPrices,
+      contractPrices: pricing?.contractPrices,
+      cap: pricing?.cap,
+      isSuperAdmin: pricing?.isSuperAdmin,
+      today,
+    }),
+  )
+
   const calculateGrandTotal = () => {
-    const sum = lineItems.reduce((acc, item) => acc + (Number(item.total) || 0), 0)
+    const sum = pricedLines.reduce((acc, r) => acc + (r.ok ? r.lines[0].lineTotal : 0), 0)
     return Math.round(sum * 100) / 100
   }
 
   // Friendly-layer validation: the server re-validates on submit, but there's
-  // no reason to let Generate fire with a line item that can't possibly be valid.
-  const hasInvalidLineItems = lineItems.some((item) => item.quantity < 1 || item.unitPrice < 0)
+  // no reason to let Generate fire with a line item that can't possibly be
+  // valid, or with a discount the server is going to refuse anyway.
+  const hasInvalidLineItems =
+    lineItems.some((item) => item.quantity < 1 || item.unitPrice < 0) ||
+    pricedLines.some((r) => !r.ok)
 
-  const generatePDF = async (previewMode = false) => {
-    // In-flight guard: prevent double-submit duplicating HubSpot line items + note.
-    if (!previewMode) {
-      if (submittingRef.current) return
-      submittingRef.current = true
-      setSubmitting(true)
-    }
-
+  const generate = async () => {
+    // In-flight guard against a double click. The server has its own, on the
+    // deal_quotes row, because this one is client state and dies on refresh.
+    if (submittingRef.current) return
+    submittingRef.current = true
+    setSubmitting(true)
     try {
-      await runGeneratePDF(previewMode)
+      await runGenerate()
     } finally {
-      if (!previewMode) {
-        submittingRef.current = false
-        setSubmitting(false)
-      }
+      submittingRef.current = false
+      setSubmitting(false)
     }
   }
 
-  const runGeneratePDF = async (previewMode: boolean) => {
-    let quoteRef = 'PREVIEW'
-
-    if (!previewMode) {
-      // 1. Save Quote to Database (Only if NOT preview)
-      const result = await createQuote({
-        dealId,
-        distributor: isDistributorSelected ? distributor : 'Direct Sale',
-        depot: depot || undefined,
-        template,
-        lineItems,
-        totalAmount: calculateGrandTotal(),
-        winProbability, // backbone: persisted to deals_registry.deal_probability
-        comments,
-        isPreview: false
-      })
-
-      if (!result.success) {
-        toast.error('Failed to save quote: ' + result.error)
-        return
-      }
-
-      // Now that the quote is committed, mirror the win probability onto the
-      // HubSpot deal. Non-fatal: the value is already persisted to
-      // deals_registry.deal_probability, which is what the forecasting engine reads.
-      const probResult = await updateDealProperties(dealId, { win_probability: winProbability })
-      if (!probResult.success) {
-        console.error('win_probability sync failed:', probResult.error)
-      }
-
-      setSubmitted(true)
-
-      quoteRef = result.quoteReference || 'DRAFT'
-    } else {
-      // Preview Mode: Just generate PDF, don't call server action
-      quoteRef = 'PREVIEW'
-    }
-
-    // 2. Build the PDF. Drawing lives in the pure quote-pdf module; this
-    // component only supplies the facts (including the clock, since the
-    // module must not read it itself) and then handles preview/save/upload.
-    const contactName = contact
-      ? [contact.properties.firstname, contact.properties.lastname].filter(Boolean).join(' ') || undefined
-      : undefined
-    const grandTotal = calculateGrandTotal()
-    const createdAt = new Date()
-    const logoDataUrl = await loadQuoteLogo()
-    const doc = await buildQuotePdf({
-      logoDataUrl,
-      // The quote template doubles as the tax jurisdiction (US / CAN). It is
-      // mandatory at setup, so a generated quote always carries the right line.
-      taxRegion: taxRegionForTemplate(template),
-      dealName,
-      quoteReference: quoteRef,
-      createdAt,
-      companyName,
-      contactName,
-      contactEmail: contact?.properties.email,
-      contactPhone: contact?.properties.phone,
-      salesRep,
+  const runGenerate = async () => {
+    const result = await createQuote({
+      dealId,
+      distributor: isDistributorSelected ? distributor : 'Direct Sale',
+      depot: depot || undefined,
+      template,
+      lineItems,
+      totalAmount: calculateGrandTotal(),
+      winProbability, // backbone: persisted to deals_registry.deal_probability
       comments,
-      lineItems: lineItems.map((item) => ({
-        name: item.name,
-        description: item.description,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        total: item.total,
-      })),
-      grandTotal,
+      isPreview: false,
     })
 
-    if (previewMode) {
-      // Open in new tab for preview
-      const pdfBlob = doc.output('blob')
-      const pdfUrl = URL.createObjectURL(pdfBlob)
-      window.open(pdfUrl, '_blank')
-    } else {
-      // Download for final generation
-      doc.save(`quote_${quoteRef}.pdf`)
+    if (!result.success) {
+      toast.error('Failed to save quote: ' + result.error)
+      return
+    }
 
-      // 4. Upload to HubSpot (Only if NOT preview)
-      const pdfBlob = doc.output('blob')
-      const filename = `quote_${quoteRef}.pdf`
-      lastPdfRef.current = { blob: pdfBlob, filename }
-      await attemptQuoteUpload(pdfBlob, filename)
+    // The deal, its line items and the Hub record are committed from here on,
+    // whatever HubSpot does with the quote, so the button latches.
+    setSubmitted(true)
+
+    // Mirror the probability onto the HubSpot deal. Non-fatal: the value is
+    // already in deals_registry.deal_probability, which is what the forecasting
+    // engine reads.
+    const probResult = await updateDealProperties(dealId, { win_probability: winProbability })
+    if (!probResult.success) {
+      console.error('win_probability sync failed:', probResult.error)
+    }
+
+    if (result.quote) {
+      setPublishedQuote({ ...result.quote, currency: dealCurrency })
+      setQuoteError(null)
+      toast.success('Quote published in HubSpot')
+    } else {
+      setQuoteError(result.quoteError ?? 'HubSpot did not accept the quote.')
     }
   }
 
-  // Shared by the initial upload and "Retry attach" — keeps the attach outcome
-  // (attachStatus) honest instead of borrowing the quote-saved state (submitted).
-  const attemptQuoteUpload = async (pdfBlob: Blob, filename: string) => {
-    const formData = new FormData()
-    formData.append('file', pdfBlob, filename)
-    formData.append('dealId', dealId)
-
-    const uploadResult = await handleQuoteFileUpload(formData)
-    if (uploadResult.success) {
-      setAttachStatus('ok')
-      // Redirect to HubSpot Deal Record in new tab
-      // Note: Using the portal ID from env or default
-      const portalId = process.env.NEXT_PUBLIC_HUBSPOT_PORTAL_ID
-      if (portalId) {
-        window.open(`https://app.hubspot.com/contacts/${portalId}/deal/${dealId}`, '_blank')
-      }
-    } else {
-      setAttachStatus('failed')
-      console.error('Failed to upload PDF:', uploadResult.error)
-      toast.error('Quote saved but failed to upload to HubSpot: ' + uploadResult.error)
-    }
-  }
-
-  const handleRetryAttach = async () => {
-    if (!lastPdfRef.current || retryingAttach) return
-    setRetryingAttach(true)
+  /** Resumes the quote from wherever it stopped. Never re-runs the deal writes:
+   *  those succeeded, and repeating them would replace the line items again. */
+  const handleRetryQuote = async () => {
+    if (retrying) return
+    setRetrying(true)
     try {
-      await attemptQuoteUpload(lastPdfRef.current.blob, lastPdfRef.current.filename)
+      const result = await retryHubSpotQuote(dealId)
+      if (result.success) {
+        setPublishedQuote({ ...result.quote, currency: dealCurrency })
+        setQuoteError(null)
+        toast.success('Quote published in HubSpot')
+      } else {
+        setQuoteError(result.error)
+        toast.error(result.error)
+      }
     } finally {
-      setRetryingAttach(false)
+      setRetrying(false)
     }
   }
 
   return (
     <div className="space-y-8">
       {/* Setup Dialog */}
-      <Dialog open={showSetupDialog} onOpenChange={setShowSetupDialog}>
+      <Dialog open={showSetupDialog} onOpenChange={handleSetupOpenChange}>
         <DialogContent
-          className="sm:max-w-[500px] bg-white text-gray-900 border-gray-200 shadow-xl [&>button]:hidden"
+          className="sm:max-w-[500px] bg-white text-gray-900 border-gray-200 shadow-xl"
+          // X and Esc are deliberate exit gestures and now work. An overlay
+          // click is usually an accident, and this dialog has four fields, so
+          // that one stays blocked.
           onInteractOutside={(e) => e.preventDefault()}
-          onEscapeKeyDown={(e) => e.preventDefault()}
         >
           <DialogHeader>
             <DialogTitle className="text-xl font-bold uppercase tracking-wide text-gray-900">Quote Setup</DialogTitle>
@@ -454,30 +508,44 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
           <div className="space-y-6 py-4">
             {/* Distributor Selection */}
             <div className="space-y-2">
-              <Label className="text-gray-700 font-medium">Assign to Distributor?</Label>
-              <Select value={distributor} onValueChange={setDistributor}>
+              <Label className="text-gray-700 font-medium flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-gray-400" />
+                Select sales team
+              </Label>
+              <Select
+                value={distributor}
+                onValueChange={setDistributor}
+                disabled={settings.allowed_distributors.length === 0}
+              >
                 <SelectTrigger className="bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow focus:border-echo-yellow">
-                  <SelectValue placeholder="Select Distributor (Optional)" />
+                  <SelectValue placeholder="Select sales team" />
                 </SelectTrigger>
                 <SelectContent className="bg-white border-gray-200 text-gray-900">
-                  <SelectItem value="none" className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">No Distributor (Direct Sale)</SelectItem>
+                  <SelectItem value="none" className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">Echo Barrier direct</SelectItem>
                   {settings.allowed_distributors.map((dist) => (
                     <SelectItem key={dist} value={dist} className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">{dist}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {isDistributorSelected && (
-                <p className="text-xs text-blue-600 flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" />
-                  Deal will be moved to &quot;Distributor&quot; stage automatically.
+              {isDistributorSelected ? (
+                <p className="text-xs font-medium text-amber-700 flex items-start gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  This deal will be moved to the Passed to Distributor stage, not Quotation Sent.
                 </p>
-              )}
+              ) : settings.allowed_distributors.length === 0 ? (
+                <p className="text-xs text-gray-500">
+                  No partner sales teams are configured for your region, so this is a direct sale.
+                </p>
+              ) : null}
             </div>
 
             {/* Depot Selection (Only if no distributor) */}
             {!isDistributorSelected && (
               <div className="space-y-2">
-                <Label className="text-gray-700 font-medium">Sending Depot (optional)</Label>
+                <Label className="text-gray-700 font-medium flex items-center gap-1.5">
+                <Warehouse className="w-3.5 h-3.5 text-gray-400" />
+                Sending Depot (optional)
+              </Label>
                 <Select
                   value={depot === '' ? DEPOT_UNDECIDED : depot}
                   onValueChange={(v) => setDepot(v === DEPOT_UNDECIDED ? '' : v)}
@@ -490,12 +558,14 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                       Decide later
                     </SelectItem>
                     {settings.allowed_depots.map((d) => (
-                      <SelectItem key={d} value={d} className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">{d}</SelectItem>
+                      <SelectItem key={d} value={d} className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
+                        {depotLabel(d)} <span className="text-gray-400">({d})</span>
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-gray-500">
-                  The depot is required when the deal is marked Quotation Accepted — it can be
+                  The depot is required when the deal is marked Quotation Accepted, and it can be
                   chosen then. Without one, the product list covers all your depots.
                 </p>
               </div>
@@ -503,7 +573,10 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
 
             {/* Template Selection */}
             <div className="space-y-2">
-              <Label className="text-gray-700 font-medium">Quote Template *</Label>
+              <Label className="text-gray-700 font-medium flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-gray-400" />
+                Quote Template *
+              </Label>
               <Select value={template} onValueChange={setTemplate}>
                 <SelectTrigger className="bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow focus:border-echo-yellow">
                   <SelectValue placeholder="Select Template..." />
@@ -522,7 +595,10 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
 
             {/* Win Probability Selection */}
             <div className="space-y-2">
-              <Label className="text-gray-700 font-medium">Win Probability *</Label>
+              <Label className="text-gray-700 font-medium flex items-center gap-1.5">
+                <Percent className="w-3.5 h-3.5 text-gray-400" />
+                Win Probability *
+              </Label>
               <Select value={winProbability} onValueChange={setWinProbability}>
                 <SelectTrigger className="bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow focus:border-echo-yellow">
                   <SelectValue placeholder="Select win probability..." />
@@ -538,7 +614,15 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              onClick={() => handleSetupOpenChange(false)}
+              className="w-full min-h-11 whitespace-nowrap sm:min-h-0 sm:w-auto"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              {hasCompletedSetup ? 'Close' : 'Back to deal'}
+            </Button>
             <Button
               onClick={handleSetupComplete}
               disabled={!canProceedFromSetup || setupLoading}
@@ -556,7 +640,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600">
           <span>
             <span className="font-medium text-gray-900">
-              {isDistributorSelected ? distributor : depot || '—'}
+              {isDistributorSelected ? distributor : depot ? depotLabel(depot) : '—'}
             </span>{' '}
             · template {template || '—'} · {winProbability || '—'} to close
           </span>
@@ -596,7 +680,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                       {filteredProducts.length > 0 ? (
                         filteredProducts.map((p) => (
                           <SelectItem key={p.id} value={p.id} className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
-                            {p.properties.name} ({Number(p.properties.price).toLocaleString('en-US', { style: 'currency', currency: 'USD' })})
+                            {p.properties.name} ({money.format(Number(p.properties.price))})
                           </SelectItem>
                         ))
                       ) : (
@@ -617,12 +701,39 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {lineItems.map((item, index) => (
+                  {lineItems.map((item, index) => {
+                    const result = pricedLines[index]
+                    const priced = result?.ok ? result.lines[0] : null
+                    const priceError = result && !result.ok ? result.error : null
+                    // A SKU nobody has priced yet keeps the free price box, which
+                    // is exactly today's behaviour. Everything else shows the
+                    // resolved base and discounts from it.
+                    const isManual = priced ? priced.priceSource === 'manual' : true
+                    return (
                     <div key={index} className="p-4 bg-gray-50 rounded-lg border border-gray-100 space-y-3">
                       <div className="grid grid-cols-2 gap-3 sm:flex sm:items-center sm:gap-4">
                         <div className="col-span-2 max-sm:min-w-0 sm:flex-1">
                           <p className="font-medium text-gray-900 break-words">{item.name}</p>
-                          <p className="text-xs text-gray-500">SKU: {item.sku || 'N/A'}</p>
+                          <p className="text-xs text-gray-500">
+                            SKU: {item.sku || 'N/A'}
+                            {priced && (
+                              <span
+                                className={
+                                  priced.priceSource === 'contract'
+                                    ? 'ml-2 rounded bg-indigo-100 px-1.5 py-0.5 text-indigo-800'
+                                    : priced.priceSource === 'list'
+                                      ? 'ml-2 rounded bg-green-100 px-1.5 py-0.5 text-green-800'
+                                      : 'ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-amber-800'
+                                }
+                              >
+                                {priced.priceSource === 'contract'
+                                  ? `Contract price${pricing?.contractorName ? `: ${pricing.contractorName}` : ''}`
+                                  : priced.priceSource === 'list'
+                                    ? 'List price'
+                                    : 'No list price, you set it'}
+                              </span>
+                            )}
+                          </p>
                         </div>
 
                         <div className="max-sm:min-w-0 sm:w-24">
@@ -637,21 +748,60 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                         </div>
 
                         <div className="max-sm:min-w-0 sm:w-32">
-                          <Label className="text-xs text-gray-500">Price</Label>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={item.unitPrice}
-                            onChange={(e) => updateLineItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                            className="h-11 sm:h-8"
-                          />
+                          <Label className="text-xs text-gray-500">{isManual ? 'Price' : 'List price'}</Label>
+                          {isManual ? (
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={item.unitPrice}
+                              onChange={(e) => updateLineItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+                              className="h-11 sm:h-8"
+                            />
+                          ) : (
+                            <p className="pt-1 font-mono text-gray-500 line-through decoration-gray-300">
+                              {money.format(priced?.priced.listUnitPrice ?? 0)}
+                            </p>
+                          )}
+                        </div>
+
+                        {!isManual && (
+                          <div className="max-sm:min-w-0 sm:w-36">
+                            <Label className="text-xs text-gray-500">Discount</Label>
+                            <div className="flex gap-1">
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={item.discountValue ?? ''}
+                                placeholder="0"
+                                onChange={(e) => updateLineItemDiscount(index, { value: parseFloat(e.target.value) || 0 })}
+                                className="h-11 sm:h-8"
+                              />
+                              <select
+                                aria-label="Discount type"
+                                value={item.discountMode ?? 'percent'}
+                                onChange={(e) => updateLineItemDiscount(index, { mode: e.target.value as DiscountMode })}
+                                className="h-11 sm:h-8 rounded border border-gray-300 bg-white px-1 text-sm text-gray-900"
+                              >
+                                <option value="percent">%</option>
+                                <option value="amount">{money.format(0).replace(/[\d.,\s]/g, '') || '$'}</option>
+                              </select>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="sm:w-24 text-left sm:text-right">
+                          <Label className="text-xs text-gray-500">Unit</Label>
+                          <p className="font-mono font-medium pt-1">
+                            {money.format(priced?.priced.netUnitPrice ?? item.unitPrice)}
+                          </p>
                         </div>
 
                         <div className="sm:w-24 text-left sm:text-right">
                           <Label className="text-xs text-gray-500">Total</Label>
                           <p className="font-mono font-medium pt-1">
-                            {item.total.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                            {money.format(priced?.lineTotal ?? 0)}
                           </p>
                         </div>
 
@@ -665,6 +815,12 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                         </Button>
                       </div>
 
+                      {priceError && (
+                        <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                          {priceError}
+                        </p>
+                      )}
+
                       <div>
                         <Label className="text-xs text-gray-500">Description (shown on the quote, under the item name)</Label>
                         <Input
@@ -675,7 +831,16 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                         />
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
+
+                  {/* What this rep is allowed to do, stated once under the cart
+                      rather than repeated on every row. */}
+                  <p className="text-xs text-gray-500">
+                    {pricing?.isSuperAdmin
+                      ? 'You can discount without a limit.'
+                      : describeCap(pricing?.cap, dealCurrency)}
+                  </p>
                 </div>
               )}
             </Card>
@@ -704,13 +869,13 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
               
               <div className="space-y-3 text-sm border-b border-gray-100 pb-4 mb-4">
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-500">Distributor</span>
-                  <span className="font-medium text-gray-900 text-right">{isDistributorSelected ? distributor : 'Direct Sale'}</span>
+                  <span className="text-gray-500">Sales team</span>
+                  <span className="font-medium text-gray-900 text-right">{isDistributorSelected ? distributor : 'Echo Barrier direct'}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-500">Depot</span>
                   <span className="font-medium text-gray-900 text-right">
-                    {isDistributorSelected ? 'N/A' : depot || 'Decided at acceptance'}
+                    {isDistributorSelected ? 'N/A' : depot ? depotLabel(depot) : 'Decided at acceptance'}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
@@ -722,67 +887,50 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
               <div className="flex justify-between items-end mb-6">
                 <span className="text-gray-500 font-medium">Grand Total</span>
                 <span className="text-2xl font-bold text-gray-900">
-                  {calculateGrandTotal().toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                  {money.format(calculateGrandTotal())}
                 </span>
               </div>
 
               <div className="flex flex-col gap-3">
                 <Button
-                  onClick={() => generatePDF(true)}
-                  disabled={lineItems.length === 0 || submitting}
-                  variant="outline"
-                  className="w-full border-gray-300 text-gray-700 hover:bg-gray-50 font-bold min-h-12 sm:h-12 max-sm:text-base"
-                >
-                  <Eye className="w-5 h-5 mr-2" />
-                  Preview Quote
-                </Button>
-
-                <Button
-                  onClick={() => generatePDF(false)}
+                  onClick={generate}
                   disabled={lineItems.length === 0 || submitting || submitted || hasInvalidLineItems}
                   className="w-full bg-echo-yellow text-white hover:bg-[#4a5e29] font-bold min-h-12 sm:h-12 max-sm:text-base"
                 >
-                  <FileDown className="w-5 h-5 mr-2" />
+                  <Send className="w-5 h-5 mr-2" />
                   {submitting
-                    ? 'Generating...'
+                    ? 'Publishing...'
                     : submitted
-                      ? 'Quote generated'
-                      : 'Generate Quote & Attach to HubSpot'}
+                      ? 'Quote published'
+                      : 'Publish quote in HubSpot'}
                 </Button>
                 {hasInvalidLineItems && !submitted && (
                   <p className="text-xs text-red-600 text-center">
                     Fix line item quantities (at least 1) and prices (0 or more) to generate.
                   </p>
                 )}
-                {submitted ? (
-                  attachStatus === 'pending' ? (
-                    <p className="text-xs text-gray-500 text-center">
-                      Quote saved. Attaching the PDF to the HubSpot deal…
-                    </p>
-                  ) : attachStatus === 'ok' ? (
-                    <p className="text-xs text-green-600 text-center">
-                      Attached to the HubSpot deal and downloaded. Nothing has been emailed to the
-                      customer — send it yourself from HubSpot.
-                    </p>
-                  ) : (
-                    <div className="text-center space-y-2">
-                      <p className="text-xs text-amber-600">
-                        PDF downloaded. Attaching it to the HubSpot deal failed — the quote data is saved.
-                      </p>
-                      <Button
-                        onClick={handleRetryAttach}
-                        disabled={retryingAttach}
-                        variant="outline"
-                        size="sm"
-                        className="min-h-11 sm:min-h-0 border-gray-300 text-gray-700 hover:bg-gray-50"
-                      >
-                        {retryingAttach ? 'Retrying...' : 'Retry attach'}
-                      </Button>
-                    </div>
-                  )
+                {publishedQuote ? (
+                  <QuotePublishedPanel
+                    quote={publishedQuote}
+                    email={{
+                      contactFirstName: contact?.properties.firstname,
+                      contactEmail: contact?.properties.email,
+                      companyName,
+                      dealName,
+                      repName: salesRep.name,
+                      repPhone: salesRep.phone,
+                      repEmail: salesRep.email,
+                      bccAddress,
+                    }}
+                  />
+                ) : quoteError ? (
+                  <QuoteFailedPanel error={quoteError} onRetry={handleRetryQuote} retrying={retrying} />
+                ) : submitted ? (
+                  <p className="text-xs text-gray-500 text-center">Publishing the quote in HubSpot...</p>
                 ) : (
                   <p className="text-xs text-gray-500 text-center">
-                    Attaches the PDF to the HubSpot deal and downloads a copy. Does not email the customer.
+                    Moves the deal to Quotation sent, replaces its line items and publishes a HubSpot
+                    quote. Does not email the customer.
                   </p>
                 )}
               </div>

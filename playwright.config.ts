@@ -15,6 +15,16 @@ try {
   // no .env.local — specs that need creds will fail with a clear message
 }
 
+/**
+ * The dev server's port, overridable.
+ *
+ * Phase A made the specs use relative paths so they no longer hardcoded 3000,
+ * but this file still did, which is the half that actually decides. Docker
+ * holds 3000 on this machine, so `E2E_BASE_URL=http://localhost:3001 npx
+ * playwright test` runs the suite against a server that is already up.
+ */
+const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:3000'
+
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: false,
@@ -23,12 +33,12 @@ export default defineConfig({
   retries: 0,
   reporter: [['list']],
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: BASE_URL,
     trace: 'on-first-retry',
   },
   webServer: {
     command: 'npm run dev',
-    url: 'http://localhost:3000',
+    url: BASE_URL,
     reuseExistingServer: true,
     timeout: 60_000,
   },
