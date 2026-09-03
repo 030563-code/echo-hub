@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { US_STATE_CODES } from '@/lib/us-address'
+import { US_STATES, DELIVERY_COUNTRIES } from '@/lib/us-address'
 import { lookupZipJurisdiction } from '@/app/actions/tax/lookup-zip'
 import {
   US_DEPOTS,
@@ -651,9 +651,9 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                 disabled={!editable}
               >
                 <option value="">—</option>
-                {US_STATE_CODES.map((code) => (
-                  <option key={code} value={code}>
-                    {code}
+                {US_STATES.map((state) => (
+                  <option key={state.code} value={state.code}>
+                    {state.code} — {state.name}
                   </option>
                 ))}
               </select>
@@ -668,6 +668,26 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                 placeholder="20794"
                 disabled={!editable}
               />
+            </div>
+            <div>
+              {/* One option today, and shown anyway. The column carries a CHECK
+                  constraint accepting only 'US', so an invoice delivering
+                  anywhere else is rejected by the database rather than by a
+                  message. Printing the country on the form is what makes that
+                  a visible rule instead of a surprise. */}
+              <Label htmlFor="country">Country</Label>
+              <select
+                id="country"
+                className="flex h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                value="US"
+                disabled
+              >
+                {DELIVERY_COUNTRIES.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </div>
