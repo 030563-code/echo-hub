@@ -104,8 +104,10 @@ describe('an order split across two depots', () => {
     expect(doc.shipments.map((s) => s.depot)).toEqual(['US-BAL', 'US-SBD'])
   })
 
+  // The handover specifies "EBUS26-0001-BAL and -SBD", and Dean's mockup shows
+  // the same. The country prefix is dropped from the suffix.
   it('suffixes the TaxJar transaction id with the depot, as the filing does', () => {
-    expect(doc.shipments.map((s) => s.taxjarTransactionId)).toEqual(['EBUS26-0007-US-BAL', 'EBUS26-0007-US-SBD'])
+    expect(doc.shipments.map((s) => s.taxjarTransactionId)).toEqual(['EBUS26-0007-BAL', 'EBUS26-0007-SBD'])
   })
 
   it('subtotals each shipment', () => {

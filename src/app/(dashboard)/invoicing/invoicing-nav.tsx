@@ -3,12 +3,26 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { LinkSpinner } from '@/components/nav/link-spinner'
+import { INVOICE_STAGES } from '@/lib/customer-invoice/constants'
 
+/**
+ * One tab per step of the pipeline, in Dean's words (2026-09-03).
+ *
+ * These are a worklist, not a filter. An invoice sits under exactly one tab,
+ * and completing that step is what moves it out of this queue and into the
+ * next, so whatever is in a tab is waiting for the thing the tab is named
+ * after. The stage tabs come from INVOICE_STAGES so the nav and the queue
+ * pages cannot describe the pipeline differently.
+ *
+ * Accepted Quotes sits first because it is the only one that is not a status:
+ * it is the deals that have no invoice yet, plus any that were opened but not
+ * yet taxed. Tax Setup sits last because it is configuration, not a queue.
+ */
 const TABS = [
   { href: '/invoicing/accepted', label: 'Accepted Quotes' },
-  { href: '/invoicing/drafts', label: 'Draft Invoices' },
+  ...INVOICE_STAGES.map((stage) => ({ href: stage.href, label: stage.label })),
   { href: '/invoicing/tax-setup', label: 'Tax Setup' },
-] as const
+]
 
 export function InvoicingNav() {
   const pathname = usePathname()

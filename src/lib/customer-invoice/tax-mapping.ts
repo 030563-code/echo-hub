@@ -411,9 +411,15 @@ export function depotShipments<L extends ShipmentGroupable>(lines: readonly L[])
  * A single-shipment invoice files under the invoice number alone; a split one
  * suffixes the depot, so the two filings are distinguishable in TaxJar's
  * ledger. Printed on the document next to each shipment.
+ *
+ * The suffix is the depot WITHOUT its country prefix: EBUS26-0001-BAL, not
+ * -US-BAL. That is the form the order-to-invoice handover specifies
+ * ("Transaction ids like EBUS26-0001-BAL and -SBD") and the form Dean's own
+ * mockup shows. Safe to fix rather than grandfather: nothing has ever been
+ * filed, so no existing TaxJar transaction carries the longer id.
  */
 export function filingTransactionId(invoiceNumber: string, depot: USDepot, shipmentCount: number): string {
-  return shipmentCount > 1 ? `${invoiceNumber}-${depot}` : invoiceNumber
+  return shipmentCount > 1 ? `${invoiceNumber}-${depot.replace(/^US-/, '')}` : invoiceNumber
 }
 
 export type BuildFilingOrdersResult =

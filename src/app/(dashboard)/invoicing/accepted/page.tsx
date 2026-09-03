@@ -70,7 +70,20 @@ export default async function AcceptedQueuePage() {
       .neq('status', 'voided')
     const invoiceByDeal = new Map((invoices ?? []).map((i) => [String(i.hubspot_deal_id), i]))
 
-    rows = eligible.map((deal) => {
+    // Once an invoice enters the pipeline it belongs to a stage queue, not
+    // here. Dean, 2026-09-03: "they must move out of accepted quotes and into
+    // the tax calculated -> taxjar etc." Before this the same deal sat in both,
+    // so a rep working top to bottom saw everything twice and had no way to
+    // tell what was still waiting for them.
+    //
+    // A `draft` invoice deliberately STAYS. It has been opened but not taxed,
+    // which is exactly what this queue is for, and it is where the rep left off.
+    const stillWaiting = eligible.filter((deal) => {
+      const invoice = invoiceByDeal.get(String(deal.hubspot_deal_id))
+      return invoice === undefined || invoice.status === 'draft'
+    })
+
+    rows = stillWaiting.map((deal) => {
       const dealId = String(deal.hubspot_deal_id)
       const invoice = invoiceByDeal.get(dealId)
       const addressOk = sanitizeUSAddress({
