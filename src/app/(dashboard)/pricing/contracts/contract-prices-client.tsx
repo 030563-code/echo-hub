@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { formatMoney } from '@/lib/utils'
+import { formatMoney, formatDate } from '@/lib/utils'
 import { CURRENCY_NAME } from '@/lib/pipeline-config'
 import { searchCompanies } from '@/app/actions/hubspot/searchCompanies'
 import { saveContractPrice, saveContractor } from '@/app/actions/pricing/save-pricing'
@@ -330,8 +330,8 @@ export function ContractPricesClient({
                             {formatMoney(Number(row.unit_price), row.currency)}
                           </td>
                           <td className="px-4 py-2.5 text-gray-600">
-                            {row.valid_from ?? 'always'}
-                            {row.valid_to ? ` to ${row.valid_to}` : ''}
+                            {row.valid_from ? formatDate(row.valid_from) : 'always'}
+                            {row.valid_to ? ` to ${formatDate(row.valid_to)}` : ''}
                           </td>
                           <td className="px-4 py-2.5 text-xs text-gray-500">{row.updated_by_label ?? '—'}</td>
                           {canEdit && (

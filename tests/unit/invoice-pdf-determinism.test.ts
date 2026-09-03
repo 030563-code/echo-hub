@@ -77,6 +77,17 @@ describe('the invoice PDF renders reproducibly', () => {
     expect(raw).toContain('/ID [ <37396665')
   })
 
+  it('prints its dates in US form, because the customer reading it is American', async () => {
+    const { bytes } = await render()
+    const raw = bytes.toString('latin1')
+    // invoice_date 2026-09-03, due_date 2026-10-03. jsPDF writes text
+    // uncompressed, which is what lets the /CreationDate assertion above work
+    // too.
+    expect(raw).toContain('September 3, 2026')
+    expect(raw).toContain('October 3, 2026')
+    expect(raw).not.toContain('3 September 2026')
+  })
+
   it('a different invoice gets a different file id', async () => {
     const a = await render()
     const b = await render({ documentId: 'aaaaaaaa-1111-2222-3333-444444444444' })

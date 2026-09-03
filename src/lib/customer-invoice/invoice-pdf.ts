@@ -66,14 +66,16 @@ function money(value: number, currency: string): string {
   return value.toLocaleString('en-US', { style: 'currency', currency, currencyDisplay: 'narrowSymbol' })
 }
 
-/** ISO date to "1 September 2026". Returns an em-space for a missing date so
- *  the label still has something to sit against on a draft preview. */
+/** ISO date to "September 1, 2026", the form a US customer expects. Returns a
+ *  dash for a missing date so the label still has something to sit against on a
+ *  draft preview. Built and formatted in UTC: these are date-only values, and
+ *  local formatting would print the previous day west of Greenwich. */
 function formatDate(iso: string | null): string {
   if (!iso) return '—'
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim())
   if (!m) return iso
   const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
 }
 
 /**

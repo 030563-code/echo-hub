@@ -6,6 +6,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { ChevronDown, ChevronRight, Pencil, Plus, Trash2, Loader2, X, PackageOpen } from "lucide-react";
 import { updateBomComponentDetail } from "@/app/actions/bom/update-bom";
 import type { BomMasterRow, SroPoBom, SroPoBomLine } from "@/lib/erp-types";
+import { formatDate } from "@/lib/utils";
 
 const inputCls =
   "w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-base sm:text-sm text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026] transition-colors";
@@ -368,7 +369,7 @@ function EditModal({ row, onClose }: { row: BomMasterRow; onClose: () => void })
             </Dialog.Close>
           </div>
           <p className="text-xs text-[#6b7280] mb-4">
-            Week of {row.week_start_date}. Saves to the master snapshot — every PO explosion updates.
+            Week of {formatDate(row.week_start_date)}. Saves to the master snapshot — every PO explosion updates.
           </p>
 
           {/* Components */}
