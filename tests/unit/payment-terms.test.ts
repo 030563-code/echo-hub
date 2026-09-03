@@ -84,3 +84,33 @@ describe('describeTerms', () => {
     expect(describeTerms({ day: 15, type: 'OFFOLLOWINGMONTH' })).toBe('The 15th of the following month')
   })
 })
+
+import { customerPaymentTerms } from '@/lib/customer-invoice/payment-terms'
+
+/**
+ * describeTerms carries diagnostics for the reviewer: "(no term set in Xero)"
+ * explains why the house default is standing in. On the customer's invoice that
+ * reads as an apology and tells them about the state of our accounting system.
+ * The terms are Net 30 either way.
+ */
+describe('customerPaymentTerms', () => {
+  it('strips our diagnostic note', () => {
+    expect(customerPaymentTerms('Net 30 (no term set in Xero)')).toBe('Net 30')
+    expect(customerPaymentTerms('Net 30 (unrecognised term in Xero)')).toBe('Net 30')
+  })
+
+  it('leaves a real term untouched', () => {
+    expect(customerPaymentTerms('Net 45')).toBe('Net 45')
+    expect(customerPaymentTerms('The 15th of the following month')).toBe('The 15th of the following month')
+  })
+
+  it('only strips a trailing parenthetical, not one mid-sentence', () => {
+    expect(customerPaymentTerms('Net 30 (end of month) plus 5 days')).toBe('Net 30 (end of month) plus 5 days')
+  })
+
+  it('is null for nothing, so the invoice omits the field rather than printing a blank', () => {
+    expect(customerPaymentTerms(null)).toBeNull()
+    expect(customerPaymentTerms(undefined)).toBeNull()
+    expect(customerPaymentTerms('   ')).toBeNull()
+  })
+})

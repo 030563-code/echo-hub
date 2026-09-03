@@ -12,6 +12,7 @@
 
 import { depotLabel } from '@/lib/depot-constants'
 import { normalizeUSState, DELIVERY_COUNTRIES } from '@/lib/us-address'
+import { customerPaymentTerms } from './payment-terms'
 import { DEPOT_FROM_ADDRESSES, type USDepot } from './constants'
 import { depotShipments, filingTransactionId } from './tax-mapping'
 import { summariseTaxResponse, type DepotTaxBreakdown } from './tax-breakdown'
@@ -282,7 +283,7 @@ export function buildInvoiceDocument(
     isDraftReference: header.invoice_number === null,
     issuedOn: header.invoice_date,
     dueOn: header.due_date,
-    paymentTerms: opts.paymentTerms ?? null,
+    paymentTerms: customerPaymentTerms(opts.paymentTerms),
     customerName: header.company_name ?? 'Customer',
     customerPoNumber: header.customer_po_number,
     shipTo: shipToLines(header),
