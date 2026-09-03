@@ -31,6 +31,26 @@ test.describe('Quotes — read-only, HubSpot-backed', () => {
     await expect(page).toHaveURL(/\/quotes\/deals$/)
   })
 
+  test('the board shows real HubSpot stages, not one invented status', async ({ page }) => {
+    test.skip(!hasToken, 'Set HUBSPOT_ACCESS_TOKEN to load the HubSpot-backed board')
+    // The whole point of replacing the Pending tab: a Tender deal used to read
+    // "Pending" in grey, the same as a General pricing one.
+    await page.goto('/quotes/board')
+    await expect(page.getByRole('heading', { name: 'Board' })).toBeVisible()
+    for (const stage of ['Quote Request', 'Tender', 'General pricing']) {
+      await expect(page.getByText(stage, { exact: true }).first()).toBeVisible()
+    }
+    // A column heading must never be a raw stage GUID.
+    await expect(page.getByText(/^[0-9a-f]{8}-[0-9a-f]{4}-/)).toHaveCount(0)
+  })
+
+  test('/quotes/pending redirects to the board, so old bookmarks still work', async ({ page }) => {
+    // Same reasoning as the /quotes/requests stub below: reps bookmark tabs,
+    // and the page behind this one is deliberately gone.
+    await page.goto('/quotes/pending')
+    await expect(page).toHaveURL(/\/quotes\/board$/)
+  })
+
   test('quote-create shows the mandatory probability-of-close field (no submission)', async ({ page }) => {
     test.skip(!hasToken || !dealId, 'Set HUBSPOT_ACCESS_TOKEN + E2E_DEAL_ID (a real deal) to run')
     await page.goto(`/quotes/create/${dealId}`)
