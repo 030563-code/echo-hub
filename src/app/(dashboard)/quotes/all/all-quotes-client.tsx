@@ -1,10 +1,8 @@
 'use client'
 
-import { useState } from 'react'
 import { Card } from '@/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { AlertCircle, Filter } from 'lucide-react'
-import { HUBSPOT_PIPELINES, stageLabel } from '@/lib/hubspot-constants'
+import { HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
 import { PaginationNav } from '@/components/ui/pagination-nav'
 import { DealList } from '@/components/quotes/deal-list'
 import type { HubSpotDeal } from '@/lib/hubspot-types'
@@ -26,24 +24,21 @@ interface AllQuotesClientProps {
   scope: 'mine' | 'all'
   /** Owner and team per deal, only populated in the all-reps view. */
   ownerByDeal: Record<string, { owner: string; team: string }>
+  /** The shared filter bar, rendered on the server. Filtering is server-side
+   *  now, so this component no longer narrows anything itself. */
+  filterBar?: React.ReactNode
 }
 
-export default function AllQuotesClient({ initialDeals, error, probabilityMap, currentPage, hasNextPage, cursorStack, nextAfter, isAdmin, scope, ownerByDeal }: AllQuotesClientProps) {
+export default function AllQuotesClient({ initialDeals, error, probabilityMap, currentPage, hasNextPage, cursorStack, nextAfter, isAdmin, scope, ownerByDeal, filterBar }: AllQuotesClientProps) {
+  // The rows arrive already narrowed. The pipeline and stage selects that used
+  // to live here filtered only the 25 rows on the current page, and said so in
+  // its own counter ("of N deals on this page"), which meant a rep searching
+  // for a real deal on page 4 was told it did not exist. The shared filter bar
+  // pushes the same choices into the HubSpot search instead.
   const deals = initialDeals
-  const [selectedPipeline, setSelectedPipeline] = useState<string>('all')
-  const [selectedStage, setSelectedStage] = useState<string>('all')
 
   // Flatten pipelines for easier lookup
   const pipelines = Object.values(HUBSPOT_PIPELINES)
-
-  // Derive filtered deals during render (React Compiler handles memoization) instead
-  // of storing in state via an effect, which would cascade an extra render pass.
-  const isFiltered = selectedPipeline !== 'all' || selectedStage !== 'all'
-  const filteredDeals = deals.filter((deal) => {
-    if (selectedPipeline !== 'all' && deal.properties.pipeline !== selectedPipeline) return false
-    if (selectedStage !== 'all' && deal.properties.dealstage !== selectedStage) return false
-    return true
-  })
 
   // Helper to get pipeline label
   const getPipelineLabel = (pipelineId: string) => {
@@ -89,45 +84,8 @@ export default function AllQuotesClient({ initialDeals, error, probabilityMap, c
             </Link>
           </div>
         )}
-        <div className="flex flex-col md:flex-row gap-4 items-end md:items-center">
-          <div className="w-full md:w-64">
-            <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Pipeline</label>
-            <Select value={selectedPipeline} onValueChange={(val) => { setSelectedPipeline(val); setSelectedStage('all'); }}>
-              <SelectTrigger className="bg-white border-gray-300 text-gray-900">
-                <SelectValue placeholder="All Pipelines" />
-              </SelectTrigger>
-              <SelectContent className="bg-white border-gray-200 text-gray-900">
-                <SelectItem value="all">All Pipelines</SelectItem>
-                {pipelines.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="w-full md:w-64">
-            <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Stage</label>
-            <Select value={selectedStage} onValueChange={setSelectedStage} disabled={selectedPipeline === 'all'}>
-              <SelectTrigger className="bg-white border-gray-300 text-gray-900">
-                <SelectValue placeholder="All Stages" />
-              </SelectTrigger>
-              <SelectContent className="bg-white border-gray-200 text-gray-900">
-                <SelectItem value="all">All Stages</SelectItem>
-                {selectedPipeline !== 'all' && pipelines.find(p => p.id === selectedPipeline)?.stages && 
-                  Object.entries(pipelines.find(p => p.id === selectedPipeline)!.stages).map(([, id]) => (
-                    <SelectItem key={id} value={id}>{stageLabel(selectedPipeline, id)}</SelectItem>
-                  ))
-                }
-              </SelectContent>
-            </Select>
-          </div>
-          
-          <div className="pb-1 text-sm text-gray-500">
-            {isFiltered
-              ? `Showing ${filteredDeals.length} of ${deals.length} deals on this page`
-              : `Showing ${filteredDeals.length} deals`}
-          </div>
-        </div>
+        {filterBar}
+        <div className="mt-3 text-sm text-gray-500">Showing {deals.length} deals on this page</div>
       </Card>
 
       {error ? (
@@ -138,13 +96,13 @@ export default function AllQuotesClient({ initialDeals, error, probabilityMap, c
           </div>
           <p className="text-red-600 text-sm mt-1 ml-8">{error}</p>
         </Card>
-      ) : filteredDeals.length > 0 ? (
+      ) : deals.length > 0 ? (
         <DealList
           dateHeader="Created Date"
           badgeHeader="Stage"
           pipelineHeader="Pipeline"
           probabilityHeader="Probability"
-          rows={filteredDeals.map((deal) => ({
+          rows={deals.map((deal) => ({
             id: deal.id,
             name: deal.properties.dealname,
             pipelineLabel: getPipelineLabel(deal.properties.pipeline),
@@ -182,7 +140,7 @@ export default function AllQuotesClient({ initialDeals, error, probabilityMap, c
           paging is cursor-based on the full server-side set. Showing pagination during a
           filter would let a user "page" filtered-only views and produce misleading results,
           so we hide it while a filter is active and keep the count label honest above. */}
-      {!isFiltered && filteredDeals.length > 0 && (
+      {deals.length > 0 && (
         <PaginationNav
           currentPage={currentPage}
           hasNextPage={hasNextPage}

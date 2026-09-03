@@ -5,6 +5,7 @@ import { getAuthorizedUser, hasAnyCapability } from '@/lib/authz'
 import { QUOTE_REQUEST_STAGES, QUOTATION_SENT_STAGES, CLOSED_WON_STAGES, QUOTATION_ACCEPTED_STAGES } from '@/lib/hubspot-constants'
 import type { HubSpotDeal } from '@/lib/hubspot-types'
 import { DEAL_LIST_PROPERTIES } from '@/lib/hubspot-types'
+import { EMPTY_DEAL_FILTERS, dealFiltersToHubSpot, type DealFilters } from '@/lib/deal-filters'
 
 const PAGE_SIZE = 25
 
@@ -30,7 +31,12 @@ export async function getDealsByStage(
    * Decided server-side from the caller's own profile: this arrives from a URL
    * parameter, and widening it is exactly the thing to try.
    */
-  scope: 'mine' | 'all' = 'mine'
+  scope: 'mine' | 'all' = 'mine',
+  /**
+   * Rep-set filters, folded into the same search call as the stage category.
+   * Optional and defaulted, so the four existing call sites keep working.
+   */
+  dealFilters: DealFilters = EMPTY_DEAL_FILTERS
 ): Promise<GetDealsResult> {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -107,7 +113,7 @@ export async function getDealsByStage(
       value: string
     }
     interface HubSpotSearchRequest {
-      filterGroups: { filters: Array<HubSpotValueFilter | HubSpotStageFilter> }[]
+      filterGroups: { filters: Array<HubSpotValueFilter | HubSpotStageFilter | { propertyName: string; operator: string; value?: string; values?: string[] }> }[]
       properties: string[]
       sorts: { propertyName: string; direction: string }[]
       limit: number
@@ -122,7 +128,11 @@ export async function getDealsByStage(
             ...(allReps
               ? []
               : [{ propertyName: 'hubspot_owner_id', operator: 'EQ', value: ownerId }]),
-            ...stageFilters
+            ...stageFilters,
+            // An admin viewing every rep can filter to one owner. On a 'mine'
+            // list the owner is already pinned above, so a second EQ would AND
+            // to an empty page instead of being ignored.
+            ...dealFiltersToHubSpot(allReps ? dealFilters : { ...dealFilters, ownerId: '' }),
           ],
         },
       ],

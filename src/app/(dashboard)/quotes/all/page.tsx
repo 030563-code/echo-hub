@@ -3,14 +3,13 @@ import { createServerClient } from '@/lib/supabase/server'
 import AllQuotesClient from './all-quotes-client'
 import { getOwnerIndex } from '@/app/actions/hubspot/getOwners'
 import { ownerLabel, teamLabel } from '@/lib/hubspot-owners'
+import { DealFilterBar } from '@/components/quotes/deal-filter-bar'
+import { parseDealFilters } from '@/lib/deal-filters'
+import { HUBSPOT_PIPELINES, stageLabel } from '@/lib/hubspot-constants'
 
-interface SearchParams {
-  page?: string
-  cursors?: string
-  /** 'all' asks for every rep's deals. Honoured only for an admin, decided in
-   *  getDealsByStage rather than here. */
-  scope?: string
-}
+/** Paging and scope, plus every deal-filter parameter, so the filters survive
+ *  a page change. */
+type SearchParams = Record<string, string | string[] | undefined>
 
 interface DealRecord {
   id: string
@@ -22,17 +21,19 @@ export default async function AllQuotesPage({
   searchParams: Promise<SearchParams>
 }) {
   const params = await searchParams
-  const page = Math.max(1, parseInt(params.page ?? '1', 10) || 1)
-  const cursorStack = params.cursors ?? ''
+  const page = Math.max(1, parseInt(typeof params.page === 'string' ? params.page : '1', 10) || 1)
+  const cursorStack = typeof params.cursors === 'string' ? params.cursors : ''
   const cursors = cursorStack ? cursorStack.split(',').filter(Boolean) : []
   const after = cursors[cursors.length - 1] as string | undefined
 
   const scope = params.scope === 'all' ? 'all' : 'mine'
+  const dealFilters = parseDealFilters(params)
   const { data: deals, error, hasNextPage, nextAfter, isAdmin } = await getDealsByStage(
     'all',
     page,
     after,
     scope,
+    dealFilters,
   )
 
   // Owner and team names for the all-reps view. One call, memoised, and only
@@ -56,6 +57,14 @@ export default async function AllQuotesPage({
     }
   }
 
+  const selectedPipeline = Object.values(HUBSPOT_PIPELINES).find((p) => p.id === dealFilters.pipelineId)
+  const stageOptions = selectedPipeline
+    ? Object.values(selectedPipeline.stages).map((stageId) => ({
+        id: stageId,
+        label: stageLabel(selectedPipeline.id, stageId),
+      }))
+    : []
+
   return (
     <AllQuotesClient
       initialDeals={deals || []}
@@ -67,6 +76,17 @@ export default async function AllQuotesPage({
       nextAfter={nextAfter}
       isAdmin={!!isAdmin}
       scope={scope}
+      filterBar={
+        <DealFilterBar
+          action="/quotes/all"
+          filters={dealFilters}
+          hidden={scope === 'all' ? { scope: 'all' } : {}}
+          pipelines={Object.values(HUBSPOT_PIPELINES).map((p) => ({ id: p.id, label: p.label }))}
+          stages={stageOptions}
+          ownerNameById={owners?.ownerNameById}
+          showOwner={scope === 'all' && !!isAdmin}
+        />
+      }
       ownerByDeal={
         owners
           ? Object.fromEntries(
