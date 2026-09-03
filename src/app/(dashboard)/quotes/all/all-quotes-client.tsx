@@ -27,9 +27,11 @@ interface AllQuotesClientProps {
   /** The shared filter bar, rendered on the server. Filtering is server-side
    *  now, so this component no longer narrows anything itself. */
   filterBar?: React.ReactNode
+  /** Scope and filters, so turning the page does not silently drop them. */
+  carryParams?: Record<string, string>
 }
 
-export default function AllQuotesClient({ initialDeals, error, probabilityMap, currentPage, hasNextPage, cursorStack, nextAfter, isAdmin, scope, ownerByDeal, filterBar }: AllQuotesClientProps) {
+export default function AllQuotesClient({ initialDeals, error, probabilityMap, currentPage, hasNextPage, cursorStack, nextAfter, isAdmin, scope, ownerByDeal, filterBar, carryParams }: AllQuotesClientProps) {
   // The rows arrive already narrowed. The pipeline and stage selects that used
   // to live here filtered only the 25 rows on the current page, and said so in
   // its own counter ("of N deals on this page"), which meant a rep searching
@@ -39,6 +41,17 @@ export default function AllQuotesClient({ initialDeals, error, probabilityMap, c
 
   // Flatten pipelines for easier lookup
   const pipelines = Object.values(HUBSPOT_PIPELINES)
+
+  // Scope links keep the filters. They also cannot be hardcoded any more: 'all'
+  // is now the default, so a bare /quotes/all means All reps, and "My deals"
+  // has to say scope=mine explicitly or the two chips swap meaning.
+  const scopeHref = (next: 'mine' | 'all') => {
+    const q = new URLSearchParams(carryParams ?? {})
+    q.delete('scope')
+    if (next === 'mine') q.set('scope', 'mine')
+    const query = q.toString()
+    return query ? `/quotes/all?${query}` : '/quotes/all'
+  }
 
   // Helper to get pipeline label
   const getPipelineLabel = (pipelineId: string) => {
@@ -63,7 +76,7 @@ export default function AllQuotesClient({ initialDeals, error, probabilityMap, c
             {/* Plain links, not client state: the scope decides what the SERVER
                 fetches, so it belongs in the URL where it survives paging. */}
             <Link
-              href="/quotes/all"
+              href={scopeHref('mine')}
               className={
                 scope === 'mine'
                   ? 'rounded border border-echo-yellow bg-yellow-50 px-2.5 py-1 text-xs font-semibold text-gray-900'
@@ -73,7 +86,7 @@ export default function AllQuotesClient({ initialDeals, error, probabilityMap, c
               My deals
             </Link>
             <Link
-              href="/quotes/all?scope=all"
+              href={scopeHref('all')}
               className={
                 scope === 'all'
                   ? 'rounded border border-echo-yellow bg-yellow-50 px-2.5 py-1 text-xs font-semibold text-gray-900'
@@ -142,6 +155,7 @@ export default function AllQuotesClient({ initialDeals, error, probabilityMap, c
           so we hide it while a filter is active and keep the count label honest above. */}
       {deals.length > 0 && (
         <PaginationNav
+          carryParams={carryParams}
           currentPage={currentPage}
           hasNextPage={hasNextPage}
           basePath="/quotes/all"

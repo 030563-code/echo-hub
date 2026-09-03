@@ -26,7 +26,9 @@ export default async function AllQuotesPage({
   const cursors = cursorStack ? cursorStack.split(',').filter(Boolean) : []
   const after = cursors[cursors.length - 1] as string | undefined
 
-  const scope = params.scope === 'all' ? 'all' : 'mine'
+  // All reps by default, matching the board and the stage queues, so the choice
+  // carries between tabs. getDealsByStage puts a non-admin back to 'mine'.
+  const scope = params.scope === 'mine' ? 'mine' : 'all'
   const dealFilters = parseDealFilters(params)
   const { data: deals, error, hasNextPage, nextAfter, isAdmin } = await getDealsByStage(
     'all',
@@ -76,11 +78,20 @@ export default async function AllQuotesPage({
       nextAfter={nextAfter}
       isAdmin={!!isAdmin}
       scope={scope}
+      carryParams={{
+        ...Object.fromEntries(
+          Object.entries(params).flatMap(([name, value]) => {
+            if (name === 'page' || name === 'cursors') return []
+            if (Array.isArray(value)) return value[0] === undefined ? [] : [[name, value[0]] as [string, string]]
+            return value === undefined ? [] : [[name, value] as [string, string]]
+          }),
+        ),
+      }}
       filterBar={
         <DealFilterBar
           action="/quotes/all"
           filters={dealFilters}
-          hidden={scope === 'all' ? { scope: 'all' } : {}}
+          hidden={scope === 'mine' ? { scope: 'mine' } : {}}
           pipelines={Object.values(HUBSPOT_PIPELINES).map((p) => ({ id: p.id, label: p.label }))}
           stages={stageOptions}
           ownerNameById={owners?.ownerNameById}

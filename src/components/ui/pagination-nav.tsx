@@ -10,6 +10,13 @@ interface PaginationNavProps {
   cursorStack: string
   /** The after-cursor for the NEXT page (returned from current HubSpot fetch) */
   nextAfter?: string
+  /**
+   * Everything else in the URL that must survive a page change: the scope and
+   * every filter. Without it these links rebuild the query string from nothing,
+   * so turning the page silently reverted to My deals and dropped whatever the
+   * rep had filtered to.
+   */
+  carryParams?: Record<string, string>
 }
 
 /**
@@ -28,20 +35,26 @@ export function PaginationNav({
   basePath,
   cursorStack,
   nextAfter,
+  carryParams = {},
 }: PaginationNavProps) {
   const cursors = cursorStack ? cursorStack.split(',').filter(Boolean) : []
 
+  const href = (extra: Record<string, string>) => {
+    const q = new URLSearchParams(carryParams)
+    for (const [name, value] of Object.entries(extra)) q.set(name, value)
+    const query = q.toString()
+    return query ? `${basePath}?${query}` : basePath
+  }
+
   // Build next page URL: push nextAfter onto cursor stack
   const nextCursors = nextAfter ? [...cursors, nextAfter].join(',') : ''
-  const nextHref = `${basePath}?page=${currentPage + 1}&cursors=${encodeURIComponent(nextCursors)}`
+  const nextHref = href({ page: String(currentPage + 1), cursors: nextCursors })
 
   // Build previous page URL: pop last cursor from stack
   const prevCursors = cursors.slice(0, -1).join(',')
   const prevPage = currentPage - 1
   const prevHref =
-    prevPage <= 1
-      ? basePath
-      : `${basePath}?page=${prevPage}&cursors=${encodeURIComponent(prevCursors)}`
+    prevPage <= 1 ? href({}) : href({ page: String(prevPage), cursors: prevCursors })
 
   const isFirstPage = currentPage <= 1
   const showPagination = !isFirstPage || hasNextPage
