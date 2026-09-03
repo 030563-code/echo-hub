@@ -119,10 +119,6 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
     () => new Map(lines.map((l) => [l.line_key, l.tax_amount === null ? '' : String(l.tax_amount)])),
     [lines],
   )
-  // Deliberately opt-IN: emailing is the outward-facing, irreversible half of
-  // Send, and the editor remounts on every server write, so a default of true
-  // could silently undo a reviewer's decision not to email.
-
   const goodsDepots = useMemo(
     () => [...new Set(rows.filter((r) => !r.is_shipping).map((r) => r.ship_from_depot))],
     [rows],
