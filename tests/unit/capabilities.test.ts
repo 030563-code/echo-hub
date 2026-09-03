@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   CAPABILITIES,
   CAPABILITY_KEYS,
+  NAV_GROUPS,
   NAV_ITEMS,
+  navSections,
   satisfiesRequirement,
   type CapabilityKey,
 } from '@/lib/capabilities'
@@ -35,6 +37,46 @@ describe('capability catalogue', () => {
     const pricing = NAV_ITEMS.find((i) => i.href === '/pricing')
     expect(pricing?.requires).toEqual(['pricing.view', 'pricing.manage'])
     expect(satisfiesRequirement(new Set<CapabilityKey>(['pricing.view']), pricing?.requires ?? [])).toBe(true)
+  })
+})
+
+describe('navSections', () => {
+  const caps = (...keys: CapabilityKey[]) => new Set<CapabilityKey>(keys)
+
+  it('puts the ungrouped items first, then the groups in order', () => {
+    const sections = navSections(caps('admin'))
+    expect(sections.map((s) => s.group)).toEqual([null, ...NAV_GROUPS])
+    expect(sections[0].items.map((i) => i.label)).toEqual(['Dashboard'])
+  })
+
+  it('groups the modules the way Dean asked', () => {
+    const byGroup = Object.fromEntries(
+      navSections(caps('admin')).map((s) => [s.group ?? 'top', s.items.map((i) => i.label)]),
+    )
+    expect(byGroup['Sales and Accounting']).toEqual(['Quotes', 'Invoicing', 'Pricing'])
+    expect(byGroup['Operations']).toEqual(['Purchase Orders', 'Bill of Materials', 'Transport', 'MRP'])
+  })
+
+  it('drops a group entirely when every item in it is gated away', () => {
+    // Jillian's real capabilities. She must not be shown an "Operations"
+    // heading with nothing under it, or one she cannot open anything in.
+    const sections = navSections(caps('quotes.view', 'quotes.create', 'pricing.view'))
+    expect(sections.map((s) => s.group)).toEqual([null, 'Sales and Accounting'])
+    expect(sections[1].items.map((i) => i.label)).toEqual(['Quotes', 'Pricing'])
+  })
+
+  it('never returns an empty section', () => {
+    for (const set of [caps(), caps('admin'), caps('bom.view'), caps('quotes.view')]) {
+      for (const section of navSections(set)) {
+        expect(section.items.length).toBeGreaterThan(0)
+      }
+    }
+  })
+
+  it('gives every module a group, so nothing strays above the headings', () => {
+    // Dashboard is the deliberate exception: it is the only top-level entry.
+    const ungrouped = NAV_ITEMS.filter((i) => !i.group).map((i) => i.href)
+    expect(ungrouped).toEqual(['/'])
   })
 })
 

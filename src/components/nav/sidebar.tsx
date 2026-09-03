@@ -15,7 +15,7 @@ import {
   LogOut,
   type LucideIcon,
 } from 'lucide-react'
-import { NAV_ITEMS, satisfiesRequirement, type CapabilityKey } from '@/lib/capabilities'
+import { navSections, type CapabilityKey } from '@/lib/capabilities'
 import { Button } from '@/components/ui/button'
 import { signOut } from '@/app/actions/sign-out'
 import { LinkSpinner } from '@/components/nav/link-spinner'
@@ -42,7 +42,7 @@ export function Sidebar({ capabilities, displayName, className = '' }: SidebarPr
   const pathname = usePathname()
   const caps = new Set<CapabilityKey>(capabilities)
 
-  const visible = NAV_ITEMS.filter((item) => satisfiesRequirement(caps, item.requires))
+  const sections = navSections(caps)
 
   return (
     <aside className={`w-64 bg-black text-white flex flex-col fixed h-full z-30 ${className}`}>
@@ -60,28 +60,37 @@ export function Sidebar({ capabilities, displayName, className = '' }: SidebarPr
         <p className="text-xs text-gray-500 uppercase tracking-wider mt-2">Hub</p>
       </div>
 
-      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-        {visible.map((item) => {
-          const Icon = ICONS[item.icon] ?? LayoutDashboard
-          const active =
-            item.href === '/' ? pathname === '/' : pathname === item.href || pathname.startsWith(`${item.href}/`)
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 px-4 py-3 rounded transition-colors ${
-                active
-                  ? 'bg-gray-900 text-white'
-                  : 'text-gray-400 hover:bg-gray-900 hover:text-white'
-              }`}
-            >
-              <Icon className="w-5 h-5" />
-              <span className="font-medium">{item.label}</span>
-              {/* useLinkStatus must be a child of Link, hence the separate LinkSpinner component */}
-              <LinkSpinner className="ml-auto" />
-            </Link>
-          )
-        })}
+      <nav className="flex-1 p-4 overflow-y-auto">
+        {sections.map((section) => (
+          <div key={section.group ?? 'top'} className="space-y-1 [&+&]:mt-6">
+            {section.group && (
+              <h2 className="px-4 pb-1 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                {section.group}
+              </h2>
+            )}
+            {section.items.map((item) => {
+              const Icon = ICONS[item.icon] ?? LayoutDashboard
+              const active =
+                item.href === '/' ? pathname === '/' : pathname === item.href || pathname.startsWith(`${item.href}/`)
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-3 px-4 py-3 rounded transition-colors ${
+                    active
+                      ? 'bg-gray-900 text-white'
+                      : 'text-gray-400 hover:bg-gray-900 hover:text-white'
+                  }`}
+                >
+                  <Icon className="w-5 h-5" />
+                  <span className="font-medium">{item.label}</span>
+                  {/* useLinkStatus must be a child of Link, hence the separate LinkSpinner component */}
+                  <LinkSpinner className="ml-auto" />
+                </Link>
+              )
+            })}
+          </div>
+        ))}
       </nav>
 
       <div className="p-4 border-t border-gray-800 bg-gray-900/50">
