@@ -4,8 +4,15 @@
  * Render the invoice for review, changing nothing.
  *
  * Dean asked for a preview BEFORE Send to TaxJar, which is the step that
- * allocates the EBUS number. So this deliberately writes nothing at all: no
- * status, no number, no timestamp. Run it as often as you like.
+ * allocates the EBUS number. Nothing here advances the invoice: no status, no
+ * number, nothing filed, nothing sent. Run it as often as you like.
+ *
+ * The one thing it does write is the bill-to snapshot, and only when the
+ * invoice has none yet. Without it the document falls back to the company name
+ * off the account registry, which is how an invoice ends up showing a bare
+ * "Apex" where the customer's actual billing address belongs. Capturing it is
+ * not a state change, and taking it here means the preview shows exactly what
+ * the issued invoice will show.
  *
  * Before the number exists the document titles itself "Draft invoice", says
  * "NOT AN INVOICE, preview only", and falls back to the internal holding
@@ -14,7 +21,8 @@
  */
 
 import { z } from 'zod'
-import { requireInvoicingManage, loadInvoiceWithLines } from './shared'
+import { xeroFindContact } from '@/lib/xero-hub'
+import { requireInvoicingManage, loadInvoiceWithLines, snapshotBillingContact } from './shared'
 import { renderInvoicePdf } from './document-data'
 
 const Input = z.object({ invoiceId: z.string().uuid() })
@@ -41,13 +49,37 @@ export async function previewInvoicePdf(input: { invoiceId: string }): Promise<P
     return { success: false, error: 'This invoice has no lines yet, so there is nothing to preview.' }
   }
 
+  // No bill-to captured yet: fetch the Xero contact once and freeze it, so the
+  // preview and every later render agree.
+  let current = invoice
+  if (!invoice.billing_snapshot_at && invoice.taxjar_customer_id) {
+    const contact = await xeroFindContact(invoice.taxjar_customer_id)
+    if (contact.ok && contact.data) {
+      await snapshotBillingContact(invoice.id, contact.data)
+      current = {
+        ...invoice,
+        billing_name: contact.data.name,
+        billing_email: contact.data.email,
+        billing_line1: contact.data.address?.line1 ?? null,
+        billing_line2: contact.data.address?.line2 ?? null,
+        billing_city: contact.data.address?.city ?? null,
+        billing_region: contact.data.address?.region ?? null,
+        billing_postal_code: contact.data.address?.postal_code ?? null,
+        billing_country: contact.data.address?.country ?? null,
+        billing_snapshot_at: new Date().toISOString(),
+      }
+    }
+    // A Xero outage must not block a preview. The document falls back to the
+    // company name and the rep can still check the lines and the tax.
+  }
+
   try {
-    const rendered = await renderInvoicePdf(invoice, lines)
+    const rendered = await renderInvoicePdf(current, lines)
     return {
       success: true,
       pdfBase64: rendered.bytes.toString('base64'),
       filename: rendered.filename,
-      isDraft: invoice.invoice_number === null,
+      isDraft: current.invoice_number === null,
       remittanceIncomplete: rendered.remittanceIncomplete,
     }
   } catch (error) {
