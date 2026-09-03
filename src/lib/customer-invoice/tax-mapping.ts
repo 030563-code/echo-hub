@@ -355,8 +355,21 @@ export interface TaxJarFilingOrder {
   }[]
 }
 
+/**
+ * The only two fields the grouping rule reads.
+ *
+ * Deliberately narrower than FilingLine: the filing path and the printed
+ * document carry different columns, and constraining this to what the rule
+ * actually touches lets both use it without either growing fields it has no
+ * use for.
+ */
+export interface ShipmentGroupable {
+  is_shipping: boolean
+  ship_from_depot: USDepot
+}
+
 /** One shipment: the goods leaving a depot, plus the freight attributed to it. */
-export interface DepotShipment<L extends FilingLine = FilingLine> {
+export interface DepotShipment<L extends ShipmentGroupable> {
   depot: USDepot
   goodsLines: L[]
   shippingLines: L[]
@@ -376,7 +389,7 @@ export interface DepotShipment<L extends FilingLine = FilingLine> {
  * freight folded into the first depot that carries goods, because filing it any
  * other way puts the freight tax in a jurisdiction the calculation never used.
  */
-export function depotShipments<L extends FilingLine>(lines: readonly L[]): DepotShipment<L>[] {
+export function depotShipments<L extends ShipmentGroupable>(lines: readonly L[]): DepotShipment<L>[] {
   const depotsWithGoods = US_DEPOTS.filter((d) => lines.some((l) => l.ship_from_depot === d && !l.is_shipping))
   if (depotsWithGoods.length === 0) return []
   const host = depotsWithGoods[0]
