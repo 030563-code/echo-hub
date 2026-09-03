@@ -73,11 +73,34 @@ export const NAV_GROUPS = ['Sales and Accounting', 'Operations'] as const
 
 export type NavGroup = (typeof NAV_GROUPS)[number]
 
+/**
+ * The Lucide icons the nav is allowed to use.
+ *
+ * A closed list rather than a free string, because both the sidebar and the
+ * dashboard home resolve `icon` through a map. Each used to keep its own map
+ * with its own silent `??` fallback, so a typo rendered the wrong icon in one
+ * place and a different wrong icon in the other. Typing the shared map in
+ * nav-icons.ts as Record<NavIconName, LucideIcon> turns that into a compile
+ * error instead.
+ */
+export const NAV_ICON_NAMES = [
+  'LayoutDashboard',
+  'FileText',
+  'ReceiptText',
+  'Tags',
+  'ShoppingCart',
+  'Layers',
+  'Truck',
+  'Gauge',
+] as const
+
+export type NavIconName = (typeof NAV_ICON_NAMES)[number]
+
 export interface NavItem {
   label: string
   href: string
-  /** Lucide icon name — resolved in the sidebar component. */
-  icon: string
+  /** Resolved through NAV_ICONS in src/lib/nav-icons.ts. */
+  icon: NavIconName
   /** The user must hold at least one of these capabilities to see/visit this item. */
   requires: CapabilityKey[]
   /** The heading this sits under. Omitted for top-level items such as

@@ -3,33 +3,12 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname } from 'next/navigation'
-import {
-  LayoutDashboard,
-  FileText,
-  ShoppingCart,
-  Layers,
-  Truck,
-  Gauge,
-  ReceiptText,
-  Tags,
-  LogOut,
-  type LucideIcon,
-} from 'lucide-react'
+import { LogOut } from 'lucide-react'
 import { navSections, type CapabilityKey } from '@/lib/capabilities'
+import { NAV_ICONS } from '@/lib/nav-icons'
 import { Button } from '@/components/ui/button'
 import { signOut } from '@/app/actions/sign-out'
 import { LinkSpinner } from '@/components/nav/link-spinner'
-
-const ICONS: Record<string, LucideIcon> = {
-  LayoutDashboard,
-  FileText,
-  ShoppingCart,
-  Layers,
-  Truck,
-  Gauge,
-  ReceiptText,
-  Tags,
-}
 
 interface SidebarProps {
   capabilities: CapabilityKey[]
@@ -69,7 +48,7 @@ export function Sidebar({ capabilities, displayName, className = '' }: SidebarPr
               </h2>
             )}
             {section.items.map((item) => {
-              const Icon = ICONS[item.icon] ?? LayoutDashboard
+              const Icon = NAV_ICONS[item.icon]
               const active =
                 item.href === '/' ? pathname === '/' : pathname === item.href || pathname.startsWith(`${item.href}/`)
               return (
