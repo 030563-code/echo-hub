@@ -40,7 +40,7 @@ export async function getLineItems(lineItemIds: string[]): Promise<{ success: bo
       },
       body: JSON.stringify({
         inputs: lineItemIds.map(id => ({ id })),
-        properties: ['name', 'quantity', 'price', 'amount', 'hs_product_id', 'hs_sku', 'description']
+        properties: ['name', 'quantity', 'price', 'amount', 'hs_product_id', 'hs_sku', 'description', 'hs_discount_percentage', 'discount']
       }),
       cache: 'no-store'
     })

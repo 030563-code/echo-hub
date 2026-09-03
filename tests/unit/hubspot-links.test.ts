@@ -27,3 +27,14 @@ describe('hubspotRecordUrl', () => {
     expect(hubspotRecordUrl('company', '  ')).toBeNull()
   })
 })
+
+describe('quote record URLs', () => {
+  it('uses the durable 0-14 object-type form for a HubSpot quote', () => {
+    // Phase B links the rep from the Hub to the quote it just published. The
+    // object-type path is the shape HubSpot has not broken; /quote/{id} is not
+    // a route that exists.
+    process.env.NEXT_PUBLIC_HUBSPOT_PORTAL_ID = '3882358'
+    const url = hubspotRecordUrl('quote', '42607942261')
+    expect(url).toBe('https://app.hubspot.com/contacts/3882358/record/0-14/42607942261')
+  })
+})

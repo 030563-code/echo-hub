@@ -11,6 +11,7 @@ import {
   Truck,
   Gauge,
   ReceiptText,
+  Tags,
   LogOut,
   type LucideIcon,
 } from 'lucide-react'
@@ -27,6 +28,7 @@ const ICONS: Record<string, LucideIcon> = {
   Truck,
   Gauge,
   ReceiptText,
+  Tags,
 }
 
 interface SidebarProps {

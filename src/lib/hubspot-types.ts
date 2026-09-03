@@ -17,6 +17,10 @@ export interface HubSpotDeal {
     /** ISO code. Optional because HubSpot omits the property on deals that
      *  have never had one set. */
     deal_currency_code?: string | null
+    /** Owner and team, requested so the admin all-reps views can show WHOSE
+     *  deal a row is. Absent on deals with no owner assigned. */
+    hubspot_owner_id?: string | null
+    hubspot_team_id?: string | null
   }
 }
 
@@ -29,4 +33,6 @@ export const DEAL_LIST_PROPERTIES = [
   'dealstage',
   'pipeline',
   'deal_currency_code',
+  'hubspot_owner_id',
+  'hubspot_team_id',
 ] as const
