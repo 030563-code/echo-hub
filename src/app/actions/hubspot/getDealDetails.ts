@@ -22,6 +22,9 @@ interface HubSpotDealDetails {
     /** ISO code, e.g. USD or CAD. The deal's own currency, and the only
      *  trustworthy source for it: the Hub used to assume USD. */
     deal_currency_code?: string
+    /** Why a closed deal was lost. The Hub writes it when a rep hands a deal to
+     *  a contractor, and shows it back under the stage chip. */
+    closed_lost_reason?: string
   }
   associations?: {
     companies?: { results: { id: string }[] }
@@ -56,7 +59,7 @@ export async function getDealDetails(dealId: string): Promise<GetDealDetailsResu
   try {
     // Fetch Deal Details with Associations and Line Items
     // Requesting both singular and plural to be safe
-    const url = `https://api.hubapi.com/crm/v3/objects/deals/${dealId}?properties=dealname,amount,createdate,dealstage,pipeline,description,closedate,sending_depot,hubspot_owner_id,win_probability,deal_currency_code&associations=companies,contacts,line_item,line_items`
+    const url = `https://api.hubapi.com/crm/v3/objects/deals/${dealId}?properties=dealname,amount,createdate,dealstage,pipeline,description,closedate,sending_depot,hubspot_owner_id,win_probability,deal_currency_code,closed_lost_reason&associations=companies,contacts,line_item,line_items`
 
     const response = await fetch(
       url,

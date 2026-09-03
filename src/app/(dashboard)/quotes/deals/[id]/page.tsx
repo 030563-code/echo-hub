@@ -2,6 +2,8 @@ import { getDealDetails } from '@/app/actions/hubspot/getDealDetails'
 import { createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { DealQuotesCard, type DealQuoteRow } from '@/components/quotes/deal-quotes-card'
+import { AssignContractorDialog } from '@/components/quotes/assign-contractor-dialog'
+import { isClosedStage } from '@/lib/deals-board'
 import { getCompanyDetails } from '@/app/actions/hubspot/getCompanyDetails'
 import { getContactDetails } from '@/app/actions/hubspot/getContactDetails'
 import { getLineItems } from '@/app/actions/hubspot/getLineItems'
@@ -175,6 +177,8 @@ export default async function QuoteRequestDetailsPage(props: { params: Promise<{
   }
 
   const isQuoteRequest = QUOTE_REQUEST_STAGES.includes(deal.properties.dealstage)
+  // A finished deal has nothing left to quote or reassign.
+  const dealIsClosed = isClosedStage(deal.properties.dealstage)
   const formatMoney = makeMoney((deal.properties.deal_currency_code || 'USD').trim().toUpperCase() || 'USD')
 
   return (
@@ -227,12 +231,18 @@ export default async function QuoteRequestDetailsPage(props: { params: Promise<{
                </Button>
              </a>
            )}
-           {isQuoteRequest && (
+           {/* A quote can be raised while the deal is open, not only at Quote
+               Request: regenerating makes a NEW HubSpot quote rather than
+               editing the published one, and reps keep variants. */}
+           {canChangeStage && !dealIsClosed && (
              <Link href={`/quotes/create/${deal.id}`} className="w-full sm:w-auto">
                <Button className="w-full sm:w-auto min-h-11 sm:min-h-0 bg-echo-yellow text-black hover:bg-echo-yellow/90">
-                 Generate Quote
+                 {isQuoteRequest ? 'Generate Quote' : 'New quote'}
                </Button>
              </Link>
+           )}
+           {canChangeStage && !dealIsClosed && (
+             <AssignContractorDialog dealId={deal.id} dealName={deal.properties.dealname} />
            )}
         </div>
       </div>
@@ -261,6 +271,11 @@ export default async function QuoteRequestDetailsPage(props: { params: Promise<{
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${stageChipClass(deal.properties.dealstage)}`}>
                     {STAGE_LABELS_BY_ID[deal.properties.dealstage] ?? 'Unknown stage'}
                   </span>
+                  {/* Why it closed, which for a contractor handover is the only
+                      place the detail lives outside the HubSpot timeline. */}
+                  {dealIsClosed && deal.properties.closed_lost_reason && (
+                    <p className="mt-1.5 text-xs text-gray-600">{deal.properties.closed_lost_reason}</p>
+                  )}
                 </div>
               </div>
               <div className="sm:col-span-2">

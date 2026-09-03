@@ -118,3 +118,24 @@ export function isClosedStage(stageId: string | null | undefined): boolean {
     DISTRIBUTOR_CLOSED_STAGES.includes(id)
   )
 }
+
+/**
+ * The Closed Lost stage of a pipeline, or null when there is not exactly one.
+ *
+ * Used when a rep hands a deal to a contractor. Never guessed and never
+ * resolved by preference order: closing a deal into the wrong stage is not
+ * something anybody notices afterwards, and a pipeline with two candidates is
+ * genuinely ambiguous. The key names differ across the fourteen pipelines,
+ * which is why this matches on the key rather than on a label.
+ */
+const CLOSED_LOST_KEYS = ['CLOSED_LOST', 'CLOSED_LOST_SALE', 'LOST', 'DEAL_LOST', 'CLOSED_LOST_NO_HIRE']
+
+export function closedLostStageFor(pipelineId: string | null | undefined): string | null {
+  const id = String(pipelineId ?? '').trim()
+  if (id === '') return null
+  const pipeline = Object.values(HUBSPOT_PIPELINES).find((entry) => entry.id === id)
+  if (!pipeline) return null
+  const stages = pipeline.stages as Record<string, string>
+  const keys = Object.keys(stages).filter((key) => CLOSED_LOST_KEYS.includes(key))
+  return keys.length === 1 ? stages[keys[0]] : null
+}

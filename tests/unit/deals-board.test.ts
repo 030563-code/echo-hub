@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { boardColumns, groupDealsByStage, isClosedStage } from '@/lib/deals-board'
+import { boardColumns, closedLostStageFor, groupDealsByStage, isClosedStage } from '@/lib/deals-board'
 import { HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
 
 const USA = HUBSPOT_PIPELINES.USA_SALES.id
@@ -92,5 +92,31 @@ describe('isClosedStage', () => {
     }
     expect(isClosedStage('')).toBe(false)
     expect(isClosedStage(null)).toBe(false)
+  })
+})
+
+describe('closedLostStageFor', () => {
+  it('resolves the USA and EURO Closed Lost stages', () => {
+    expect(closedLostStageFor(USA)).toBe(S.CLOSED_LOST)
+    expect(closedLostStageFor(HUBSPOT_PIPELINES.EURO_SALES.id)).toBe(
+      HUBSPOT_PIPELINES.EURO_SALES.stages.CLOSED_LOST,
+    )
+  })
+
+  it('handles the pipelines that spell the key differently', () => {
+    expect(closedLostStageFor(HUBSPOT_PIPELINES.UK_SALES_NEW.id)).toBe(
+      HUBSPOT_PIPELINES.UK_SALES_NEW.stages.CLOSED_LOST_SALE,
+    )
+    expect(closedLostStageFor(HUBSPOT_PIPELINES.DEMO_SALES.id)).toBe(
+      HUBSPOT_PIPELINES.DEMO_SALES.stages.DEAL_LOST,
+    )
+  })
+
+  it('returns null rather than guessing for a pipeline with no single candidate', () => {
+    // Closing a deal into the wrong stage is not something anyone notices
+    // afterwards, so an ambiguous pipeline refuses instead.
+    expect(closedLostStageFor(HUBSPOT_PIPELINES.INTER_COMPANY_SALES.id)).toBeNull()
+    expect(closedLostStageFor('not-a-pipeline')).toBeNull()
+    expect(closedLostStageFor(null)).toBeNull()
   })
 })
