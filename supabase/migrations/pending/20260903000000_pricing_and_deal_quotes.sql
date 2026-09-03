@@ -125,9 +125,9 @@ create index pricing_change_log_row_idx
 -- Several quotes per deal are expected and allowed. Reps already keep variants
 -- in HubSpot, so nothing here voids an earlier one.
 --
--- amount is the Hub's own computed total, hub_amount aside; both are kept so a
--- cent-level disagreement with HubSpot's calculation is visible rather than
--- silently accepted.
+-- Both totals are kept: amount is what HubSpot calculated from the quote's own
+-- line items, hub_amount is what the Hub computed from the cart. Storing the
+-- pair makes a cent-level disagreement visible rather than silently accepted.
 -- ---------------------------------------------------------------------------
 create table public.deal_quotes (
   id                uuid primary key default gen_random_uuid(),
