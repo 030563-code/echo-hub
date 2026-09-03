@@ -36,6 +36,13 @@ interface ChangeStageDialogProps {
   currentWinProbability?: string | null
   /** Delivery address already stored on deals_registry, if any. */
   initialDelivery?: { street: string; city: string; state: string; zip: string } | null
+  /**
+   * A stage to preselect, and open on. This is how a drop on the deals board
+   * arrives: the board navigates here with ?stage= rather than PATCHing HubSpot
+   * itself, so every guard in this dialog still runs, including the depot rule
+   * at Quotation Accepted and the US delivery address.
+   */
+  initialStageId?: string | null
 }
 
 export default function ChangeStageDialog({
@@ -45,9 +52,13 @@ export default function ChangeStageDialog({
   hasAssociatedCompany = true,
   currentWinProbability = null,
   initialDelivery = null,
+  initialStageId = null,
 }: ChangeStageDialogProps) {
-  const [isOpen, setIsOpen] = useState(false)
-  const [selectedStage, setSelectedStage] = useState(currentStageId)
+  // A preselected stage means the rep arrived here to make that change, so the
+  // dialog opens on it rather than making them find the button again.
+  const preselected = initialStageId && initialStageId !== currentStageId ? initialStageId : null
+  const [isOpen, setIsOpen] = useState(preselected !== null)
+  const [selectedStage, setSelectedStage] = useState(preselected ?? currentStageId)
   const [loading, setLoading] = useState(false)
   const [tenderDate, setTenderDate] = useState('')
   const [depotForAccepted, setDepotForAccepted] = useState('')

@@ -2,7 +2,7 @@
 
 import { createServerClient } from '@/lib/supabase/server'
 import { hasAnyCapability } from '@/lib/authz'
-import { QUOTE_REQUEST_STAGES, QUOTATION_SENT_STAGES, CLOSED_WON_STAGES, CLOSED_LOST_STAGES, DISTRIBUTOR_STAGES, QUOTATION_ACCEPTED_STAGES } from '@/lib/hubspot-constants'
+import { QUOTE_REQUEST_STAGES, QUOTATION_SENT_STAGES, CLOSED_WON_STAGES, QUOTATION_ACCEPTED_STAGES } from '@/lib/hubspot-constants'
 import type { HubSpotDeal } from '@/lib/hubspot-types'
 import { DEAL_LIST_PROPERTIES } from '@/lib/hubspot-types'
 
@@ -18,7 +18,7 @@ interface GetDealsResult {
 }
 
 export async function getDealsByStage(
-  category: 'quote_requests' | 'quotation_sent' | 'pending' | 'all' | 'accepted' | 'won',
+  category: 'quote_requests' | 'quotation_sent' | 'all' | 'accepted' | 'won',
   page: number = 1,
   after?: string
 ): Promise<GetDealsResult> {
@@ -78,18 +78,10 @@ export async function getDealsByStage(
       stageFilters = [{ propertyName: 'dealstage', operator: 'IN', values: QUOTATION_ACCEPTED_STAGES }]
     } else if (category === 'won') {
       stageFilters = [{ propertyName: 'dealstage', operator: 'IN', values: CLOSED_WON_STAGES }]
-    } else if (category === 'pending') {
-      // Pending = NOT (Quote Request OR Quotation Sent OR Won OR Lost OR Distributor OR Accepted)
-      const excludedStages = [
-        ...QUOTE_REQUEST_STAGES,
-        ...QUOTATION_SENT_STAGES,
-        ...CLOSED_WON_STAGES,
-        ...CLOSED_LOST_STAGES,
-        ...DISTRIBUTOR_STAGES,
-        ...QUOTATION_ACCEPTED_STAGES
-      ]
-      stageFilters = [{ propertyName: 'dealstage', operator: 'NOT_IN', values: excludedStages }]
     } else {
+      // The 'pending' category is gone with the tab it fed. It was defined as
+      // NOT six stage families, which swept up Tender and General pricing and
+      // then labelled every row "Pending". Real stages are on the board now.
       // All deals for this owner (no stage filter)
       stageFilters = []
     }

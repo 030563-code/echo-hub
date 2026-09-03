@@ -4,6 +4,7 @@ import { AlertCircle, CheckCircle } from 'lucide-react'
 import { PaginationNav } from '@/components/ui/pagination-nav'
 import { DealList } from '@/components/quotes/deal-list'
 import { formatMoney } from '@/lib/utils'
+import { stageChip } from '@/lib/stage-chip'
 
 interface SearchParams {
   page?: string
@@ -56,7 +57,7 @@ export default async function AcceptedQuotesPage({
               amountFormatted: deal.properties.amount
                 ? formatMoney(Number(deal.properties.amount), deal.properties.deal_currency_code ?? 'USD')
                 : '-',
-              badge: { text: 'Accepted', className: 'bg-green-100 text-green-800 border-green-200' },
+              badge: stageChip(deal.properties.pipeline, deal.properties.dealstage),
               action: { href: `/quotes/deals/${deal.id}`, label: 'View Details' },
             }))}
           />

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { PaginationNav } from '@/components/ui/pagination-nav'
 import { DealList } from '@/components/quotes/deal-list'
 import { formatMoney } from '@/lib/utils'
+import { stageChip } from '@/lib/stage-chip'
 
 interface SearchParams {
   page?: string
@@ -68,7 +69,7 @@ export default async function QuoteRequestsPage({
               amountFormatted: deal.properties.amount
                 ? formatMoney(Number(deal.properties.amount), deal.properties.deal_currency_code ?? 'USD')
                 : '-',
-              badge: { text: 'Quote Request', className: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
+              badge: stageChip(deal.properties.pipeline, deal.properties.dealstage),
               action: { href: `/quotes/deals/${deal.id}`, label: 'View Details' },
             }))}
           />

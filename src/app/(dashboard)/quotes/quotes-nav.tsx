@@ -15,8 +15,8 @@ import { LinkSpinner } from '@/components/nav/link-spinner'
  * own capability check.
  */
 const TABS = [
+  { href: '/quotes/board', label: 'Board' },
   { href: '/quotes/deals', label: 'Deals' },
-  { href: '/quotes/pending', label: 'Pending' },
   { href: '/quotes/sent', label: 'Sent' },
   { href: '/quotes/accepted', label: 'Accepted' },
   { href: '/quotes/won', label: 'Won' },

@@ -42,9 +42,9 @@ test.describe('Navigation + RBAC (privileged user)', () => {
     })
   }
 
-  test('admin can open Quotes (routes to the deals queue)', async ({ page }) => {
+  test('admin can open Quotes (routes to the board)', async ({ page }) => {
     await page.locator('aside').getByRole('link', { name: 'Quotes', exact: true }).click()
-    await expect(page).toHaveURL(/\/quotes(\/deals)?$/)
+    await expect(page).toHaveURL(/\/quotes(\/board)?/)
     await expect(page).not.toHaveURL(/\/login$/)
   })
 
