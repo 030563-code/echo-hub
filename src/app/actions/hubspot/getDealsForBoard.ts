@@ -5,7 +5,7 @@ import { hubspotFetch } from '@/lib/hubspot-client'
 import { resolveHubSpotOwnerId } from '@/lib/hubspot-owner'
 import { boardColumns, groupDealsByStage, type BoardColumn } from '@/lib/deals-board'
 import { DEAL_LIST_PROPERTIES, type HubSpotDeal } from '@/lib/hubspot-types'
-import { EMPTY_DEAL_FILTERS, dealFiltersToHubSpot, type DealFilters } from '@/lib/deal-filters'
+import { EMPTY_DEAL_FILTERS, buildDealFilterGroup, type HubSpotSearchFilter, type DealFilters } from '@/lib/deal-filters'
 import { getOwnerIndex } from '@/app/actions/hubspot/getOwners'
 import type { OwnerIndex } from '@/lib/hubspot-owners'
 
@@ -89,14 +89,16 @@ export async function getDealsForBoard(input: {
     return { success: false, error: 'That pipeline is not one the Hub knows about.' }
   }
 
-  const filters: { propertyName: string; operator: string; value?: string; values?: string[] }[] = [
+  // Pinned server-side. The board always spends two of its six filters on the
+  // pipeline and the recency window, and a third on the owner for a "my deals"
+  // board, so a rep here has fewer to spend than one on the All tab.
+  const pinned: HubSpotSearchFilter[] = [
     { propertyName: 'pipeline', operator: 'EQ', value: pipelineId },
     {
       propertyName: 'hs_lastmodifieddate',
       operator: 'GTE',
       value: String(Date.now() - (input.windowDays ?? 60) * 86_400_000),
     },
-    ...dealFiltersToHubSpot(effectiveFilters),
   ]
 
   if (scope === 'mine') {
@@ -106,8 +108,12 @@ export async function getDealsForBoard(input: {
     if (!ownerId) {
       return { success: false, error: `No HubSpot seat is linked to ${auth.user.email}, so your own deals cannot be listed.` }
     }
-    filters.push({ propertyName: 'hubspot_owner_id', operator: 'EQ', value: ownerId })
+    pinned.push({ propertyName: 'hubspot_owner_id', operator: 'EQ', value: ownerId })
   }
+
+  const group = buildDealFilterGroup(pinned, effectiveFilters)
+  if (!group.ok) return { success: false, error: group.error }
+  const filters = group.filters
 
   const deals: HubSpotDeal[] = []
   let after: string | undefined
