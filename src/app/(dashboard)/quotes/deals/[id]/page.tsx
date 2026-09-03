@@ -2,6 +2,8 @@ import { getDealDetails } from '@/app/actions/hubspot/getDealDetails'
 import { createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { DealQuotesCard, type DealQuoteRow } from '@/components/quotes/deal-quotes-card'
+import { RepAgentSelect } from '@/components/quotes/rep-agent-select'
+import { REP_AGENT_LABEL, REP_AGENT_PROPERTY } from '@/lib/deal-properties'
 import { AssignContractorDialog } from '@/components/quotes/assign-contractor-dialog'
 import { isClosedStage } from '@/lib/deals-board'
 import { stageChipClass } from '@/lib/stage-chip'
@@ -113,7 +115,7 @@ export default async function QuoteRequestDetailsPage(props: {
   // so the admin client is safe here and RLS has nothing to add.
   const { data: dealQuoteRows } = await createAdminClient()
     .from('deal_quotes')
-    .select('id, hubspot_quote_id, quote_number, title, status, failed_step, error_message, quote_link, pdf_link, amount, hub_amount, currency, expires_on, created_at, created_by_label')
+    .select('id, hubspot_quote_id, quote_number, title, status, failed_step, error_message, quote_link, pdf_link, amount, hub_amount, currency, expires_on, created_at, created_by_label, link_before_edit, edit_count, edited_at')
     .eq('hubspot_deal_id', params.id)
     .order('created_at', { ascending: false })
   const dealQuotes = (dealQuoteRows ?? []) as DealQuoteRow[]
@@ -259,6 +261,19 @@ export default async function QuoteRequestDetailsPage(props: {
                   {dealIsClosed && deal.properties.closed_lost_reason && (
                     <p className="mt-1.5 text-xs text-gray-600">{deal.properties.closed_lost_reason}</p>
                   )}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs uppercase text-gray-500 font-bold">{REP_AGENT_LABEL}</label>
+                <div className="mt-1">
+                  {/* Writes straight to HubSpot through updateDealProperties,
+                      which enforces the same quotes.create that gates the
+                      buttons above. Read-only text without it. */}
+                  <RepAgentSelect
+                    dealId={params.id}
+                    value={deal.properties[REP_AGENT_PROPERTY]}
+                    canEdit={canChangeStage}
+                  />
                 </div>
               </div>
               <div className="sm:col-span-2">

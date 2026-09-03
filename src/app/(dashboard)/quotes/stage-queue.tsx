@@ -3,6 +3,7 @@ import { Card } from '@/components/ui/card'
 import { AlertCircle } from 'lucide-react'
 import { PaginationNav } from '@/components/ui/pagination-nav'
 import { DealList } from '@/components/quotes/deal-list'
+import { FilterNotice } from '@/components/quotes/filter-notice'
 import { DealFilterBar } from '@/components/quotes/deal-filter-bar'
 import { getDealsByStage } from '@/app/actions/hubspot/getDeals'
 import { getOwnerIndex } from '@/app/actions/hubspot/getOwners'
@@ -78,7 +79,7 @@ export async function StageQueue({
   const scope = params.scope === 'mine' ? 'mine' : 'all'
   const dealFilters = parseStageQueueDealFilters(params)
 
-  const { success, data: deals, error, hasNextPage, nextAfter, isAdmin } = await getDealsByStage(
+  const { success, data: deals, error, hasNextPage, nextAfter, isAdmin, notice } = await getDealsByStage(
     category,
     page,
     after,
@@ -139,6 +140,8 @@ export async function StageQueue({
           showOwner={scope === 'all' && !!isAdmin}
         />
       </Card>
+
+      <FilterNotice notice={notice} />
 
       {!success ? (
         <Card className="p-6 border-red-200 bg-red-50">

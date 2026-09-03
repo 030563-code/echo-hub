@@ -90,7 +90,9 @@ export function dueDateFromTerms(invoiceDate: string, terms: XeroPaymentTerms | 
   }
 }
 
-/** Human label for the terms, for the editor. */
+/** Human label for the terms, FOR THE EDITOR. The parenthetical notes are
+ *  diagnostics for us: they say why the house default is being used. Never
+ *  print this on a customer's invoice, use customerPaymentTerms. */
 export function describeTerms(terms: XeroPaymentTerms | null): string {
   if (!terms || !Number.isFinite(Number(terms.day))) return `Net ${DEFAULT_PAYMENT_TERM_DAYS} (no term set in Xero)`
   const day = Number(terms.day)
@@ -106,4 +108,21 @@ export function describeTerms(terms: XeroPaymentTerms | null): string {
     default:
       return `Net ${DEFAULT_PAYMENT_TERM_DAYS} (unrecognised term in Xero)`
   }
+}
+
+/**
+ * The same label with our diagnostics stripped, for the customer's invoice.
+ *
+ * describeTerms says "Net 30 (no term set in Xero)" so a reviewer knows the
+ * house default is standing in for a missing Xero term. That note is for us.
+ * On the document it reads as an apology, and it tells the customer about the
+ * state of our accounting system, which is none of their business. The terms
+ * are still Net 30 either way.
+ *
+ * Applied at RENDER, not only at capture, so a row snapshotted before this
+ * existed prints correctly without a backfill.
+ */
+export function customerPaymentTerms(label: string | null | undefined): string | null {
+  const trimmed = String(label ?? '').replace(/\s*\([^)]*\)\s*$/, '').trim()
+  return trimmed === '' ? null : trimmed
 }

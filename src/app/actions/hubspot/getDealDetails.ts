@@ -1,6 +1,7 @@
 'use server'
 
 import { getAuthorizedUser, isDealInScope } from '@/lib/authz'
+import { REP_AGENT_PROPERTY } from '@/lib/deal-properties'
 
 interface HubSpotDealDetails {
   id: string
@@ -25,6 +26,9 @@ interface HubSpotDealDetails {
     /** Why a closed deal was lost. The Hub writes it when a rep hands a deal to
      *  a contractor, and shows it back under the stage chip. */
     closed_lost_reason?: string
+    /** The rep agent on the deal. Keyed by its real HubSpot name, suffix and
+     *  all; see REP_AGENT_PROPERTY for why it ends in `__cloned_`. */
+    usa_rep_agents__cloned_?: string
   }
   associations?: {
     companies?: { results: { id: string }[] }
@@ -59,7 +63,7 @@ export async function getDealDetails(dealId: string): Promise<GetDealDetailsResu
   try {
     // Fetch Deal Details with Associations and Line Items
     // Requesting both singular and plural to be safe
-    const url = `https://api.hubapi.com/crm/v3/objects/deals/${dealId}?properties=dealname,amount,createdate,dealstage,pipeline,description,closedate,sending_depot,hubspot_owner_id,win_probability,deal_currency_code,closed_lost_reason&associations=companies,contacts,line_item,line_items`
+    const url = `https://api.hubapi.com/crm/v3/objects/deals/${dealId}?properties=dealname,amount,createdate,dealstage,pipeline,description,closedate,sending_depot,hubspot_owner_id,win_probability,deal_currency_code,closed_lost_reason,${REP_AGENT_PROPERTY}&associations=companies,contacts,line_item,line_items`
 
     const response = await fetch(
       url,

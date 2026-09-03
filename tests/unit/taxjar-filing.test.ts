@@ -163,6 +163,9 @@ describe('buildFilingOrders amounts', () => {
     expect(item.quantity * item.unit_price - (item.discount ?? 0)).toBe(filing.orders[0].amount)
   })
 
+  // The suffix drops the country prefix: the order-to-invoice handover specifies
+  // "EBUS26-0001-BAL and -SBD". Changed 2026-09-03; safe because nothing had
+  // ever been filed, so no live TaxJar transaction carries the longer id.
   it('suffixes the transaction id only when the invoice spans two depots', () => {
     const single = buildFilingOrders([line({ line_key: 'L1' })], shipTo, null, false, opts)
     expect(single.ok).toBe(true)
@@ -186,7 +189,7 @@ describe('buildFilingOrders amounts', () => {
       )
       expect(both.ok).toBe(true)
       if (!both.ok) return
-      expect(both.orders.map((o) => o.transaction_id)).toEqual(['INV-0042-US-BAL', 'INV-0042-US-SBD'])
+      expect(both.orders.map((o) => o.transaction_id)).toEqual(['INV-0042-BAL', 'INV-0042-SBD'])
     } finally {
       DEPOT_FROM_ADDRESSES['US-SBD'] = original
     }

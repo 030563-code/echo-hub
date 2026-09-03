@@ -119,13 +119,51 @@ export const US_ACCEPTED_DEAL_STATUS = '1170409275'
 export const CUSTOMER_INVOICE_STATUSES = [
   'draft',
   'tax_calculated',
+  /** TaxJar order transaction created, and the EBUS number allocated with it.
+   *  Filing is keyed on the number, and it is the first step that commits
+   *  anything outward, so it is where the number stops being a holding
+   *  reference (Dean, 2026-09-03). */
+  'filed',
+  /** The invoice PDF has been generated and stored. */
+  'documented',
+  /** The PDF has been emailed to the customer. */
+  'sent',
+  /** The Xero call is in flight. */
   'authorizing',
-  /** Number allocated and the Xero DRAFT created. Nothing has gone to the
-   *  customer yet, and Xero is not authorised. */
+  /** In Xero, with the PDF attached. The end of the line. */
+  'completed',
+  /** Legacy, no longer written. Both belonged to the old order, where Xero came
+   *  second and the number was allocated there. Kept so historical rows and the
+   *  rollback stay valid. */
   'raised',
   'authorized',
-  'sent',
-  'completed',
   'voided',
 ] as const
 export type CustomerInvoiceStatus = (typeof CUSTOMER_INVOICE_STATUSES)[number]
+
+/**
+ * The pipeline as a rep sees it, in Dean's words (2026-09-03).
+ *
+ * One stage per tab, and an invoice appears under exactly one of them. Moving
+ * it on is what takes it out of the previous queue, so the tabs are a worklist
+ * rather than a filter: whatever is sitting in a tab is waiting for that step.
+ *
+ * `draft` is deliberately absent. An invoice opened from an accepted quote but
+ * not yet taxed still belongs under Accepted Quotes, which is where the rep
+ * went to open it.
+ */
+export const INVOICE_STAGES = [
+  { status: 'tax_calculated', label: 'Tax calculated', href: '/invoicing/tax-calculated' },
+  { status: 'filed', label: 'TaxJar order transaction created', href: '/invoicing/filed' },
+  { status: 'documented', label: 'Invoice draft generated', href: '/invoicing/documented' },
+  { status: 'sent', label: 'Invoice sent', href: '/invoicing/sent' },
+  { status: 'completed', label: 'Invoice sent to Xero and attached PDF', href: '/invoicing/completed' },
+] as const satisfies readonly { status: CustomerInvoiceStatus; label: string; href: string }[]
+
+export type InvoiceStage = (typeof INVOICE_STAGES)[number]
+
+/** The stage an invoice is waiting in, or null when it is not in the pipeline
+ *  (a bare draft, a void, or one of the two legacy statuses). */
+export function stageForStatus(status: CustomerInvoiceStatus): InvoiceStage | null {
+  return INVOICE_STAGES.find((s) => s.status === status) ?? null
+}

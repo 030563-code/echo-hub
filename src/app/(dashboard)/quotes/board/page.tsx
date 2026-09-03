@@ -1,9 +1,11 @@
 import Link from 'next/link'
+import { AlertCircle } from 'lucide-react'
 import { requireCapability } from '@/lib/authz'
 import { getDealsForBoard, type BoardScope } from '@/app/actions/hubspot/getDealsForBoard'
 import { DealsBoard } from '@/components/quotes/deals-board'
 import { PIPELINE_CONFIG } from '@/lib/pipeline-config'
 import { Card } from '@/components/ui/card'
+import { FilterNotice } from '@/components/quotes/filter-notice'
 import { DealFilterBar } from '@/components/quotes/deal-filter-bar'
 import { dealFiltersToQuery, parseBoardDealFilters } from '@/lib/deal-filters'
 import { HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
@@ -141,6 +143,15 @@ export default async function DealsBoardPage({
         ownerNameById={result.owners?.ownerNameById}
         showOwner={scope === 'all'}
       />
+
+      <FilterNotice notice={result.notice} />
+
+      {result.filterError && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>{result.filterError}</p>
+        </div>
+      )}
 
       <DealsBoard groups={result.groups} owners={result.owners} showOwner={scope === 'all'} />
 

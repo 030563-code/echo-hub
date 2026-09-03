@@ -5,7 +5,8 @@ import { hubspotFetch } from '@/lib/hubspot-client'
 import { resolveHubSpotOwnerId } from '@/lib/hubspot-owner'
 import { boardColumns, groupDealsByStage, type BoardColumn } from '@/lib/deals-board'
 import { DEAL_LIST_PROPERTIES, type HubSpotDeal } from '@/lib/hubspot-types'
-import { EMPTY_DEAL_FILTERS, dealFiltersToHubSpot, type DealFilters } from '@/lib/deal-filters'
+import { EMPTY_DEAL_FILTERS, buildDealFilterGroup, type HubSpotSearchFilter, type DealFilters } from '@/lib/deal-filters'
+import { resolveAssociationFilters } from '@/lib/hubspot-association-filter'
 import { getOwnerIndex } from '@/app/actions/hubspot/getOwners'
 import type { OwnerIndex } from '@/lib/hubspot-owners'
 
@@ -43,6 +44,20 @@ export interface GetBoardResult {
   scope?: BoardScope
   pipelineId?: string
   owners?: OwnerIndex
+  /** A successful search that legitimately found nothing, with the reason.
+   *  A company filter matching no company empties the board honestly; an
+   *  unexplained set of empty columns just looks broken. */
+  notice?: string
+  /**
+   * The rep's filters were rejected, but the board itself is fine.
+   *
+   * Kept apart from `error` on purpose. `error` means the board could not be
+   * built at all, and the page answers it with a bare card. Every message that
+   * can land here asks the rep to change a filter ("Type more of the name",
+   * "Clear 1 of ..."), so wiping the filter bar to show it would tell them to
+   * do something the page had just taken away.
+   */
+  filterError?: string
 }
 
 export async function getDealsForBoard(input: {
@@ -89,14 +104,16 @@ export async function getDealsForBoard(input: {
     return { success: false, error: 'That pipeline is not one the Hub knows about.' }
   }
 
-  const filters: { propertyName: string; operator: string; value?: string; values?: string[] }[] = [
+  // Pinned server-side. The board always spends two of its six filters on the
+  // pipeline and the recency window, and a third on the owner for a "my deals"
+  // board, so a rep here has fewer to spend than one on the All tab.
+  const pinned: HubSpotSearchFilter[] = [
     { propertyName: 'pipeline', operator: 'EQ', value: pipelineId },
     {
       propertyName: 'hs_lastmodifieddate',
       operator: 'GTE',
       value: String(Date.now() - (input.windowDays ?? 60) * 86_400_000),
     },
-    ...dealFiltersToHubSpot(effectiveFilters),
   ]
 
   if (scope === 'mine') {
@@ -106,8 +123,45 @@ export async function getDealsForBoard(input: {
     if (!ownerId) {
       return { success: false, error: `No HubSpot seat is linked to ${auth.user.email}, so your own deals cannot be listed.` }
     }
-    filters.push({ propertyName: 'hubspot_owner_id', operator: 'EQ', value: ownerId })
+    pinned.push({ propertyName: 'hubspot_owner_id', operator: 'EQ', value: ownerId })
   }
+
+  // Resolved before any filter can fail, because every one of the returns
+  // below still renders the filter bar, and the bar's owner picker is built
+  // from this. Leaving it out of an early return removes the picker, and the
+  // bar is the only carrier of `owner` in that GET form, so the rep's next
+  // Apply would silently drop the owner filter. Only the all-reps view has a
+  // picker, and getOwnerIndex is memoised, so this costs nothing extra.
+  const owners = scope === 'all' ? await getOwnerIndex() : undefined
+
+  /** An empty board that still renders every control, so whatever the message
+   *  asks the rep to change is on the screen to be changed. */
+  const emptyBoard = (extra: Partial<GetBoardResult>): GetBoardResult => ({
+    success: true,
+    groups: groupDealsByStage([], columns),
+    truncated: false,
+    isAdmin,
+    scope,
+    pipelineId,
+    owners,
+    ...extra,
+  })
+
+  // Company and contact are typed as text and have to become HubSpot ids
+  // before the search can filter on them.
+  const associations = await resolveAssociationFilters(effectiveFilters)
+  if (!associations.ok) {
+    // Matching no record is an empty board, not a failure: the answer really
+    // is "no deals". Matching more records than an IN list holds IS a failure,
+    // because using the first hundred would quietly hide the rest.
+    return associations.kind === 'no_matches'
+      ? emptyBoard({ notice: associations.error })
+      : emptyBoard({ filterError: associations.error })
+  }
+
+  const group = buildDealFilterGroup(pinned, effectiveFilters, associations.resolved)
+  if (!group.ok) return emptyBoard({ filterError: group.error })
+  const filters = group.filters
 
   const deals: HubSpotDeal[] = []
   let after: string | undefined
@@ -137,10 +191,6 @@ export async function getDealsForBoard(input: {
     if (!after) break
     if (page === MAX_PAGES - 1) truncated = true
   }
-
-  // Only the admin view shows an owner column, so the extra call is only made
-  // when something reads it.
-  const owners = scope === 'all' ? await getOwnerIndex() : undefined
 
   return {
     success: true,

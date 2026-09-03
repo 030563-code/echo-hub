@@ -5,15 +5,31 @@ import { assertDealAccess } from '@/lib/authz'
 import { hubspotFetch } from '@/lib/hubspot-client'
 import { quoteTemplateIdFor } from '@/lib/pipeline-config'
 import {
-  QUOTE_ASSOCIATION_TYPE_IDS,
-  QUOTE_PUBLISHED_STATUS,
-  QUOTE_READBACK_PROPERTIES,
   buildQuoteCreateBody,
   buildQuoteLineItemInputs,
   quoteExpiryDate,
   validateQuoteInput,
 } from '@/lib/hubspot-quote'
 import type { PricedCartLine } from '@/lib/quote-pricing'
+import {
+  HS,
+  failQuoteStep,
+  publishAndReadBack,
+  readError,
+  type Admin,
+  type PublishQuoteContext,
+  type PublishQuoteResult,
+} from '@/lib/quote-publish-tail'
+
+// Re-exported so existing importers keep their one import site. The runtime
+// helpers deliberately do NOT come back out of this module: exported from a
+// 'use server' file they would each become a callable server action.
+export type {
+  PublishQuoteContext,
+  PublishQuoteResult,
+  PublishedQuote,
+  QuoteStep,
+} from '@/lib/quote-publish-tail'
 
 /**
  * Creating and publishing a real HubSpot Quote object.
@@ -35,60 +51,6 @@ import type { PricedCartLine } from '@/lib/quote-pricing'
  * refuses a second in-flight generate for the same deal, which the builder's
  * own submit guard cannot do because that is client state and dies on refresh.
  */
-
-const HS = 'https://api.hubapi.com'
-
-export type QuoteStep =
-  | 'create_quote'
-  | 'create_line_items'
-  | 'associate_line_items'
-  | 'publish'
-  | 'read_back'
-
-export interface PublishedQuote {
-  dealQuoteId: string
-  quoteId: string
-  quoteNumber: string | null
-  quoteLink: string | null
-  pdfLink: string | null
-  amount: number | null
-  hubAmount: number
-  /** Set when HubSpot's own total disagrees with the Hub's by more than a cent.
-   *  Surfaced, never silently accepted: the customer sees HubSpot's number. */
-  amountMismatch: boolean
-  expiresOn: string
-}
-
-export type PublishQuoteResult =
-  | { success: true; quote: PublishedQuote }
-  | { success: false; error: string; dealQuoteId?: string; step?: QuoteStep }
-
-export interface PublishQuoteContext {
-  dealId: string
-  title: string
-  currency: string
-  templateKey: string
-  contactId: string | null
-  companyId: string | null
-  comments?: string | null
-  quoteNumber?: string
-  sender: { firstname?: string | null; lastname?: string | null; email?: string | null; phone?: string | null }
-  lines: readonly PricedCartLine[]
-  hubAmount: number
-  createdByUid: string
-  createdByLabel: string
-}
-
-/** HubSpot bodies can be long; the column is text but the UI is not. */
-function short(text: string): string {
-  return text.length > 2000 ? `${text.slice(0, 2000)}...` : text
-}
-
-async function readError(response: Response, step: QuoteStep): Promise<string> {
-  const body = await response.text().catch(() => '')
-  console.error(`publishQuote ${step} failed`, response.status, body)
-  return short(body || `HubSpot returned ${response.status}`)
-}
 
 /**
  * Run the quote pipeline, resuming from an existing row when there is one.
@@ -160,20 +122,7 @@ export async function runQuotePipeline(ctx: PublishQuoteContext): Promise<Publis
   return runFromRow(admin, (claimed as { id: string }).id, ctx, templateId, expiresOn, createInput)
 }
 
-type Admin = ReturnType<typeof createAdminClient>
-
-async function fail(
-  admin: Admin,
-  dealQuoteId: string,
-  step: QuoteStep,
-  error: string,
-): Promise<PublishQuoteResult> {
-  await admin
-    .from('deal_quotes')
-    .update({ status: 'failed', failed_step: step, error_message: error, updated_at: new Date().toISOString() })
-    .eq('id', dealQuoteId)
-  return { success: false, error, dealQuoteId, step }
-}
+const fail = failQuoteStep
 
 async function runFromRow(
   admin: Admin,
@@ -233,88 +182,7 @@ async function runFromRow(
       .eq('id', dealQuoteId)
   }
 
-  // Step 4. Attach them. Re-associating a pair HubSpot already holds is
-  // accepted, so a retry through here is harmless.
-  {
-    const response = await hubspotFetch(`${HS}/crm/v4/associations/quotes/line_items/batch/create`, {
-      method: 'POST',
-      body: JSON.stringify({
-        inputs: lineItemIds.map((id) => ({
-          from: { id: quoteId },
-          to: { id },
-          types: [
-            {
-              associationCategory: 'HUBSPOT_DEFINED',
-              associationTypeId: QUOTE_ASSOCIATION_TYPE_IDS.lineItem,
-            },
-          ],
-        })),
-      }),
-    })
-    if (!response.ok) {
-      return fail(admin, dealQuoteId, 'associate_line_items', await readError(response, 'associate_line_items'))
-    }
-  }
-
-  // Step 5. Publish. The guide: APPROVAL_NOT_NEEDED "publishes the quote at a
-  // publicly accessible URL (hs_quote_link)".
-  {
-    const response = await hubspotFetch(`${HS}/crm/v3/objects/quotes/${quoteId}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ properties: { hs_status: QUOTE_PUBLISHED_STATUS } }),
-    })
-    if (!response.ok) return fail(admin, dealQuoteId, 'publish', await readError(response, 'publish'))
-  }
-
-  // Step 6. Read back the link. HubSpot generates it during the state change
-  // and it is not always there on the first GET.
-  let props: Record<string, string | null> = {}
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const response = await hubspotFetch(
-      `${HS}/crm/v3/objects/quotes/${quoteId}?properties=${QUOTE_READBACK_PROPERTIES.join(',')}`,
-    )
-    if (!response.ok) return fail(admin, dealQuoteId, 'read_back', await readError(response, 'read_back'))
-    props = ((await response.json()) as { properties: Record<string, string | null> }).properties ?? {}
-    if (props.hs_quote_link) break
-    if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 700))
-  }
-
-  const amount = props.hs_quote_amount == null ? null : Number(props.hs_quote_amount)
-  // A cent of drift between HubSpot's rounding and ours is worth showing, not
-  // worth failing: the customer sees HubSpot's figure either way.
-  const amountMismatch = amount != null && Math.abs(amount - ctx.hubAmount) > 0.01
-  if (amountMismatch) {
-    console.warn('publishQuote amount mismatch', { quoteId, hubspot: amount, hub: ctx.hubAmount })
-  }
-
-  await admin
-    .from('deal_quotes')
-    .update({
-      status: 'published',
-      failed_step: null,
-      error_message: null,
-      quote_link: props.hs_quote_link ?? null,
-      pdf_link: props.hs_pdf_download_link ?? null,
-      quote_number: props.hs_quote_number ?? ctx.quoteNumber ?? null,
-      amount,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', dealQuoteId)
-
-  return {
-    success: true,
-    quote: {
-      dealQuoteId,
-      quoteId,
-      quoteNumber: props.hs_quote_number ?? ctx.quoteNumber ?? null,
-      quoteLink: props.hs_quote_link ?? null,
-      pdfLink: props.hs_pdf_download_link ?? null,
-      amount,
-      hubAmount: ctx.hubAmount,
-      amountMismatch,
-      expiresOn,
-    },
-  }
+  return publishAndReadBack(admin, dealQuoteId, quoteId, lineItemIds, ctx, expiresOn)
 }
 
 /**

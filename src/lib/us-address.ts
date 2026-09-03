@@ -38,6 +38,50 @@ const STATE_NAME_TO_CODE: Record<string, string> = {
   'WEST VIRGINIA': 'WV', WISCONSIN: 'WI', WYOMING: 'WY',
 }
 
+/**
+ * A US state as its 2-letter code, whatever form it arrived in.
+ *
+ * Xero stores whatever was typed into it, so a contact can legitimately hold
+ * "California" where the rest of this flow uses "CA". Left alone that reaches
+ * the customer's invoice, where a bill-to reading "Los Angeles, California"
+ * sits next to a ship-to reading "Los Angeles, CA" and looks like an error.
+ *
+ * Anything unrecognised passes through UNCHANGED rather than being blanked: a
+ * non-US region is not this function's business to destroy.
+ */
+export function normalizeUSState(value: string | null | undefined): string {
+  const raw = clean(value)
+  if (raw === '') return ''
+  const upper = raw.toUpperCase()
+  if (US_STATE_CODES.includes(upper)) return upper
+  return STATE_NAME_TO_CODE[upper] ?? raw
+}
+
+/**
+ * The states as {code, name}, for a picker.
+ *
+ * Derived from the same two maps the validator uses, so a dropdown can never
+ * offer a state the validator would reject. Free-text state fields are what let
+ * "California" reach a column whose CHECK constraint only accepts "CA".
+ */
+export const US_STATES: readonly { code: string; name: string }[] = US_STATE_CODES.map((code) => ({
+  code,
+  name:
+    Object.entries(STATE_NAME_TO_CODE).find(([, c]) => c === code)?.[0].replace(
+      /\w\S*/g,
+      (w) => w.charAt(0) + w.slice(1).toLowerCase(),
+    ) ?? code,
+})).sort((a, b) => a.name.localeCompare(b.name))
+
+/**
+ * The only country the US invoicing flow supports, as the customer should read
+ * it. The database stores "US" and hard-rejects anything else via a CHECK
+ * constraint added in 20260902002000; "USA" is the display form.
+ */
+export const DELIVERY_COUNTRIES: readonly { value: string; label: string }[] = [
+  { value: 'US', label: 'USA' },
+]
+
 const ZIP_RE = /^\d{5}(-\d{4})?$/
 const CONTROL_CHARS_RE = /[\u0000-\u001F\u007F]/g
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { Card } from '@/components/ui/card'
+import { FilterNotice } from '@/components/quotes/filter-notice'
 import { AlertCircle, Filter } from 'lucide-react'
 import { HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
 import { PaginationNav } from '@/components/ui/pagination-nav'
@@ -27,11 +28,13 @@ interface AllQuotesClientProps {
   /** The shared filter bar, rendered on the server. Filtering is server-side
    *  now, so this component no longer narrows anything itself. */
   filterBar?: React.ReactNode
+  /** A filter that legitimately emptied the list, with the reason. */
+  notice?: string
   /** Scope and filters, so turning the page does not silently drop them. */
   carryParams?: Record<string, string>
 }
 
-export default function AllQuotesClient({ initialDeals, error, probabilityMap, currentPage, hasNextPage, cursorStack, nextAfter, isAdmin, scope, ownerByDeal, filterBar, carryParams }: AllQuotesClientProps) {
+export default function AllQuotesClient({ initialDeals, error, probabilityMap, currentPage, hasNextPage, cursorStack, nextAfter, isAdmin, scope, ownerByDeal, filterBar, notice, carryParams }: AllQuotesClientProps) {
   // The rows arrive already narrowed. The pipeline and stage selects that used
   // to live here filtered only the 25 rows on the current page, and said so in
   // its own counter ("of N deals on this page"), which meant a rep searching
@@ -100,6 +103,8 @@ export default function AllQuotesClient({ initialDeals, error, probabilityMap, c
         {filterBar}
         <div className="mt-3 text-sm text-gray-500">Showing {deals.length} deals on this page</div>
       </Card>
+
+      <FilterNotice notice={notice} />
 
       {error ? (
         <Card className="p-6 border-red-200 bg-red-50">

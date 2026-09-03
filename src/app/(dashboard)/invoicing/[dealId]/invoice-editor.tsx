@@ -8,7 +8,7 @@
  * pending state and is disabled while in flight.
  */
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { AlertTriangle, Loader2, Lock, MapPin, Plus, Trash2 } from 'lucide-react'
@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { US_STATE_CODES } from '@/lib/us-address'
+import { US_STATES, DELIVERY_COUNTRIES } from '@/lib/us-address'
 import { lookupZipJurisdiction } from '@/app/actions/tax/lookup-zip'
 import {
   US_DEPOTS,
@@ -25,6 +25,14 @@ import {
   type USDepot,
 } from '@/lib/customer-invoice/constants'
 import { computeDraftLineTotal } from '@/lib/customer-invoice/build-draft'
+import { TaxDetail } from './tax-detail'
+import { getTrackingCategories } from '@/app/actions/invoicing/tracking-categories'
+import {
+  parseLineTracking,
+  setLineTracking,
+  type LineTracking,
+  type TrackingCategory,
+} from '@/lib/customer-invoice/tracking'
 import { roundCents } from '@/lib/quote-math'
 import type { CustomerInvoiceLineRow, CustomerInvoiceRow } from '@/app/actions/invoicing/shared'
 import { saveInvoiceDraft } from '@/app/actions/invoicing/save-draft'
@@ -34,7 +42,10 @@ import { XeroContactCard } from './xero-contact-card'
 import { depotLabel } from '@/lib/depot-constants'
 import { voidInvoice } from '@/app/actions/invoicing/void-invoice'
 import { rebuildInvoiceFromDeal } from '@/app/actions/invoicing/rebuild-invoice'
-import { retryTaxJarRecord } from '@/app/actions/invoicing/record-taxjar'
+import { sendOrderToTaxJar } from '@/app/actions/invoicing/record-taxjar'
+import { previewInvoicePdf } from '@/app/actions/invoicing/preview-invoice'
+import { generateInvoicePdf } from '@/app/actions/invoicing/generate-invoice-pdf'
+import { emailInvoiceToCustomer } from '@/app/actions/invoicing/email-invoice'
 import { reconcileStuckInvoice } from '@/app/actions/invoicing/reset-authorizing'
 import { InvoiceStatusChip } from '../status-chip'
 
@@ -57,6 +68,7 @@ interface EditableLine {
   ship_from_locked: boolean
   tax_amount: string
   tax_override: boolean
+  tracking: LineTracking[]
 }
 
 interface InvoiceEditorProps {
@@ -90,6 +102,7 @@ function toEditable(line: CustomerInvoiceLineRow): EditableLine {
     ship_from_locked: line.ship_from_locked,
     tax_amount: line.tax_amount === null ? '' : String(line.tax_amount),
     tax_override: line.tax_override,
+    tracking: parseLineTracking(line.tracking),
   }
 }
 
@@ -113,17 +126,27 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
     { status: 'idle' } | { status: 'loading' } | { status: 'ok'; place: string; state: string } | { status: 'error'; message: string }
   >({ status: 'idle' })
   const [rows, setRows] = useState<EditableLine[]>(lines.map(toEditable))
+  // Read from Xero once per editor. Empty is a valid answer: an organisation
+  // that uses no tracking simply gets no pickers, which is why a failure here
+  // is logged rather than shown as an error over the whole invoice.
+  const [trackingCategories, setTrackingCategories] = useState<TrackingCategory[]>([])
+  useEffect(() => {
+    let cancelled = false
+    getTrackingCategories().then((result) => {
+      if (cancelled) return
+      if (result.success) setTrackingCategories(result.categories)
+      else console.error('Tracking categories could not be loaded:', result.error)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
   // What TaxJar last returned per line, used to decide whether an edited tax
   // cell is genuinely a manual override.
   const calculatedTaxByKey = useMemo(
     () => new Map(lines.map((l) => [l.line_key, l.tax_amount === null ? '' : String(l.tax_amount)])),
     [lines],
   )
-  // Deliberately opt-IN: emailing is the outward-facing, irreversible half of
-  // Send, and the editor remounts on every server write, so a default of true
-  // could silently undo a reviewer's decision not to email.
-  const [emailToCustomer, setEmailToCustomer] = useState(false)
-
   const goodsDepots = useMemo(
     () => [...new Set(rows.filter((r) => !r.is_shipping).map((r) => r.ship_from_depot))],
     [rows],
@@ -139,7 +162,9 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
 
   const status = invoice.status as CustomerInvoiceStatus
   const editable = canManage && (status === 'draft' || status === 'tax_calculated')
-  const terminal = status === 'authorized' || status === 'sent' || status === 'completed' || status === 'authorizing'
+  // Only the end of the line is terminal now. 'sent' means the customer has the
+  // document but Xero has not been told yet, so it still has a button.
+  const terminal = status === 'completed' || status === 'authorizing'
 
   // What TaxJar actually decided, per ship-from depot. The handover is explicit
   // that the reviewer must see the resolved JURISDICTION and not just the rate:
@@ -226,6 +251,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
         ship_from_locked: false,
         tax_amount: '',
         tax_override: false,
+        tracking: [],
       },
     ])
   }
@@ -298,6 +324,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
       discount_percentage: Number(row.discount_percentage) || 0,
       is_shipping: row.is_shipping,
       ship_from_depot: row.ship_from_depot,
+      tracking: row.tracking,
       tax_amount_override:
         row.tax_override && row.tax_amount !== '' && row.tax_amount !== calculatedTaxByKey.get(row.line_key)
           ? Number(row.tax_amount) || 0
@@ -329,30 +356,28 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
 
   const onSend = () =>
     run('send', async () => {
-      // Save first: the editor holds unsaved edits in local state, and the
-      // server sends Xero what is STORED. Saving here means a change that
-      // affects tax invalidates the calculation instead of quietly shipping a
-      // stale invoice.
-      const saved = await saveInvoiceDraft(buildSavePayload())
-      if (!saved.success) {
-        toast.error(saved.error)
-        return
-      }
-      if (saved.taxInvalidated) {
-        toast.warning('Your edits changed the tax base. Recalculate tax before sending.')
-        router.refresh()
-        return
-      }
-      const result = await sendInvoiceToXero({ invoiceId: invoice.id, emailToCustomer })
+      // NOT save-first. That was right when Xero was the step straight after
+      // Save draft and the row could still hold unsaved edits. Xero is now
+      // LAST, reachable only once the invoice has passed through Send to
+      // TaxJar and Generate and Email, all of which require status
+      // 'tax_calculated' or later, at which point editable is already false
+      // and the row IS the frozen source of truth the PDF was hashed from.
+      //
+      // Calling saveInvoiceDraft here doesn't just do nothing: it actively
+      // breaks the button. Its own guard rejects any status other than
+      // 'draft' or 'tax_calculated', and this button is only shown at
+      // 'sent', so every call failed with "This invoice is sent and can no
+      // longer be edited" before sendInvoiceToXero was ever reached. n8n
+      // never saw the request, and the button looked identical to a Xero
+      // failure while nothing had actually gone out to the network.
+      const result = await sendInvoiceToXero({ invoiceId: invoice.id })
       if (!result.success) {
         toast.error(result.error)
         router.refresh()
         return
       }
       for (const warning of result.warnings) toast.warning(warning, { duration: 12000 })
-      toast.success(
-        `Invoice ${result.xeroInvoiceNumber} created in Xero${result.emailed ? ' and emailed to the customer' : ''}.`,
-      )
+      toast.success(`Invoice ${result.xeroInvoiceNumber} sent to Xero and closed out.`)
       router.refresh()
     })
 
@@ -395,14 +420,79 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
       router.refresh()
     })
 
-  const onRetryRecord = () =>
-    run('record', async () => {
-      const result = await retryTaxJarRecord({ invoiceId: invoice.id })
+  /** Open PDF bytes in a new tab. The retired quote flow proved this works
+   *  under the app's CSP: a blob URL opened with window.open needs no
+   *  frame-src, where an inline preview would. */
+  const openPdf = (base64: string, filename: string) => {
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }))
+    const tab = window.open(url, '_blank')
+    if (!tab) {
+      // Popup blocked. Fall back to a download so the rep still gets the
+      // document rather than silently nothing.
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+    }
+    // Revoked late: revoking immediately races the new tab's own load.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
+
+  const onPreview = () =>
+    run('preview', async () => {
+      const result = await previewInvoicePdf({ invoiceId: invoice.id })
       if (!result.success) {
         toast.error(result.error)
         return
       }
-      toast.success('Recorded in TaxJar for filing.')
+      if (result.remittanceIncomplete) {
+        toast.warning('The bank details are not configured, so the payment instructions show placeholders.', {
+          duration: 10000,
+        })
+      }
+      openPdf(result.pdfBase64, result.filename)
+    })
+
+  const onSendToTaxJar = () =>
+    run('taxjar', async () => {
+      const result = await sendOrderToTaxJar({ invoiceId: invoice.id })
+      if (!result.success) {
+        toast.error(result.error)
+        router.refresh()
+        return
+      }
+      for (const warning of result.warnings) toast.warning(warning, { duration: 12000 })
+      toast.success(`Filed with TaxJar as ${result.transactionIds.join(', ')}. Invoice number ${result.invoiceNumber}.`)
+      router.refresh()
+    })
+
+  const onGeneratePdf = () =>
+    run('pdf', async () => {
+      const result = await generateInvoicePdf({ invoiceId: invoice.id })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      for (const warning of result.warnings) toast.warning(warning, { duration: 12000 })
+      toast.success('Invoice document generated.')
+      openPdf(result.pdfBase64, result.filename)
+      router.refresh()
+    })
+
+  const onEmail = () =>
+    run('email', async () => {
+      const result = await emailInvoiceToCustomer({ invoiceId: invoice.id })
+      if (!result.success) {
+        toast.error(result.error, { duration: 12000 })
+        return
+      }
+      toast.success(
+        result.wasTest
+          ? `TEST SEND. The invoice went to ${result.sentTo}, not to the customer.`
+          : `Invoice emailed to ${result.sentTo}.`,
+        { duration: 12000 },
+      )
       router.refresh()
     })
 
@@ -555,8 +645,12 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
           </p>
         )}
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="lg:col-span-2">
+        {/* One row, in the order an address is written: street, city, state,
+            zip, country. State and Zip were previously nested in their own
+            two-column grid, which is why adding Country wrapped it underneath
+            State in a quarter-width column instead of continuing the row. */}
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-6">
+          <div className="col-span-2">
             <Label htmlFor="street">Street</Label>
             <Input
               id="street"
@@ -565,7 +659,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
               disabled={!editable}
             />
           </div>
-          <div>
+          <div className="col-span-2 lg:col-span-1">
             <Label htmlFor="city">City</Label>
             <Input
               id="city"
@@ -574,35 +668,54 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
               disabled={!editable}
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="state">State</Label>
-              <select
-                id="state"
-                className="flex h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-                value={header.delivery_state}
-                onChange={(e) => setHeader({ ...header, delivery_state: e.target.value })}
-                disabled={!editable}
-              >
-                <option value="">—</option>
-                {US_STATE_CODES.map((code) => (
-                  <option key={code} value={code}>
-                    {code}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label htmlFor="zip">Zip</Label>
-              <Input
-                id="zip"
-                value={header.delivery_zip}
-                onChange={(e) => setHeader({ ...header, delivery_zip: e.target.value })}
-                onBlur={(e) => resolveZip(e.target.value)}
-                placeholder="20794"
-                disabled={!editable}
-              />
-            </div>
+          <div>
+            <Label htmlFor="state">State</Label>
+            <select
+              id="state"
+              className="flex h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+              value={header.delivery_state}
+              onChange={(e) => setHeader({ ...header, delivery_state: e.target.value })}
+              disabled={!editable}
+            >
+              <option value="">—</option>
+              {US_STATES.map((state) => (
+                <option key={state.code} value={state.code}>
+                  {state.code} — {state.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <Label htmlFor="zip">Zip</Label>
+            <Input
+              id="zip"
+              value={header.delivery_zip}
+              onChange={(e) => setHeader({ ...header, delivery_zip: e.target.value })}
+              onBlur={(e) => resolveZip(e.target.value)}
+              placeholder="20794"
+              disabled={!editable}
+            />
+          </div>
+          <div className="col-span-2 lg:col-span-1">
+            {/* One option today, and shown anyway. The column carries a CHECK
+                constraint accepting only 'US', so an invoice delivering
+                anywhere else is refused by the database rather than by a
+                message. Putting it on the form makes that a visible rule
+                instead of a surprise. Stored as 'US', shown as 'USA'. */}
+            <Label htmlFor="country">Country</Label>
+            <select
+              id="country"
+              className="flex h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+              value="US"
+              onChange={() => undefined}
+              disabled={!editable}
+            >
+              {DELIVERY_COUNTRIES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
         {zipLookup.status === 'loading' && (
@@ -639,6 +752,9 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
               <th className="px-3 py-3 w-20">Disc %</th>
               <th className="px-3 py-3 w-24">Account</th>
               <th className="px-3 py-3 w-32">Ships from</th>
+              {/* Only rendered when Xero actually has tracking configured, so
+                  an organisation that uses none does not get a dead column. */}
+              {trackingCategories.length > 0 && <th className="px-3 py-3 w-44">Tracking</th>}
               <th className="px-3 py-3 w-28 text-right">Line total</th>
               <th className="px-3 py-3 w-28 text-right">Tax</th>
               <th className="px-3 py-3 w-10" />
@@ -758,6 +874,41 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                       </select>
                     )}
                   </td>
+                  {trackingCategories.length > 0 && (
+                    <td className="px-3 py-2">
+                      {/* One picker per ACTIVE category. Xero allows at most two
+                          categories per organisation and at most two tracking
+                          elements per line, so the two limits coincide and
+                          there is nothing to cap here beyond what Xero offers. */}
+                      <div className="space-y-1.5">
+                        {trackingCategories.map((category) => {
+                          const chosen = row.tracking.find((t) => t.categoryId === category.categoryId)
+                          return (
+                            <select
+                              key={category.categoryId}
+                              aria-label={category.name}
+                              title={category.name}
+                              className="flex h-8 w-full rounded-md border border-gray-300 bg-white px-2 py-0 text-xs shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                              value={chosen?.optionId ?? ''}
+                              onChange={(e) =>
+                                updateRow(row.line_key, {
+                                  tracking: setLineTracking(row.tracking, category, e.target.value),
+                                })
+                              }
+                              disabled={!editable}
+                            >
+                              <option value="">{category.name}: none</option>
+                              {category.options.map((option) => (
+                                <option key={option.optionId} value={option.optionId}>
+                                  {category.name}: {option.name}
+                                </option>
+                              ))}
+                            </select>
+                          )
+                        })}
+                      </div>
+                    </td>
+                  )}
                   <td className="px-3 py-2 text-right tabular-nums pt-4">{money.format(lineTotal)}</td>
                   <td className="px-3 py-2">
                     <Input
@@ -868,6 +1019,8 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                 {totals.tax === null ? '—' : money.format(roundCents(totals.subtotal + totals.shipping + totals.tax))}
               </span>
             </div>
+
+            <TaxDetail taxjarResponse={invoice.taxjar_response} currency={invoice.currency} />
           </div>
 
           <div className="flex flex-col items-stretch gap-3 sm:items-end">
@@ -879,33 +1032,82 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                 </Button>
               </div>
             )}
-            {editable && status === 'tax_calculated' && (
-              <div className="flex flex-wrap items-center justify-end gap-3">
-                <label className="flex items-center gap-2 text-sm text-gray-600">
-                  <input
-                    type="checkbox"
-                    checked={emailToCustomer}
-                    onChange={(e) => setEmailToCustomer(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300"
-                  />
-                  Email the customer via Xero
-                </label>
-                <Button onClick={onSend} disabled={pendingAction !== null} className="bg-green-700 hover:bg-green-800">
-                  {spinner('send')}
-                  Send to Xero
+            {/* The pipeline, in order. Exactly one step is the next one, so
+                only that button is offered: a rep should never have to work out
+                which of five actions comes now. Xero is LAST because the
+                customer-facing document is the Hub's PDF and Xero is the book
+                of record (Dean, 2026-09-03). */}
+            {canManage && status === 'tax_calculated' && (
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button variant="outline" onClick={onPreview} disabled={pendingAction !== null}>
+                  {spinner('preview')}
+                  Preview invoice
+                </Button>
+                <Button onClick={onSendToTaxJar} disabled={pendingAction !== null} className="bg-green-700 hover:bg-green-800">
+                  {spinner('taxjar')}
+                  Send to TaxJar
                 </Button>
               </div>
             )}
+            {canManage && status === 'tax_calculated' && (
+              <p className="text-xs text-gray-500 sm:text-right">
+                Sending to TaxJar files the sale and allocates the invoice number. Preview first: it changes nothing.
+              </p>
+            )}
+
+            {canManage && status === 'filed' && (
+              <Button onClick={onGeneratePdf} disabled={pendingAction !== null} className="bg-green-700 hover:bg-green-800">
+                {spinner('pdf')}
+                Generate invoice PDF
+              </Button>
+            )}
+
+            {canManage && status === 'documented' && (
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button variant="outline" onClick={onPreview} disabled={pendingAction !== null}>
+                  {spinner('preview')}
+                  View PDF
+                </Button>
+                {/* Regenerate has to be reachable HERE, not only from the
+                    previous step. Emailing re-renders and refuses if the bytes
+                    no longer match the hash taken at Generate, which is exactly
+                    what should happen when the document has changed. Without
+                    this button that refusal was a dead end. */}
+                <Button variant="outline" onClick={onGeneratePdf} disabled={pendingAction !== null}>
+                  {spinner('pdf')}
+                  Regenerate PDF
+                </Button>
+                <Button onClick={onEmail} disabled={pendingAction !== null} className="bg-green-700 hover:bg-green-800">
+                  {spinner('email')}
+                  Email to customer
+                </Button>
+              </div>
+            )}
+
+            {canManage && status === 'sent' && (
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button variant="outline" onClick={onPreview} disabled={pendingAction !== null}>
+                  {spinner('preview')}
+                  View PDF
+                </Button>
+                <Button onClick={onSend} disabled={pendingAction !== null} className="bg-green-700 hover:bg-green-800">
+                  {spinner('send')}
+                  Send to Xero and attach PDF
+                </Button>
+              </div>
+            )}
+
+            {canManage && status === 'completed' && (
+              <Button variant="outline" onClick={onPreview} disabled={pendingAction !== null}>
+                {spinner('preview')}
+                View PDF
+              </Button>
+            )}
+
             {editable && (
               <Button variant="ghost" onClick={onVoid} disabled={pendingAction !== null} className="text-red-600 hover:bg-red-50">
                 {spinner('void')}
                 Discard draft
-              </Button>
-            )}
-            {canManage && (status === 'raised' || status === 'authorized' || status === 'sent') && (
-              <Button variant="outline" onClick={onRetryRecord} disabled={pendingAction !== null}>
-                {spinner('record')}
-                Send to TaxJar
               </Button>
             )}
             {terminal && status !== 'authorizing' && (

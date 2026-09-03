@@ -14,6 +14,7 @@ import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sanitizeUSAddress } from '@/lib/us-address'
 import { linesHash } from '@/lib/customer-invoice/hash'
+import { parseLineTracking, toXeroTracking } from '@/lib/customer-invoice/tracking'
 import { dueDateFromTerms } from '@/lib/customer-invoice/payment-terms'
 import { xeroFindContact } from '@/lib/xero-hub'
 import {
@@ -24,27 +25,25 @@ import {
 
 const Input = z.object({
   invoiceId: z.string().uuid(),
-  emailToCustomer: z.boolean(),
 })
 
 export type SendToXeroResult =
-  | { success: true; xeroInvoiceNumber: string; emailed: boolean; warnings: string[] }
+  | { success: true; xeroInvoiceNumber: string; warnings: string[] }
   | { success: false; error: string }
 
 interface N8nAuthorizeResponse {
   xero_invoice_id?: string
   xero_invoice_number?: string
-  emailed?: boolean
   error?: string
 }
 
-export async function sendInvoiceToXero(input: { invoiceId: string; emailToCustomer: boolean }): Promise<SendToXeroResult> {
+export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<SendToXeroResult> {
   const gate = await requireInvoicingManage()
   if (!gate.ok) return { success: false, error: gate.error }
 
   const parsed = Input.safeParse(input)
   if (!parsed.success) return { success: false, error: 'Invalid input' }
-  const { invoiceId, emailToCustomer } = parsed.data
+  const { invoiceId } = parsed.data
 
   const webhookUrl = process.env.N8N_CUSTOMER_INVOICE_WEBHOOK_URL
   if (!webhookUrl) return { success: false, error: 'The invoice webhook is not configured on the server.' }
@@ -53,8 +52,13 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
   if (!loaded.ok) return { success: false, error: loaded.error }
   const { invoice, lines } = loaded
 
-  if (invoice.status !== 'tax_calculated') {
-    return { success: false, error: `Only a tax-calculated invoice can be sent (this one is ${invoice.status}).` }
+  // Xero is now the LAST step, after the customer already has their PDF. The
+  // ledger should only carry invoices that actually went out.
+  if (invoice.status !== 'sent') {
+    return {
+      success: false,
+      error: `The invoice has to be emailed to the customer before it goes to Xero (this one is ${invoice.status}).`,
+    }
   }
   if (invoice.xero_invoice_id) {
     return { success: false, error: `This invoice is already in Xero as ${invoice.xero_invoice_number ?? invoice.xero_invoice_id}.` }
@@ -129,13 +133,12 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
     .from('customer_invoices')
     .update({ status: 'authorizing', updated_by_uid: gate.auth.user.id, updated_at: new Date().toISOString() })
     .eq('id', invoiceId)
-    .eq('status', 'tax_calculated')
+    .eq('status', 'sent')
     .select('id')
   if (casError || !cas || cas.length === 0) {
-    return { success: false, error: 'This invoice is already being sent.' }
+    return { success: false, error: 'This invoice is already being sent to Xero.' }
   }
   await logInvoiceEvent(invoiceId, 'authorize_requested', gate.auth.user.id, {
-    email_to_customer: emailToCustomer,
     collected: invoice.is_collection,
   })
 
@@ -158,7 +161,7 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
         : 'Could not allocate an invoice number. Nothing was sent.'
     await admin
       .from('customer_invoices')
-      .update({ status: 'tax_calculated', error_message: message, updated_at: new Date().toISOString() })
+      .update({ status: 'sent', error_message: message, updated_at: new Date().toISOString() })
       .eq('id', invoiceId)
       .eq('status', 'authorizing')
     return { success: false, error: message }
@@ -227,6 +230,10 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
         unit_amount: Number(l.unit_price),
         discount_rate: Number(l.discount_percentage),
         tax_amount: Number(l.tax_amount ?? 0),
+        // Xero's LineItem.Tracking shape, built here rather than in n8n so the
+        // mapping is versioned and testable. Xero's own spec caps this at two
+        // elements per line; toXeroTracking enforces that.
+        tracking: toXeroTracking(parseLineTracking(l.tracking)),
       })),
     shipping_lines: lines
       .filter((l) => l.is_shipping)
@@ -241,6 +248,7 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
         // discounted one.
         discount_rate: Number(l.discount_percentage),
         tax_amount: Number(l.tax_amount ?? 0),
+        tracking: toXeroTracking(parseLineTracking(l.tracking)),
       })),
     totals: {
       subtotal: Number(invoice.subtotal ?? 0),
@@ -248,7 +256,13 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
       tax_total: Number(invoice.tax_total ?? 0),
       total: Number(invoice.total ?? 0),
     },
-    email_to_customer: emailToCustomer,
+    // RETIRED, and deliberately still sent as a hardcoded false rather than
+    // dropped. Dean's decision on 2026-09-03: the customer-facing invoice is a
+    // PDF from the Hub, emailed to the contact by us. Xero is the books only
+    // and must never email the customer. Sending an explicit false means the
+    // n8n Xero email branch can never see a truthy value, even if the branch
+    // itself is still wired up over there.
+    email_to_customer: false,
   }
 
   // The deal's quote reference lives on deals_registry; carried for the Xero
@@ -311,7 +325,7 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
     await admin
       .from('customer_invoices')
       .update({
-        ...(dispatched ? {} : { status: 'tax_calculated' }),
+        ...(dispatched ? {} : { status: 'sent' }),
         error_message: message,
         updated_at: new Date().toISOString(),
       })
@@ -329,7 +343,7 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
   await admin
     .from('customer_invoices')
     .update({
-      status: 'raised',
+      status: 'completed',
       xero_invoice_id: response.xero_invoice_id,
       xero_invoice_number: response.xero_invoice_number,
       error_message: null,
@@ -352,9 +366,9 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
     `Invoice ${invoiceNumber} is a DRAFT in Xero and has not been filed to TaxJar. Use Send to TaxJar to file it.`,
   ]
 
-  revalidatePath('/invoicing/accepted')
-  revalidatePath('/invoicing/drafts')
+  revalidatePath('/invoicing/sent')
+  revalidatePath('/invoicing/completed')
   revalidatePath(`/invoicing/${invoice.hubspot_deal_id}`)
-  return { success: true, xeroInvoiceNumber: invoiceNumber, emailed: false, warnings }
+  return { success: true, xeroInvoiceNumber: invoiceNumber, warnings }
 }
 

@@ -42,11 +42,15 @@ records completed orders for filing. The Hub builds and owns the draft invoice.
    all-or-nothing persistence; any reconciliation gap beyond a cent is surfaced as a
    warning.
 6. **Send to Xero** (`sendInvoiceToXero`). Compare-and-set to `authorizing`, then the
-   n8n webhook `/hub-invoice-authorize` (secret header) creates the AUTHORISED ACCREC
-   invoice in the US tenant and optionally emails it via Xero. Xero mints the invoice
-   number. The HubSpot deal id and quote ref ride on the Xero `Url` field and a history
-   note, never on the customer PDF. n8n writes the Xero ids back to `customer_invoices`
-   itself, so a retry after a timeout can never double-create.
+   n8n webhook `/hub-invoice-authorize` (secret header) creates a **DRAFT** ACCREC
+   invoice in the US tenant. **The Hub mints the invoice number**, not Xero: it is
+   passed explicitly as `invoice_number`, because Xero assigns one from its own live
+   sequence to anything posted without it and burns that number even if the invoice is
+   later deleted. **Nothing is emailed.** Xero is the book of record only; the
+   customer-facing invoice is a PDF from the Hub (Dean, 2026-09-03). The HubSpot deal
+   id and quote ref ride on the Xero `Url` field and a history note. n8n writes the
+   Xero ids back to `customer_invoices` itself, so a retry after a timeout can never
+   double-create.
 7. **Filing**. After authorization the order is recorded into TaxJar
    (`transaction_id` = the Xero invoice number, one order per depot group), best-effort
    with a retry button. Status becomes `completed`.
@@ -148,12 +152,25 @@ the Hub: corrections happen in Xero as credit notes.
   `src/lib/taxjar.ts`.
 - n8n: workflow "Hub US Invoicing (TaxJar -> Xero)", id `FL7DfDbwYfKU5rDG`, PUBLISHED,
   with webhooks `/hub-quote-accepted-notify` (Slack notification to the USA team
-  channel, verified live) and `/hub-invoice-authorize` (Xero leg). The authorize leg is
-  double-gated: the "Check Secret" If node currently holds a PLACEHOLDER (everything
-  gets 401, fail-closed) and the "Xero Enabled?" If node is hard-wired false. At G4:
-  paste `N8N_CUSTOMER_INVOICE_WEBHOOK_SECRET` from `.env.local` into the Check Secret
-  node's right-hand value, verify against the Xero Demo tenant, then flip
-  "Xero Enabled?" (see the sticky note on the canvas). The repo's
+  channel, verified live) and `/hub-invoice-authorize` (Xero leg).
+
+  **BOTH GATES ARE NOW OPEN. The Xero leg is live and armed against the production
+  Echo Barrier USA tenant `4a845dad-c15a-4f6d-a417-c4286e02b3ea`.** Re-verified
+  read-only on 2026-09-03 against the PUBLISHED version `c6122630`: "Check Secret"
+  holds the real 48-character secret, not a placeholder, so a correctly signed request
+  is accepted; and "Xero Enabled?" evaluates `"enabled" equals "enabled"`, which is
+  always true. This paragraph previously said the opposite, that everything got a 401
+  and the Xero gate was hard-wired false. Anyone trusting that would have believed a
+  test request was safe when it posts to the live ledger.
+
+  The "Email Invoice" node (id `d5b3d232-23dd-446c-a8f5-e99a3f2b766e`, POST
+  `/Invoices/{id}/Email`) is also still ENABLED behind the "Email Requested?" If node.
+  It is unreachable from the Hub, which hardcodes `email_to_customer: false`, but it is
+  dormant rather than removed and still needs disabling at source. Note that the
+  workflow carries an unpublished draft (`sameAsDraft: false`), so an edit does not
+  take effect until it is published, and publishing also ships that pending draft.
+
+  The repo's
   `N8N_ECHOBARRIER_API_KEY` expired in Nov 2025 (API returns 401); mint a new one in
   the n8n UI if REST access is needed.
 - Cutover: `supabase/migrations/pending/20260828000000_us_accepted_quotes_cutover.sql`
@@ -165,11 +182,20 @@ the Hub: corrections happen in Xero as credit notes.
 |---|---|---|
 | `TAXJAR_SANDBOX_TOKEN` | local + Netlify | sandbox token, used until go-live |
 | `TAXJAR_API_TOKEN` | Netlify at go-live | production token, takes precedence |
-| `TAXJAR_API_BASE` | Netlify at go-live | `https://api.taxjar.com` |
+| `TAXJAR_API_BASE` | leave UNSET | override only, see below |
 | `N8N_CUSTOMER_INVOICE_WEBHOOK_URL` | local + Netlify | `/webhook/hub-invoice-authorize` |
 | `N8N_CUSTOMER_INVOICE_WEBHOOK_SECRET` | local + Netlify | matches the n8n workflow check |
 
 Never add these to `SECRETS_SCAN_OMIT_KEYS`.
+
+**Go-live is setting `TAXJAR_API_TOKEN` and nothing else.** The presence of that
+token is the switch: `config()` in `src/lib/taxjar.ts` then defaults the host to
+`PRODUCTION_BASE`, which is already `https://api.taxjar.com`. Setting
+`TAXJAR_API_BASE` as well is at best redundant and at worst breaks the whole
+integration, because `taxjarFetch` builds every URL as `base + path` and every
+path already starts with `/v2`. A base of `https://api.taxjar.com/v2`, which is
+the natural thing to paste from TaxJar's own docs, produces `/v2/v2/taxes` and
+404s on every call. Leave it blank.
 
 ## Testing note: the queue starts empty on purpose
 

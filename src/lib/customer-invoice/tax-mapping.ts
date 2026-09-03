@@ -355,6 +355,73 @@ export interface TaxJarFilingOrder {
   }[]
 }
 
+/**
+ * The only two fields the grouping rule reads.
+ *
+ * Deliberately narrower than FilingLine: the filing path and the printed
+ * document carry different columns, and constraining this to what the rule
+ * actually touches lets both use it without either growing fields it has no
+ * use for.
+ */
+export interface ShipmentGroupable {
+  is_shipping: boolean
+  ship_from_depot: USDepot
+}
+
+/** One shipment: the goods leaving a depot, plus the freight attributed to it. */
+export interface DepotShipment<L extends ShipmentGroupable> {
+  depot: USDepot
+  goodsLines: L[]
+  shippingLines: L[]
+}
+
+/**
+ * Split an invoice into one shipment per ship-from depot.
+ *
+ * Shared deliberately. buildFilingOrders uses it to decide what to FILE, and
+ * the printed invoice uses it to decide what to SHOW, including the TaxJar
+ * transaction id printed against each shipment. Two copies of this rule would
+ * eventually disagree, and the way it would surface is a customer holding a
+ * document whose stated transaction id matches nothing that was ever filed.
+ *
+ * Only depots carrying GOODS become shipments. Freight is attributed exactly as
+ * buildTaxRequests attributes it: a depot carrying only freight has that
+ * freight folded into the first depot that carries goods, because filing it any
+ * other way puts the freight tax in a jurisdiction the calculation never used.
+ */
+export function depotShipments<L extends ShipmentGroupable>(lines: readonly L[]): DepotShipment<L>[] {
+  const depotsWithGoods = US_DEPOTS.filter((d) => lines.some((l) => l.ship_from_depot === d && !l.is_shipping))
+  if (depotsWithGoods.length === 0) return []
+  const host = depotsWithGoods[0]
+
+  return depotsWithGoods.map((depot) => ({
+    depot,
+    goodsLines: lines.filter((l) => l.ship_from_depot === depot && !l.is_shipping),
+    shippingLines: lines.filter(
+      (l) =>
+        l.is_shipping &&
+        (l.ship_from_depot === depot || (depot === host && !depotsWithGoods.includes(l.ship_from_depot))),
+    ),
+  }))
+}
+
+/**
+ * The TaxJar transaction id for one shipment.
+ *
+ * A single-shipment invoice files under the invoice number alone; a split one
+ * suffixes the depot, so the two filings are distinguishable in TaxJar's
+ * ledger. Printed on the document next to each shipment.
+ *
+ * The suffix is the depot WITHOUT its country prefix: EBUS26-0001-BAL, not
+ * -US-BAL. That is the form the order-to-invoice handover specifies
+ * ("Transaction ids like EBUS26-0001-BAL and -SBD") and the form Dean's own
+ * mockup shows. Safe to fix rather than grandfather: nothing has ever been
+ * filed, so no existing TaxJar transaction carries the longer id.
+ */
+export function filingTransactionId(invoiceNumber: string, depot: USDepot, shipmentCount: number): string {
+  return shipmentCount > 1 ? `${invoiceNumber}-${depot.replace(/^US-/, '')}` : invoiceNumber
+}
+
 export type BuildFilingOrdersResult =
   | { ok: true; orders: TaxJarFilingOrder[] }
   | { ok: false; error: string }
@@ -383,19 +450,11 @@ export function buildFilingOrders(
     return { ok: false, error: 'The invoice has no delivery address, so it cannot be filed to TaxJar.' }
   }
 
-  // Freight is attributed exactly as buildTaxRequests attributed it: a depot
-  // carrying only freight has that freight folded into the first depot that
-  // carries goods. Filing it any other way puts the freight tax in a
-  // jurisdiction the calculation never used.
-  const depotsWithGoods = US_DEPOTS.filter((d) => lines.some((l) => l.ship_from_depot === d && !l.is_shipping))
-  if (depotsWithGoods.length === 0) return { ok: false, error: 'invoice has no product lines' }
-  const host = depotsWithGoods[0]
+  const shipments = depotShipments(lines)
+  if (shipments.length === 0) return { ok: false, error: 'invoice has no product lines' }
+  const depotsWithGoods = shipments.map((s) => s.depot)
   const shippingFor = (depot: USDepot) =>
-    lines.filter(
-      (l) =>
-        l.is_shipping &&
-        (l.ship_from_depot === depot || (depot === host && !depotsWithGoods.includes(l.ship_from_depot))),
-    )
+    shipments.find((s) => s.depot === depot)?.shippingLines ?? []
 
   const orders: TaxJarFilingOrder[] = []
 
@@ -434,8 +493,7 @@ export function buildFilingOrders(
     })
 
     orders.push({
-      transaction_id:
-        depotsWithGoods.length > 1 ? `${opts.xeroInvoiceNumber}-${depot}` : opts.xeroInvoiceNumber,
+      transaction_id: filingTransactionId(opts.xeroInvoiceNumber, depot, depotsWithGoods.length),
       transaction_date: opts.transactionDate,
       from_country: from.country,
       from_state: from.state,

@@ -7,11 +7,15 @@ const CHIP_STYLES: Record<QueueChip, { label: string; className: string }> = {
   new: { label: 'New', className: 'bg-blue-100 text-blue-800' },
   draft: { label: 'Draft', className: 'bg-slate-200 text-slate-800' },
   tax_calculated: { label: 'Tax calculated', className: 'bg-indigo-100 text-indigo-800' },
-  authorizing: { label: 'Sending…', className: 'bg-purple-100 text-purple-800' },
-  raised: { label: 'Raised', className: 'bg-sky-100 text-sky-800' },
-  authorized: { label: 'Authorized', className: 'bg-green-100 text-green-800' },
-  sent: { label: 'Sent', className: 'bg-green-100 text-green-800' },
-  completed: { label: 'Recorded', className: 'bg-emerald-100 text-emerald-800' },
+  filed: { label: 'Filed with TaxJar', className: 'bg-sky-100 text-sky-800' },
+  documented: { label: 'PDF generated', className: 'bg-cyan-100 text-cyan-800' },
+  sent: { label: 'Sent to customer', className: 'bg-green-100 text-green-800' },
+  authorizing: { label: 'Sending to Xero…', className: 'bg-purple-100 text-purple-800' },
+  completed: { label: 'In Xero, PDF attached', className: 'bg-emerald-100 text-emerald-800' },
+  // Legacy, no longer written. Both belonged to the old order where Xero came
+  // second; kept so a historical row still renders a chip rather than crashing.
+  raised: { label: 'Raised (legacy)', className: 'bg-gray-200 text-gray-700' },
+  authorized: { label: 'Authorized (legacy)', className: 'bg-gray-200 text-gray-700' },
   voided: { label: 'Discarded', className: 'bg-gray-200 text-gray-700' },
 }
 

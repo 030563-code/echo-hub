@@ -12,7 +12,7 @@ import { taxjarCreateOrder } from '@/lib/taxjar'
 import { US_ACCEPTED_DEAL_STATUS, INVOICING_QUEUE_SINCE } from '@/lib/customer-invoice/constants'
 import { CLOSED_LOST_STAGES } from '@/lib/hubspot-constants'
 import { buildFilingOrders, type ShipToAddress } from '@/lib/customer-invoice/tax-mapping'
-import { sanitizeUSAddress } from '@/lib/us-address'
+import { sanitizeUSAddress, normalizeUSState } from '@/lib/us-address'
 import { getAuthorizedUser, type AuthzOk } from '@/lib/authz'
 import type { CustomerInvoiceStatus } from '@/lib/customer-invoice/constants'
 import type { USDepot } from '@/lib/customer-invoice/constants'
@@ -22,6 +22,25 @@ export interface CustomerInvoiceRow {
   hubspot_deal_id: string
   /** Internal draft reference (USI...). Gaps are harmless. */
   holding_reference: string
+  /** Snapshotted at Send to TaxJar. An issued invoice must not change its
+   *  printed terms because someone edited the Xero contact afterwards. */
+  payment_terms_label: string | null
+  pdf_generated_at: string | null
+  pdf_sha256: string | null
+  xero_attachment_id: string | null
+  emailed_to: string | null
+  emailed_was_test: boolean
+  /** The Xero contact, frozen onto the invoice. A live read at print time would
+   *  let an edit in Xero rewrite the address on an invoice already sent. */
+  billing_name: string | null
+  billing_line1: string | null
+  billing_line2: string | null
+  billing_city: string | null
+  billing_region: string | null
+  billing_postal_code: string | null
+  billing_country: string | null
+  billing_email: string | null
+  billing_snapshot_at: string | null
   /** Customer-facing EBUS number, null until the invoice is raised. */
   invoice_number: string | null
   raised_at: string | null
@@ -84,6 +103,8 @@ export interface CustomerInvoiceLineRow {
   tax_amount: number | null
   taxable_amount: number | null
   combined_tax_rate: number | null
+  /** Xero tracking, max 2 per line. Read back with parseLineTracking. */
+  tracking: unknown
   tax_override: boolean
 }
 
@@ -250,6 +271,55 @@ export function isAcceptedSinceCutover(acceptedAt: string | undefined): boolean 
  * in sandbox. transaction_id = the Xero invoice number (suffixed per depot
  * when the invoice ships from both).
  */
+/**
+ * Freeze the Xero contact onto the invoice.
+ *
+ * The bill-to block on a printed invoice must not be a live read. Re-reading
+ * Xero at print time means an address edited next month silently rewrites the
+ * address on an invoice the customer already holds, and nothing records what
+ * was actually sent. It also takes the n8n webhook out of the render path, so a
+ * preview does not depend on that workflow being up.
+ *
+ * Best effort by design: a failure here must not block the step that called it.
+ */
+export async function snapshotBillingContact(
+  invoiceId: string,
+  contact: {
+    name: string | null
+    email: string | null
+    address: {
+      line1: string | null
+      line2: string | null
+      city: string | null
+      region: string | null
+      postal_code: string | null
+      country: string | null
+    } | null
+  },
+): Promise<void> {
+  try {
+    const admin = createAdminClient()
+    await admin
+      .from('customer_invoices')
+      .update({
+        billing_name: contact.name,
+        billing_email: contact.email,
+        billing_line1: contact.address?.line1 ?? null,
+        billing_line2: contact.address?.line2 ?? null,
+        billing_city: contact.address?.city ?? null,
+        // Xero holds whatever was typed. Canonicalised on the way in so the
+        // stored bill-to matches the ship-to beside it on the invoice.
+        billing_region: normalizeUSState(contact.address?.region) || null,
+        billing_postal_code: contact.address?.postal_code ?? null,
+        billing_country: contact.address?.country ?? null,
+        billing_snapshot_at: new Date().toISOString(),
+      })
+      .eq('id', invoiceId)
+  } catch (error) {
+    console.error('snapshotBillingContact failed', error)
+  }
+}
+
 export async function recordTaxJarOrders(
   invoice: CustomerInvoiceRow,
   lines: CustomerInvoiceLineRow[],

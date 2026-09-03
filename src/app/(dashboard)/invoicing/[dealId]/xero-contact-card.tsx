@@ -4,14 +4,16 @@
  * The Xero customer behind the invoice.
  *
  * Xero holds the billing address, the accounts-payable email the invoice is
- * sent to, and the payment terms the due date comes from. Those are read live
- * rather than copied into our schema, so what Dave sees here is what Xero
- * actually holds. If the account number is not in Xero yet, the same fields
+ * sent to, and the payment terms the due date comes from. This card reads them
+ * live, so what Dave sees here is what Xero actually holds. A looked-up or
+ * saved contact is ALSO frozen onto the invoice: the card wants fresh, but a
+ * printed invoice must not change its bill-to because Xero was edited later. If the account number is not in Xero yet, the same fields
  * become a create form, so a missing customer does not send anyone off to
  * another system mid-invoice.
  */
 
 import { useCallback, useEffect, useState, useTransition } from 'react'
+import { US_STATES, normalizeUSState } from '@/lib/us-address'
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card } from '@/components/ui/card'
@@ -49,7 +51,9 @@ function toForm(c: XeroContact, fallbackName: string): Form {
     line1: c.address?.line1 ?? '',
     line2: c.address?.line2 ?? '',
     city: c.address?.city ?? '',
-    region: c.address?.region ?? '',
+    // Xero can hold "California"; the picker's options are codes, so an
+    // un-normalised value would show as nothing selected.
+    region: normalizeUSState(c.address?.region),
     postal_code: c.address?.postal_code ?? '',
     country: c.address?.country ?? 'USA',
     terms_day: c.payment_terms?.day != null ? String(c.payment_terms.day) : '',
@@ -194,9 +198,39 @@ export function XeroContactCard({
             {field('line1', 'Invoice address')}
             {field('line2', 'Address line 2')}
             {field('city', 'City')}
-            {field('region', 'State')}
+            {/* Dropdowns, not free text. Xero will happily store "California"
+                where every other part of this flow uses "CA", and a bill-to
+                that disagrees with the delivery address it sits next to reads
+                as a mistake on the customer's invoice. The options come from
+                the same list the delivery-address validator accepts. */}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600" htmlFor="xero-region">State</label>
+              <select
+                id="xero-region"
+                className="flex h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-1 text-sm shadow-sm"
+                value={form.region}
+                onChange={(e) => setForm({ ...form, region: e.target.value })}
+              >
+                <option value="">—</option>
+                {US_STATES.map((state) => (
+                  <option key={state.code} value={state.code}>
+                    {state.code} — {state.name}
+                  </option>
+                ))}
+              </select>
+            </div>
             {field('postal_code', 'Zip')}
-            {field('country', 'Country')}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600" htmlFor="xero-country">Country</label>
+              <select
+                id="xero-country"
+                className="flex h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-1 text-sm shadow-sm"
+                value={form.country}
+                onChange={(e) => setForm({ ...form, country: e.target.value })}
+              >
+                <option value="USA">USA</option>
+              </select>
+            </div>
             <div>
               <Label htmlFor="xc-terms-day">Payment terms</Label>
               <Input

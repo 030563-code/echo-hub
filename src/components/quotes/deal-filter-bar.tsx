@@ -153,6 +153,33 @@ export function DealFilterBar({
             </div>
           )}
 
+          {/* Company and contact are matched by HubSpot association, which the
+              deal search filters on even though it cannot return it. The rep
+              types a name; the server resolves it to ids before searching. */}
+          <div>
+            <label className={LABEL} htmlFor="deal-filter-company">Company</label>
+            <input
+              id="deal-filter-company"
+              type="text"
+              name={DEAL_FILTER_PARAMS.company}
+              defaultValue={filters.company}
+              placeholder="Name or domain"
+              className={`${FIELD} w-full`}
+            />
+          </div>
+
+          <div>
+            <label className={LABEL} htmlFor="deal-filter-contact">Contact</label>
+            <input
+              id="deal-filter-contact"
+              type="text"
+              name={DEAL_FILTER_PARAMS.contact}
+              defaultValue={filters.contact}
+              placeholder="Name or email"
+              className={`${FIELD} w-full`}
+            />
+          </div>
+
           <div>
             <label className={LABEL} htmlFor="deal-filter-amount-min">Amount from</label>
             <input
