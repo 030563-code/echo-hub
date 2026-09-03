@@ -528,101 +528,12 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
           The due date follows from it using the customer&apos;s Xero payment terms, or 30 days if Xero holds
           none. Set either by hand here to override.
         </p>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <Label htmlFor="invoice_date">Invoice date</Label>
-            <Input
-              id="invoice_date"
-              type="date"
-              value={header.invoice_date}
-              onChange={(e) => setHeader({ ...header, invoice_date: e.target.value })}
-              disabled={!editable}
-            />
-          </div>
-          <div>
-            <Label htmlFor="due_date">Due date</Label>
-            <Input
-              id="due_date"
-              type="date"
-              value={header.due_date}
-              onChange={(e) => setHeader({ ...header, due_date: e.target.value })}
-              disabled={!editable}
-            />
-          </div>
-          <div>
-            <Label htmlFor="po_number">Customer PO number</Label>
-            <Input
-              id="po_number"
-              value={header.customer_po_number}
-              onChange={(e) => setHeader({ ...header, customer_po_number: e.target.value })}
-              placeholder="Shown on the invoice as Reference"
-              disabled={!editable}
-            />
-          </div>
-          <div>
-            <Label htmlFor="xero_account">Xero account number</Label>
-            <Input
-              id="xero_account"
-              value={header.taxjar_customer_id}
-              onChange={(e) => setHeader({ ...header, taxjar_customer_id: e.target.value })}
-              placeholder="Doubles as the TaxJar customer id"
-              disabled={!editable}
-            />
-          </div>
-        </div>
-      </Card>
-
-      <XeroContactCard
-        accountNumber={header.taxjar_customer_id}
-        companyName={invoice.company_name}
-        editable={editable}
-      />
-
-      {/* TaxJar ship-to */}
-      <Card className="bg-white border-gray-200 p-4 sm:p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 mb-1">Delivery address</h2>
-        <p className="text-xs text-gray-500 mb-3">
-          {header.is_collection
-            ? 'Not used for tax on a collected order: the sale is taxed where the goods are picked up.'
-            : 'Used to calculate US sales tax: the ship-to address, not the billing address.'}
-        </p>
-
-        <label className="mb-3 flex items-start gap-2 text-sm text-gray-700">
-          <input
-            type="checkbox"
-            checked={header.is_collection}
-            onChange={(e) => setHeader({ ...header, is_collection: e.target.checked })}
-            disabled={!editable}
-            className="mt-0.5 h-4 w-4 rounded border-gray-300"
-          />
-          <span>
-            Collected by the customer (Will Call)
-            <span className="block text-xs text-gray-500">
-              Sales tax is charged at the collection depot, not at the address below.
-            </span>
-          </span>
-        </label>
-
-        {header.is_collection && collectionDestinations.length > 0 && (
-          <p className="mb-3 text-xs text-gray-600">
-            Tax destination:{' '}
-            {collectionDestinations.map((d) => `${d.city}, ${d.state} ${d.zip}`).join(' and ')}
-          </p>
-        )}
-        {header.is_collection && unconfiguredCollectionDepots.length > 0 && (
-          <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            {unconfiguredCollectionDepots.join(' and ')} has no configured depot address, so tax cannot be
-            calculated for lines collected from it.
-          </p>
-        )}
-        {header.is_collection !== invoice.is_collection && status === 'tax_calculated' && (
-          <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            Changing this clears the calculated tax. Recalculate before sending.
-          </p>
-        )}
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="lg:col-span-2">
+        {/* One row, in the order an address is written: street, city, state,
+            zip, country. State and Zip were previously nested in their own
+            two-column grid, which is why adding Country wrapped it underneath
+            State in a quarter-width column instead of continuing the row. */}
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-6">
+          <div className="col-span-2">
             <Label htmlFor="street">Street</Label>
             <Input
               id="street"
@@ -631,7 +542,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
               disabled={!editable}
             />
           </div>
-          <div>
+          <div className="col-span-2 lg:col-span-1">
             <Label htmlFor="city">City</Label>
             <Input
               id="city"
@@ -640,55 +551,54 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
               disabled={!editable}
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="state">State</Label>
-              <select
-                id="state"
-                className="flex h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-                value={header.delivery_state}
-                onChange={(e) => setHeader({ ...header, delivery_state: e.target.value })}
-                disabled={!editable}
-              >
-                <option value="">—</option>
-                {US_STATES.map((state) => (
-                  <option key={state.code} value={state.code}>
-                    {state.code} — {state.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label htmlFor="zip">Zip</Label>
-              <Input
-                id="zip"
-                value={header.delivery_zip}
-                onChange={(e) => setHeader({ ...header, delivery_zip: e.target.value })}
-                onBlur={(e) => resolveZip(e.target.value)}
-                placeholder="20794"
-                disabled={!editable}
-              />
-            </div>
-            <div>
-              {/* One option today, and shown anyway. The column carries a CHECK
-                  constraint accepting only 'US', so an invoice delivering
-                  anywhere else is rejected by the database rather than by a
-                  message. Printing the country on the form is what makes that
-                  a visible rule instead of a surprise. */}
-              <Label htmlFor="country">Country</Label>
-              <select
-                id="country"
-                className="flex h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-                value="US"
-                disabled
-              >
-                {DELIVERY_COUNTRIES.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div>
+            <Label htmlFor="state">State</Label>
+            <select
+              id="state"
+              className="flex h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+              value={header.delivery_state}
+              onChange={(e) => setHeader({ ...header, delivery_state: e.target.value })}
+              disabled={!editable}
+            >
+              <option value="">—</option>
+              {US_STATES.map((state) => (
+                <option key={state.code} value={state.code}>
+                  {state.code} — {state.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <Label htmlFor="zip">Zip</Label>
+            <Input
+              id="zip"
+              value={header.delivery_zip}
+              onChange={(e) => setHeader({ ...header, delivery_zip: e.target.value })}
+              onBlur={(e) => resolveZip(e.target.value)}
+              placeholder="20794"
+              disabled={!editable}
+            />
+          </div>
+          <div className="col-span-2 lg:col-span-1">
+            {/* One option today, and shown anyway. The column carries a CHECK
+                constraint accepting only 'US', so an invoice delivering
+                anywhere else is refused by the database rather than by a
+                message. Putting it on the form makes that a visible rule
+                instead of a surprise. Stored as 'US', shown as 'USA'. */}
+            <Label htmlFor="country">Country</Label>
+            <select
+              id="country"
+              className="flex h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+              value="US"
+              onChange={() => undefined}
+              disabled={!editable}
+            >
+              {DELIVERY_COUNTRIES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
         {zipLookup.status === 'loading' && (

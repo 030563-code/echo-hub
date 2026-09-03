@@ -39,6 +39,25 @@ const STATE_NAME_TO_CODE: Record<string, string> = {
 }
 
 /**
+ * A US state as its 2-letter code, whatever form it arrived in.
+ *
+ * Xero stores whatever was typed into it, so a contact can legitimately hold
+ * "California" where the rest of this flow uses "CA". Left alone that reaches
+ * the customer's invoice, where a bill-to reading "Los Angeles, California"
+ * sits next to a ship-to reading "Los Angeles, CA" and looks like an error.
+ *
+ * Anything unrecognised passes through UNCHANGED rather than being blanked: a
+ * non-US region is not this function's business to destroy.
+ */
+export function normalizeUSState(value: string | null | undefined): string {
+  const raw = clean(value)
+  if (raw === '') return ''
+  const upper = raw.toUpperCase()
+  if (US_STATE_CODES.includes(upper)) return upper
+  return STATE_NAME_TO_CODE[upper] ?? raw
+}
+
+/**
  * The states as {code, name}, for a picker.
  *
  * Derived from the same two maps the validator uses, so a dropdown can never

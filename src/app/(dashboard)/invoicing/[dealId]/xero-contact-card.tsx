@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useEffect, useState, useTransition } from 'react'
-import { US_STATES } from '@/lib/us-address'
+import { US_STATES, normalizeUSState } from '@/lib/us-address'
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card } from '@/components/ui/card'
@@ -51,7 +51,9 @@ function toForm(c: XeroContact, fallbackName: string): Form {
     line1: c.address?.line1 ?? '',
     line2: c.address?.line2 ?? '',
     city: c.address?.city ?? '',
-    region: c.address?.region ?? '',
+    // Xero can hold "California"; the picker's options are codes, so an
+    // un-normalised value would show as nothing selected.
+    region: normalizeUSState(c.address?.region),
     postal_code: c.address?.postal_code ?? '',
     country: c.address?.country ?? 'USA',
     terms_day: c.payment_terms?.day != null ? String(c.payment_terms.day) : '',

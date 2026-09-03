@@ -12,7 +12,7 @@ import { taxjarCreateOrder } from '@/lib/taxjar'
 import { US_ACCEPTED_DEAL_STATUS, INVOICING_QUEUE_SINCE } from '@/lib/customer-invoice/constants'
 import { CLOSED_LOST_STAGES } from '@/lib/hubspot-constants'
 import { buildFilingOrders, type ShipToAddress } from '@/lib/customer-invoice/tax-mapping'
-import { sanitizeUSAddress } from '@/lib/us-address'
+import { sanitizeUSAddress, normalizeUSState } from '@/lib/us-address'
 import { getAuthorizedUser, type AuthzOk } from '@/lib/authz'
 import type { CustomerInvoiceStatus } from '@/lib/customer-invoice/constants'
 import type { USDepot } from '@/lib/customer-invoice/constants'
@@ -305,7 +305,9 @@ export async function snapshotBillingContact(
         billing_line1: contact.address?.line1 ?? null,
         billing_line2: contact.address?.line2 ?? null,
         billing_city: contact.address?.city ?? null,
-        billing_region: contact.address?.region ?? null,
+        // Xero holds whatever was typed. Canonicalised on the way in so the
+        // stored bill-to matches the ship-to beside it on the invoice.
+        billing_region: normalizeUSState(contact.address?.region) || null,
         billing_postal_code: contact.address?.postal_code ?? null,
         billing_country: contact.address?.country ?? null,
         billing_snapshot_at: new Date().toISOString(),

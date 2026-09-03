@@ -11,6 +11,7 @@
  */
 
 import { depotLabel } from '@/lib/depot-constants'
+import { normalizeUSState } from '@/lib/us-address'
 import { DEPOT_FROM_ADDRESSES, type USDepot } from './constants'
 import { depotShipments, filingTransactionId } from './tax-mapping'
 import { summariseTaxResponse, type DepotTaxBreakdown } from './tax-breakdown'
@@ -155,7 +156,9 @@ function shipToLines(header: InvoiceDocumentHeaderRow): string[] {
  * is the one line on the block that is ours rather than theirs.
  */
 function billToLines(header: InvoiceDocumentHeaderRow): string[] {
-  const cityRegion = [header.billing_city, header.billing_region]
+  // Normalised at render as well as at snapshot, so a row captured before the
+  // canonicalisation landed still prints "CA" rather than "California".
+  const cityRegion = [header.billing_city, normalizeUSState(header.billing_region)]
     .map((p) => (p ?? '').trim())
     .filter((p) => p !== '')
     .join(', ')
