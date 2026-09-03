@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   EMPTY_DEAL_FILTERS,
+  parseBoardDealFilters,
   activeDealFilterCount,
   dealFiltersToHubSpot,
   dealFiltersToQuery,
@@ -46,6 +47,24 @@ describe('parseDealFilters', () => {
 
   it('gives empty filters for an empty query string', () => {
     expect(parseDealFilters({})).toEqual(EMPTY_DEAL_FILTERS)
+  })
+})
+
+describe('parseBoardDealFilters', () => {
+  it('never carries a pipeline, however the URL spells it', () => {
+    // The board owns the `pipeline` parameter for its own selector. If it were
+    // also a filter, the selector's form would hold two fields of that name,
+    // the parameter would submit twice, arrive as an array, and the board would
+    // fall back to the profile pipeline. That looked like choosing USA SALES
+    // and bouncing straight back to UK SALES - NEW.
+    expect(parseBoardDealFilters({ pipeline: 'usa-sales-id' }).pipelineId).toBe('')
+    expect(parseBoardDealFilters({ pipeline: ['a', 'b'] }).pipelineId).toBe('')
+  })
+
+  it('keeps every other filter intact', () => {
+    const parsed = parseBoardDealFilters({ pipeline: 'usa', q: 'acme', depot: 'US California' })
+    expect(parsed.q).toBe('acme')
+    expect(parsed.depot).toBe('US California')
   })
 })
 

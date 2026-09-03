@@ -117,6 +117,24 @@ export function parseDealFilters(params: RawParams): DealFilters {
 }
 
 /**
+ * The deals board's filters: everything parseDealFilters reads, except that
+ * `pipelineId` is always blank.
+ *
+ * The board has its OWN pipeline selector, and it uses the same `pipeline`
+ * parameter this module names in DEAL_FILTER_PARAMS. Treating it as a filter as
+ * well puts two fields of that name into one form, so submitting sends the
+ * parameter twice, it arrives as an array rather than a string, and the board
+ * falls back to the viewer's profile pipeline. The visible symptom is choosing
+ * USA SALES and being bounced to whatever region the profile carries.
+ *
+ * getDealsForBoard strips the same field server-side. This is the other half,
+ * so the parameter never reaches the markup in the first place.
+ */
+export function parseBoardDealFilters(params: RawParams): DealFilters {
+  return { ...parseDealFilters(params), pipelineId: '' }
+}
+
+/**
  * yyyy-mm-dd to epoch milliseconds, which is the form HubSpot date filters
  * take and what the board's own window filter already sends.
  *

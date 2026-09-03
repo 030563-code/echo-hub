@@ -5,7 +5,8 @@ import { DealsBoard } from '@/components/quotes/deals-board'
 import { PIPELINE_CONFIG } from '@/lib/pipeline-config'
 import { Card } from '@/components/ui/card'
 import { DealFilterBar } from '@/components/quotes/deal-filter-bar'
-import { dealFiltersToQuery, parseDealFilters } from '@/lib/deal-filters'
+import { dealFiltersToQuery, parseBoardDealFilters } from '@/lib/deal-filters'
+import { HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,10 +32,22 @@ export default async function DealsBoardPage({
   const params = await searchParams
 
   const windowDays = Number(params.window) || 60
-  const dealFilters = parseDealFilters(params)
+
+  // `pipeline` belongs to the board's own selector below, not to the filter
+  // bar. parseBoardDealFilters is what guarantees it never reaches the markup;
+  // its own doc comment explains what breaks otherwise.
+  const dealFilters = parseBoardDealFilters(params)
+
+  // Dean asked the board to open on All reps and USA SALES rather than on the
+  // viewer's own region. Both defaults are safe to state here because
+  // getDealsForBoard re-decides them: a non-admin asking for 'all' is put back
+  // to 'mine', and a non-admin's pipeline argument is ignored in favour of
+  // their profile.
+  const scopeParam = typeof params.scope === 'string' ? params.scope : ''
+  const pipelineParam = typeof params.pipeline === 'string' ? params.pipeline : ''
   const result = await getDealsForBoard({
-    scope: params.scope === 'all' ? 'all' : 'mine',
-    pipelineId: typeof params.pipeline === 'string' ? params.pipeline : undefined,
+    scope: scopeParam === 'mine' ? 'mine' : 'all',
+    pipelineId: pipelineParam || HUBSPOT_PIPELINES.USA_SALES.id,
     windowDays,
     dealFilters,
   })
