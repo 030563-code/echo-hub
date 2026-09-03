@@ -9,6 +9,8 @@ import { PaginationNav } from '@/components/ui/pagination-nav'
 import { DealList } from '@/components/quotes/deal-list'
 import type { HubSpotDeal } from '@/lib/hubspot-types'
 import { formatMoney } from '@/lib/utils'
+import { stageChip } from '@/lib/stage-chip'
+import Link from 'next/link'
 
 
 interface AllQuotesClientProps {
@@ -19,9 +21,14 @@ interface AllQuotesClientProps {
   hasNextPage: boolean
   cursorStack: string
   nextAfter?: string
+  /** Whether the caller may switch to every rep's deals. */
+  isAdmin: boolean
+  scope: 'mine' | 'all'
+  /** Owner and team per deal, only populated in the all-reps view. */
+  ownerByDeal: Record<string, { owner: string; team: string }>
 }
 
-export default function AllQuotesClient({ initialDeals, error, probabilityMap, currentPage, hasNextPage, cursorStack, nextAfter }: AllQuotesClientProps) {
+export default function AllQuotesClient({ initialDeals, error, probabilityMap, currentPage, hasNextPage, cursorStack, nextAfter, isAdmin, scope, ownerByDeal }: AllQuotesClientProps) {
   const deals = initialDeals
   const [selectedPipeline, setSelectedPipeline] = useState<string>('all')
   const [selectedStage, setSelectedStage] = useState<string>('all')
@@ -37,11 +44,6 @@ export default function AllQuotesClient({ initialDeals, error, probabilityMap, c
     if (selectedStage !== 'all' && deal.properties.dealstage !== selectedStage) return false
     return true
   })
-
-  // Both fallbacks here used to return the raw stage id, so a deal whose
-  // pipeline was not in the constants rendered a 36-character GUID at the rep.
-  // stageLabel resolves through every pipeline before giving up.
-  const getStageLabel = (pipelineId: string, stageId: string) => stageLabel(pipelineId, stageId)
 
   // Helper to get pipeline label
   const getPipelineLabel = (pipelineId: string) => {
@@ -60,6 +62,33 @@ export default function AllQuotesClient({ initialDeals, error, probabilityMap, c
 
       {/* Filters */}
       <Card className="p-4 bg-white border-gray-200">
+        {isAdmin && (
+          <div className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-4">
+            <span className="text-xs font-bold uppercase text-gray-500">Showing</span>
+            {/* Plain links, not client state: the scope decides what the SERVER
+                fetches, so it belongs in the URL where it survives paging. */}
+            <Link
+              href="/quotes/all"
+              className={
+                scope === 'mine'
+                  ? 'rounded border border-echo-yellow bg-yellow-50 px-2.5 py-1 text-xs font-semibold text-gray-900'
+                  : 'rounded border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:border-gray-300'
+              }
+            >
+              My deals
+            </Link>
+            <Link
+              href="/quotes/all?scope=all"
+              className={
+                scope === 'all'
+                  ? 'rounded border border-echo-yellow bg-yellow-50 px-2.5 py-1 text-xs font-semibold text-gray-900'
+                  : 'rounded border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:border-gray-300'
+              }
+            >
+              All reps
+            </Link>
+          </div>
+        )}
         <div className="flex flex-col md:flex-row gap-4 items-end md:items-center">
           <div className="w-full md:w-64">
             <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Pipeline</label>
@@ -127,10 +156,12 @@ export default function AllQuotesClient({ initialDeals, error, probabilityMap, c
             amountFormatted: deal.properties.amount
               ? formatMoney(Number(deal.properties.amount), deal.properties.deal_currency_code ?? 'USD')
               : '-',
-            badge: {
-              text: getStageLabel(deal.properties.pipeline, deal.properties.dealstage),
-              className: 'bg-gray-100 text-gray-800 border-gray-200',
-            },
+            // The real stage in its family colour, like every other list.
+            badge: stageChip(deal.properties.pipeline, deal.properties.dealstage),
+            ownerLabel:
+              scope === 'all' && ownerByDeal[deal.id]
+                ? `${ownerByDeal[deal.id].owner} - ${ownerByDeal[deal.id].team}`
+                : undefined,
             probabilityLabel: probabilityMap[deal.id] != null ? `${probabilityMap[deal.id]}%` : '\u2014',
             action: { href: `/quotes/deals/${deal.id}`, label: 'View Details' },
           }))}

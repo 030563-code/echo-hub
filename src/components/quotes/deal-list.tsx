@@ -10,6 +10,9 @@ export interface DealListRow {
   action: { href: string; label: string }
   pipelineLabel?: string
   probabilityLabel?: string
+  /** Whose deal it is, shown under the name in an admin's all-reps view. A
+   *  second column would push this table past the width it already fills. */
+  ownerLabel?: string
 }
 
 export interface DealListProps {
@@ -53,7 +56,12 @@ export function DealList({
           <tbody className="divide-y divide-gray-100">
             {rows.map((row) => (
               <tr key={row.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-4 lg:px-6 py-4 font-medium text-gray-900">{row.name}</td>
+                <td className="px-4 lg:px-6 py-4 font-medium text-gray-900">
+                  {row.name}
+                  {row.ownerLabel && (
+                    <span className="block text-xs font-normal text-gray-500">{row.ownerLabel}</span>
+                  )}
+                </td>
                 {pipelineHeader && (
                   <td className="px-4 lg:px-6 py-4 text-gray-500 text-xs">{row.pipelineLabel}</td>
                 )}
@@ -94,7 +102,10 @@ export function DealList({
         {rows.map((row) => (
           <li key={row.id} className="p-4 space-y-3">
             <div className="flex items-start justify-between gap-3">
-              <p className="min-w-0 flex-1 truncate font-medium text-gray-900">{row.name}</p>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium text-gray-900">{row.name}</p>
+                {row.ownerLabel && <p className="truncate text-xs text-gray-500">{row.ownerLabel}</p>}
+              </div>
               <p className="shrink-0 text-right font-mono text-gray-700">{row.amountFormatted}</p>
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-500">

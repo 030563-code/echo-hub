@@ -1,7 +1,7 @@
 'use server'
 
 import { createServerClient } from '@/lib/supabase/server'
-import { hasAnyCapability } from '@/lib/authz'
+import { getAuthorizedUser, hasAnyCapability } from '@/lib/authz'
 import { QUOTE_REQUEST_STAGES, QUOTATION_SENT_STAGES, CLOSED_WON_STAGES, QUOTATION_ACCEPTED_STAGES } from '@/lib/hubspot-constants'
 import type { HubSpotDeal } from '@/lib/hubspot-types'
 import { DEAL_LIST_PROPERTIES } from '@/lib/hubspot-types'
@@ -14,13 +14,23 @@ interface GetDealsResult {
   data?: HubSpotDeal[]
   error?: string
   hasNextPage?: boolean
+  /** Whether the caller may ask for every rep's deals, so the page knows
+   *  whether to offer the toggle. */
+  isAdmin?: boolean
   nextAfter?: string
 }
 
 export async function getDealsByStage(
   category: 'quote_requests' | 'quotation_sent' | 'all' | 'accepted' | 'won',
   page: number = 1,
-  after?: string
+  after?: string,
+  /**
+   * 'all' drops the owner filter so an admin sees every rep's deals. Dean asked
+   * that "Dave should have access to also view all the deals in Hubspot".
+   * Decided server-side from the caller's own profile: this arrives from a URL
+   * parameter, and widening it is exactly the thing to try.
+   */
+  scope: 'mine' | 'all' = 'mine'
 ): Promise<GetDealsResult> {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -32,6 +42,10 @@ export async function getDealsByStage(
   if (!(await hasAnyCapability(['quotes.view', 'quotes.create']))) {
     return { success: false, error: 'Forbidden: missing quotes capability' }
   }
+
+  const auth = await getAuthorizedUser()
+  const isAdmin = auth.ok && (auth.profile.is_super_admin === true || auth.capabilities.has('admin'))
+  const allReps = scope === 'all' && isAdmin
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
   if (!accessToken) {
@@ -103,11 +117,11 @@ export async function getDealsByStage(
       filterGroups: [
         {
           filters: [
-            {
-              propertyName: 'hubspot_owner_id',
-              operator: 'EQ',
-              value: ownerId,
-            },
+            // Dropped only for an admin who asked for every rep. A non-admin,
+            // or an admin who did not ask, still sees their own deals.
+            ...(allReps
+              ? []
+              : [{ propertyName: 'hubspot_owner_id', operator: 'EQ', value: ownerId }]),
             ...stageFilters
           ],
         },
@@ -155,6 +169,7 @@ export async function getDealsByStage(
       data: searchData.results,
       hasNextPage,
       nextAfter,
+      isAdmin,
     }
 
   } catch (error: unknown) {
