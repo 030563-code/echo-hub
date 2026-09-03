@@ -2,6 +2,7 @@
 
 import { createServerClient } from '@/lib/supabase/server'
 import { hasAnyCapability } from '@/lib/authz'
+import { REP_AGENT_PROPERTY } from '@/lib/deal-properties'
 
 interface PropertyOption {
   label: string
@@ -50,6 +51,34 @@ export async function getWinProbabilityOptions(): Promise<{ success: boolean; da
   if (!accessToken) return { success: false, error: 'Token Missing' }
 
   const result = await fetchHubSpotProperty('win_probability', accessToken)
+  if (!result.ok) return { success: false, error: result.error }
+
+  const options = (result.data?.options || [])
+    .filter((opt: PropertyOption) => !opt.hidden)
+    .map((opt: PropertyOption) => ({ label: opt.label, value: opt.value }))
+  return { success: true, data: options }
+}
+
+/**
+ * The USA Rep Agents options, live from HubSpot.
+ *
+ * Same shape and same gate as getWinProbabilityOptions, so an option added in
+ * HubSpot shows up without a deploy. The caller falls back to
+ * repAgentFallbackOptions() when this fails; see REP_AGENT_PROPERTY for why the
+ * slug carries a `__cloned_` suffix.
+ */
+export async function getRepAgentOptions(): Promise<{ success: boolean; data?: { label: string; value: string }[]; error?: string }> {
+  const supabase = await createServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: 'Unauthorized' }
+  if (!(await hasAnyCapability(['quotes.view', 'quotes.create']))) {
+    return { success: false, error: 'Forbidden: missing quotes capability' }
+  }
+
+  const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
+  if (!accessToken) return { success: false, error: 'Token Missing' }
+
+  const result = await fetchHubSpotProperty(REP_AGENT_PROPERTY, accessToken)
   if (!result.ok) return { success: false, error: result.error }
 
   const options = (result.data?.options || [])

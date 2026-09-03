@@ -8,8 +8,12 @@ import { getLineItems } from '@/app/actions/hubspot/getLineItems'
 import { getMappedSkus } from '@/app/actions/sales/get-mapped-skus'
 import { DEPOT_MAPPING } from '@/lib/depot-constants'
 import { createServerClient } from '@/lib/supabase/server'
-import { requireCapability } from '@/lib/authz'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { assertDealAccess, requireCapability } from '@/lib/authz'
+import { snapshotToCartLines } from '@/lib/quote-edit'
+import type { PricedCartLine } from '@/lib/quote-pricing'
 import CreateQuoteForm from './create-quote-form'
+import { REP_AGENT_PROPERTY } from '@/lib/deal-properties'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
@@ -17,9 +21,13 @@ import type { ComponentProps } from 'react'
 
 type FormProps = ComponentProps<typeof CreateQuoteForm>
 
-export default async function CreateQuotePage(props: { params: Promise<{ dealId: string }> }) {
+export default async function CreateQuotePage(props: {
+  params: Promise<{ dealId: string }>
+  searchParams: Promise<{ editQuote?: string }>
+}) {
   const auth = await requireCapability('quotes.create')
   const params = await props.params;
+  const searchParams = await props.searchParams
   const supabase = await createServerClient()
   
   // 1. Fetch User Details
@@ -118,6 +126,47 @@ export default async function CreateQuotePage(props: { params: Promise<{ dealId:
   const initialDepot =
     depotNameToCode[rawSendingDepot] ?? (rawSendingDepot in DEPOT_MAPPING ? rawSendingDepot : '')
 
+  // Edit mode. The row is read with the admin client (deal_quotes is
+  // service-role only) but ONLY after requireCapability above and only when it
+  // belongs to this deal, so a guessed id from another deal reads nothing.
+  // Anything not actually mid-edit falls back to a normal Generate rather than
+  // showing an edit screen that would refuse to save.
+  const editQuoteId = String(searchParams?.editQuote ?? '').trim()
+  let editing: FormProps['editing'] = undefined
+  // Deal scope, not just capability. requireCapability above proves the caller
+  // may quote SOMETHING; this proves they may see THIS deal, which matters
+  // because the read below uses the admin client and would otherwise hand any
+  // quotes.create user another region's priced line items and quote number if
+  // they ever came by the row id.
+  if (editQuoteId && (await assertDealAccess(params.dealId, 'quotes.create')).ok) {
+    const { data: editRow } = await createAdminClient()
+      .from('deal_quotes')
+      .select('id, status, quote_number, link_before_edit, line_items, comments')
+      .eq('id', editQuoteId)
+      .eq('hubspot_deal_id', params.dealId)
+      .maybeSingle()
+
+    const row = editRow as {
+      id: string
+      status: string
+      quote_number: string | null
+      link_before_edit: string | null
+      line_items: PricedCartLine[] | null
+      comments: string | null
+    } | null
+
+    if (row && row.status === 'editing') {
+      editing = {
+        dealQuoteId: row.id,
+        quoteNumber: row.quote_number,
+        linkBeforeEdit: row.link_before_edit,
+        // Seeded from the published snapshot, NOT the deal's line items, so a
+        // discounted quote keeps its discount through the edit.
+        cartLines: snapshotToCartLines(Array.isArray(row.line_items) ? row.line_items : []),
+      }
+    }
+  }
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex items-center gap-4 mb-6">
@@ -127,7 +176,9 @@ export default async function CreateQuotePage(props: { params: Promise<{ dealId:
             Back to Deal
           </Button>
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900">Create New Quote</h1>
+        <h1 className="text-2xl font-bold text-gray-900">
+          {editing ? `Edit quote ${editing.quoteNumber ?? ''}`.trim() : 'Create New Quote'}
+        </h1>
       </div>
 
       <CreateQuoteForm
@@ -135,7 +186,9 @@ export default async function CreateQuotePage(props: { params: Promise<{ dealId:
         dealName={deal?.properties?.dealname || ''}
         initialDepot={initialDepot}
         dealCurrency={dealCurrency}
+        editing={editing}
         initialWinProbability={(deal?.properties?.win_probability || '').trim()}
+        initialRepAgent={(deal?.properties?.[REP_AGENT_PROPERTY] || '').trim()}
         settings={settings}
         products={products}
         salesRep={salesRep}

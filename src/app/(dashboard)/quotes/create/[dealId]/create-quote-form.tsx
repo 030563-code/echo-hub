@@ -15,7 +15,11 @@ import {
 } from 'lucide-react'
 import { SalesProfileSettings } from '@/app/actions/sales/get-profile-settings'
 
+import { RepAgentSelect } from '@/components/quotes/rep-agent-select'
+import { REP_AGENT_LABEL, REP_AGENT_PROPERTY } from '@/lib/deal-properties'
+
 import { createQuote } from '@/app/actions/sales/create-quote'
+import { republishEditedQuote } from '@/app/actions/sales/edit-quote'
 import { searchHubSpotProducts } from '@/app/actions/hubspot/searchProducts'
 import { getMappedSkus } from '@/app/actions/sales/get-mapped-skus'
 import { getWinProbabilityOptions } from '@/app/actions/hubspot/getDealProperties'
@@ -96,6 +100,23 @@ interface CreateQuoteFormProps {
   dealCurrency?: string
   /** win_probability already on the HubSpot deal, e.g. '70%'. */
   initialWinProbability?: string
+  /** The rep agent already on the HubSpot deal, if any. Optional field, so
+   *  unlike the template and probability it never blocks the setup step. */
+  initialRepAgent?: string
+  /**
+   * Set when this is an edit of a recalled quote rather than a new one.
+   *
+   * While it is set the customer's link is OFFLINE: HubSpot blanks
+   * hs_quote_link the moment a quote goes back to DRAFT, and only restores it
+   * on republish. That is why the banner is loud and the primary button says
+   * Republish rather than Generate.
+   */
+  editing?: {
+    dealQuoteId: string
+    quoteNumber: string | null
+    linkBeforeEdit: string | null
+    cartLines: LineItem[]
+  }
   /** The price list, the customer's contract prices and this rep's discount
    *  limit, loaded once by the page. The browser prices the cart with the same
    *  pure function the server does, so it never offers a discount the server
@@ -129,7 +150,7 @@ const mapInitialLineItems = (items: HubSpotLineItem[]): LineItem[] =>
     total: Number(item.properties.amount) || 0,
   }))
 
-export default function CreateQuoteForm({ dealId, dealName, settings, products, salesRep, contact, companyName, initialLineItems = [], initialDepot = '', initialComments = '', dealCurrency = 'USD', initialWinProbability = '', pricing, companyId = null, bccAddress = null }: CreateQuoteFormProps) {
+export default function CreateQuoteForm({ dealId, dealName, settings, products, salesRep, contact, companyName, initialLineItems = [], initialDepot = '', initialComments = '', dealCurrency = 'USD', initialWinProbability = '', initialRepAgent = '', editing, pricing, companyId = null, bccAddress = null }: CreateQuoteFormProps) {
   const money = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: dealCurrency,
@@ -138,9 +159,13 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
 
   // State for the Initial Setup Dialog
   const router = useRouter()
-  const [showSetupDialog, setShowSetupDialog] = useState(true)
+  // Never opened on an edit. Every field it asks for is already fixed on the
+  // existing quote, and the template association in particular CANNOT be
+  // changed after creation, so asking again would offer a choice that does not
+  // exist.
+  const [showSetupDialog, setShowSetupDialog] = useState(!editing)
   // Distinguishes the first, blocking open from a later re-open via Edit setup.
-  const [hasCompletedSetup, setHasCompletedSetup] = useState(false)
+  const [hasCompletedSetup, setHasCompletedSetup] = useState(!!editing)
   const [distributor, setDistributor] = useState<string>('none')
   // Seeded from the deal's existing sending_depot (if any and still allowed) so
   // re-opening the builder doesn't misreport a decided deal as "Decide later".
@@ -158,11 +183,21 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
       ? initialWinProbability
       : ''
   )
+  // Seeded raw rather than filtered against the known values, because unlike
+  // win_probability this list is editable in HubSpot: a value we do not
+  // recognise is more likely a new option than a bad one, and RepAgentSelect
+  // says so on screen rather than dropping it.
+  const [repAgent, setRepAgent] = useState<string>(initialRepAgent)
   const [winProbabilityOptions, setWinProbabilityOptions] = useState<{ label: string; value: string }[]>([])
   const [setupLoading, setSetupLoading] = useState(false)
 
   // State for Quote Builder
-  const [lineItems, setLineItems] = useState<LineItem[]>(() => mapInitialLineItems(initialLineItems))
+  // An edit seeds from the published quote's own snapshot, which carries the
+  // discounts; mapInitialLineItems drops them, so seeding an edit from the
+  // deal's line items would quietly republish at full price.
+  const [lineItems, setLineItems] = useState<LineItem[]>(() =>
+    editing ? editing.cartLines : mapInitialLineItems(initialLineItems)
+  )
   // Free-text rep comments — printed on the quote under "Comments from {rep}".
   const [comments, setComments] = useState<string>(initialComments)
   const [submitting, setSubmitting] = useState(false)
@@ -424,10 +459,54 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     submittingRef.current = true
     setSubmitting(true)
     try {
-      await runGenerate()
+      await (editing ? runRepublish() : runGenerate())
     } finally {
       submittingRef.current = false
       setSubmitting(false)
+    }
+  }
+
+  /**
+   * Republish a recalled quote on its existing link.
+   *
+   * Deliberately does NOT go through createQuote: the deal has already been
+   * moved to Quotation sent and the quote object already exists, so re-running
+   * the stage move and minting a second quote is exactly what an edit is meant
+   * to avoid. The server re-prices and re-checks the discount caps itself.
+   */
+  const runRepublish = async () => {
+    if (!editing) return
+    const result = await republishEditedQuote({
+      dealQuoteId: editing.dealQuoteId,
+      lines: lineItems,
+      comments,
+    })
+
+    if (!result.success) {
+      // The quote is still sitting in HubSpot as a draft with its link offline,
+      // so this has to read as unfinished business, not a tidy failure.
+      setQuoteError(result.error)
+      toast.error(result.error)
+      return
+    }
+
+    setSubmitted(true)
+    setPublishedQuote({ ...result.quote, currency: dealCurrency })
+    setQuoteError(null)
+
+    if (result.quote.linkChanged) {
+      // The whole point of an edit is that the customer's existing link keeps
+      // working. If HubSpot ever stops reissuing the same url this is the one
+      // moment somebody can still act on it.
+      toast.warning('HubSpot issued a NEW link for this quote, so the one already sent no longer works. Send the new link.', {
+        duration: 15000,
+      })
+    } else {
+      toast.success('Quote republished on the same link')
+    }
+
+    if (result.resyncError) {
+      toast.warning(result.resyncError, { duration: 15000 })
     }
   }
 
@@ -456,9 +535,17 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     // Mirror the probability onto the HubSpot deal. Non-fatal: the value is
     // already in deals_registry.deal_probability, which is what the forecasting
     // engine reads.
-    const probResult = await updateDealProperties(dealId, { win_probability: winProbability })
+    //
+    // The rep agent rides along in the SAME call rather than going through
+    // createQuote. It is a HubSpot-only attribution field, nothing in
+    // deals_registry or the MRP engine reads it, so there is no reason to widen
+    // the server action's contract for it. Sent only when set, so an untouched
+    // dropdown cannot blank a value someone chose in HubSpot.
+    const dealPropertyPatch: Record<string, string> = { win_probability: winProbability }
+    if (repAgent.trim()) dealPropertyPatch[REP_AGENT_PROPERTY] = repAgent.trim()
+    const probResult = await updateDealProperties(dealId, dealPropertyPatch)
     if (!probResult.success) {
-      console.error('win_probability sync failed:', probResult.error)
+      console.error('deal property sync failed:', probResult.error)
     }
 
     if (result.quote) {
@@ -612,6 +699,25 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Rep agent. Optional, so it is deliberately absent from
+                canProceedFromSetup: no rep should be blocked from quoting
+                because an attribution field is unset. mode="defer" because
+                createQuote's own property sync writes it, so a quote that
+                fails leaves nothing behind on the deal. */}
+            <div className="space-y-2">
+              <Label className="text-gray-700 font-medium flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-gray-400" />
+                {REP_AGENT_LABEL}
+              </Label>
+              <RepAgentSelect
+                dealId={dealId}
+                value={repAgent}
+                canEdit
+                mode="defer"
+                onChange={setRepAgent}
+              />
+            </div>
           </div>
 
           <DialogFooter className="gap-2 sm:gap-2">
@@ -635,8 +741,24 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
         </DialogContent>
       </Dialog>
 
-      {/* Chosen setup, with a way back in — the dialog is otherwise one-way. */}
-      {!showSetupDialog && (
+      {/* The customer's link is dead for as long as this quote sits in draft,
+          so this is the loudest thing on the screen until it is republished. */}
+      {editing && !submitted && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3">
+          <p className="text-sm font-semibold text-amber-900">
+            Quote {editing.quoteNumber ?? ''} is recalled, and the link the customer has is offline right now.
+          </p>
+          <p className="mt-1 text-sm text-amber-800">
+            Make your changes and republish. It goes back out on the same link and keeps the same quote
+            number, so there is nothing to resend. Leaving this page without republishing leaves the link
+            offline.
+          </p>
+        </div>
+      )}
+
+      {/* Chosen setup, with a way back in — the dialog is otherwise one-way.
+          Hidden on an edit: none of it can be changed on an existing quote. */}
+      {!showSetupDialog && !editing && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600">
           <span>
             <span className="font-medium text-gray-900">
@@ -878,10 +1000,22 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                     {isDistributorSelected ? 'N/A' : depot ? depotLabel(depot) : 'Decided at acceptance'}
                   </span>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-500">Template</span>
-                  <span className="font-medium text-gray-900 text-right">{template}</span>
-                </div>
+                {/* An edit never chose a template, and cannot: the template
+                    association is fixed at creation. Show what the edit IS
+                    keeping instead of an empty row. */}
+                {editing ? (
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-500">Quote number</span>
+                    <span className="font-medium text-gray-900 text-right">
+                      {editing.quoteNumber ?? 'unchanged'}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-500">Template</span>
+                    <span className="font-medium text-gray-900 text-right">{template}</span>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-between items-end mb-6">
@@ -899,10 +1033,16 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                 >
                   <Send className="w-5 h-5 mr-2" />
                   {submitting
-                    ? 'Publishing...'
+                    ? editing
+                      ? 'Republishing...'
+                      : 'Publishing...'
                     : submitted
-                      ? 'Quote published'
-                      : 'Publish quote in HubSpot'}
+                      ? editing
+                        ? 'Quote republished'
+                        : 'Quote published'
+                      : editing
+                        ? 'Republish quote on the same link'
+                        : 'Publish quote in HubSpot'}
                 </Button>
                 {hasInvalidLineItems && !submitted && (
                   <p className="text-xs text-red-600 text-center">

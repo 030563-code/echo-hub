@@ -16,6 +16,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { loadPricingForQuote } from '@/app/actions/pricing/get-pricing'
 import type { DiscountMode } from '@/lib/pricing'
 import { assertDealAccess } from '@/lib/authz'
+import { findOutOfScopeSkus } from '@/lib/quote-sku-scope'
 
 interface QuoteLineItem {
   productId: string
@@ -201,29 +202,17 @@ export async function createQuote(params: CreateQuoteParams) {
     const quotedSkus = Array.from(new Set([...derivedSkus, ...clientSkus]))
 
     if (quotedSkus.length > 0) {
-      const { data: mapRows, error: mapError } = await supabase
-        .from('product_depot_mapping')
-        .select('hubspot_sku_code, depot_code')
-        .eq('is_active', true)
-        .in('hubspot_sku_code', quotedSkus)
+      // Shared with the edit path: republishing an edited quote can add a line
+      // this quote never had, so the same check has to run there too.
+      const scope = await findOutOfScopeSkus(supabase, quotedSkus, depotScope)
+      if (!scope.ok) return { success: false, error: scope.error }
 
-      if (mapError) {
-        console.error('product_depot_mapping lookup failed:', mapError.message)
-        return { success: false, error: 'Could not verify products for this depot. Please try again.' }
-      }
-
-      const mappedAnywhere = new Set((mapRows ?? []).map((r) => r.hubspot_sku_code))
-      const allowedHere = new Set(
-        (mapRows ?? []).filter((r) => depotScope.includes(r.depot_code)).map((r) => r.hubspot_sku_code)
-      )
-      const wrongDepot = quotedSkus.filter((s) => mappedAnywhere.has(s) && !allowedHere.has(s))
-
-      if (wrongDepot.length > 0) {
+      if (scope.wrongDepot.length > 0) {
         return {
           success: false,
           error: effectiveDepot
-            ? `These products are not available from ${effectiveDepot}: ${wrongDepot.join(', ')}`
-            : `These products are not available from your depots: ${wrongDepot.join(', ')}`,
+            ? `These products are not available from ${effectiveDepot}: ${scope.wrongDepot.join(', ')}`
+            : `These products are not available from your depots: ${scope.wrongDepot.join(', ')}`,
         }
       }
     }

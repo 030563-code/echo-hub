@@ -1,23 +1,30 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { ExternalLink, FileText, RefreshCw } from 'lucide-react'
+import { ExternalLink, FileText, Pencil, RefreshCw } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatMoney, formatDate } from '@/lib/utils'
 import { hubspotRecordUrl } from '@/lib/hubspot-links'
 import { retryHubSpotQuote } from '@/app/actions/sales/publish-quote'
+import { recallQuoteForEdit, republishEditedQuote } from '@/app/actions/sales/edit-quote'
 
 /**
  * The HubSpot quotes published from the Hub for this deal.
  *
  * Before Phase B a generated quote left no trace in the Hub at all: the PDF was
  * downloaded to the rep's machine and attached to HubSpot, and the deal page
- * had nothing to show or reopen. Several quotes per deal are expected, because
- * regenerating creates a new quote object rather than editing a published one,
- * and reps already keep variants.
+ * had nothing to show or reopen. Several quotes per deal are still expected,
+ * because reps keep variants.
+ *
+ * A published quote can now be RECALLED and edited in place rather than
+ * replaced. HubSpot clears hs_quote_link while the quote sits back in DRAFT and
+ * restores the same url on republish (verified live 2026-09-03), so an edit
+ * keeps the link and the number the customer already has. While a quote is
+ * recalled its link genuinely does not work, which is why that row shouts.
  */
 
 export interface DealQuoteRow {
@@ -25,7 +32,7 @@ export interface DealQuoteRow {
   hubspot_quote_id: string | null
   quote_number: string | null
   title: string | null
-  status: 'draft' | 'published' | 'failed'
+  status: 'draft' | 'editing' | 'published' | 'failed'
   failed_step: string | null
   error_message: string | null
   quote_link: string | null
@@ -36,6 +43,9 @@ export interface DealQuoteRow {
   expires_on: string | null
   created_at: string
   created_by_label: string | null
+  link_before_edit: string | null
+  edit_count: number | null
+  edited_at: string | null
 }
 
 const STATUS_CHIP: Record<DealQuoteRow['status'], { label: string; className: string }> = {
@@ -43,6 +53,7 @@ const STATUS_CHIP: Record<DealQuoteRow['status'], { label: string; className: st
   // A draft row means a generate that started and has not finished, not a
   // deliberate draft. Amber rather than grey, because it wants attention.
   draft: { label: 'Unfinished', className: 'bg-amber-100 text-amber-800 border-amber-200' },
+  editing: { label: 'Recalled, link offline', className: 'bg-amber-100 text-amber-900 border-amber-300' },
   failed: { label: 'Failed', className: 'bg-red-100 text-red-800 border-red-200' },
 }
 
@@ -57,8 +68,11 @@ export function DealQuotesCard({
 }) {
   const router = useRouter()
   const [retrying, setRetrying] = useState(false)
+  const [busyId, setBusyId] = useState<string | null>(null)
 
-  const unfinished = quotes.find((q) => q.status !== 'published')
+  // A recalled quote is NOT something Retry can finish: retryHubSpotQuote
+  // resumes a generate, and this one needs republishing with the rep's edits.
+  const unfinished = quotes.find((q) => q.status === 'draft' || q.status === 'failed')
 
   async function retry() {
     if (retrying) return
@@ -73,6 +87,55 @@ export function DealQuotesCard({
       }
     } finally {
       setRetrying(false)
+    }
+  }
+
+  /** Pull a published quote back to draft and open the builder on it. */
+  async function recall(quote: DealQuoteRow) {
+    if (busyId) return
+    setBusyId(quote.id)
+    try {
+      const result = await recallQuoteForEdit(quote.id)
+      if (!result.success) {
+        toast.error(result.error)
+        // The guards read live HubSpot state, so a refusal usually means the
+        // deal moved under the rep. Refresh so the screen agrees with it.
+        router.refresh()
+        return
+      }
+      router.push(`/quotes/create/${dealId}?editQuote=${result.quote.dealQuoteId}`)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  /**
+   * Republish a quote whose republish failed, with no changes.
+   *
+   * The recovery for the one genuinely bad state: the quote is parked in DRAFT
+   * with its link offline. Sends no lines, so the server republishes the stored
+   * snapshot exactly as it stands.
+   */
+  async function republishAsIs(quote: DealQuoteRow) {
+    if (busyId) return
+    setBusyId(quote.id)
+    try {
+      const result = await republishEditedQuote({ dealQuoteId: quote.id })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      if (result.quote.linkChanged) {
+        toast.warning('HubSpot issued a NEW link, so the one already sent no longer works. Send the new link.', {
+          duration: 15000,
+        })
+      } else {
+        toast.success('Quote republished on the same link')
+      }
+      if (result.resyncError) toast.warning(result.resyncError, { duration: 15000 })
+      router.refresh()
+    } finally {
+      setBusyId(null)
     }
   }
 
@@ -122,7 +185,52 @@ export function DealQuotesCard({
                   </p>
                 )}
 
+                {quote.status === 'editing' && (
+                  <p className="mt-2 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900">
+                    {quote.error_message
+                      ? `Republishing stopped at ${quote.failed_step ?? 'an unknown step'}: ${quote.error_message} The customer's link stays offline until it republishes.`
+                      : 'Recalled for editing, so the link the customer has is offline until it is republished.'}
+                  </p>
+                )}
+
+                {quote.status === 'published' && (quote.edit_count ?? 0) > 0 && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Edited {quote.edit_count} {quote.edit_count === 1 ? 'time' : 'times'}
+                    {quote.edited_at ? `, last on ${formatDate(quote.edited_at)}` : ''}, on the same link.
+                  </p>
+                )}
+
                 <div className="mt-2 flex flex-wrap gap-2">
+                  {quote.status === 'editing' && canRetry && (
+                    <>
+                      <Link href={`/quotes/create/${dealId}?editQuote=${quote.id}`}>
+                        <Button size="sm">
+                          <Pencil className="mr-1.5 h-4 w-4" />
+                          Continue editing
+                        </Button>
+                      </Link>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => republishAsIs(quote)}
+                        disabled={busyId !== null}
+                      >
+                        <RefreshCw className={`mr-1.5 h-4 w-4 ${busyId === quote.id ? 'animate-spin' : ''}`} />
+                        {busyId === quote.id ? 'Republishing...' : 'Republish now'}
+                      </Button>
+                    </>
+                  )}
+                  {quote.status === 'published' && canRetry && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => recall(quote)}
+                      disabled={busyId !== null}
+                    >
+                      <Pencil className="mr-1.5 h-4 w-4" />
+                      {busyId === quote.id ? 'Recalling...' : 'Recall and edit'}
+                    </Button>
+                  )}
                   {quote.quote_link && (
                     <a href={quote.quote_link} target="_blank" rel="noopener noreferrer">
                       <Button size="sm" variant="outline">
