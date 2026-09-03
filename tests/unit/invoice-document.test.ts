@@ -3,8 +3,8 @@ import { buildInvoiceDocument, type InvoiceDocumentHeaderRow, type InvoiceDocume
 import type { RemittanceDetails } from '@/lib/customer-invoice/seller'
 
 const REMIT: RemittanceDetails = {
-  payee: 'Echo Barrier USA, LLC',
-  bankName: null, achRouting: null, accountNumber: null, wireRouting: null, swift: null, ein: null,
+  accountName: 'Echo Barrier USA LLC',
+  bankName: null, bankAddress: [], routingNumber: null, accountNumber: null, ein: null,
 }
 
 const header = (over: Partial<InvoiceDocumentHeaderRow> = {}): InvoiceDocumentHeaderRow => ({
@@ -202,8 +202,13 @@ describe('addresses on the document', () => {
       '1200 Wilshire Blvd',
       'Los Angeles, CA 90017',
       'US',
-      'ap@apex.example',
     ])
+  })
+
+  it('leaves the AP email off the printed bill-to', () => {
+    // It is where the invoice is sent, not something to read back to the
+    // customer, and it is the one line on that block that is ours not theirs.
+    expect(doc.billTo).not.toContain('ap@apex.example')
   })
 
   it('falls back to the company name and skips what Xero does not hold', () => {

@@ -29,7 +29,7 @@ export const SELLER_ADDRESS_LINES: readonly string[] = [
   'USA',
 ]
 
-export const SELLER_LEGAL_NAME = 'Echo Barrier USA, LLC'
+export const SELLER_LEGAL_NAME = 'Echo Barrier USA LLC'
 
 /**
  * The North American toll-free carried by the US and Canadian quote templates.
@@ -39,12 +39,16 @@ export const SELLER_LEGAL_NAME = 'Echo Barrier USA, LLC'
 export const SELLER_PHONE = '+1 (800) 728 9098'
 
 export interface RemittanceDetails {
-  payee: string
+  /** The name the account is held in. Must match the bank's own record exactly,
+   *  which is why it comes from the bank letter rather than from
+   *  SELLER_LEGAL_NAME: a payee name that differs from the account name is a
+   *  reason for a bank to bounce a transfer. */
+  accountName: string
   bankName: string | null
-  achRouting: string | null
+  /** The bank's own address, as lines. Pipe-separated in the environment. */
+  bankAddress: string[]
+  routingNumber: string | null
   accountNumber: string | null
-  wireRouting: string | null
-  swift: string | null
   /** The seller's federal EIN. Absent until the Maryland Comptroller confirms
    *  it on the Combined Registration Application (see constants.ts). */
   ein: string | null
@@ -64,12 +68,15 @@ function env(name: string): string | null {
  */
 export function remittanceFromEnv(): RemittanceDetails {
   return {
-    payee: SELLER_LEGAL_NAME,
+    accountName: env('INVOICE_REMIT_ACCOUNT_NAME') ?? SELLER_LEGAL_NAME,
     bankName: env('INVOICE_REMIT_BANK_NAME'),
-    achRouting: env('INVOICE_REMIT_ACH_ROUTING'),
+    // Pipe-separated so a multi-line branch address survives a single env var.
+    bankAddress: (env('INVOICE_REMIT_BANK_ADDRESS') ?? '')
+      .split('|')
+      .map((part) => part.trim())
+      .filter((part) => part !== ''),
+    routingNumber: env('INVOICE_REMIT_ROUTING_NUMBER'),
     accountNumber: env('INVOICE_REMIT_ACCOUNT_NUMBER'),
-    wireRouting: env('INVOICE_REMIT_WIRE_ROUTING'),
-    swift: env('INVOICE_REMIT_SWIFT'),
     ein: env('INVOICE_SELLER_EIN'),
   }
 }
@@ -80,8 +87,8 @@ export function remittanceValue(value: string | null, placeholder: string): stri
   return value ?? `<${placeholder}>`
 }
 
-/** True when anything in the remittance block is still unset, so the caller can
- *  warn before a document with placeholders goes to a customer. */
+/** True when anything a customer needs in order to pay is still unset, so the
+ *  caller can refuse to send a document that cannot be paid from. */
 export function remittanceIsIncomplete(r: RemittanceDetails): boolean {
-  return r.bankName === null || r.achRouting === null || r.accountNumber === null
+  return r.bankName === null || r.routingNumber === null || r.accountNumber === null
 }

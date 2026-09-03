@@ -317,26 +317,42 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<import('j
   doc.text('How to pay', MARGIN, remitY)
   remitY += 7
 
+  // Headings match the bank's own confirmation letter word for word (Dean,
+  // 2026-09-03). An accounts-payable clerk is copying these into a payment
+  // form, and a label they recognise from the bank letter is one less thing for
+  // them to query.
   const r = inv.remittance
-  const remitRows: [string, string][] = [
-    ['Payee', r.payee],
-    ['Bank', remittanceValue(r.bankName, 'bank name')],
-    ['ACH', `${remittanceValue(r.achRouting, 'routing')} / ${remittanceValue(r.accountNumber, 'account')}`],
-    ['Wire', remittanceValue(r.wireRouting, 'wire routing')],
-    ['SWIFT', remittanceValue(r.swift, 'swift')],
-    ['Reference', inv.reference],
+  // Multi-line values, because the bank's address is three lines on the letter
+  // and squeezing it onto one ran it straight across into the totals column.
+  const remitRows: [string, string[]][] = [
+    ['Account Name', [r.accountName]],
+    ['Bank', [remittanceValue(r.bankName, 'bank name')]],
+    ...(r.bankAddress.length > 0 ? ([['Address', r.bankAddress]] as [string, string[]][]) : []),
+    ['Routing Number', [remittanceValue(r.routingNumber, 'routing number')]],
+    ['Account No', [remittanceValue(r.accountNumber, 'account number')]],
+    // Not a bank detail, but the thing that makes a received payment
+    // reconcilable. The handover specifies the invoice number as the reference.
+    ['Reference', [inv.reference]],
   ]
+  // The remittance owns the left column only. Anything wider collides with the
+  // totals sitting opposite it.
+  const remitValueX = MARGIN + 30
+  const remitValueWidth = totalsLeft - remitValueX - 8
   doc.setFontSize(9)
-  for (const [k, v] of remitRows) {
+  for (const [k, values] of remitRows) {
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(...LABEL_COLOR)
     doc.text(k, MARGIN, remitY)
     // An unfilled remittance field prints in the draft colour, so a document
     // that cannot actually be paid is obvious at a glance rather than subtle.
-    const tone: [number, number, number] = v.startsWith('<') ? DRAFT_COLOR : [40, 40, 40]
+    const tone: [number, number, number] = values[0]?.startsWith('<') ? DRAFT_COLOR : [40, 40, 40]
     doc.setTextColor(...tone)
-    doc.text(v, MARGIN + 24, remitY)
-    remitY += 5
+    for (const value of values) {
+      for (const wrapped of doc.splitTextToSize(value, remitValueWidth) as string[]) {
+        doc.text(wrapped, remitValueX, remitY)
+        remitY += 5
+      }
+    }
   }
   y = Math.max(y, remitY)
 

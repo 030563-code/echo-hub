@@ -4,7 +4,12 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { buildInvoiceDocument } from '@/lib/customer-invoice/invoice-document'
 import { buildInvoicePdf, invoicePdfFilename } from '@/lib/customer-invoice/invoice-pdf'
-import { SELLER_ADDRESS_LINES, SELLER_PHONE, remittanceFromEnv } from '@/lib/customer-invoice/seller'
+import {
+  SELLER_ADDRESS_LINES,
+  SELLER_PHONE,
+  remittanceFromEnv,
+  remittanceIsIncomplete,
+} from '@/lib/customer-invoice/seller'
 import type { CustomerInvoiceRow, CustomerInvoiceLineRow } from './shared'
 
 /**
@@ -111,8 +116,7 @@ export async function renderInvoicePdf(
     bytes,
     sha256: createHash('sha256').update(bytes).digest('hex'),
     filename: invoicePdfFilename(document.reference),
-    remittanceIncomplete:
-      remittance.bankName === null || remittance.achRouting === null || remittance.accountNumber === null,
+    remittanceIncomplete: remittanceIsIncomplete(remittance),
     reference: document.reference,
   }
 }

@@ -147,7 +147,13 @@ function shipToLines(header: InvoiceDocumentHeaderRow): string[] {
   return [street, last].filter((p) => p !== '')
 }
 
-/** The Xero contact as printed lines, skipping whatever Xero does not hold. */
+/**
+ * The Xero contact as printed lines, skipping whatever Xero does not hold.
+ *
+ * The AP email is deliberately NOT printed (Dean, 2026-09-03). It is where the
+ * invoice gets sent, not something the customer needs read back to them, and it
+ * is the one line on the block that is ours rather than theirs.
+ */
 function billToLines(header: InvoiceDocumentHeaderRow): string[] {
   const cityRegion = [header.billing_city, header.billing_region]
     .map((p) => (p ?? '').trim())
@@ -160,7 +166,6 @@ function billToLines(header: InvoiceDocumentHeaderRow): string[] {
     header.billing_line2,
     last,
     header.billing_country,
-    header.billing_email,
   ]
     .map((p) => (p ?? '').trim())
     .filter((p) => p !== '')
