@@ -135,6 +135,19 @@ export function parseBoardDealFilters(params: RawParams): DealFilters {
 }
 
 /**
+ * The filters for a stage-scoped queue: Deals, Sent, Accepted, Won.
+ *
+ * Same as parseDealFilters except that `stages` is always empty. Each of those
+ * tabs IS a stage filter already: getDealsByStage pins `dealstage IN <family>`
+ * for its category. A second stage filter carried over from the board would AND
+ * with that family, and any stage outside it empties the tab. Pipeline, depot,
+ * name, owner, amount and dates all still apply, because none of them collide.
+ */
+export function parseStageQueueDealFilters(params: RawParams): DealFilters {
+  return { ...parseDealFilters(params), stages: [] }
+}
+
+/**
  * yyyy-mm-dd to epoch milliseconds, which is the form HubSpot date filters
  * take and what the board's own window filter already sends.
  *

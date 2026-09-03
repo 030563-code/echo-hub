@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { LinkSpinner } from '@/components/nav/link-spinner'
 
 /**
@@ -13,7 +13,15 @@ import { LinkSpinner } from '@/components/nav/link-spinner'
  * of the requests queue and into Sent, so without this a rep generated a quote
  * and then had no way to look at it. Presentation only; each page still does its
  * own capability check.
+ *
+ * The scope and the filters travel with the tab. Dean: "when I am on the admin
+ * page the USA sales and All reps filter doesn't carry over to the Deals".
+ * Paging is deliberately NOT carried: a cursor belongs to the result set it
+ * came from, so page 4 of Sent is meaningless on Won.
  */
+
+/** Dropped when moving tab, because they are meaningless on the next one. */
+const PER_TAB_PARAMS = new Set(['page', 'cursors'])
 const TABS = [
   { href: '/quotes/board', label: 'Board' },
   { href: '/quotes/deals', label: 'Deals' },
@@ -25,6 +33,14 @@ const TABS = [
 
 export function QuotesNav() {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+
+  const carried = new URLSearchParams()
+  for (const [name, value] of searchParams.entries()) {
+    if (!PER_TAB_PARAMS.has(name)) carried.append(name, value)
+  }
+  const query = carried.toString()
+  const withFilters = (href: string) => (query ? `${href}?${query}` : href)
 
   return (
     <nav aria-label="Quotes" className="mb-6 border-b border-gray-200">
@@ -35,7 +51,7 @@ export function QuotesNav() {
           return (
             <li key={tab.href} className="shrink-0">
               <Link
-                href={tab.href}
+                href={withFilters(tab.href)}
                 aria-current={active ? 'page' : undefined}
                 className={
                   active

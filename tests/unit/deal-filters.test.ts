@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   EMPTY_DEAL_FILTERS,
   parseBoardDealFilters,
+  parseStageQueueDealFilters,
   activeDealFilterCount,
   dealFiltersToHubSpot,
   dealFiltersToQuery,
@@ -65,6 +66,30 @@ describe('parseBoardDealFilters', () => {
     const parsed = parseBoardDealFilters({ pipeline: 'usa', q: 'acme', depot: 'US California' })
     expect(parsed.q).toBe('acme')
     expect(parsed.depot).toBe('US California')
+  })
+})
+
+describe('parseStageQueueDealFilters', () => {
+  it('never carries a stage', () => {
+    // Deals, Sent, Accepted and Won each pin `dealstage IN <family>` for their
+    // own category. A stage carried over from the board would AND with that
+    // family and empty the tab.
+    expect(parseStageQueueDealFilters({ stages: 'quotation-sent-id' }).stages).toEqual([])
+    expect(parseStageQueueDealFilters({ stages: ['a', 'b'] }).stages).toEqual([])
+  })
+
+  it('keeps the filters that do not collide with the category', () => {
+    const parsed = parseStageQueueDealFilters({
+      stages: 'x',
+      pipeline: 'usa',
+      q: 'acme',
+      depot: 'US California',
+      amountMin: '100',
+    })
+    expect(parsed.pipelineId).toBe('usa')
+    expect(parsed.q).toBe('acme')
+    expect(parsed.depot).toBe('US California')
+    expect(parsed.amountMin).toBe('100')
   })
 })
 
