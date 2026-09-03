@@ -8,13 +8,16 @@
  * hubspot such as tender etc. to avoid confusion", in the kanban shape the
  * Purchase Order board already uses. This module is the pure half of that.
  *
- * COLUMN ORDER COMES FREE, and it looks like an accident, so: the key order of
- * each pipeline's `stages` object in hubspot-constants.ts is HubSpot's own
- * displayOrder. Verified against the live API on 2026-09-02 for USA SALES,
- * where both list Quote Request, Call, Quotation sent, Closed lost, Closed won,
- * Passed to Distributor, Closed Won by Distributor, Closed Lost By Distributor,
- * Tender, Quotation Accepted, General pricing in exactly that sequence. So
- * Object.entries gives the right columns with no second table to keep in step.
+ * COLUMN ORDER. The key order of each pipeline's `stages` object in
+ * hubspot-constants.ts is HubSpot's own displayOrder (verified against the live
+ * API on 2026-09-02), and thirteen of the fourteen pipelines still render in
+ * it, straight from Object.entries with no second table to keep in step.
+ *
+ * USA SALES is the one exception. HubSpot's order interleaves the closed and
+ * distributor stages with the live ones, so Dean set an explicit funnel order
+ * on 2026-09-03: see USA_SALES_COLUMN_ORDER below. A USA stage missing from
+ * that list still gets a column, appended after the listed ones in HubSpot
+ * order, so a stage added in HubSpot can never silently vanish from the board.
  */
 
 import {
@@ -23,6 +26,31 @@ import {
   HUBSPOT_PIPELINES,
   stageLabel,
 } from '@/lib/hubspot-constants'
+
+/**
+ * Board column order for USA SALES, Dean's on 2026-09-03: "Quote Request,
+ * General Pricing, Quotation sent, Quotation Accepted, Closed won, closed lost,
+ * passed to dist, closed won by dist, closed lost by dist, tender".
+ *
+ * Stage KEYS, not labels or ids, so renaming a stage in HubSpot cannot quietly
+ * break the order.
+ *
+ * CALL is absent from Dean's list and therefore sorts last rather than being
+ * dropped. A stage with no column is not hidden, it falls into the trailing
+ * "Other" bucket, which would make a deal sitting in Call look homeless.
+ */
+const USA_SALES_COLUMN_ORDER: readonly string[] = [
+  'QUOTE_REQUEST',
+  'GENERAL_PRICING',
+  'QUOTATION_SENT',
+  'QUOTATION_ACCEPTED',
+  'CLOSED_WON',
+  'CLOSED_LOST',
+  'PASSED_TO_DISTRIBUTOR',
+  'CLOSED_WON_DISTRIBUTOR',
+  'CLOSED_LOST_DISTRIBUTOR',
+  'TENDER',
+]
 
 export interface BoardColumn {
   stageId: string
@@ -44,11 +72,21 @@ export function boardColumns(pipelineId: string | null | undefined): BoardColumn
   if (id === '') return []
   const pipeline = Object.values(HUBSPOT_PIPELINES).find((entry) => entry.id === id)
   if (!pipeline) return []
-  return Object.entries(pipeline.stages).map(([stageKey, stageId]) => ({
+  const columns = Object.entries(pipeline.stages).map(([stageKey, stageId]) => ({
     stageId,
     stageKey,
     label: stageLabel(id, stageId),
   }))
+
+  if (id !== HUBSPOT_PIPELINES.USA_SALES.id) return columns
+
+  // Stable sort: an unlisted stage scores one past the end of the list, so it
+  // keeps its HubSpot position relative to the other unlisted ones.
+  const rank = (stageKey: string) => {
+    const at = USA_SALES_COLUMN_ORDER.indexOf(stageKey)
+    return at === -1 ? USA_SALES_COLUMN_ORDER.length : at
+  }
+  return columns.sort((a, b) => rank(a.stageKey) - rank(b.stageKey))
 }
 
 export interface BoardGroup<T> {

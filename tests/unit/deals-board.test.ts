@@ -7,23 +7,32 @@ const S = HUBSPOT_PIPELINES.USA_SALES.stages
 const deal = (id: string, dealstage: string) => ({ id, properties: { dealstage } })
 
 describe('boardColumns', () => {
-  it('gives USA SALES its eleven stages in HubSpot displayOrder, verbatim', () => {
-    // Checked against the live pipeline API on 2026-09-02. The order comes free
-    // from the key order of the stages object, which looks accidental and is
-    // not, so this test is what stops a reorder there scrambling the board.
+  it("gives USA SALES its eleven stages in Dean's funnel order, verbatim", () => {
+    // The labels are HubSpot's, verbatim, checked live on 2026-09-02. The ORDER
+    // is Dean's, set on 2026-09-03, and deliberately not HubSpot displayOrder,
+    // which interleaves the closed and distributor stages with the live ones.
+    // Call is last because it is absent from his list, not because it was
+    // dropped: it keeps a column so Call deals stay visible.
     expect(boardColumns(USA).map((c) => c.label)).toEqual([
       'Quote Request',
-      'Call',
+      'General pricing',
       'Quotation sent',
-      'Closed lost',
+      'Quotation Accepted',
       'Closed won',
+      'Closed lost',
       'Passed to Distributor',
       'Closed Won by Distributor',
       'Closed Lost By Distributor',
       'Tender',
-      'Quotation Accepted',
-      'General pricing',
+      'Call',
     ])
+  })
+
+  it('leaves every other pipeline on HubSpot displayOrder', () => {
+    // The custom order is scoped to USA SALES by pipeline id. A pipeline that
+    // happens to share key names must not get half of Dean's order applied.
+    const uk = HUBSPOT_PIPELINES.UK_SALES
+    expect(boardColumns(uk.id).map((c) => c.stageKey)).toEqual(Object.keys(uk.stages))
   })
 
   it('carries the stage id and its key so a column can be styled by family', () => {
