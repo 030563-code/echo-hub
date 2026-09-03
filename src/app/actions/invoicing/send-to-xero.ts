@@ -24,27 +24,25 @@ import {
 
 const Input = z.object({
   invoiceId: z.string().uuid(),
-  emailToCustomer: z.boolean(),
 })
 
 export type SendToXeroResult =
-  | { success: true; xeroInvoiceNumber: string; emailed: boolean; warnings: string[] }
+  | { success: true; xeroInvoiceNumber: string; warnings: string[] }
   | { success: false; error: string }
 
 interface N8nAuthorizeResponse {
   xero_invoice_id?: string
   xero_invoice_number?: string
-  emailed?: boolean
   error?: string
 }
 
-export async function sendInvoiceToXero(input: { invoiceId: string; emailToCustomer: boolean }): Promise<SendToXeroResult> {
+export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<SendToXeroResult> {
   const gate = await requireInvoicingManage()
   if (!gate.ok) return { success: false, error: gate.error }
 
   const parsed = Input.safeParse(input)
   if (!parsed.success) return { success: false, error: 'Invalid input' }
-  const { invoiceId, emailToCustomer } = parsed.data
+  const { invoiceId } = parsed.data
 
   const webhookUrl = process.env.N8N_CUSTOMER_INVOICE_WEBHOOK_URL
   if (!webhookUrl) return { success: false, error: 'The invoice webhook is not configured on the server.' }
@@ -135,7 +133,6 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
     return { success: false, error: 'This invoice is already being sent.' }
   }
   await logInvoiceEvent(invoiceId, 'authorize_requested', gate.auth.user.id, {
-    email_to_customer: emailToCustomer,
     collected: invoice.is_collection,
   })
 
@@ -248,7 +245,13 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
       tax_total: Number(invoice.tax_total ?? 0),
       total: Number(invoice.total ?? 0),
     },
-    email_to_customer: emailToCustomer,
+    // RETIRED, and deliberately still sent as a hardcoded false rather than
+    // dropped. Dean's decision on 2026-09-03: the customer-facing invoice is a
+    // PDF from the Hub, emailed to the contact by us. Xero is the books only
+    // and must never email the customer. Sending an explicit false means the
+    // n8n Xero email branch can never see a truthy value, even if the branch
+    // itself is still wired up over there.
+    email_to_customer: false,
   }
 
   // The deal's quote reference lives on deals_registry; carried for the Xero
@@ -355,6 +358,6 @@ export async function sendInvoiceToXero(input: { invoiceId: string; emailToCusto
   revalidatePath('/invoicing/accepted')
   revalidatePath('/invoicing/drafts')
   revalidatePath(`/invoicing/${invoice.hubspot_deal_id}`)
-  return { success: true, xeroInvoiceNumber: invoiceNumber, emailed: false, warnings }
+  return { success: true, xeroInvoiceNumber: invoiceNumber, warnings }
 }
 

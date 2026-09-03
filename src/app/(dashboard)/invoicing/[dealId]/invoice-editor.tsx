@@ -122,7 +122,6 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
   // Deliberately opt-IN: emailing is the outward-facing, irreversible half of
   // Send, and the editor remounts on every server write, so a default of true
   // could silently undo a reviewer's decision not to email.
-  const [emailToCustomer, setEmailToCustomer] = useState(false)
 
   const goodsDepots = useMemo(
     () => [...new Set(rows.filter((r) => !r.is_shipping).map((r) => r.ship_from_depot))],
@@ -343,7 +342,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
         router.refresh()
         return
       }
-      const result = await sendInvoiceToXero({ invoiceId: invoice.id, emailToCustomer })
+      const result = await sendInvoiceToXero({ invoiceId: invoice.id })
       if (!result.success) {
         toast.error(result.error)
         router.refresh()
@@ -351,7 +350,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
       }
       for (const warning of result.warnings) toast.warning(warning, { duration: 12000 })
       toast.success(
-        `Invoice ${result.xeroInvoiceNumber} created in Xero${result.emailed ? ' and emailed to the customer' : ''}.`,
+        `Invoice ${result.xeroInvoiceNumber} created in Xero as a draft. Nothing has been emailed to the customer.`,
       )
       router.refresh()
     })
@@ -881,15 +880,10 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
             )}
             {editable && status === 'tax_calculated' && (
               <div className="flex flex-wrap items-center justify-end gap-3">
-                <label className="flex items-center gap-2 text-sm text-gray-600">
-                  <input
-                    type="checkbox"
-                    checked={emailToCustomer}
-                    onChange={(e) => setEmailToCustomer(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300"
-                  />
-                  Email the customer via Xero
-                </label>
+                {/* The "Email the customer via Xero" checkbox was retired on
+                    2026-09-03. Xero is the books only: the customer-facing
+                    invoice is a PDF from the Hub, emailed to the contact by us,
+                    so there is no longer a decision to make here. */}
                 <Button onClick={onSend} disabled={pendingAction !== null} className="bg-green-700 hover:bg-green-800">
                   {spinner('send')}
                   Send to Xero
