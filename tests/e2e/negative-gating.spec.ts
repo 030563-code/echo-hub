@@ -22,6 +22,15 @@ test.describe('Negative capability gating (scoped user)', () => {
     }
   })
 
+  test('a quotes-only user cannot reach Pricing', async ({ page }) => {
+    // Pricing is Dave's desk. A rep gets it only once granted pricing.view, and
+    // until then the prices still reach them through the quote builder, which
+    // reads the same tables under its own capability.
+    await expect(page.locator('aside').getByRole('link', { name: 'Pricing', exact: true })).toHaveCount(0)
+    await page.goto('/pricing')
+    await expect(page).toHaveURL(/\/$/)
+  })
+
   test('dashboard offers no forbidden module cards', async ({ page }) => {
     const main = page.getByRole('main')
     for (const hidden of ['MRP', 'Transport', 'Purchase Orders', 'Bill of Materials']) {
