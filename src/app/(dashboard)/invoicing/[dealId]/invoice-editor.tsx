@@ -8,7 +8,7 @@
  * pending state and is disabled while in flight.
  */
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { AlertTriangle, Loader2, Lock, MapPin, Plus, Trash2 } from 'lucide-react'
@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { US_STATES, DELIVERY_COUNTRIES } from '@/lib/us-address'
 import { lookupZipJurisdiction } from '@/app/actions/tax/lookup-zip'
+import { getXeroItemAccounts, saveInvoiceCoding } from '@/app/actions/invoicing/save-coding'
 import {
   US_DEPOTS,
   DEPOT_FROM_ADDRESSES,
@@ -126,16 +127,31 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
     { status: 'idle' } | { status: 'loading' } | { status: 'ok'; place: string; state: string } | { status: 'error'; message: string }
   >({ status: 'idle' })
   const [rows, setRows] = useState<EditableLine[]>(lines.map(toEditable))
-  // Read from Xero once per editor. Empty is a valid answer: an organisation
-  // that uses no tracking simply gets no pickers, which is why a failure here
-  // is logged rather than shown as an error over the whole invoice.
+  // Read from Xero once per editor.
+  //
+  // The outcome is tracked, not just the list, because an empty list and a
+  // failed call produce the SAME screen otherwise: the whole Tracking column
+  // hides and the rep sees an editor identical to the one that existed before
+  // tracking was built. A failure was logged to the console and nowhere else,
+  // so a broken n8n route looked exactly like a feature that was never
+  // shipped. On a healthy portal this fetch returns two active categories and
+  // neither notice appears; the column is then the 8th of 11 and needs a
+  // horizontal scroll to reach.
   const [trackingCategories, setTrackingCategories] = useState<TrackingCategory[]>([])
+  const [trackingLoad, setTrackingLoad] = useState<'loading' | 'ok' | 'empty' | 'failed'>('loading')
+  const [trackingError, setTrackingError] = useState<string | null>(null)
   useEffect(() => {
     let cancelled = false
     getTrackingCategories().then((result) => {
       if (cancelled) return
-      if (result.success) setTrackingCategories(result.categories)
-      else console.error('Tracking categories could not be loaded:', result.error)
+      if (result.success) {
+        setTrackingCategories(result.categories)
+        setTrackingLoad(result.categories.length > 0 ? 'ok' : 'empty')
+      } else {
+        setTrackingLoad('failed')
+        setTrackingError(result.error)
+        console.error('Tracking categories could not be loaded:', result.error)
+      }
     })
     return () => {
       cancelled = true
@@ -162,6 +178,123 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
 
   const status = invoice.status as CustomerInvoiceStatus
   const editable = canManage && (status === 'draft' || status === 'tax_calculated')
+
+  /**
+   * The Xero CODING stays editable long after the rest of the invoice freezes.
+   *
+   * Dean's call: freezing at 'sent' protects the document the customer is
+   * holding, but the item code and account code are not on that document. They
+   * are absent from linesHash (so they cannot invalidate the tax or trip the
+   * staleness guard) and absent from the PDF (so they cannot make the emailed
+   * file disagree with the record). Until Send to Xero runs they have had no
+   * effect on anything, and blocking them only forced a full rebuild to fix a
+   * one-line mapping. Stops at 'completed', where Xero already used them.
+   */
+  const codingEditable =
+    canManage && (status === 'draft' || status === 'tax_calculated' || status === 'filed' || status === 'documented' || status === 'sent')
+  /** True once the normal Save button is gone, so coding needs its own save. */
+  const codingNeedsOwnSave = codingEditable && !editable
+
+  /**
+   * Xero's item-to-account map, fetched once and reused.
+   *
+   * Dean: "it would be better if the account code automatically fetches and
+   * syncs when you enter/reenter the Xero item code." One call brings back the
+   * whole map (107 items live), so this is lazy on the first item-code edit
+   * rather than on page load: an invoice nobody recodes should not pay a Xero
+   * round trip to open.
+   */
+  const [itemAccounts, setItemAccounts] = useState<Record<string, string | null> | null>(null)
+  const itemAccountsPromise = useRef<Promise<Record<string, string | null> | null> | null>(null)
+
+  const loadItemAccounts = () => {
+    if (itemAccountsPromise.current) return itemAccountsPromise.current
+    const pending = getXeroItemAccounts()
+      .then((result) => {
+        if (!result.success) {
+          // Not fatal. The field stays typeable, which is how it behaved
+          // before, so a Xero outage cannot block coding an invoice by hand.
+          toast.warning(`Could not read Xero's item list: ${result.error}`)
+          itemAccountsPromise.current = null
+          return null
+        }
+        setItemAccounts(result.accounts)
+        return result.accounts
+      })
+      .catch(() => {
+        itemAccountsPromise.current = null
+        return null
+      })
+    itemAccountsPromise.current = pending
+    return pending
+  }
+
+  /**
+   * Resolve the account for a typed item code, on blur rather than per
+   * keystroke: "H9BALT" passes through H, H9, H9B on the way in and none of
+   * those should rewrite the account.
+   *
+   * The three outcomes are deliberately distinguished. A code Xero does not
+   * have at all is usually the real problem (the `01-EBH9` case, a SKU that was
+   * never a Xero item), and a code Xero has with NO account behind it is a
+   * different problem that typing harder will not fix. Saying "not found" for
+   * both is what made the original error hard to act on.
+   */
+  const syncAccountFromItemCode = async (lineKey: string, rawItemCode: string) => {
+    const itemCode = rawItemCode.trim()
+    if (!itemCode) return
+    const accounts = itemAccounts ?? (await loadItemAccounts())
+    if (!accounts) return
+
+    if (!(itemCode in accounts)) {
+      toast.warning(`Xero has no item called "${itemCode}", so no account could be filled in. Check the code.`)
+      return
+    }
+
+    const account = accounts[itemCode]
+    if (!account) {
+      toast.warning(`Xero item "${itemCode}" has no sales account set against it, so the account must be typed by hand.`)
+      return
+    }
+
+    setRows((current) => {
+      const target = current.find((r) => r.line_key === lineKey)
+      // Already correct, so say nothing: re-blurring a field should be silent.
+      if (!target || target.account_code === account) return current
+      toast.success(`Account ${account} filled in from ${itemCode}.`)
+      return current.map((r) => (r.line_key === lineKey ? { ...r, account_code: account } : r))
+    })
+  }
+
+  /** Whether the coding on screen differs from what is stored, so the save
+   *  button only appears when there is something to save. */
+  const codingDirty = useMemo(() => {
+    const stored = new Map(
+      lines.map((l) => [l.line_key, `${l.xero_item_code ?? ''}|${l.account_code ?? ''}`]),
+    )
+    return rows.some(
+      (row) => stored.get(row.line_key) !== `${row.xero_item_code.trim()}|${row.account_code.trim()}`,
+    )
+  }, [rows, lines])
+
+  /** Persist just the two Xero coding columns, for a frozen invoice. */
+  const onSaveCoding = () =>
+    run('coding', async () => {
+      const result = await saveInvoiceCoding({
+        invoiceId: invoice.id,
+        lines: rows.map((row) => ({
+          line_key: row.line_key,
+          xero_item_code: row.xero_item_code.trim() || null,
+          account_code: row.account_code.trim() || null,
+        })),
+      })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success('Xero codes saved.')
+      router.refresh()
+    })
   // Only the end of the line is terminal now. 'sent' means the customer has the
   // document but Xero has not been told yet, so it still has a button.
   const terminal = status === 'completed' || status === 'authorizing'
@@ -741,6 +874,23 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
       </Card>
 
       {/* Lines */}
+      {trackingLoad === 'failed' && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3">
+          <p className="text-sm font-semibold text-amber-900">
+            Xero tracking categories could not be loaded.
+          </p>
+          <p className="mt-1 text-sm text-amber-800">
+            {trackingError} Nothing else is affected, but no tracking will be sent to Xero for this
+            invoice until this loads. Reload the page to try again.
+          </p>
+        </div>
+      )}
+      {trackingLoad === 'empty' && (
+        <p className="text-xs text-gray-500">
+          Xero has no active tracking categories, so there is nothing to pick on these lines.
+        </p>
+      )}
+
       <Card className="bg-white border-gray-200 p-0 overflow-x-auto">
         <table className="w-full min-w-[960px] text-sm">
           <thead>
@@ -782,9 +932,15 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                       <Input
                         value={row.xero_item_code}
                         onChange={(e) => updateRow(row.line_key, { xero_item_code: e.target.value })}
+                        // On blur, not on change: the account follows a
+                        // FINISHED item code, never the letters on the way in.
+                        onBlur={(e) => {
+                          if (codingEditable) void syncAccountFromItemCode(row.line_key, e.target.value)
+                        }}
                         placeholder="Xero item code"
-                        disabled={!editable}
+                        disabled={!codingEditable}
                         aria-label="Xero item code"
+                        title="Changing this fills in the account code from Xero when you leave the field."
                         className="h-7 min-w-28 py-0 text-xs"
                       />
                       {row.is_shipping && (
@@ -831,7 +987,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                       value={row.account_code}
                       onChange={(e) => updateRow(row.line_key, { account_code: e.target.value })}
                       placeholder="required"
-                      disabled={!editable}
+                      disabled={!codingEditable}
                       aria-label="Xero account code"
                       aria-invalid={!row.account_code.trim()}
                       title={
@@ -1053,6 +1209,21 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
               <p className="text-xs text-gray-500 sm:text-right">
                 Sending to TaxJar files the sale and allocates the invoice number. Preview first: it changes nothing.
               </p>
+            )}
+
+            {/* The invoice is frozen from here on, but its Xero coding is not.
+                Those two columns never reach the customer's document, so they
+                stay fixable right up until Xero has actually used them. */}
+            {codingNeedsOwnSave && codingDirty && (
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <p className="mr-auto text-xs text-amber-700">
+                  Xero item or account codes have been changed and not saved.
+                </p>
+                <Button variant="outline" onClick={onSaveCoding} disabled={pendingAction !== null}>
+                  {spinner('coding')}
+                  Save Xero codes
+                </Button>
+              </div>
             )}
 
             {canManage && status === 'filed' && (

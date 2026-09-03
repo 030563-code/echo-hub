@@ -88,7 +88,8 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
       error:
         `${unaccounted.length} line${unaccounted.length === 1 ? '' : 's'} ha${unaccounted.length === 1 ? 's' : 've'} no Xero account code, ` +
         `so the revenue would post to the default sales account: ${named}. ` +
-        `Set the account on each line first (the item code drives it, and both are editable).`,
+        `Type the Xero item code on each of those lines and the account fills itself in, then press Save Xero codes. ` +
+        `Both fields stay editable at this stage even though the rest of the invoice is frozen.`,
     }
   }
 
