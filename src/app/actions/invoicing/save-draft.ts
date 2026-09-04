@@ -119,9 +119,19 @@ export async function saveInvoiceDraft(input: z.infer<typeof Input>): Promise<Sa
   const normalized = lines.map((l) => {
     const stored = storedByKey.get(l.line_key)
     const isKitComponent = stored ? stored.origin === 'kit_split' : l.origin === 'kit_split'
+    const origin = stored ? stored.origin : l.origin
     return {
     ...l,
-    origin: stored ? stored.origin : l.origin,
+    origin,
+    // Freight is a TAX decision, not a label: TaxJar prices a shipping amount
+    // by the destination's own freight rules, which differ from the goods
+    // rules. So who gets to set it matters.
+    //
+    // A manual line has no SKU, so nothing can derive it and the reviewer must
+    // say. A HubSpot line derives it from the SKU (SHIPPING_SKUS) and re-derives
+    // on every rebuild, so the STORED value wins there: a crafted payload
+    // cannot relabel goods as freight, or freight as goods, to move the tax.
+    is_shipping: origin === 'manual' ? l.is_shipping : (stored?.is_shipping ?? l.is_shipping),
     ship_from_depot: isKitComponent ? KIT_SHIP_FROM : l.ship_from_depot,
     ship_from_locked: isKitComponent,
     quantity: roundCents(l.quantity),
