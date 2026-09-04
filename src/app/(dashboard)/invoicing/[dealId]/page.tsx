@@ -10,6 +10,8 @@ import { OpenInvoiceButton } from '../open-invoice-button'
 import { InvoiceEditor } from './invoice-editor'
 import { InvoiceAttachments } from '@/components/invoicing/invoice-attachments'
 import type { InvoiceAttachmentRow } from '@/app/actions/invoicing/attachments'
+import { listDeliveryAddresses } from '@/lib/customer-invoice/delivery-address-store'
+import { deliveryContactKey } from '@/lib/customer-invoice/delivery-address-book'
 
 export const dynamic = 'force-dynamic'
 
@@ -89,6 +91,17 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     .eq('invoice_id', invoice.id)
     .order('created_at', { ascending: true })
 
+  // The customer's remembered ship-to addresses, read server-side so the picker
+  // is populated on first paint. A customer with neither a Xero account code nor
+  // a HubSpot company resolves to no key and therefore no book, and the editor
+  // hides the picker entirely.
+  const savedAddresses = await listDeliveryAddresses(
+    deliveryContactKey(
+      invoice.taxjar_customer_id as string | null,
+      invoice.hubspot_company_id as string | null,
+    ),
+  )
+
   return (
     <>
     <InvoiceEditor
@@ -103,6 +116,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       quoteReference={deal?.quote_reference ? String(deal.quote_reference) : null}
       linesChanged={linesChanged}
       canManage={canManage}
+      savedAddresses={savedAddresses}
     />
     <div className="mt-6">
       <InvoiceAttachments

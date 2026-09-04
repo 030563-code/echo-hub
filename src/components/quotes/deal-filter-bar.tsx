@@ -54,9 +54,17 @@ export function DealFilterBar({
   const owners = Object.entries(ownerNameById ?? {}).sort((a, b) => a[1].localeCompare(b[1]))
 
   return (
-    <details open={active > 0} className="rounded border border-gray-200 bg-white">
+    // Open by default, and named for what it actually does.
+    //
+    // It used to open only when a filter was already applied, so a rep arriving
+    // fresh saw one thin bar reading "Filters" and nothing else. Jillian
+    // reported the Hub as having no search at all (2026-09-04), which is what a
+    // collapsed disclosure looks like when you do not already know it is there.
+    // The search box is the most-used control on these pages, so it should not
+    // cost a click to find.
+    <details open className="rounded border border-gray-200 bg-white">
       <summary className="cursor-pointer select-none px-4 py-2 text-sm font-medium text-gray-700">
-        Filters
+        Search and filters
         {active > 0 && (
           <span className="ml-2 rounded-full bg-echo-yellow px-2 py-0.5 text-[11px] font-semibold text-gray-900">
             {active}

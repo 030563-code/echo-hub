@@ -40,6 +40,28 @@ function key(value: string | number | null | undefined): string {
   return String(value ?? '').trim()
 }
 
+/**
+ * The name on a HubSpot owner record, for signing an email as the account it is
+ * actually sent from.
+ *
+ * The Hub keeps its own `profiles.display_name`, and the two drift: a quote
+ * emailed from one rep's mailbox was signing off with whatever name the Hub
+ * profile happened to hold, which is how a customer nearly got a quote signed
+ * by a colleague. HubSpot is the record of who the sender is, so it wins.
+ *
+ * Returns null rather than a placeholder when there is no usable name, so the
+ * caller can fall back to its own instead of printing "Owner 12345" under
+ * "Thanks," in an email to a customer.
+ */
+export function ownerSignatureName(owner: HubSpotOwner | null | undefined): string | null {
+  if (!owner) return null
+  const name = [owner.firstName, owner.lastName]
+    .map((part) => String(part ?? '').trim())
+    .filter(Boolean)
+    .join(' ')
+  return name === '' ? null : name
+}
+
 function displayName(owner: HubSpotOwner, id: string): string {
   const name = [owner.firstName, owner.lastName]
     .map((part) => String(part ?? '').trim())

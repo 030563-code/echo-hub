@@ -81,6 +81,8 @@ export async function renderInvoicePdf(
       delivery_zip: invoice.delivery_zip,
       delivery_street: invoice.delivery_street,
       delivery_country: invoice.delivery_country,
+      delivery_location: invoice.delivery_location,
+      delivery_requested_by: invoice.delivery_requested_by,
       is_collection: invoice.is_collection,
       billing_name: invoice.billing_name,
       billing_line1: invoice.billing_line1,

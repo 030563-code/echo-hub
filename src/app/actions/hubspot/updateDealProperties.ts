@@ -4,9 +4,14 @@ import { assertDealAccess } from '@/lib/authz'
 
 // Properties an agent must never set directly via this generic action.
 // dealstage/pipeline go through updateDealStage; ownership/amount are not
-// agent-editable. sending_depot and amount are also blocked here — they must
-// only be set via updateDealStage / createQuote, which enforce the depot
-// allow-list and server-side total recompute respectively. (finding #5)
+// agent-editable. sending_depot and amount are also blocked here because this
+// action takes a caller-supplied property bag: the depot has to go through
+// updateDealStage's allow-list, and the amount has to stay a server-recomputed
+// total. (finding #5)
+//
+// The amount is written by updateDealStage (on Generate, via createQuote) and by
+// updateDealAmount (on republish, via resyncDeal). Both take a number rather
+// than a bag, so neither reopens what this list closes.
 const BLOCKED_PROPERTIES = new Set([
   'hubspot_owner_id',
   'hs_owner_id',

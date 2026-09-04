@@ -1,6 +1,7 @@
 'use server'
 
 import { assertDealAccess } from '@/lib/authz'
+import { lineItemIdsFromAssociations, LINE_ITEM_ASSOCIATION_PARAM } from '@/lib/hubspot-associations'
 
 interface LineItem {
   productId: string
@@ -41,11 +42,9 @@ export async function addLineItemsToDeal(dealId: string, lineItems: LineItem[], 
     // must not duplicate line items on the live deal — so the new set REPLACES
     // whatever is already attached instead of appending to it. That includes
     // items added directly in HubSpot: the builder seeds its cart from the
-    // deal's current items, so the cart IS the intended full state. Requesting both
-    // singular and plural association keys to be safe (mirrors getDealDetails.ts;
-    // HubSpot's key naming here is inconsistent).
+    // deal's current items, so the cart IS the intended full state.
     const dealResponse = await fetch(
-      `https://api.hubapi.com/crm/v3/objects/deals/${dealId}?associations=line_item,line_items`,
+      `https://api.hubapi.com/crm/v3/objects/deals/${dealId}?associations=${LINE_ITEM_ASSOCIATION_PARAM}`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -62,11 +61,11 @@ export async function addLineItemsToDeal(dealId: string, lineItems: LineItem[], 
     }
 
     const dealData = await dealResponse.json()
-    const existingRefs: { id: string }[] = [
-      ...(dealData?.associations?.line_item?.results ?? []),
-      ...(dealData?.associations?.line_items?.results ?? []),
-    ]
-    const existingIds = Array.from(new Set(existingRefs.map((r) => r.id)))
+    // Every spelling HubSpot uses, through the shared reader. Hand-rolling this
+    // is what broke it: the two underscored keys were checked and the one the
+    // API actually returns, "line items" with a space, was not, so nothing was
+    // ever archived and each Generate appended another set to the deal.
+    const existingIds = lineItemIdsFromAssociations(dealData?.associations)
 
     // 2. Archive the existing line items so the deal's line-item state is fully
     // replaced by what we're about to create — no-op when there are none.

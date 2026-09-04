@@ -9,6 +9,8 @@ const REMIT: RemittanceDetails = {
 
 const header = (over: Partial<InvoiceDocumentHeaderRow> = {}): InvoiceDocumentHeaderRow => ({
   invoice_number: null,
+  delivery_location: null,
+  delivery_requested_by: null,
   holding_reference: 'USI2026-00010',
   invoice_date: null,
   due_date: null,

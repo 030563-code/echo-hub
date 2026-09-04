@@ -235,7 +235,7 @@ export async function updateDealStage(dealId: string, pipelineId: string, stageI
       // deal_status has to be supplied here because the column is NOT NULL with
       // no default. 'Quote Created' is the same neutral placeholder createQuote
       // uses, and deliberately NOT the accepted stage id, so this insert cannot
-      // fire notify_quote_accepted.
+      // fire notify_quote_accepted. n8n's stage sync corrects it moments later.
       const { error: insertError } = await supabase
         .from('deals_registry')
         .insert({ hubspot_deal_id: dealId, deal_status: 'Quote Created', ...registryPatch })

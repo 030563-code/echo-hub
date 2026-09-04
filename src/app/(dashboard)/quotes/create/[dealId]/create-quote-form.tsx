@@ -146,9 +146,6 @@ interface CreateQuoteFormProps {
   }
   /** The deal's HubSpot company, which is what a contract price is keyed to. */
   companyId?: string | null
-  /** HubSpot's per-portal BCC logging address, so a quote emailed from Gmail
-   *  lands on the deal timeline. Absent just means the email is not logged. */
-  bccAddress?: string | null
 }
 
 // Radix Select can't represent "cleared", so the undecided state gets an
@@ -202,7 +199,7 @@ const mapInitialLineItems = (items: HubSpotLineItem[]): LineItem[] =>
     unitPrice: numberToField(item.properties.price),
   }))
 
-export default function CreateQuoteForm({ dealId, dealName, settings, products, salesRep, contact, companyName, initialLineItems = [], initialDepot = '', initialComments = '', dealCurrency = 'USD', initialWinProbability = '', initialRepAgent = '', initialIsCollection = false, editing, pricing, companyId = null, bccAddress = null }: CreateQuoteFormProps) {
+export default function CreateQuoteForm({ dealId, dealName, settings, products, salesRep, contact, companyName, initialLineItems = [], initialDepot = '', initialComments = '', dealCurrency = 'USD', initialWinProbability = '', initialRepAgent = '', initialIsCollection = false, editing, pricing, companyId = null }: CreateQuoteFormProps) {
   const money = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: dealCurrency,
@@ -1153,7 +1150,6 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                       repName: salesRep.name,
                       repPhone: salesRep.phone,
                       repEmail: salesRep.email,
-                      bccAddress,
                     }}
                   />
                 ) : quoteError ? (

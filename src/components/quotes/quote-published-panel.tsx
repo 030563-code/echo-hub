@@ -21,8 +21,9 @@ import { markQuoteEmailComposed } from '@/app/actions/sales/quote-email'
  * is one click into a prefilled Gmail window.
  *
  * The email is composed, never sent. Nothing leaves the Hub until the rep
- * presses Send in their own mailbox, which is also what makes HubSpot log it:
- * the BCC address only works for mail sent from a connected inbox.
+ * presses Send in their own mailbox. There is no BCC: HubSpot already logs mail
+ * sent from a connected inbox against the contact, its company and the deal, so
+ * putting a colleague's address on the BCC line only sent them a second copy.
  */
 
 export interface PublishedQuoteView {
@@ -46,9 +47,6 @@ export interface QuoteEmailDefaults {
   repName?: string | null
   repPhone?: string | null
   repEmail?: string | null
-  /** HubSpot's per-portal logging address. Absent just means the sent email is
-   *  not logged; the quote still goes out. */
-  bccAddress?: string | null
 }
 
 function longDate(iso: string): string {
@@ -94,7 +92,6 @@ export function QuotePublishedPanel({
   function openGmail() {
     const url = buildGmailComposeUrl({
       to,
-      bcc: email.bccAddress,
       subject,
       body,
       // Picks which signed-in account composes. Without it a rep signed into
@@ -193,9 +190,8 @@ export function QuotePublishedPanel({
             <Textarea id="emailBody" rows={10} value={body} onChange={(e) => setBody(e.target.value)} className="mt-1" />
           </div>
           <p className="text-xs text-gray-500">
-            {email.bccAddress
-              ? `Opens Gmail in a new tab with ${email.bccAddress} on the BCC line, which is how HubSpot logs the sent email against the contact, its company and this deal. Nothing is sent until you press Send there.`
-              : 'Opens Gmail in a new tab. Nothing is sent until you press Send there. No HubSpot logging address is configured, so this email will not appear on the deal timeline.'}
+            Opens Gmail in a new tab. Nothing is sent until you press Send there.
+            HubSpot logs it against the contact, its company and this deal on its own.
           </p>
           <Button size="sm" onClick={openGmail} disabled={!to.trim()}>
             <Mail className="mr-1.5 h-4 w-4" />

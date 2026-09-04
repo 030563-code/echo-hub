@@ -33,7 +33,7 @@ describe('buildGmailComposeUrl', () => {
   })
 
   it('drops an empty value rather than leaving an empty recipient chip', () => {
-    const url = buildGmailComposeUrl({ to: 'a@b.com', cc: '', bcc: null, authuser: '   ' })
+    const url = buildGmailComposeUrl({ to: 'a@b.com', cc: '', authuser: '   ' })
     expect(url).toBe(`${PREFIX}&to=a%40b.com`)
   })
 
@@ -41,8 +41,10 @@ describe('buildGmailComposeUrl', () => {
     // authuser decides WHICH signed-in account composes. A rep signed into two
     // Google accounts otherwise sends from the wrong one, and HubSpot then logs
     // nothing because the sender is not the connected inbox.
-    const url = buildGmailComposeUrl({ to: 'a@b.com', bcc: '3882358@bcc.hubspot.com', authuser: 'jillian.rocco@echobarrier.com' })
-    expect(param(url, 'bcc')).toBe('3882358@bcc.hubspot.com')
+    const url = buildGmailComposeUrl({ to: 'a@b.com', authuser: 'jillian.rocco@echobarrier.com' })
+    // No bcc parameter is ever emitted: HubSpot logs a connected inbox on its
+    // own, and the address this used to carry was a colleague's own mailbox.
+    expect(url).not.toContain('bcc=')
     expect(param(url, 'authuser')).toBe('jillian.rocco@echobarrier.com')
   })
 })
@@ -99,7 +101,7 @@ describe('buildQuoteEmail', () => {
 
   it('leaves the finished URL comfortably short of where browsers truncate', () => {
     const { subject, body } = buildQuoteEmail(full)
-    const url = buildGmailComposeUrl({ to: 'mike@sunvalley.com', bcc: '3882358@bcc.hubspot.com', subject, body })
+    const url = buildGmailComposeUrl({ to: 'mike@sunvalley.com', subject, body })
     expect(url.length).toBeLessThan(2000)
   })
 })
