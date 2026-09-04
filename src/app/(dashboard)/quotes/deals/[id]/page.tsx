@@ -7,6 +7,7 @@ import { REP_AGENT_LABEL, REP_AGENT_PROPERTY } from '@/lib/deal-properties'
 import { AssignContractorDialog } from '@/components/quotes/assign-contractor-dialog'
 import { isClosedStage } from '@/lib/deals-board'
 import { stageChipClass } from '@/lib/stage-chip'
+import { hubspotRecordUrl } from '@/lib/hubspot-links'
 import { getCompanyDetails } from '@/app/actions/hubspot/getCompanyDetails'
 import { getContactDetails } from '@/app/actions/hubspot/getContactDetails'
 import { getLineItems } from '@/app/actions/hubspot/getLineItems'
@@ -164,6 +165,7 @@ export default async function QuoteRequestDetailsPage(props: {
   // A finished deal has nothing left to quote or reassign.
   const dealIsClosed = isClosedStage(deal.properties.dealstage)
   const formatMoney = makeMoney((deal.properties.deal_currency_code || 'USD').trim().toUpperCase() || 'USD')
+  const hubspotDealUrl = hubspotRecordUrl('deal', deal.id)
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -204,9 +206,13 @@ export default async function QuoteRequestDetailsPage(props: {
                initialDelivery={initialDelivery}
              />
            )}
-           {process.env.NEXT_PUBLIC_HUBSPOT_PORTAL_ID && (
+           {/* The object-type form, record/0-3/{id}, not the legacy
+               /deal/{id}. HubSpot stopped redirecting the old path, so this
+               button simply failed to open the deal. hubspotRecordUrl was
+               added for exactly this and this call site was missed. */}
+           {hubspotDealUrl && (
              <a
-               href={`https://app.hubspot.com/contacts/${process.env.NEXT_PUBLIC_HUBSPOT_PORTAL_ID}/deal/${deal.id}`}
+               href={hubspotDealUrl}
                target="_blank"
                rel="noopener noreferrer"
                className="w-full sm:w-auto"

@@ -38,3 +38,35 @@ describe('quote record URLs', () => {
     expect(url).toBe('https://app.hubspot.com/contacts/3882358/record/0-14/42607942261')
   })
 })
+
+/**
+ * The helper was right and still the button was broken, because one call site
+ * never used it: the deal page hand-built the legacy /deal/{id} path, which
+ * HubSpot no longer redirects, so "Edit in HubSpot" opened nothing. Testing the
+ * helper harder would not have caught that. This does.
+ */
+describe('no call site hand-builds a HubSpot URL', () => {
+  it('leaves app.hubspot.com to hubspot-links.ts alone', async () => {
+    const { readdir, readFile } = await import('node:fs/promises')
+    const { join } = await import('node:path')
+
+    const offenders: string[] = []
+    const walk = async (dir: string): Promise<void> => {
+      for (const entry of await readdir(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name)
+        if (entry.isDirectory()) {
+          await walk(full)
+          continue
+        }
+        if (!/\.tsx?$/.test(entry.name)) continue
+        if (full.endsWith(join('lib', 'hubspot-links.ts'))) continue
+        const source = await readFile(full, 'utf8')
+        // The literal is what matters; a comment mentioning it is fine.
+        if (/href[^\n]*app\.hubspot\.com/.test(source)) offenders.push(full)
+      }
+    }
+    await walk('src')
+
+    expect(offenders, `build these with hubspotRecordUrl instead: ${offenders.join(', ')}`).toEqual([])
+  })
+})
