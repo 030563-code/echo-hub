@@ -37,6 +37,7 @@ export default async function DiscountCapsPage() {
       <DiscountCapsClient
         reps={reps.map((r) => ({ ...r, pipelineLabel: pipelineLabel(r.pipeline_id) }))}
         caps={caps}
+        scopedToRegion={!isSuperAdmin}
       />
     </div>
   )
