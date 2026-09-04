@@ -68,6 +68,13 @@ async function callXero<T>(body: Record<string, unknown>): Promise<XeroCall<T>> 
     } catch {
       return { ok: false, error: 'Xero returned a response that could not be read.' }
     }
+    // THE CONTRACT: every action branch in the n8n workflow must answer with
+    // `ok: true` alongside its payload. Anything else is a rejection, including
+    // a perfectly good result that simply forgot the envelope. That is not
+    // theoretical: "Respond Tracking Categories" returned a full, correct
+    // { categories: [...] } with no `ok`, and the picker showed an error while
+    // the n8n run showed a success. If a lookup errors here but the execution
+    // log looks fine, check the responding node for this field first.
     const payload = json as { ok?: boolean; error?: string }
     if (payload?.ok !== true) return { ok: false, error: payload?.error || 'Xero rejected the request.' }
     return { ok: true, data: json as T }
