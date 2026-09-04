@@ -165,25 +165,64 @@ export async function updateDealStage(dealId: string, pipelineId: string, stageI
     // 4) Persist to the registry (session client, RLS-enforced). Never writes
     //    deal_status or depot_code: those keep flowing HubSpot -> n8n, so the
     //    Hub's own write can never fire the accepted-quote trigger or race
-    //    the sync. Upsert only sets the columns provided.
-    const { error: writeError } = await supabase.from('deals_registry').upsert(
-      {
-        hubspot_deal_id: dealId,
-        pipeline_id: pipelineId,
-        delivery_street: address.value.street,
-        delivery_city: address.value.city,
-        delivery_state: address.value.state,
-        delivery_zip: address.value.zip,
-        delivery_country: 'US',
-        ...(parsedProbability !== null ? { deal_probability: parsedProbability } : {}),
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'hubspot_deal_id' },
-    )
+    //    the sync.
+    //
+    //    UPDATE, not upsert, and that distinction is the whole bug this
+    //    replaced. deals_registry.deal_status is NOT NULL with NO DEFAULT, and
+    //    Postgres validates an INSERT tuple BEFORE it resolves ON CONFLICT, so
+    //    an upsert that omits deal_status fails with a not-null violation even
+    //    when the row plainly exists. Every acceptance from the Hub failed on
+    //    that, reporting "the deal is outside your pipeline" while the real
+    //    cause had nothing to do with RLS.
+    const registryPatch = {
+      pipeline_id: pipelineId,
+      delivery_street: address.value.street,
+      delivery_city: address.value.city,
+      delivery_state: address.value.state,
+      delivery_zip: address.value.zip,
+      delivery_country: 'US',
+      ...(parsedProbability !== null ? { deal_probability: parsedProbability } : {}),
+      updated_at: new Date().toISOString(),
+    }
+
+    const { data: updatedRows, error: writeError } = await supabase
+      .from('deals_registry')
+      .update(registryPatch)
+      .eq('hubspot_deal_id', dealId)
+      // Selected back because an RLS UPDATE policy FILTERS rows rather than
+      // raising: a deal outside the caller's pipeline returns error null and
+      // zero rows, and without this the rep would be told it saved.
+      .select('hubspot_deal_id')
+
     if (writeError) {
+      console.error('deals_registry acceptance update failed', writeError.message)
       return {
         success: false,
-        error: 'Could not save the delivery address for this deal. If the deal is outside your pipeline it cannot be accepted from the Hub.',
+        error: 'Could not save the delivery address for this deal. Please try again.',
+      }
+    }
+
+    if (!updatedRows || updatedRows.length === 0) {
+      // No row to update. Either the deal has never been quoted through the Hub
+      // and n8n has not synced it yet, or it sits outside the caller's pipeline
+      // and RLS filtered it away. The insert distinguishes them: RLS refuses it
+      // too, and only then is the pipeline message the right one.
+      //
+      // deal_status has to be supplied here because the column is NOT NULL with
+      // no default. 'Quote Created' is the same neutral placeholder createQuote
+      // uses, and deliberately NOT the accepted stage id, so this insert cannot
+      // fire notify_quote_accepted. n8n's stage sync corrects it moments later.
+      const { error: insertError } = await supabase
+        .from('deals_registry')
+        .insert({ hubspot_deal_id: dealId, deal_status: 'Quote Created', ...registryPatch })
+
+      if (insertError) {
+        console.error('deals_registry acceptance insert failed', insertError.message)
+        return {
+          success: false,
+          error:
+            'Could not save the delivery address for this deal. If the deal is outside your pipeline it cannot be accepted from the Hub.',
+        }
       }
     }
   }
