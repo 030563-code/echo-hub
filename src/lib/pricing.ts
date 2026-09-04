@@ -35,7 +35,12 @@ export type PriceSource = 'contract' | 'list' | 'hubspot' | 'manual'
 export interface ListPriceRow {
   sku: string
   currency: string
-  /** MSRP (LIST). The quote builder starts a line here. */
+  /** The price the quote builder starts a line at.
+   *
+   *  MSRP until 2026-09-04, MAP from then on: quoting at MSRP put every general
+   *  line about a third above what the rep had been quoting by hand, and with
+   *  no discount cap set there was no way back down. The full MSRP is kept in
+   *  list_prices.msrp_price. */
   unit_price: number | string
   /** MAP (Advertised). Reference only: resolveBasePrice never reads it, so a
    *  rep can never be quoted at MAP by accident. */
