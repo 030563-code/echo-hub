@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
-import { Copy, ExternalLink, FileText, Mail, RefreshCw } from 'lucide-react'
+import { Check, Copy, ExternalLink, FileText, Mail, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { formatMoney } from '@/lib/utils'
 import { hubspotRecordUrl } from '@/lib/hubspot-links'
 import { buildGmailComposeUrl, buildQuoteEmail } from '@/lib/gmail-compose'
+import { markQuoteSent } from '@/app/actions/sales/mark-quote-sent'
 import { markQuoteEmailComposed } from '@/app/actions/sales/quote-email'
 
 /**
@@ -58,10 +59,28 @@ function longDate(iso: string): string {
 export function QuotePublishedPanel({
   quote,
   email,
+  dealId,
 }: {
   quote: PublishedQuoteView
   email: QuoteEmailDefaults
+  /** Needed to move the deal on once the rep confirms they have sent it. */
+  dealId: string
 }) {
+  const [sentState, setSentState] = useState<'idle' | 'saving' | 'done' | 'error'>('idle')
+  const [sentError, setSentError] = useState<string | null>(null)
+
+  async function confirmSent() {
+    setSentState('saving')
+    setSentError(null)
+    const result = await markQuoteSent({ dealId })
+    if (!result.success) {
+      setSentError(result.error)
+      setSentState('error')
+      return
+    }
+    setSentState('done')
+  }
+
   const defaults = buildQuoteEmail({
     contactFirstName: email.contactFirstName,
     companyName: email.companyName,
@@ -173,7 +192,26 @@ export function QuotePublishedPanel({
             {showEmail ? 'Hide email' : 'Compose in Gmail'}
           </Button>
         )}
+        {/* Outside the email block on purpose: a rep who copied the link, or
+            sent the quote from their own mail client, still has to be able to
+            say so. Generating the quote no longer moves the deal, so this is
+            the only thing that does. */}
+        {sentState === 'done' ? (
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-green-800">
+            <Check className="h-4 w-4" />
+            Marked as sent
+          </span>
+        ) : (
+          <Button size="sm" variant="outline" onClick={confirmSent} disabled={sentState === 'saving'}>
+            <Check className="mr-1.5 h-4 w-4" />
+            {sentState === 'saving' ? 'Marking...' : 'Mark as sent'}
+          </Button>
+        )}
       </div>
+
+      {sentError && (
+        <p className="text-xs text-red-700">The deal could not be moved to Quotation sent: {sentError}</p>
+      )}
 
       {showEmail && (
         <div className="space-y-3 rounded border border-green-200 bg-white p-3">

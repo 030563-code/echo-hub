@@ -396,7 +396,22 @@ export async function createQuote(params: CreateQuoteParams) {
           error: 'This pipeline has no Quotation Sent stage configured, so the deal was not moved. Nothing was changed.',
         }
       }
-      const r = await updateDealStage(params.dealId, pipelineId, quotationSentStageId, effectiveDepot ?? undefined, computedTotal)
+      // THE STAGE IS NOT MOVED HERE ANY MORE.
+      //
+      // This ran before the line items were attached and before the HubSpot
+      // quote was published, so the deal announced "Quotation sent" while the
+      // quote was still being built, and kept saying it if a later step failed.
+      // The Hub cannot see the send either: it opens a prefilled Gmail window
+      // and nothing leaves until the rep presses Send in another tab. The rep
+      // now says so explicitly, via markQuoteSent behind Mark as sent.
+      //
+      // The call stays, because it does a second job: writing the deal AMOUNT
+      // and the sending depot back to HubSpot. It writes the deal's CURRENT
+      // stage, so those still land and the stage does not move. The Quotation
+      // sent id remains the fallback for the case where the current stage could
+      // not be read at all, where leaving the stage unknown is worse.
+      const currentStageId = String(deal?.properties?.dealstage ?? '').trim() || quotationSentStageId
+      const r = await updateDealStage(params.dealId, pipelineId, currentStageId, effectiveDepot ?? undefined, computedTotal)
       if (!r.success) return { success: false, error: r.error || 'Failed to update deal stage' }
     }
 

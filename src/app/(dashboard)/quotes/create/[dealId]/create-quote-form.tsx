@@ -1153,6 +1153,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                 {publishedQuote ? (
                   <QuotePublishedPanel
                     quote={publishedQuote}
+                    dealId={dealId}
                     email={{
                       contactFirstName: contact?.properties.firstname,
                       contactEmail: contact?.properties.email,
@@ -1169,8 +1170,8 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                   <p className="text-xs text-gray-500 text-center">Publishing the quote in HubSpot...</p>
                 ) : (
                   <p className="text-xs text-gray-500 text-center">
-                    Moves the deal to Quotation sent, replaces its line items and publishes a HubSpot
-                    quote. Does not email the customer.
+                    Replaces the deal&apos;s line items and publishes a HubSpot quote. Does not email the
+                    customer, and does not move the deal: you mark it sent once you have sent it.
                   </p>
                 )}
               </div>
