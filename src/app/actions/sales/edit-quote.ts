@@ -6,6 +6,7 @@ import { assertDealAccess } from '@/lib/authz'
 import { hubspotFetch } from '@/lib/hubspot-client'
 import { getDealDetails } from '@/app/actions/hubspot/getDealDetails'
 import { addLineItemsToDeal } from '@/app/actions/hubspot/addLineItems'
+import { updateDealAmount } from '@/app/actions/hubspot/updateDealAmount'
 import { getProductSkus } from '@/app/actions/hubspot/getProductSkus'
 import { loadPricingForQuote } from '@/app/actions/pricing/get-pricing'
 import { priceCart, toRegistryLine, type PricedCartLine } from '@/lib/quote-pricing'
@@ -647,7 +648,13 @@ export async function republishEditedQuote(input: RepublishQuoteInput): Promise<
 }
 
 /**
- * Replace the DEAL's line items and update its registry row to match the quote.
+ * Replace the DEAL's line items, correct its amount, and update its registry row
+ * to match the quote.
+ *
+ * Only ever reached for a deal that is NOT at Quotation Accepted: the caller
+ * short-circuits on an accepted deal so that repricing can never re-fire the
+ * Xero quote or the MCS contract. Dean's call, and the reason the amount write
+ * below needs no guard of its own.
  *
  * Returns an error string rather than throwing: the quote is already live at
  * this point, so a failure here is a warning to carry back, not a reason to
@@ -680,6 +687,19 @@ async function resyncDeal(
     return 'The quote was republished, but the deal line items in HubSpot could not be updated, so invoicing still holds the old prices.'
   }
 
+  // The deal's own amount, which nothing else on this path updates. HubSpot does
+  // not derive it from the line items in this portal (deal 64665124513 read $100
+  // against $1,100 of lines), so it has to be written explicitly or the deal
+  // keeps the first version's total for good.
+  //
+  // Collected rather than returned: the quote is already live and its line items
+  // are already correct, so a stale amount on the deal is worth a warning, not a
+  // failure the rep cannot act on.
+  const amountResult = await updateDealAmount(dealId, hubAmount)
+  const amountWarning = amountResult.success
+    ? undefined
+    : 'The quote was republished and its line items updated, but the deal amount in HubSpot still shows the previous total. Change it on the deal, or regenerate the quote.'
+
   const dealLineItemIds = result.lineItemIds ?? []
   const supabase = await createServerClient()
   // UPDATE, not upsert. The row already exists (the original generate made it)
@@ -711,5 +731,5 @@ async function resyncDeal(
     return 'The quote and the HubSpot deal were updated, but the Hub database row for this deal was not (it may sit outside your region), so invoicing still holds the old prices. Ask an admin to re-sync it.'
   }
 
-  return undefined
+  return amountWarning
 }
