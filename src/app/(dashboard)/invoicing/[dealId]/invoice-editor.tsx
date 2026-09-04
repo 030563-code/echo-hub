@@ -628,6 +628,10 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
           ? `This invoice already exists in Xero as ${result.xeroInvoiceNumber ?? 'a new invoice'}; the Hub is back in sync.`
           : 'Released. You can retry Send to Xero.',
       )
+      // Adopting the invoice and closing the deal are separate outward writes,
+      // and the second can fail on its own. Reported as its own toast so a
+      // half-done reconcile never reads as a clean one.
+      if (result.dealWarning) toast.warning(result.dealWarning)
       router.refresh()
     })
 
@@ -753,6 +757,19 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
 
       {invoice.error_message && status !== 'completed' && (
         <Card className="border-red-200 bg-red-50 p-4 text-sm text-red-800">{invoice.error_message}</Card>
+      )}
+
+      {/* The `completed` stage is labelled "Invoice sent to Xero and attached
+          PDF", and the second half of that is not always true. An invoice
+          ADOPTED by Reconcile reached Xero without the run ever finishing, and
+          the attachment is the step after the invoice, so it is exactly what
+          tends to be missing. Say so rather than let the stage name assert it. */}
+      {status === 'completed' && !invoice.xero_attachment_id && (
+        <Card className="border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          On the Xero ledger, but the Hub has no record of the PDF being attached to it. Open the invoice in
+          Xero and check. If the attachment is missing, use Preview to download the same document and attach
+          it by hand.
+        </Card>
       )}
 
       {/* Header: the Xero invoice fields + TaxJar identity */}

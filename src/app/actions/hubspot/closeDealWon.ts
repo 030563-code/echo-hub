@@ -41,27 +41,43 @@ export async function closeDealWon(
     [HUBSPOT_PIPELINES.EURO_SALES.id]: HUBSPOT_PIPELINES.EURO_SALES.stages.CLOSED_WON,
   }
 
-  const pipelineId = access.pipelineId ?? ''
-  const stageId = stageByPipeline[pipelineId]
-  if (!stageId) {
-    return {
-      success: false,
-      error: `no Closed won stage is mapped for this deal's pipeline (${pipelineId || 'unknown'})`,
-    }
-  }
-
   try {
-    // Read the current stage first, so a deal a human already closed is left
-    // alone rather than re-stamped. A redundant PATCH would move the stage's
-    // timestamp and fire whatever watches deal stage changes for a second time.
+    // One read, for two things: the stage the deal is on now, and the pipeline
+    // it belongs to.
+    //
+    // THE PIPELINE MUST NOT COME FROM assertDealAccess. That function
+    // short-circuits for a super admin and returns pipelineId null, because a
+    // super admin needs no pipeline scope check. Reading it from there meant
+    // every close attempted by a super admin resolved no stage and gave up with
+    // "no Closed won stage is mapped for this deal's pipeline (unknown)". Dean
+    // and Dave are both super admins, so closing a deal won had never once
+    // worked from Send to Xero or from Reconcile. HubSpot is asked directly,
+    // which is correct for every caller rather than only the ones whose scope
+    // check happened to look the deal up.
     const current = await fetch(
-      `https://api.hubapi.com/crm/v3/objects/deals/${dealId}?properties=dealstage`,
+      `https://api.hubapi.com/crm/v3/objects/deals/${dealId}?properties=dealstage,pipeline`,
       { headers: { Authorization: `Bearer ${accessToken}` }, cache: 'no-store' },
     )
-    if (current.ok) {
-      const body = (await current.json()) as { properties?: { dealstage?: string } }
-      const stage = body.properties?.dealstage ?? ''
-      if (CLOSED_WON_STAGES.includes(stage)) return { success: true, alreadyWon: true }
+    if (!current.ok) {
+      return { success: false, error: `could not read the deal from HubSpot (HTTP ${current.status})` }
+    }
+    const body = (await current.json()) as { properties?: { dealstage?: string; pipeline?: string } }
+
+    // A deal a human already closed is left alone rather than re-stamped. A
+    // redundant PATCH would move the stage's timestamp and fire whatever
+    // watches deal stage changes for a second time.
+    const stage = String(body.properties?.dealstage ?? '')
+    if (CLOSED_WON_STAGES.includes(stage)) return { success: true, alreadyWon: true }
+
+    // access.pipelineId is the fallback, not the source: it is populated only
+    // for a non-super-admin, where it has already been verified in scope.
+    const pipelineId = String(body.properties?.pipeline ?? '') || (access.pipelineId ?? '')
+    const stageId = stageByPipeline[pipelineId]
+    if (!stageId) {
+      return {
+        success: false,
+        error: `no Closed won stage is mapped for this deal's pipeline (${pipelineId || 'unknown'})`,
+      }
     }
 
     const response = await fetch(`https://api.hubapi.com/crm/v3/objects/deals/${dealId}`, {

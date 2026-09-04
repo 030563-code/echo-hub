@@ -29,7 +29,7 @@ const STUCK_AFTER_MS = 10 * 60 * 1000
 const Input = z.object({ invoiceId: z.string().uuid() })
 
 export type ReconcileResult =
-  | { success: true; outcome: 'adopted' | 'released'; xeroInvoiceNumber?: string }
+  | { success: true; outcome: 'adopted' | 'released'; xeroInvoiceNumber?: string; dealWarning?: string }
   | { success: false; error: string }
 
 export async function reconcileStuckInvoice(input: { invoiceId: string }): Promise<ReconcileResult> {
@@ -89,8 +89,10 @@ export async function reconcileStuckInvoice(input: { invoiceId: string }): Promi
     })
     // The deal is closed won on the happy path once the invoice is completed.
     // An adopted invoice reached the same place by a worse route, so it gets
-    // the same treatment. Best effort: never let this undo the row above.
-    await closeDealWon(invoice.hubspot_deal_id)
+    // the same treatment. Best effort: never let this undo the row above, but
+    // the result is REPORTED rather than discarded. Swallowing it is how a
+    // close that silently did nothing looked like a close that worked.
+    const closedWon = await closeDealWon(invoice.hubspot_deal_id)
     revalidatePath(`/invoicing/${invoice.hubspot_deal_id}`)
     revalidatePath('/invoicing/drafts')
     revalidatePath('/invoicing/sent')
@@ -99,6 +101,9 @@ export async function reconcileStuckInvoice(input: { invoiceId: string }): Promi
       success: true,
       outcome: 'adopted',
       xeroInvoiceNumber: invoice.xero_invoice_number ?? undefined,
+      dealWarning: closedWon.success
+        ? undefined
+        : `The HubSpot deal could not be moved to Closed won (${closedWon.error}). Move it by hand.`,
     }
   }
 
