@@ -370,7 +370,24 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
     }
 
     if (!res.ok) throw Object.assign(new Error(`webhook HTTP ${res.status}`), { dispatched: true })
-    response = (await res.json()) as N8nAuthorizeResponse
+    // EVERYTHING FROM HERE IS DISPATCHED. n8n answered 2xx, so it received the
+    // request and ran it, whatever the body says.
+    //
+    // This was the hole. An n8n branch that throws mid-run still answers 200
+    // with an EMPTY body, and res.json() then fails with "Unexpected end of
+    // JSON input". That SyntaxError carried no `dispatched` tag, so it fell
+    // through as dispatched:false, released the invoice back to `sent` and told
+    // the reviewer "Nothing was created; try again" while the invoice was
+    // already AUTHORISED in Xero with its ids written back. EBUS26-0001 hit it
+    // twice and could then be neither re-sent nor reconciled.
+    try {
+      response = (await res.json()) as N8nAuthorizeResponse
+    } catch (parseErr) {
+      throw Object.assign(new Error('n8n answered with an unreadable body'), {
+        cause: parseErr,
+        dispatched: true,
+      })
+    }
     if (!response.xero_invoice_id || !response.xero_invoice_number) {
       throw Object.assign(new Error(response.error || 'webhook returned no invoice ids'), { dispatched: true })
     }
