@@ -48,6 +48,10 @@ export interface PricedCartLine {
   priced: PricedLine
   priceSource: PriceSource
   contractCompanyId: string | null
+  /** The customer's own code for this product on a contract-priced line, so a
+   *  rep can tie the line to the purchase order in front of them. Display only,
+   *  and never set on a list or manual line. */
+  customerPartNumber: string | null
   floorPrice: number | null
   lineTotal: number
 }
@@ -134,6 +138,7 @@ export function priceCart(input: PriceCartInput): PriceCartResult {
       priced,
       priceSource: source,
       contractCompanyId: resolved.contractCompanyId,
+      customerPartNumber: resolved.customerPartNumber ?? null,
       floorPrice: resolved.floorPrice,
       lineTotal: lineTotal(line.quantity, priced),
     })

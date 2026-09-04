@@ -18,8 +18,18 @@ export async function searchCompanies(query: string): Promise<{ success: boolean
   const auth = await getAuthorizedUser()
   if (!auth.ok) return { success: false, error: auth.error }
   // APP-3: CRM-proxy read requires quotes access (closes object-level confidentiality IDOR).
-  if (!auth.capabilities.has('quotes.view') && !auth.capabilities.has('quotes.create')) {
-    return { success: false, error: 'Forbidden: missing quotes capability' }
+  //
+  // pricing.manage counts too. The contractor editor on /pricing/contracts uses
+  // this search to attach a contract price to a real HubSpot company, and it is
+  // the only way to add a contractor at all, so a pure pricing admin was locked
+  // out of their own page. Same read, same scoping below; only the list of
+  // capabilities that reach it widens.
+  if (
+    !auth.capabilities.has('quotes.view') &&
+    !auth.capabilities.has('quotes.create') &&
+    !auth.capabilities.has('pricing.manage')
+  ) {
+    return { success: false, error: 'Forbidden: needs quotes or pricing access' }
   }
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
