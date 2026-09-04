@@ -211,7 +211,7 @@ export function ListPricesClient({
               <tr className="border-b border-gray-200 text-left text-gray-600">
                 <th className="px-4 py-3 font-medium">SKU</th>
                 <th className="px-4 py-3 font-medium">Product</th>
-                <th className="px-4 py-3 font-medium text-right">MSRP (list)</th>
+                <th className="px-4 py-3 font-medium text-right">Quoted price (MAP)</th>
                 <th className="px-4 py-3 font-medium text-right">MAP</th>
                 <th className="px-4 py-3 font-medium text-right">Distributor net</th>
                 <th className="px-4 py-3 font-medium text-right">In HubSpot</th>
