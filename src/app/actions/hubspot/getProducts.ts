@@ -20,9 +20,15 @@ export async function getHubSpotProducts(): Promise<{ success: boolean; data?: H
   if (!user) {
     return { success: false, error: 'User not authenticated' }
   }
-  // APP-3: CRM-proxy read requires quotes access.
-  if (!(await hasAnyCapability(['quotes.view', 'quotes.create']))) {
-    return { success: false, error: 'Forbidden: missing quotes capability' }
+  // APP-3: CRM-proxy read requires quotes access, or pricing access.
+  //
+  // The pricing screens need this catalogue: /pricing/list drives its SKU
+  // picker from it, and /pricing/contracts reads product names from it for
+  // customer-specific SKUs that are on no general price list. Without pricing
+  // here, a pure pricing admin saw an empty picker and bare SKUs on their own
+  // page. Same read, same data, wider list of capabilities that reach it.
+  if (!(await hasAnyCapability(['quotes.view', 'quotes.create', 'pricing.view', 'pricing.manage']))) {
+    return { success: false, error: 'Forbidden: needs quotes or pricing access' }
   }
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN

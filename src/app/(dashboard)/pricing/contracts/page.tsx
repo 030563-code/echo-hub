@@ -1,5 +1,6 @@
 import { requireCapability } from '@/lib/authz'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getHubSpotProducts } from '@/app/actions/hubspot/getProducts'
 import { getContractPrices, getContractors, getListPrices } from '@/app/actions/pricing/get-pricing'
 import { ContractPricesClient } from './contract-prices-client'
 
@@ -18,13 +19,31 @@ export default async function ContractPricesPage() {
   const auth = await requireCapability(['pricing.view', 'pricing.manage'])
   const canEdit = auth.capabilities.has('pricing.manage')
 
-  const [contractors, prices, listPrices] = await Promise.all([
+  const [contractors, prices, listPrices, catalogue] = await Promise.all([
     getContractors(),
     getContractPrices(),
     getListPrices(),
+    getHubSpotProducts(),
   ])
 
   const skus = Array.from(new Set(listPrices.map((p) => p.sku))).sort()
+
+  // SKU to product name, resolved from the list prices this page already loads
+  // rather than copied onto every contract row. One source, so a rename in
+  // HubSpot flows through on the next load instead of leaving 68 stale copies.
+  const productNames: Record<string, string> = {}
+  for (const p of listPrices) {
+    if (p.product_name && !productNames[p.sku]) productNames[p.sku] = p.product_name
+  }
+  // Then HubSpot, for the SKUs that are on no general price list at all. Herc's
+  // own logo H10 (EBH10HERC) is the case that forced this: only Herc buys it,
+  // so it has a contract price and no list price, and the column showed a bare
+  // SKU where every other row showed a product.
+  for (const p of catalogue.data ?? []) {
+    const sku = String(p.properties.hs_sku ?? '').trim()
+    const name = String(p.properties.name ?? '').trim()
+    if (sku && name && !productNames[sku]) productNames[sku] = name
+  }
 
   // A CAD contract price on a company with no Canada Xero account code quotes
   // perfectly and then has nowhere to invoice. United Rentals and Herc are both
@@ -78,6 +97,7 @@ export default async function ContractPricesPage() {
         contractors={contractors}
         prices={prices}
         skus={skus}
+        productNames={productNames}
         canEdit={canEdit}
       />
     </div>
