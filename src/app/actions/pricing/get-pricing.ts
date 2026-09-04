@@ -131,7 +131,7 @@ export async function loadPricingForQuote(input: {
     companyId
       ? admin
           .from('contract_prices')
-          .select('hubspot_company_id, sku, currency, unit_price, valid_from, valid_to, is_active')
+          .select('hubspot_company_id, sku, currency, unit_price, valid_from, valid_to, customer_part_number, is_active')
           .eq('hubspot_company_id', companyId)
           .eq('currency', currency)
           .eq('is_active', true)

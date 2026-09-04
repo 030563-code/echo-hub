@@ -1,4 +1,5 @@
 import { requireCapability } from '@/lib/authz'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getContractPrices, getContractors, getListPrices } from '@/app/actions/pricing/get-pricing'
 import { ContractPricesClient } from './contract-prices-client'
 
@@ -25,6 +26,34 @@ export default async function ContractPricesPage() {
 
   const skus = Array.from(new Set(listPrices.map((p) => p.sku))).sort()
 
+  // A CAD contract price on a company with no Canada Xero account code quotes
+  // perfectly and then has nowhere to invoice. United Rentals and Herc are both
+  // in that state today: they price in CAD on the sheet but have never been run
+  // through the Canadian side, so account_registry holds no code for them.
+  //
+  // ADMIN SIDE ONLY, Dean's call. A rep never sees this: the sales screens show
+  // the product, the SKU and the price, and nothing about Xero.
+  const canadianCompanies = Array.from(
+    new Set(prices.filter((p) => p.currency === 'CAD').map((p) => p.hubspot_company_id)),
+  )
+  let missingCanadaCodes: string[] = []
+  if (canadianCompanies.length > 0) {
+    const { data } = await createAdminClient()
+      .from('account_registry')
+      .select('hubspot_company_id, hubspot_company_name, canada_xero_account_code')
+      .in('hubspot_company_id', canadianCompanies.map((id) => Number(id)).filter(Number.isFinite))
+    const named = new Map(
+      (data ?? []).map((r) => [String(r.hubspot_company_id), r as { hubspot_company_name: string | null; canada_xero_account_code: string | null }]),
+    )
+    missingCanadaCodes = canadianCompanies
+      .filter((id) => {
+        const row = named.get(id)
+        return !row || String(row.canada_xero_account_code ?? '').trim() === ''
+      })
+      .map((id) => contractors.find((c) => c.hubspot_company_id === id)?.name ?? named.get(id)?.hubspot_company_name ?? id)
+      .sort()
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -34,6 +63,17 @@ export default async function ContractPricesPage() {
           is in force. {canEdit ? '' : 'Read only. Ask Dave to change a price.'}
         </p>
       </div>
+      {missingCanadaCodes.length > 0 && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3">
+          <p className="text-sm font-semibold text-amber-900">
+            {missingCanadaCodes.length === 1 ? 'One contractor prices' : `${missingCanadaCodes.length} contractors price`} in CAD but has no Canada Xero account code
+          </p>
+          <p className="mt-1 text-sm text-amber-800">
+            {missingCanadaCodes.join(', ')}. The prices are live and quote correctly. An invoice raised
+            against them in Canada has no Xero contact to bill, so add the code before quoting Canadian work.
+          </p>
+        </div>
+      )}
       <ContractPricesClient
         contractors={contractors}
         prices={prices}

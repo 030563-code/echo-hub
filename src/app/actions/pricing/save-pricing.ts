@@ -64,6 +64,9 @@ const ListPriceSchema = z.object({
   product_name: z.string().trim().max(200).nullish(),
   hs_product_id: z.string().trim().max(32).nullish(),
   unit_price: Money,
+  // MAP (Advertised), the middle tier of the price sheet. Reference only: the
+  // quote builder never applies it, so it has no validation beyond being money.
+  map_price: Money.nullish(),
   floor_price: Money.nullish(),
   is_active: z.boolean().default(true),
 })
@@ -80,6 +83,12 @@ export async function saveListPrice(input: z.input<typeof ListPriceSchema>): Pro
   // sentence rather than a Postgres error string.
   if (d.floor_price != null && d.floor_price > d.unit_price) {
     return { success: false, error: 'The floor cannot be above the list price.' }
+  }
+  // MAP sits between the two on every sheet. Checked in the same place and the
+  // same way, so the admin gets a sentence rather than a constraint violation,
+  // but only when it is set: MAP is optional and most rows will not carry one.
+  if (d.map_price != null && (d.map_price > d.unit_price || (d.floor_price != null && d.map_price < d.floor_price))) {
+    return { success: false, error: 'MAP has to sit between the distributor net floor and the list price.' }
   }
 
   const admin = createAdminClient()
@@ -101,6 +110,7 @@ export async function saveListPrice(input: z.input<typeof ListPriceSchema>): Pro
       product_name: d.product_name ?? null,
       hs_product_id: d.hs_product_id ?? null,
       unit_price: d.unit_price,
+      map_price: d.map_price ?? null,
       floor_price: d.floor_price ?? null,
       is_active: d.is_active,
     },
@@ -154,6 +164,10 @@ const ContractPriceSchema = z.object({
   unit_price: Money,
   valid_from: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
   valid_to: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+  // The contractor's own code for this product, e.g. Herc "H9G" or United
+  // Rentals "ECHOBARRIER H9 GREEN". Display and reconciliation only, never a
+  // lookup key, so it is free text and stays editable on an existing row.
+  customer_part_number: z.string().trim().max(120).nullish(),
   notes: z.string().trim().max(2000).nullish(),
   is_active: z.boolean().default(true),
 })
@@ -208,6 +222,7 @@ export async function saveContractPrice(input: z.input<typeof ContractPriceSchem
       unit_price: d.unit_price,
       valid_from: d.valid_from ?? null,
       valid_to: d.valid_to ?? null,
+      customer_part_number: d.customer_part_number ?? null,
       notes: d.notes ?? null,
       is_active: d.is_active,
     },

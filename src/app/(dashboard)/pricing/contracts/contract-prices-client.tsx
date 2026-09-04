@@ -169,6 +169,9 @@ function PriceEditor({
   const [validFrom, setValidFrom] = useState(existing?.valid_from ?? '')
   const [validTo, setValidTo] = useState(existing?.valid_to ?? '')
   const [isActive, setIsActive] = useState(existing?.is_active !== false)
+  // NOT part of the upsert key, unlike sku, currency and valid_from, so it
+  // stays editable on an existing row.
+  const [customerPart, setCustomerPart] = useState(existing?.customer_part_number ?? '')
   const locked = existing !== undefined
 
   return (
@@ -190,6 +193,7 @@ function PriceEditor({
           unit_price: unit,
           valid_from: orNull(validFrom),
           valid_to: orNull(validTo),
+          customer_part_number: orNull(customerPart),
           is_active: isActive,
         })
       }}
@@ -226,6 +230,22 @@ function PriceEditor({
       <div>
         <Label htmlFor="cprice" className="text-gray-900">Contract price</Label>
         <Input id="cprice" inputMode="decimal" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} className="mt-1" />
+      </div>
+      <div>
+        <Label htmlFor="cpart" className="text-gray-900">Their part number (optional)</Label>
+        <Input
+          id="cpart"
+          value={customerPart}
+          onChange={(e) => setCustomerPart(e.target.value)}
+          className="mt-1"
+          placeholder="H9G"
+        />
+        {/* Every contractor names the same product differently. Herc's H9 is
+            "H9G", United Rentals' is "ECHOBARRIER H9 GREEN". Holding their code
+            is what lets a rep tie the line to the customer's own order. */}
+        <p className="mt-1 text-xs text-gray-500">
+          The code this customer uses on their purchase orders, so a rep can match the line to it.
+        </p>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -316,6 +336,7 @@ export function ContractPricesClient({
                     <thead>
                       <tr className="border-b border-gray-200 text-left text-gray-600">
                         <th className="px-4 py-2.5 font-medium">SKU</th>
+                        <th className="px-4 py-2.5 font-medium">Their code</th>
                         <th className="px-4 py-2.5 font-medium text-right">Price</th>
                         <th className="px-4 py-2.5 font-medium">In force</th>
                         <th className="px-4 py-2.5 font-medium">Last changed by</th>
@@ -326,6 +347,7 @@ export function ContractPricesClient({
                       {rows.map((row) => (
                         <tr key={row.id} className={`border-b border-gray-100 last:border-0 ${row.is_active === false ? 'opacity-50' : ''}`}>
                           <td className="px-4 py-2.5 font-medium text-gray-900">{row.sku}</td>
+                          <td className="px-4 py-2.5 text-gray-600">{row.customer_part_number ?? '—'}</td>
                           <td className="px-4 py-2.5 text-right tabular-nums text-gray-900">
                             {formatMoney(Number(row.unit_price), row.currency)}
                           </td>

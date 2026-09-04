@@ -25,12 +25,13 @@ interface Draft {
   productName: string
   hsProductId: string
   unitPrice: string
+  mapPrice: string
   floorPrice: string
   isActive: boolean
 }
 
 const CURRENCIES = Object.keys(CURRENCY_NAME)
-const EMPTY: Draft = { sku: '', currency: 'USD', productName: '', hsProductId: '', unitPrice: '', floorPrice: '', isActive: true }
+const EMPTY: Draft = { sku: '', currency: 'USD', productName: '', hsProductId: '', unitPrice: '', mapPrice: '', floorPrice: '', isActive: true }
 
 /** Blank means "not set", which is different from zero: a floor of 0 is a real
  *  floor that forbids giving the item away. */
@@ -98,10 +99,19 @@ function PriceFields({
           <Input id="unitPrice" inputMode="decimal" value={state.unitPrice} onChange={(e) => set({ unitPrice: e.target.value })} className="mt-1" />
         </div>
         <div>
-          <Label htmlFor="floorPrice" className="text-gray-900">Floor (optional)</Label>
+          <Label htmlFor="floorPrice" className="text-gray-900">Distributor net, the floor (optional)</Label>
           <Input id="floorPrice" inputMode="decimal" value={state.floorPrice} onChange={(e) => set({ floorPrice: e.target.value })} className="mt-1" />
           <p className="mt-1 text-xs text-gray-500">The lowest a discount may reach. Blank means no floor.</p>
         </div>
+      </div>
+      <div>
+        <Label htmlFor="mapPrice" className="text-gray-900">MAP, advertised (optional)</Label>
+        <Input id="mapPrice" inputMode="decimal" value={state.mapPrice} onChange={(e) => set({ mapPrice: e.target.value })} className="mt-1" />
+        {/* Reference only. The quote builder never reaches for it, so it is
+            deliberately not offered as a starting price anywhere. */}
+        <p className="mt-1 text-xs text-gray-500">
+          The advertised price from the sheet. Held for reference; the quote builder never applies it.
+        </p>
       </div>
       <label className="flex items-center gap-2 text-sm text-gray-700">
         <input type="checkbox" checked={state.isActive} onChange={(e) => set({ isActive: e.target.checked })} />
@@ -149,6 +159,7 @@ function PriceEditor({
           product_name: state.productName || null,
           hs_product_id: state.hsProductId || null,
           unit_price: unit,
+          map_price: num(state.mapPrice),
           floor_price: num(state.floorPrice),
           is_active: state.isActive,
         })
@@ -200,8 +211,9 @@ export function ListPricesClient({
               <tr className="border-b border-gray-200 text-left text-gray-600">
                 <th className="px-4 py-3 font-medium">SKU</th>
                 <th className="px-4 py-3 font-medium">Product</th>
-                <th className="px-4 py-3 font-medium text-right">List price</th>
-                <th className="px-4 py-3 font-medium text-right">Floor</th>
+                <th className="px-4 py-3 font-medium text-right">MSRP (list)</th>
+                <th className="px-4 py-3 font-medium text-right">MAP</th>
+                <th className="px-4 py-3 font-medium text-right">Distributor net</th>
                 <th className="px-4 py-3 font-medium text-right">In HubSpot</th>
                 <th className="px-4 py-3 font-medium">Last changed by</th>
                 {canEdit && <th className="px-4 py-3" />}
@@ -220,6 +232,9 @@ export function ListPricesClient({
                     <td className="px-4 py-2.5 text-right tabular-nums text-gray-900">
                       {formatMoney(Number(p.unit_price), p.currency)}
                     </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-gray-600">
+                      {p.map_price == null ? '—' : formatMoney(Number(p.map_price), p.currency)}
+                    </td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-gray-600">
                       {p.floor_price == null ? '—' : formatMoney(Number(p.floor_price), p.currency)}
                     </td>
@@ -236,6 +251,7 @@ export function ListPricesClient({
                             productName: p.product_name ?? '',
                             hsProductId: p.hs_product_id ?? '',
                             unitPrice: String(p.unit_price ?? ''),
+                            mapPrice: p.map_price == null ? '' : String(p.map_price),
                             floorPrice: p.floor_price == null ? '' : String(p.floor_price),
                             isActive: p.is_active !== false,
                           }}
