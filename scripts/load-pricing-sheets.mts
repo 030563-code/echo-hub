@@ -102,6 +102,42 @@ function money(raw: string): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+/**
+ * SKU to the product's name and id in HubSpot.
+ *
+ * The name shown in the Hub has to be the one a rep already reads in HubSpot,
+ * Dean's call: the pricing screens are not the place to invent a second set of
+ * product names. Taken from HubSpot rather than from the sheet descriptions,
+ * which differ per contractor and would put a different name on the same SKU
+ * depending on which sheet happened to load last.
+ */
+async function hubspotProductsBySku(): Promise<Map<string, { name: string; id: string }>> {
+  const token = env('HUBSPOT_ACCESS_TOKEN')
+  const out = new Map<string, { name: string; id: string }>()
+  let after: string | undefined
+  do {
+    const url = new URL('https://api.hubapi.com/crm/v3/objects/products')
+    url.searchParams.set('limit', '100')
+    url.searchParams.set('properties', 'name,hs_sku')
+    if (after) url.searchParams.set('after', after)
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    if (!res.ok) throw new Error(`HubSpot products: HTTP ${res.status}`)
+    const body = (await res.json()) as {
+      results: { id: string; properties: { name?: string; hs_sku?: string } }[]
+      paging?: { next?: { after?: string } }
+    }
+    for (const p of body.results) {
+      const sku = (p.properties.hs_sku ?? '').trim()
+      const name = (p.properties.name ?? '').trim()
+      // First one wins. A SKU appearing twice in HubSpot is a duplicate product,
+      // not two products, and taking the later one would flip the name at random.
+      if (sku && name && !out.has(sku)) out.set(sku, { name, id: p.id })
+    }
+    after = body.paging?.next?.after
+  } while (after)
+  return out
+}
+
 // ---------------------------------------------------------------------------
 // What we collect
 // ---------------------------------------------------------------------------
@@ -335,9 +371,20 @@ async function main() {
   }
   console.log(`\ncontractors upserted: ${companies.length}`)
 
+  // The product name and HubSpot id, so the pricing screens read as product
+  // names rather than bare SKUs. Missing from the first load, which left every
+  // row showing only its SKU.
+  const products = await hubspotProductsBySku()
+  const namesMissing = [...new Set([...listSeen.values()].map((r) => r.sku))].filter((sku) => !products.has(sku))
+  if (namesMissing.length > 0) {
+    console.log(`\nno HubSpot product name for: ${namesMissing.join(', ')}`)
+  }
+
   const listPayload = [...listSeen.values()].map((r) => ({
     sku: r.sku, currency: r.currency, unit_price: r.unit_price,
     map_price: r.map_price, floor_price: r.floor_price,
+    product_name: products.get(r.sku)?.name ?? null,
+    hs_product_id: products.get(r.sku)?.id ?? null,
     is_active: true, updated_by_label: stamp, updated_at: new Date().toISOString(),
   }))
   const { error: le } = await supabase.from('list_prices').upsert(listPayload, { onConflict: 'sku,currency' })
