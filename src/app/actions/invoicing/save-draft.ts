@@ -204,6 +204,13 @@ export async function saveInvoiceDraft(input: z.infer<typeof Input>): Promise<Sa
     if (/INVALID_STATUS/.test(error.message ?? '')) {
       return { success: false, error: 'The invoice changed under you. Refresh and try again.' }
     }
+    // The reviewer gets a generic message, deliberately: a Postgres error names
+    // columns and constraints and does not belong on screen. But it has to go
+    // SOMEWHERE. A column-alignment bug inside save_customer_invoice failed
+    // every save for a day (2026-09-03 12:24 UTC to 2026-09-04), and with
+    // nothing logged it read as a problem with whichever line or address the
+    // reviewer happened to be editing.
+    console.error('save_customer_invoice failed:', error.code, error.message)
     return { success: false, error: 'Could not save the invoice.' }
   }
 
