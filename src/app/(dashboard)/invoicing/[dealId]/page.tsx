@@ -10,7 +10,7 @@ import { OpenInvoiceButton } from '../open-invoice-button'
 import { InvoiceEditor } from './invoice-editor'
 import { InvoiceAttachments } from '@/components/invoicing/invoice-attachments'
 import type { InvoiceAttachmentRow } from '@/app/actions/invoicing/attachments'
-import { listDeliveryAddresses } from '@/app/actions/invoicing/delivery-addresses'
+import { listDeliveryAddresses } from '@/lib/customer-invoice/delivery-address-store'
 import { deliveryContactKey } from '@/lib/customer-invoice/delivery-address-book'
 
 export const dynamic = 'force-dynamic'

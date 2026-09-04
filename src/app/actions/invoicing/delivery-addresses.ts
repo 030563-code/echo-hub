@@ -9,6 +9,10 @@ import {
   isSaveableDeliveryAddress,
   type SavedDeliveryAddress,
 } from '@/lib/customer-invoice/delivery-address-book'
+// server-only, deliberately not re-exported from this file: every export of a
+// 'use server' module is a callable endpoint, and this one reads any customer's
+// address history from a contact key through the admin client.
+import { listDeliveryAddresses } from '@/lib/customer-invoice/delivery-address-store'
 import { US_STATE_CODES } from '@/lib/us-address'
 import { loadInvoiceWithLines, requireInvoicingManage } from './shared'
 
@@ -25,8 +29,10 @@ import { loadInvoiceWithLines, requireInvoicingManage } from './shared'
  * history is read or added to.
  *
  * Reads happen server-side on the page, not through an action, so the dropdown
- * is populated on first paint. This file holds the write and the one read a
- * client genuinely needs after saving.
+ * is populated on first paint. The read itself lives in delivery-address-store,
+ * which is `server-only`: exporting it from HERE would have made it a remotely
+ * callable endpoint returning any customer's delivery history for a guessed
+ * contact key. This file holds exactly one thing, the write.
  */
 
 const addressSchema = z.object({
@@ -46,45 +52,6 @@ export interface DeliveryAddressResult {
   success: boolean
   error?: string
   addresses?: SavedDeliveryAddress[]
-}
-
-/** Map a database row to the shape the editor renders. */
-function toSaved(row: Record<string, unknown>): SavedDeliveryAddress {
-  return {
-    id: String(row.id),
-    street: (row.street as string) ?? '',
-    city: (row.city as string) ?? '',
-    state: (row.state as string) ?? '',
-    zip: (row.zip as string) ?? '',
-    country: (row.country as string) ?? 'US',
-    location: (row.location as string) ?? null,
-    requestedBy: (row.requested_by as string) ?? null,
-    lastUsedAt: (row.last_used_at as string) ?? null,
-  }
-}
-
-/**
- * The addresses already known for an invoice's customer, most recently used
- * first. Exported for the page as well as for the editor's refresh after a save.
- */
-export async function listDeliveryAddresses(
-  contactKey: string | null,
-): Promise<SavedDeliveryAddress[]> {
-  if (!contactKey) return []
-  const { data, error } = await createAdminClient()
-    .from('customer_delivery_addresses')
-    .select('id, street, city, state, zip, country, location, requested_by, last_used_at')
-    .eq('contact_key', contactKey)
-    .order('last_used_at', { ascending: false })
-    .limit(50)
-
-  if (error) {
-    // A book that cannot be read is a missing convenience, never a reason to
-    // stop someone invoicing. The editor falls back to plain manual entry.
-    console.error('listDeliveryAddresses failed', error.message)
-    return []
-  }
-  return (data ?? []).map(toSaved)
 }
 
 /**
