@@ -19,16 +19,29 @@ export interface FittingKitComponent {
   name: string
   qtyPerKit: number
   /**
-   * The kit's unit price rides on exactly one component (the hook) so revenue
-   * is preserved through the split; the other components default to 0.00.
-   * All prices stay editable in the invoice editor.
+   * Share of the kit line's money this component's WHOLE LINE carries, so the
+   * two bungees together take 0.25 (Dean's 12.5% each, 2026-09-04).
    */
-  carriesKitPrice: boolean
+  shareOfKit: number
+  /**
+   * Exactly one component absorbs the rounding remainder, so hook + 2 bungees
+   * is exactly the kit price to the cent. Splitting evenly on both sides would
+   * drift on any price that does not divide by eight, and the deal amount would
+   * stop reconciling with its own lines. All prices stay editable in the
+   * invoice editor.
+   */
+  takesRemainder: boolean
 }
 
+/**
+ * Must stay in step with public.split_fitting_kit_lines() in Supabase
+ * (migration 20260904110000), which now applies this same split the moment a
+ * kit reaches deals_registry. This copy still runs for rows written before that
+ * migration, so the two have to agree on both the components and the shares.
+ */
 export const FITTING_KIT_COMPONENTS: readonly FittingKitComponent[] = [
-  { sku: 'HKNA', name: 'Echo Barrier Hooks', qtyPerKit: 1, carriesKitPrice: true },
-  { sku: 'BUNNA', name: 'Echo Barrier Bungees', qtyPerKit: 2, carriesKitPrice: false },
+  { sku: 'HKNA', name: 'Echo Barrier Hooks', qtyPerKit: 1, shareOfKit: 0.75, takesRemainder: true },
+  { sku: 'BUNNA', name: 'Echo Barrier Bungees', qtyPerKit: 2, shareOfKit: 0.25, takesRemainder: false },
 ]
 
 /** Quote lines with these SKUs are freight: they map to TaxJar's `shipping`
