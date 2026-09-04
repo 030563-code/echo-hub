@@ -858,9 +858,10 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
 
         {/* The address book. Hidden entirely when the customer has none yet, so
             an invoice for a first-time customer looks exactly as it did before
-            this existed. Hidden on a collected order too: there is no delivery
-            address to pick. */}
-        {!header.is_collection && addressBook.length > 0 && (
+            this existed. Shown on a collected order as well: collection changes
+            where the sale is TAXED, not whether the order has a delivery
+            address, and the address still prints on the document. */}
+        {addressBook.length > 0 && (
           <div className="mb-4">
             <Label htmlFor="savedAddress">Previous delivery addresses</Label>
             <select
@@ -1007,20 +1008,23 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
           </div>
         </div>
 
-        {!header.is_collection && (
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={rememberAddress}
-              disabled={!editable || pendingAction !== null}
-            >
-              {pendingAction === 'save-address' ? 'Saving...' : 'Save this address'}
-            </Button>
-            {addressNotice && <span className="text-xs text-gray-600">{addressNotice}</span>}
-          </div>
-        )}
+        {/* Offered on a collected order too. Ticking collection moves the TAX
+            destination to the depot; it does not mean the order has no delivery
+            address, and the one typed here still prints on the invoice. Hiding
+            the button behind that tick made the address book unreachable on
+            exactly the orders Dean was entering addresses for. */}
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={rememberAddress}
+            disabled={!editable || pendingAction !== null}
+          >
+            {pendingAction === 'save-address' ? 'Saving...' : 'Save this address'}
+          </Button>
+          {addressNotice && <span className="text-xs text-gray-600">{addressNotice}</span>}
+        </div>
       </Card>
 
       {/* Lines */}
