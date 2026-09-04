@@ -56,6 +56,10 @@ import { emailInvoiceToCustomer } from '@/app/actions/invoicing/email-invoice'
 import { reconcileStuckInvoice } from '@/app/actions/invoicing/reset-authorizing'
 import { InvoiceStatusChip } from '../status-chip'
 
+/** One <datalist> serves every row's item-code field. Per-row lists would put
+ *  a copy of Xero's whole catalogue in the DOM for each line. */
+const ITEM_CODE_LIST_ID = 'xero-item-codes'
+
 interface EditableLine {
   line_key: string
   origin: 'hubspot' | 'kit_split' | 'manual'
@@ -1037,6 +1041,22 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
         </p>
       )}
 
+      {/* Xero's item codes, for the per-line pickers. Empty until the list has
+          been fetched (first focus on an item-code field), which is harmless:
+          a datalist with no options just leaves the input as free text, which
+          is how the field behaved before and how it must keep behaving when
+          Xero cannot be reached. The account code is shown against each entry
+          so it is clear what picking one will fill in. */}
+      <datalist id={ITEM_CODE_LIST_ID}>
+        {Object.entries(itemAccounts ?? {})
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([code, account]) => (
+            <option key={code} value={code}>
+              {account ?? 'no sales account'}
+            </option>
+          ))}
+      </datalist>
+
       <Card className="bg-white border-gray-200 p-0 overflow-x-auto">
         <table className="w-full min-w-[960px] text-sm">
           <thead>
@@ -1078,21 +1098,48 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                       <Input
                         value={row.xero_item_code}
                         onChange={(e) => updateRow(row.line_key, { xero_item_code: e.target.value })}
+                        // Pull Xero's item list on focus, so typing "LTL"
+                        // narrows to the LTL codes. Still not on page load: an
+                        // invoice nobody recodes pays no Xero round trip.
+                        onFocus={() => {
+                          if (codingEditable) void loadItemAccounts()
+                        }}
                         // On blur, not on change: the account follows a
                         // FINISHED item code, never the letters on the way in.
                         onBlur={(e) => {
                           if (codingEditable) void syncAccountFromItemCode(row.line_key, e.target.value)
                         }}
+                        list={codingEditable ? ITEM_CODE_LIST_ID : undefined}
                         placeholder="Xero item code"
                         disabled={!codingEditable}
                         aria-label="Xero item code"
-                        title="Changing this fills in the account code from Xero when you leave the field."
+                        title="Pick from Xero's item list or type a code. The account code fills in when you leave the field."
                         className="h-7 min-w-28 py-0 text-xs"
                       />
-                      {row.is_shipping && (
-                        <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-800">
+                      {/* Freight has to be flagged, not inferred: is_shipping
+                          comes from the SKU (LTLNA), and a manual line has no
+                          SKU, so without this a hand-added freight line goes to
+                          TaxJar as taxable goods. Only manual lines are
+                          toggleable; the server pins the rest. */}
+                      {row.origin === 'manual' && editable ? (
+                        <label
+                          className="flex cursor-pointer items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 hover:bg-sky-100 hover:text-sky-800 has-[:checked]:bg-sky-100 has-[:checked]:text-sky-800"
+                          title="Bill this line as freight. TaxJar taxes shipping by the destination's own freight rules, not the goods rules."
+                        >
+                          <input
+                            type="checkbox"
+                            className="h-3 w-3 cursor-pointer accent-sky-600"
+                            checked={row.is_shipping}
+                            onChange={(e) => updateRow(row.line_key, { is_shipping: e.target.checked })}
+                          />
                           Shipping
-                        </span>
+                        </label>
+                      ) : (
+                        row.is_shipping && (
+                          <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-800">
+                            Shipping
+                          </span>
+                        )
                       )}
                     </div>
                   </td>
