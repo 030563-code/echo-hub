@@ -9,6 +9,7 @@ import { AssignContractorDialog } from '@/components/quotes/assign-contractor-di
 import { isClosedStage } from '@/lib/deals-board'
 import { stageChipClass } from '@/lib/stage-chip'
 import { hubspotRecordUrl } from '@/lib/hubspot-links'
+import { lineItemIdsFromAssociations } from '@/lib/hubspot-associations'
 import { getCompanyDetails } from '@/app/actions/hubspot/getCompanyDetails'
 import { getContactDetails } from '@/app/actions/hubspot/getContactDetails'
 import { getLineItems } from '@/app/actions/hubspot/getLineItems'
@@ -37,10 +38,6 @@ const makeMoney = (currency: string) => {
 
 interface HubSpotAssociationResult {
   id: string
-}
-
-interface HubSpotAssociationGroup {
-  results?: HubSpotAssociationResult[]
 }
 
 interface HubSpotCompany {
@@ -103,9 +100,7 @@ export default async function QuoteRequestDetailsPage(props: {
   // Fetch Associated Company, Contact, and Line Items
   const companyId = deal.associations?.companies?.results?.[0]?.id
   const contactId = deal.associations?.contacts?.results?.[0]?.id
-  const associations = (deal.associations ?? {}) as Record<string, HubSpotAssociationGroup | undefined>
-  const lineItemsAssoc = associations.line_items || associations.line_item || associations['line items']
-  const lineItemIds = lineItemsAssoc?.results?.map((i) => i.id) || []
+  const lineItemIds = lineItemIdsFromAssociations(deal.associations)
 
   // deal_quotes is service-role only (the customer_invoices doctrine), and
   // getDealDetails above has already refused a deal outside this caller scope,

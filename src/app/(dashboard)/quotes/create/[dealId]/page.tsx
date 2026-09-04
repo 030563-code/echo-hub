@@ -1,4 +1,6 @@
 import { getSalesProfileSettings } from '@/app/actions/sales/get-profile-settings'
+import { lineItemIdsFromAssociations } from '@/lib/hubspot-associations'
+import { hubspotSenderName } from '@/lib/hubspot-sender'
 import { loadPricingForQuote } from '@/app/actions/pricing/get-pricing'
 import { getHubSpotProducts } from '@/app/actions/hubspot/getProducts'
 import { getDealDetails } from '@/app/actions/hubspot/getDealDetails'
@@ -38,8 +40,14 @@ export default async function CreateQuotePage(props: {
     .eq('id', user?.id)
     .single()
 
+  // HubSpot is the record of who the sender is. profiles.display_name is a
+  // Hub-local field that drifts, and a quote went out signed with a colleague's
+  // name because of it. Falls back to the profile when HubSpot has no owner for
+  // this mailbox, so a quote never fails to publish over a signature.
+  const hubspotName = await hubspotSenderName(user?.email)
+
   const salesRep = {
-    name: profile?.display_name || user?.email || 'Sales Rep',
+    name: hubspotName || profile?.display_name || user?.email || 'Sales Rep',
     email: user?.email || '',
     // Printed in the quote meta block and under "Questions? Contact me", the
     // same two places the HubSpot-native quote shows it. Omitted from the PDF
@@ -52,13 +60,8 @@ export default async function CreateQuotePage(props: {
   const contactId = deal?.associations?.contacts?.results?.[0]?.id
   const companyId = deal?.associations?.companies?.results?.[0]?.id
 
-  // Handle both potential keys for line items (singular or plural)
-  // HubSpot API v3 often uses the object type name, which can be tricky.
-  // Based on your n8n output, it might be under 'line items' (with a space) or 'line_items'.
-  // The API response object usually normalizes this, but let's be robust.
-  const assoc = deal?.associations as Record<string, { results?: { id: string }[] }> | undefined
-  const lineItemsAssoc = assoc?.line_items || assoc?.line_item || assoc?.['line items']
-  const lineItemIds = lineItemsAssoc?.results?.map((i) => i.id) || []
+  // Every spelling HubSpot uses for this key, through the one shared reader.
+  const lineItemIds = lineItemIdsFromAssociations(deal?.associations)
 
   // 3. Fetch Contact Details, Company (for the quote's company-name line) & Line Items
   const [contactResult, lineItemsResult, companyResult] = await Promise.all([
@@ -198,7 +201,6 @@ export default async function CreateQuotePage(props: {
         initialLineItems={existingLineItems}
         initialComments={initialComments}
         companyId={companyId ?? null}
-        bccAddress={process.env.HUBSPOT_BCC_LOG_ADDRESS ?? null}
         pricing={{
           listPrices: pricing.listPrices,
           contractPrices: pricing.contractPrices,

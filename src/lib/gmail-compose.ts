@@ -2,18 +2,17 @@
  * Gmail compose links for sending a published quote to the customer.
  *
  * v1 is a prefilled Gmail compose window rather than an API send: no OAuth, no
- * service account, no n8n, so every rep has it on the day it ships. The logging
- * happens through HubSpot's per-portal BCC address (Settings > Objects >
- * Activities > Email Log & Track), which the caller supplies. HubSpot
- * associates a BCC'd email to the recipient's contact record, its primary
- * associated company and the five most recent open deals on that contact, so
- * the email lands on the deal with no HubSpot write from us. It only logs when
- * the sender is a HubSpot user with personal email access, and a BCC recipient
- * is never turned into a contact, so the logging address stays out of the CRM.
+ * service account, no n8n, so every rep has it on the day it ships.
  *
- * Pure by design: no fetch, no env lookup, no clock. The BCC address, the rep's
- * details and the already-formatted expiry date all arrive as parameters, which
- * is also what makes the customer-facing copy testable.
+ * No BCC. The Hub used to put a configured logging address on the BCC line, and
+ * the address configured was a colleague's own mailbox, so every quote quietly
+ * copied him. HubSpot already logs mail sent from a connected inbox against the
+ * contact, its company and the deal, which is the outcome the BCC was there to
+ * produce, so the parameter is gone rather than re-pointed.
+ *
+ * Pure by design: no fetch, no env lookup, no clock. The rep's details and the
+ * already-formatted expiry date all arrive as parameters, which is also what
+ * makes the customer-facing copy testable.
  */
 
 const COMPOSE_BASE = 'https://mail.google.com/mail/?view=cm&fs=1'
@@ -21,7 +20,6 @@ const COMPOSE_BASE = 'https://mail.google.com/mail/?view=cm&fs=1'
 export interface GmailComposeParams {
   to?: string | null
   cc?: string | null
-  bcc?: string | null
   subject?: string | null
   body?: string | null
   authuser?: string | null
@@ -47,7 +45,6 @@ export function buildGmailComposeUrl(params: GmailComposeParams): string {
 
   append('to', params.to)
   append('cc', params.cc)
-  append('bcc', params.bcc)
   // Gmail's subject parameter is `su`. `subject=` is silently ignored.
   append('su', params.subject)
   // encodeURIComponent turns newlines into %0A, which is the only line break
