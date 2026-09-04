@@ -11,7 +11,7 @@ import { getProductSkus } from '@/app/actions/hubspot/getProductSkus'
 import { loadPricingForQuote } from '@/app/actions/pricing/get-pricing'
 import { priceCart, toRegistryLine, type PricedCartLine } from '@/lib/quote-pricing'
 import { QUOTE_DRAFT_STATUS, buildQuoteLineItemInputs, commentsToHtml, quoteExpiryDate } from '@/lib/hubspot-quote'
-import { validateLineItems } from '@/lib/quote-math'
+import { roundCents, validateLineItems } from '@/lib/quote-math'
 import { findOutOfScopeSkus } from '@/lib/quote-sku-scope'
 import {
   ACCEPTED_MID_EDIT_MESSAGE,
@@ -483,7 +483,12 @@ export async function republishEditedQuote(input: RepublishQuoteInput): Promise<
     }
   }
 
-  const hubAmount = lines.reduce((sum, line) => sum + line.lineTotal, 0)
+  // Rounded the way priceCart rounds its own total (quote-pricing.ts), so the
+  // republish path and the Generate path agree. It matters more now than it did
+  // when this number only reached Postgres: it is sent to HubSpot as a string,
+  // and summing already-rounded lines still yields floats like
+  // 1000.0000000000001, which has no business being a deal amount.
+  const hubAmount = roundCents(lines.reduce((sum, line) => sum + line.lineTotal, 0))
   const title = (input.title ?? row.title ?? 'Quote').trim() || 'Quote'
   const comments = input.comments ?? row.comments ?? null
   // Keep the expiry the customer was given, UNLESS it has already passed.
