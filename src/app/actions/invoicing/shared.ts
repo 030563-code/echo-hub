@@ -57,6 +57,11 @@ export interface CustomerInvoiceRow {
   delivery_state: string | null
   delivery_zip: string | null
   delivery_country: string
+  /** Optional site or depot label at the delivery address, e.g. "Location G52".
+   *  Deliberately absent from linesHash: it is not a tax input. */
+  delivery_location: string | null
+  /** Optional name of whoever requested the delivery. Also not a tax input. */
+  delivery_requested_by: string | null
   is_collection: boolean
   subtotal: number | null
   shipping_total: number | null

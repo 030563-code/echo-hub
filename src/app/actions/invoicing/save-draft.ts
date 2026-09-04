@@ -70,6 +70,13 @@ const Input = z.object({
     delivery_city: z.string().max(100).nullable(),
     delivery_state: z.enum(US_STATE_CODES).nullable(),
     delivery_zip: z.string().regex(/^\d{5}(-\d{4})?$/, 'Delivery zip must be 5 digits or ZIP+4.').nullable(),
+    // Both optional and free text. A site label is whatever the customer calls
+    // that yard ("Location G52") and a requester is a person's name, so neither
+    // can be validated beyond a length. Neither is a tax input, which is why
+    // neither appears in linesHash: editing one must not throw away a valid
+    // TaxJar calculation.
+    delivery_location: z.string().trim().max(120).nullable(),
+    delivery_requested_by: z.string().trim().max(120).nullable(),
     // Required, never defaulted: a stale browser tab that posts without the key
     // must be REJECTED, not silently treated as a delivered order. Defaulting
     // it to false would change the jurisdiction the tax is calculated in
@@ -158,6 +165,11 @@ export async function saveInvoiceDraft(input: z.infer<typeof Input>): Promise<Sa
     delivery_city: header.delivery_city,
     delivery_state: header.delivery_state,
     delivery_zip: header.delivery_zip,
+    // delivery_location and delivery_requested_by are deliberately absent. This
+    // hash exists to detect a STALE TAX CALCULATION, and a yard's site label or
+    // the name of whoever ordered changes nothing about where the sale is
+    // taxed. Including them would throw away a valid TaxJar result every time
+    // someone typed a name.
     taxjar_customer_id: header.taxjar_customer_id,
     is_collection: header.is_collection,
   })

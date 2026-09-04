@@ -11,6 +11,7 @@
  */
 
 import { depotLabel } from '@/lib/depot-constants'
+import { deliveryAddressLines, requestedByLine } from '@/lib/customer-invoice/delivery-address-book'
 import { normalizeUSState, DELIVERY_COUNTRIES } from '@/lib/us-address'
 import { customerPaymentTerms } from './payment-terms'
 import { DEPOT_FROM_ADDRESSES, type USDepot } from './constants'
@@ -56,6 +57,12 @@ export interface InvoiceDocumentHeaderRow {
   delivery_zip: string | null
   delivery_street: string | null
   delivery_country: string | null
+  /** Optional site or depot label at the delivery address, e.g. "Location G52".
+   *  Printed under the street. Not a tax input. */
+  delivery_location: string | null
+  /** Optional name of whoever requested the delivery. Printed at the foot of
+   *  the block. Not a tax input. */
+  delivery_requested_by: string | null
   is_collection: boolean
   billing_name: string | null
   billing_line1: string | null
@@ -149,17 +156,25 @@ function countryLabel(code: string | null): string {
 }
 
 function shipToLines(header: InvoiceDocumentHeaderRow): string[] {
-  if (header.is_collection) return ['Collected by the customer']
-  const street = (header.delivery_street ?? '').trim()
-  const cityState = [header.delivery_city, normalizeUSState(header.delivery_state)]
-    .map((p) => (p ?? '').trim())
-    .filter((p) => p !== '')
-    .join(', ')
-  const last = [cityState, (header.delivery_zip ?? '').trim()].filter((p) => p !== '').join(' ')
+  // A collected order still names who asked for it, which is often the only way
+  // the yard knows whose pickup it is.
+  const requester = requestedByLine(header.delivery_requested_by)
+  if (header.is_collection) {
+    return ['Collected by the customer', ...(requester ? [requester] : [])]
+  }
+  // Street, then the site label under it, then city/state/zip. Built by the
+  // shared formatter so the dropdown label, the PDF and the editor cannot drift.
+  const place = deliveryAddressLines({
+    street: header.delivery_street,
+    location: header.delivery_location,
+    city: header.delivery_city,
+    state: normalizeUSState(header.delivery_state),
+    zip: header.delivery_zip,
+  })
   // The country belongs on a shipping address like any other. It is stored as
   // the ISO code the tax API wants and printed as the form a reader expects.
   const country = countryLabel(header.delivery_country)
-  return [street, last, country].filter((p) => p !== '')
+  return [...place, country, ...(requester ? [requester] : [])].filter((p) => p !== '')
 }
 
 /**

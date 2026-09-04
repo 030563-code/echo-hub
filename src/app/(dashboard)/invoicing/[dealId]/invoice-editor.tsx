@@ -17,6 +17,12 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { US_STATES, DELIVERY_COUNTRIES } from '@/lib/us-address'
+import { saveDeliveryAddress } from '@/app/actions/invoicing/delivery-addresses'
+import {
+  deliveryAddressLabel,
+  isSaveableDeliveryAddress,
+  type SavedDeliveryAddress,
+} from '@/lib/customer-invoice/delivery-address-book'
 import { lookupZipJurisdiction } from '@/app/actions/tax/lookup-zip'
 import { getXeroItemAccounts, saveInvoiceCoding } from '@/app/actions/invoicing/save-coding'
 import {
@@ -79,6 +85,10 @@ interface InvoiceEditorProps {
   quoteReference: string | null
   linesChanged: boolean
   canManage: boolean
+  /** Ship-to addresses already used for this customer, newest first. Empty when
+   *  the invoice has neither a Xero account code nor a HubSpot company, in
+   *  which case the picker hides and manual entry is all there is. */
+  savedAddresses: SavedDeliveryAddress[]
 }
 
 const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
@@ -107,7 +117,7 @@ function toEditable(line: CustomerInvoiceLineRow): EditableLine {
   }
 }
 
-export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesChanged, canManage }: InvoiceEditorProps) {
+export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesChanged, canManage, savedAddresses }: InvoiceEditorProps) {
   const router = useRouter()
   const [pendingAction, setPendingAction] = useState<string | null>(null)
   const [, startTransition] = useTransition()
@@ -121,11 +131,73 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
     delivery_city: invoice.delivery_city ?? '',
     delivery_state: invoice.delivery_state ?? '',
     delivery_zip: invoice.delivery_zip ?? '',
+    delivery_location: invoice.delivery_location ?? '',
+    delivery_requested_by: invoice.delivery_requested_by ?? '',
     is_collection: invoice.is_collection,
   })
+  // The book, kept in state so a save shows up in the dropdown without a reload.
+  const [addressBook, setAddressBook] = useState<SavedDeliveryAddress[]>(savedAddresses)
+  const [addressNotice, setAddressNotice] = useState<string | null>(null)
   const [zipLookup, setZipLookup] = useState<
     { status: 'idle' } | { status: 'loading' } | { status: 'ok'; place: string; state: string } | { status: 'error'; message: string }
   >({ status: 'idle' })
+  /**
+   * Fill the address fields from a remembered one.
+   *
+   * requested_by is filled too but is the field most likely to be wrong for a
+   * new order, so it is the one the rep is most likely to overwrite. Filling it
+   * still beats making them retype the common case.
+   */
+  const applySavedAddress = (id: string) => {
+    const saved = addressBook.find((a) => a.id === id)
+    if (!saved) return
+    setHeader((current) => ({
+      ...current,
+      delivery_street: saved.street ?? '',
+      delivery_city: saved.city ?? '',
+      delivery_state: saved.state ?? '',
+      delivery_zip: saved.zip ?? '',
+      delivery_location: saved.location ?? '',
+      delivery_requested_by: saved.requestedBy ?? '',
+    }))
+    setAddressNotice(null)
+  }
+
+  /** Remember the address currently typed in, for next time. */
+  const rememberAddress = () => {
+    const address = {
+      street: header.delivery_street,
+      city: header.delivery_city,
+      state: header.delivery_state,
+      zip: header.delivery_zip,
+      location: header.delivery_location,
+    }
+    if (!isSaveableDeliveryAddress(address)) {
+      setAddressNotice('Fill in the street, city, state and zip before saving the address.')
+      return
+    }
+    setPendingAction('save-address')
+    startTransition(async () => {
+      const result = await saveDeliveryAddress({
+        invoiceId: invoice.id,
+        street: header.delivery_street,
+        city: header.delivery_city,
+        state: header.delivery_state,
+        zip: header.delivery_zip,
+        country: invoice.delivery_country || 'US',
+        location: header.delivery_location.trim() || null,
+        requestedBy: header.delivery_requested_by.trim() || null,
+      })
+      setPendingAction(null)
+      if (!result.success) {
+        setAddressNotice(result.error ?? 'The address could not be saved.')
+        return
+      }
+      if (result.addresses) setAddressBook(result.addresses)
+      setAddressNotice('Saved. It will be in the list next time.')
+    })
+  }
+
   const [rows, setRows] = useState<EditableLine[]>(lines.map(toEditable))
   // Read from Xero once per editor.
   //
@@ -438,6 +510,8 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
       delivery_city: header.delivery_city || null,
       delivery_state: header.delivery_state || null,
       delivery_zip: header.delivery_zip || null,
+      delivery_location: header.delivery_location.trim() || null,
+      delivery_requested_by: header.delivery_requested_by.trim() || null,
       is_collection: header.is_collection,
     },
     lines: rows.map((row, index) => ({
@@ -778,6 +852,30 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
           </p>
         )}
 
+        {/* The address book. Hidden entirely when the customer has none yet, so
+            an invoice for a first-time customer looks exactly as it did before
+            this existed. Hidden on a collected order too: there is no delivery
+            address to pick. */}
+        {!header.is_collection && addressBook.length > 0 && (
+          <div className="mb-4">
+            <Label htmlFor="savedAddress">Previous delivery addresses</Label>
+            <select
+              id="savedAddress"
+              className="flex h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+              value=""
+              onChange={(e) => applySavedAddress(e.target.value)}
+              disabled={!editable}
+            >
+              <option value="">Choose a saved address, or type a new one below</option>
+              {addressBook.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {deliveryAddressLabel(a)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* One row, in the order an address is written: street, city, state,
             zip, country. State and Zip were previously nested in their own
             two-column grid, which is why adding Country wrapped it underneath
@@ -871,6 +969,54 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
           </p>
         )}
         {zipLookup.status === 'error' && <p className="mt-3 text-xs text-amber-700">{zipLookup.message}</p>}
+
+        {/* The two optional lines. Both sit BELOW the tax fields on purpose:
+            neither is a tax input, and neither appears in linesHash, so editing
+            either can never invalidate a calculated tax. A rep can name the
+            requester on an invoice that is already priced. */}
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="deliveryLocation">Location (optional)</Label>
+            <Input
+              id="deliveryLocation"
+              value={header.delivery_location}
+              onChange={(e) => setHeader({ ...header, delivery_location: e.target.value })}
+              placeholder="Location G52"
+              disabled={!editable}
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              The customer&apos;s own name for this yard or depot. Printed under the street.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="deliveryRequestedBy">Requested by (optional)</Label>
+            <Input
+              id="deliveryRequestedBy"
+              value={header.delivery_requested_by}
+              onChange={(e) => setHeader({ ...header, delivery_requested_by: e.target.value })}
+              placeholder="Dan Buckley"
+              disabled={!editable}
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Printed at the foot of the delivery address.
+            </p>
+          </div>
+        </div>
+
+        {!header.is_collection && (
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={rememberAddress}
+              disabled={!editable || pendingAction !== null}
+            >
+              {pendingAction === 'save-address' ? 'Saving...' : 'Save this address'}
+            </Button>
+            {addressNotice && <span className="text-xs text-gray-600">{addressNotice}</span>}
+          </div>
+        )}
       </Card>
 
       {/* Lines */}
