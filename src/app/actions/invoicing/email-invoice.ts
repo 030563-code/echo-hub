@@ -20,6 +20,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { xeroFindContact } from '@/lib/xero-hub'
 import { requireInvoicingManage, loadInvoiceWithLines, logInvoiceEvent } from './shared'
 import { renderInvoicePdf } from './document-data'
+import { buildInvoiceEmail } from '@/lib/customer-invoice/invoice-email'
 
 const Input = z.object({ invoiceId: z.string().uuid() })
 const TIMEOUT_MS = 30_000
@@ -97,6 +98,17 @@ export async function emailInvoiceToCustomer(input: { invoiceId: string }): Prom
     }
   }
 
+  // Dean's copy, built from the invoice's own figures rather than assembled
+  // inline, so the wording is unit-tested. amountDue is the total: the Hub
+  // never records a payment, so an invoice it emails is always owed in full.
+  const email = buildInvoiceEmail({
+    invoiceNumber: invoice.invoice_number,
+    currency: invoice.currency,
+    total: invoice.total,
+    amountDue: invoice.total,
+    dueDate: invoice.due_date,
+  })
+
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
   try {
@@ -114,11 +126,8 @@ export async function emailInvoiceToCustomer(input: { invoiceId: string }): Prom
         invoice_number: invoice.invoice_number,
         to: recipient,
         is_test: testRecipient !== '',
-        subject: `Echo Barrier invoice ${invoice.invoice_number}`,
-        body:
-          `Hi,\n\nPlease find attached Echo Barrier invoice ${invoice.invoice_number}` +
-          `${invoice.customer_po_number ? ` for your purchase order ${invoice.customer_po_number}` : ''}.\n\n` +
-          `Payment details are on the invoice. Let me know if you need anything changed.\n\nThanks`,
+        subject: email.subject,
+        body: email.body,
         attachment: { filename: rendered.filename, content_base64: rendered.bytes.toString('base64') },
       }),
       signal: controller.signal,

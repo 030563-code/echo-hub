@@ -256,6 +256,22 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
     date: invoiceDate,
     due_date: dueDate,
     line_amount_types: 'Exclusive',
+    // The Xero tax rate the lines are posted against. OUTPUT is this org's
+    // "Tax on Sales", read live from GET /TaxRates on 2026-09-04.
+    //
+    // It was NONE ("Tax Exempt"), which reported every US sale as exempt even
+    // though the tax was on the invoice. OUTPUT reports it as sales tax.
+    //
+    // Safe because OUTPUT's EffectiveRate is 0, exactly like NONE: Xero
+    // calculates nothing and the per-line tax_amount below, which comes from
+    // TaxJar, stands untouched. Xero's own spec allows a supplied TaxAmount to
+    // override the rate-derived one, and TaxJar knows the destination
+    // jurisdiction where Xero does not.
+    //
+    // NOT TAX002 or TAX003. Those are this org's real California rates, 8.75
+    // and 7.25, which Xero WOULD compute and which are wrong for a sale
+    // shipped anywhere but California.
+    tax_type: 'OUTPUT' as const,
     lines: lines
       .filter((l) => !l.is_shipping)
       .map((l) => ({
