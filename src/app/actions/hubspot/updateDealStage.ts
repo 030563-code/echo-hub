@@ -76,13 +76,20 @@ export async function updateDealStage(dealId: string, pipelineId: string, stageI
       .eq('hubspot_deal_id', dealId)
       .maybeSingle()
     const items: unknown[] = Array.isArray(regRow?.line_items_raw) ? regRow.line_items_raw : []
-    const skus = Array.from(
-      new Set(
-        items
-          .map((i) => String((i as { sku?: unknown })?.sku ?? '').trim())
-          .filter(Boolean)
-      )
-    )
+    // Each line is checked at the depot it actually dispatches from, not simply
+    // at the deal's. Fitting kits split in Supabase into hooks and bungees that
+    // are pinned to Baltimore and carry ship_from_depot saying so, and HKNA and
+    // BUNNA have no San Bernardino mapping at all. Checking those against the
+    // deal's depot would refuse every US-SBD acceptance that includes a kit.
+    const required = new Map<string, { sku: string; depot: string }>()
+    for (const item of items) {
+      const line = item as { sku?: unknown; ship_from_depot?: unknown }
+      const sku = String(line?.sku ?? '').trim()
+      if (!sku) continue
+      const depot = String(line?.ship_from_depot ?? '').trim() || sendingDepot
+      required.set(`${sku}|${depot}`, { sku, depot })
+    }
+    const skus = Array.from(new Set([...required.values()].map((r) => r.sku)))
     if (skus.length > 0) {
       const { data: mapRows, error: mapError } = await supabase
         .from('product_depot_mapping')
@@ -94,14 +101,17 @@ export async function updateDealStage(dealId: string, pipelineId: string, stageI
         return { success: false, error: 'Could not verify the quoted products for this depot. Please try again.' }
       }
       const mappedAnywhere = new Set((mapRows ?? []).map((r) => r.hubspot_sku_code))
-      const allowedHere = new Set(
-        (mapRows ?? []).filter((r) => r.depot_code === sendingDepot).map((r) => r.hubspot_sku_code)
+      const mappedAt = new Set((mapRows ?? []).map((r) => `${r.hubspot_sku_code}|${r.depot_code}`))
+      const wrongDepot = [...required.values()].filter(
+        (r) => mappedAnywhere.has(r.sku) && !mappedAt.has(`${r.sku}|${r.depot}`)
       )
-      const wrongDepot = skus.filter((sku) => mappedAnywhere.has(sku) && !allowedHere.has(sku))
       if (wrongDepot.length > 0) {
+        const detail = wrongDepot
+          .map((r) => (r.depot === sendingDepot ? r.sku : `${r.sku} (dispatches from ${r.depot})`))
+          .join(', ')
         return {
           success: false,
-          error: `These quoted products are not available from ${sendingDepot}: ${wrongDepot.join(', ')}. Choose a different depot or update the quote first.`,
+          error: `These quoted products are not available from ${sendingDepot}: ${detail}. Choose a different depot or update the quote first.`,
         }
       }
     }

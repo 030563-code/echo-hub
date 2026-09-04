@@ -157,10 +157,14 @@ function PriceEditor({
   contractor,
   existing,
   skus,
+  productNames,
 }: {
   contractor: ContractorRow
   existing?: ContractPriceRecord
   skus: string[]
+  /** SKU to the product name as it reads in HubSpot. A SKU with no list price
+   *  simply has no entry, and the row falls back to showing its SKU alone. */
+  productNames: Record<string, string>
 }) {
   const router = useRouter()
   const [sku, setSku] = useState(existing?.sku ?? '')
@@ -169,6 +173,9 @@ function PriceEditor({
   const [validFrom, setValidFrom] = useState(existing?.valid_from ?? '')
   const [validTo, setValidTo] = useState(existing?.valid_to ?? '')
   const [isActive, setIsActive] = useState(existing?.is_active !== false)
+  // NOT part of the upsert key, unlike sku, currency and valid_from, so it
+  // stays editable on an existing row.
+  const [customerPart, setCustomerPart] = useState(existing?.customer_part_number ?? '')
   const locked = existing !== undefined
 
   return (
@@ -190,6 +197,7 @@ function PriceEditor({
           unit_price: unit,
           valid_from: orNull(validFrom),
           valid_to: orNull(validTo),
+          customer_part_number: orNull(customerPart),
           is_active: isActive,
         })
       }}
@@ -206,6 +214,11 @@ function PriceEditor({
           <datalist id="contract-skus">
             {skus.map((s) => <option key={s} value={s} />)}
           </datalist>
+          {/* Names the product for the SKU as typed, so a wrong but plausible
+              code (EBH9NA against EBH9XNA) is visible before it is saved. */}
+          {productNames[sku.trim().toUpperCase()] && (
+            <p className="mt-1 text-xs text-gray-600">{productNames[sku.trim().toUpperCase()]}</p>
+          )}
         </div>
         <div>
           <Label htmlFor="ccur" className="text-gray-900">Currency</Label>
@@ -226,6 +239,22 @@ function PriceEditor({
       <div>
         <Label htmlFor="cprice" className="text-gray-900">Contract price</Label>
         <Input id="cprice" inputMode="decimal" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} className="mt-1" />
+      </div>
+      <div>
+        <Label htmlFor="cpart" className="text-gray-900">Their part number (optional)</Label>
+        <Input
+          id="cpart"
+          value={customerPart}
+          onChange={(e) => setCustomerPart(e.target.value)}
+          className="mt-1"
+          placeholder="H9G"
+        />
+        {/* Every contractor names the same product differently. Herc's H9 is
+            "H9G", United Rentals' is "ECHOBARRIER H9 GREEN". Holding their code
+            is what lets a rep tie the line to the customer's own order. */}
+        <p className="mt-1 text-xs text-gray-500">
+          The code this customer uses on their purchase orders, so a rep can match the line to it.
+        </p>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -253,11 +282,15 @@ export function ContractPricesClient({
   contractors,
   prices,
   skus,
+  productNames,
   canEdit,
 }: {
   contractors: ContractorRow[]
   prices: ContractPriceRecord[]
   skus: string[]
+  /** SKU to the product name as it reads in HubSpot, resolved from the list
+   *  prices the page already loads. */
+  productNames: Record<string, string>
   canEdit: boolean
 }) {
   const byCompany = new Map<string, ContractPriceRecord[]>()
@@ -303,7 +336,7 @@ export function ContractPricesClient({
                 {canEdit && (
                   <div className="flex gap-2">
                     <ContractorEditor existing={contractor} />
-                    <PriceEditor contractor={contractor} skus={skus} />
+                    <PriceEditor contractor={contractor} skus={skus} productNames={productNames} />
                   </div>
                 )}
               </div>
@@ -315,7 +348,9 @@ export function ContractPricesClient({
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-gray-200 text-left text-gray-600">
+                        <th className="px-4 py-2.5 font-medium">Product</th>
                         <th className="px-4 py-2.5 font-medium">SKU</th>
+                        <th className="px-4 py-2.5 font-medium">Their code</th>
                         <th className="px-4 py-2.5 font-medium text-right">Price</th>
                         <th className="px-4 py-2.5 font-medium">In force</th>
                         <th className="px-4 py-2.5 font-medium">Last changed by</th>
@@ -325,7 +360,15 @@ export function ContractPricesClient({
                     <tbody>
                       {rows.map((row) => (
                         <tr key={row.id} className={`border-b border-gray-100 last:border-0 ${row.is_active === false ? 'opacity-50' : ''}`}>
-                          <td className="px-4 py-2.5 font-medium text-gray-900">{row.sku}</td>
+                          {/* The product name, not the SKU, is what a person
+                              reads. A SKU with no list price has no name to
+                              resolve, so the cell shows the SKU rather than a
+                              dash that would look like missing data. */}
+                          <td className="px-4 py-2.5 font-medium text-gray-900">
+                            {productNames[row.sku] ?? row.sku}
+                          </td>
+                          <td className="px-4 py-2.5 text-xs text-gray-500">{row.sku}</td>
+                          <td className="px-4 py-2.5 text-gray-600">{row.customer_part_number ?? '—'}</td>
                           <td className="px-4 py-2.5 text-right tabular-nums text-gray-900">
                             {formatMoney(Number(row.unit_price), row.currency)}
                           </td>
@@ -336,7 +379,7 @@ export function ContractPricesClient({
                           <td className="px-4 py-2.5 text-xs text-gray-500">{row.updated_by_label ?? '—'}</td>
                           {canEdit && (
                             <td className="px-4 py-2.5 text-right">
-                              <PriceEditor contractor={contractor} existing={row} skus={skus} />
+                              <PriceEditor contractor={contractor} existing={row} skus={skus} productNames={productNames} />
                             </td>
                           )}
                         </tr>

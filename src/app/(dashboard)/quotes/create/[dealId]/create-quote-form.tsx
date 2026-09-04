@@ -917,6 +917,17 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                           <p className="font-medium text-gray-900 break-words">{item.name}</p>
                           <p className="text-xs text-gray-500">
                             SKU: {item.sku || 'N/A'}
+                            {/* The customer's own code for this product, shown
+                                only when their contract gave us one. It is what
+                                appears on their purchase order, so it is the
+                                fastest thing for a rep to check the line
+                                against. Nothing else internal belongs here: no
+                                Xero code, no depot, no company id. */}
+                            {priced?.customerPartNumber && (
+                              <span className="ml-2 text-gray-600">
+                                Their code: {priced.customerPartNumber}
+                              </span>
+                            )}
                             {priced && (
                               <span
                                 className={

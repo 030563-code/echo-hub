@@ -131,7 +131,7 @@ export async function loadPricingForQuote(input: {
     companyId
       ? admin
           .from('contract_prices')
-          .select('hubspot_company_id, sku, currency, unit_price, valid_from, valid_to, is_active')
+          .select('hubspot_company_id, sku, currency, unit_price, valid_from, valid_to, customer_part_number, is_active')
           .eq('hubspot_company_id', companyId)
           .eq('currency', currency)
           .eq('is_active', true)
@@ -176,9 +176,16 @@ export async function getRepsForCaps(input: {
   isSuperAdmin: boolean
 }): Promise<RepRow[]> {
   const admin = createAdminClient()
+  // NOT 'email'. public.profiles has no email column: it holds id,
+  // display_name, is_super_admin, hubspot_team_id, allowed_*, pipeline_id,
+  // phone and the timestamps. Selecting one made PostgREST reject the whole
+  // query, which this function swallowed into an empty list, so the discount
+  // caps page showed "no reps" to everyone including super admins and no cap
+  // could ever be set. A rep with no cap cannot discount at all, so that was
+  // the entire discounting feature, off.
   let query = admin
     .from('profiles')
-    .select('id, display_name, email, pipeline_id')
+    .select('id, display_name, pipeline_id')
     .order('display_name', { ascending: true })
   if (!input.isSuperAdmin) {
     // A null pipeline would match nothing useful, so an unscoped admin sees an
@@ -190,5 +197,20 @@ export async function getRepsForCaps(input: {
     console.error('getRepsForCaps failed', error.message)
     return []
   }
-  return (data ?? []) as RepRow[]
+
+  const rows = (data ?? []) as { id: string; display_name: string | null; pipeline_id: string | null }[]
+
+  // The email lives on auth.users, which is not reachable through PostgREST at
+  // all. The service-role admin API is the only route to it. It is a display
+  // nicety under the name, so a failure here degrades to no email rather than
+  // to no reps: never let it empty the list again.
+  const emailById = new Map<string, string>()
+  try {
+    const { data: users } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
+    for (const u of users?.users ?? []) if (u.email) emailById.set(u.id, u.email)
+  } catch (e) {
+    console.error('getRepsForCaps could not read emails', e)
+  }
+
+  return rows.map((r) => ({ ...r, email: emailById.get(r.id) ?? null }))
 }

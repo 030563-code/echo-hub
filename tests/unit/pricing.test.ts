@@ -26,7 +26,35 @@ describe('resolveBasePrice precedence', () => {
       { hubspot_company_id: UR, sku: 'EBH9NA', currency: 'USD', unit_price: '160.00' },
     ]
     const r = resolveBasePrice({ sku: 'EBH9NA', currency: 'USD', companyId: UR, contractPrices: contract, listPrices, today: TODAY })
-    expect(r).toEqual({ unitPrice: 160, source: 'contract', floorPrice: 150, contractCompanyId: UR })
+    expect(r).toEqual({ unitPrice: 160, source: 'contract', floorPrice: 150, contractCompanyId: UR, customerPartNumber: null })
+  })
+
+  // The contractor's own code for the product, carried through so the quote
+  // line can be matched against the customer's purchase order. Display only:
+  // it takes no part in matching, which stays sku + currency + company.
+  it('carries the customer part number off a contract price', () => {
+    const contract: ContractPriceRow[] = [
+      { hubspot_company_id: UR, sku: 'EBH9NA', currency: 'USD', unit_price: '160.00', customer_part_number: 'ECHOBARRIER H9 GREEN' },
+    ]
+    const r = resolveBasePrice({ sku: 'EBH9NA', currency: 'USD', companyId: UR, contractPrices: contract, listPrices, today: TODAY })
+    expect(r.customerPartNumber).toBe('ECHOBARRIER H9 GREEN')
+  })
+
+  it('reports no part number rather than an empty string when the contract has none', () => {
+    const contract: ContractPriceRow[] = [
+      { hubspot_company_id: UR, sku: 'EBH9NA', currency: 'USD', unit_price: '160.00', customer_part_number: '   ' },
+    ]
+    const r = resolveBasePrice({ sku: 'EBH9NA', currency: 'USD', companyId: UR, contractPrices: contract, listPrices, today: TODAY })
+    expect(r.customerPartNumber).toBeNull()
+  })
+
+  // MAP is reference only. If it ever leaked into the resolver a rep would be
+  // quoted at the advertised price instead of MSRP without anything saying so.
+  it('never quotes from map_price', () => {
+    const withMap = [{ sku: 'EBH9NA', currency: 'USD', unit_price: '185.00', map_price: '245.00', floor_price: '150.00' }]
+    const r = resolveBasePrice({ sku: 'EBH9NA', currency: 'USD', listPrices: withMap, today: TODAY })
+    expect(r.unitPrice).toBe(185)
+    expect(r.source).toBe('list')
   })
 
   it('falls back to the list price when the contract belongs to another company', () => {

@@ -35,7 +35,12 @@ export type PriceSource = 'contract' | 'list' | 'hubspot' | 'manual'
 export interface ListPriceRow {
   sku: string
   currency: string
+  /** MSRP (LIST). The quote builder starts a line here. */
   unit_price: number | string
+  /** MAP (Advertised). Reference only: resolveBasePrice never reads it, so a
+   *  rep can never be quoted at MAP by accident. */
+  map_price?: number | string | null
+  /** Distributor net, the floor a discount may not cross. */
   floor_price?: number | string | null
   is_active?: boolean
 }
@@ -47,6 +52,10 @@ export interface ContractPriceRow {
   unit_price: number | string
   valid_from?: string | null
   valid_to?: string | null
+  /** The contractor's own code for this product, e.g. Herc "H9G". Carried so a
+   *  rep can match the line against the customer's purchase order. Never a
+   *  lookup key: matching is on sku + currency + company, as it always was. */
+  customer_part_number?: string | null
   is_active?: boolean
 }
 
@@ -60,6 +69,9 @@ export interface ResolvedPrice {
   source: PriceSource
   floorPrice: number | null
   contractCompanyId: string | null
+  /** Only ever set on a contract price, and only when the contractor gave us
+   *  their own code for the product. Display only. */
+  customerPartNumber?: string | null
 }
 
 const CURRENCY_SYMBOLS: Record<string, string> = { USD: '$', CAD: 'CA$', GBP: '£', EUR: '€' }
@@ -193,6 +205,7 @@ export function resolveBasePrice(input: {
       source: 'contract',
       floorPrice,
       contractCompanyId: String(contract.hubspot_company_id ?? '').trim() || null,
+      customerPartNumber: String(contract.customer_part_number ?? '').trim() || null,
     }
   }
 

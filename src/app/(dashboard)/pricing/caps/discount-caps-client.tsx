@@ -74,14 +74,31 @@ function CapEditor({ rep, cap }: { rep: Rep; cap: DiscountCapRecord | undefined 
   )
 }
 
-export function DiscountCapsClient({ reps, caps }: { reps: Rep[]; caps: DiscountCapRecord[] }) {
+export function DiscountCapsClient({
+  reps,
+  caps,
+  scopedToRegion,
+}: {
+  reps: Rep[]
+  caps: DiscountCapRecord[]
+  /** True when the list was narrowed to the viewer's own region. A super admin
+   *  sees everyone, so an empty list means something else entirely. */
+  scopedToRegion: boolean
+}) {
   const capByUser = new Map(caps.map((c) => [c.user_id, c]))
 
+  // The old copy asserted one cause, "your profile has no region set", whatever
+  // the reason. That was wrong for a super admin, who is never scoped, and it
+  // sent Dean looking at his own profile when the real fault was a query
+  // selecting a profiles.email column that does not exist. Say only what is
+  // actually known.
   if (reps.length === 0) {
     return (
-      <Card className="bg-white border-gray-200">
+      <Card className="bg-white border-gray-200 p-4">
         <p className="text-sm text-gray-600">
-          No reps to show. Your own profile has no region set, so there is nobody scoped to you.
+          {scopedToRegion
+            ? 'No reps to show. Your profile has no region set, so nobody is scoped to you. Ask an admin to set your region.'
+            : 'No reps to show. There are no user profiles to cap, which is unexpected on a working Hub, so check the server log for the reason.'}
         </p>
       </Card>
     )
