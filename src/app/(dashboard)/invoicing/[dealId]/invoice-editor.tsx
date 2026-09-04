@@ -1498,12 +1498,17 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                 )}
               </div>
             )}
-            {status === 'tax_calculated' && invoice.xero_invoice_id && canManage && (
+            {/* `sent` belongs here as much as `tax_calculated`. A send whose
+                outcome the Hub misread leaves the invoice on `sent` WITH the
+                Xero ids, and without this the banner never appeared: Send
+                refuses because the ids exist, so there was no way out. */}
+            {(status === 'tax_calculated' || status === 'sent') && invoice.xero_invoice_id && canManage && (
               <div className="flex flex-col items-stretch gap-2 sm:items-end">
                 <p className="text-xs text-amber-700 sm:text-right">
                   This invoice already exists in Xero as{' '}
                   {invoice.xero_invoice_number ?? invoice.xero_invoice_id}, but the Hub did not record it.
-                  Reconcile instead of sending it again.
+                  Reconcile instead of sending it again. Check the PDF is attached in Xero: the run that
+                  created this invoice did not report back, and the attachment happens after the invoice.
                 </p>
                 <Button variant="outline" size="sm" onClick={onReconcile} disabled={pendingAction !== null}>
                   {spinner('reconcile')}
