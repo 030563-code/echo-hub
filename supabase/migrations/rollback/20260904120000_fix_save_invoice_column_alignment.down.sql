@@ -1,0 +1,10 @@
+-- DELIBERATELY NO ROLLBACK.
+--
+-- The previous state of save_customer_invoice does not run at all: its INSERT
+-- column list and value list are misaligned, and Postgres rejects the plan with
+--   column "ship_from_locked" is of type boolean but expression is of type text
+-- on every call. Restoring it would re-break saving for every invoice.
+--
+-- If this migration ever needs undoing, the thing to undo is the tracking
+-- feature from 20260903141000, which means removing `tracking` from BOTH the
+-- column list and the value list, together. Do not restore the old body.
