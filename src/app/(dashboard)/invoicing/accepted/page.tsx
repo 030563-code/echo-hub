@@ -51,7 +51,7 @@ export default async function AcceptedQueuePage() {
     : await admin
         .from('deals_registry')
         .select(
-          'hubspot_deal_id, deal_name, hubspot_company_id, depot_code, amount, quote_reference, line_items_raw, deal_status, delivery_street, delivery_city, delivery_state, delivery_zip',
+          'hubspot_deal_id, deal_name, hubspot_company_id, depot_code, amount, quote_reference, line_items_raw, deal_status, delivery_street, delivery_city, delivery_state, delivery_zip, is_collection',
         )
         .in('hubspot_deal_id', acceptedIds)
         .in('depot_code', [...US_DEPOTS])
@@ -94,7 +94,9 @@ export default async function AcceptedQueuePage() {
       }).ok
 
       let chip: QueueChip
-      if (!invoice) chip = addressOk ? 'new' : 'missing_address'
+      // A collected deal has no delivery address to be missing: the tax is
+      // calculated at the depot it is collected from.
+      if (!invoice) chip = addressOk || deal.is_collection === true ? 'new' : 'missing_address'
       else chip = invoice.status as CustomerInvoiceStatus
 
       const linesChanged = invoice

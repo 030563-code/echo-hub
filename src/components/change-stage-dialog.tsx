@@ -18,7 +18,7 @@ import {
 import { depotLabel } from '@/lib/depot-constants'
 import { WIN_PROBABILITY_VALUES } from '@/lib/quote-math'
 import { isUSDepot } from '@/lib/customer-invoice/constants'
-import { US_STATE_CODES } from '@/lib/us-address'
+import { US_STATE_CODES, usAcceptanceComplete } from '@/lib/us-address'
 import { lookupZipJurisdiction } from '@/app/actions/tax/lookup-zip'
 import { useRouter } from 'next/navigation'
 import { ArrowRightLeft, Loader2, MapPin } from 'lucide-react'
@@ -36,6 +36,9 @@ interface ChangeStageDialogProps {
   currentWinProbability?: string | null
   /** Delivery address already stored on deals_registry, if any. */
   initialDelivery?: { street: string; city: string; state: string; zip: string } | null
+  /** Will Call as answered at Quote Setup. The rep confirms it here rather
+   *  than being asked a second time. */
+  initialIsCollection?: boolean
   /**
    * A stage to preselect, and open on. This is how a drop on the deals board
    * arrives: the board navigates here with ?stage= rather than PATCHing HubSpot
@@ -52,6 +55,7 @@ export default function ChangeStageDialog({
   hasAssociatedCompany = true,
   currentWinProbability = null,
   initialDelivery = null,
+  initialIsCollection = false,
   initialStageId = null,
 }: ChangeStageDialogProps) {
   // A preselected stage means the rep arrived here to make that change, so the
@@ -69,6 +73,7 @@ export default function ChangeStageDialog({
   const [city, setCity] = useState(initialDelivery?.city ?? '')
   const [stateCode, setStateCode] = useState(initialDelivery?.state ?? '')
   const [zip, setZip] = useState(initialDelivery?.zip ?? '')
+  const [isCollection, setIsCollection] = useState(initialIsCollection)
   // Zip-driven completion. TaxJar's rates endpoint resolves a bare zip to its
   // state, city and county, so the rep types the one piece of geography a deal
   // usually carries and confirms the rest instead of guessing it.
@@ -130,13 +135,14 @@ export default function ChangeStageDialog({
   // tax), so acceptance additionally needs the probability, a full ship-to
   // address and an associated company. All re-validated server-side.
   const isUSAcceptance = isQuoteAcceptedStage && isUSDepot(depotForAccepted)
-  const usFieldsComplete =
-    winProbability !== '' &&
-    street.trim() !== '' &&
-    city.trim() !== '' &&
-    stateCode !== '' &&
-    ZIP_RE.test(zip.trim()) &&
-    hasAssociatedCompany
+  // The server's own predicate, so the button can never enable for something
+  // updateDealStage is about to refuse. A collected order needs no address.
+  const usFieldsComplete = usAcceptanceComplete({
+    winProbability,
+    isCollection,
+    hasAssociatedCompany,
+    delivery: { street: street.trim(), city: city.trim(), state: stateCode, zip: zip.trim() },
+  })
   const canUpdate =
     selectedStage !== currentStageId &&
     (!isTenderStage || tenderDate !== '') &&
@@ -155,7 +161,12 @@ export default function ChangeStageDialog({
       isUSAcceptance
         ? {
             winProbability,
-            delivery: { street: street.trim(), city: city.trim(), state: stateCode, zip: zip.trim() },
+            isCollection,
+            // Omitted entirely when collecting: there is no address to send and
+            // the server must not be asked to sanitize one.
+            delivery: isCollection
+              ? undefined
+              : { street: street.trim(), city: city.trim(), state: stateCode, zip: zip.trim() },
           }
         : undefined
     )
@@ -259,6 +270,31 @@ export default function ChangeStageDialog({
                   </Select>
                 </div>
 
+                {/* Pre-ticked from the answer given at Quote Setup, so this is
+                    a confirmation rather than the same question twice. */}
+                <label className="flex items-start gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={isCollection}
+                    onChange={(e) => setIsCollection(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300"
+                  />
+                  <span>
+                    Collected by the customer (Will Call)
+                    <span className="block text-xs text-gray-500">
+                      Sales tax is charged at the sending depot, so no delivery address is needed.
+                    </span>
+                  </span>
+                </label>
+
+                {isCollection && (
+                  <p className="text-xs text-gray-500">
+                    Taxed at {depotForAccepted ? depotLabel(depotForAccepted) : 'the sending depot'}, where the
+                    customer collects. Any delivery address already on the deal is kept but not used.
+                  </p>
+                )}
+
+                {!isCollection && (
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-gray-700">Delivery Address *</Label>
                   <Input
@@ -330,6 +366,7 @@ export default function ChangeStageDialog({
                     Used to calculate US sales tax: the ship-to address, not the billing address.
                   </p>
                 </div>
+                )}
               </>
             )}
           </div>

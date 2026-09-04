@@ -64,11 +64,19 @@ const KNOWN_SKUS = [
 const DEPOT_OPTIONS = ["US-BAL", "US-SBD", "CA-HAM"] as const;
 const STATUS_OPTIONS = ["on_water", "at_port", "customs", "delivered"] as const;
 
-const EMPTY_FORM: AddShipmentInput = {
+/**
+ * The form's own shape: qty is held as free text so the box can be cleared and
+ * retyped, and is coerced on submit. Held as a number with `parseInt || 1` it
+ * was trapped on 1, because React skips updating a `type="number"` input when
+ * the DOM string and the state number compare loosely equal.
+ */
+type ShipmentForm = Omit<AddShipmentInput, "qty"> & { qty: string };
+
+const EMPTY_FORM: ShipmentForm = {
   spot_id: "",
   container_ref: "",
   sku: "",
-  qty: 1,
+  qty: "1",
   depot_destination: "US-BAL",
   status: "on_water",
   shipped_at: "",
@@ -184,13 +192,13 @@ const selectCls =
 export default function ShippingClient({ items }: { items: ShipmentContent[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<AddShipmentInput>(EMPTY_FORM);
+  const [form, setForm] = useState<ShipmentForm>(EMPTY_FORM);
   const [lookupRef, setLookupRef] = useState("");
   const [lookupStatus, setLookupStatus] = useState<"idle" | "loading" | "found" | "not_found">("idle");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
-  function set<K extends keyof AddShipmentInput>(key: K, value: AddShipmentInput[K]) {
+  function set<K extends keyof ShipmentForm>(key: K, value: ShipmentForm[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -224,8 +232,15 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitError(null);
+    // Coerce at the boundary, and mirror the server's own rule so the message
+    // names the field instead of returning a bare "Invalid input".
+    const qty = Number(form.qty.trim());
+    if (!Number.isInteger(qty) || qty < 1) {
+      setSubmitError("Quantity must be a whole number of at least 1.");
+      return;
+    }
     startTransition(async () => {
-      const result = await addShipment(form);
+      const result = await addShipment({ ...form, qty });
       if ("error" in result) {
         setSubmitError(result.error);
       } else {
@@ -356,10 +371,11 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
                 <Field label="Quantity *">
                   <input
                     required
-                    type="number"
-                    min={1}
+                    inputMode="numeric"
+                    aria-label="Quantity"
                     value={form.qty}
-                    onChange={(e) => set("qty", parseInt(e.target.value, 10) || 1)}
+                    onChange={(e) => set("qty", e.target.value)}
+                    onBlur={(e) => { if (e.target.value.trim() === "") set("qty", "1"); }}
                     className={inputCls}
                   />
                 </Field>

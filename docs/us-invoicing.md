@@ -117,9 +117,15 @@ Three things make this safe rather than merely present:
   invoice. `buildFilingOrders` and `buildTaxRequests` live side by side in
   `tax-mapping.ts` and `tests/unit/taxjar-filing.test.ts` asserts their `to_*` fields
   are equal for the same fixture, delivered and collected, including across two depots.
-- **A rebuild carries the flag forward.** `rebuildInvoiceFromDeal` voids and re-opens,
-  and a fresh draft is always delivered, so the flag is passed explicitly into
-  `openInvoiceForDeal`.
+- **A fresh draft takes the answer from the deal.** `deals_registry.is_collection` is
+  set by the rep at Quote Setup and confirmed at Quotation Accepted, and
+  `openInvoiceForDeal` seeds the draft from it. Before that column existed every
+  invoice opened from the queue started delivered, so a collected order was only
+  corrected at review, after the tax had been calculated against the wrong place.
+- **A rebuild still carries its own flag forward.** `rebuildInvoiceFromDeal` voids and
+  re-opens, passing `isCollection` explicitly, and that explicit value WINS over the
+  deal's: it is what the reviewer decided on the invoice being replaced, which is later
+  information than the quote's.
 
 The RPC coalesces an absent `is_collection` key onto the STORED value, never onto
 false, and `save-draft.ts` requires the field rather than defaulting it, so a stale
@@ -279,8 +285,14 @@ acceptances, and put it back before the cutover.
 - HubSpot holds no delivery address and no collect-versus-deliver field. Of 573 deal
   properties the only delivery one is `delivery_country`, a country-level enum. The Hub
   acceptance gate is therefore the sole system of record for the ship-to address, and
-  collection is asked at review. Do not add a second writer to `deals_registry`
-  without reading the trigger notes in the pending guards migration first.
+  for collection. Collection is asked at Quote Setup, confirmed in the acceptance
+  dialog (where ticking it hides the address fields, because a collected order has no
+  delivery address), and carried on `deals_registry.is_collection`. The invoice
+  editor's own checkbox remains the reviewer's override of record.
+  That column is written by the two writers that ALREADY existed, `createQuote`'s
+  upsert and `updateDealStage`'s acceptance upsert. Do not add a third writer to
+  `deals_registry` without reading the trigger notes in the pending guards migration
+  first: every row write POSTs to n8n and runs `notify_quote_accepted()`.
 - Kit price allocation default: hooks carry the kit unit price, bungees are 0.00.
   Revenue-neutral, editable per line, but per-item revenue reporting in Xero skews
   toward hooks. Dave should confirm he is happy with that.

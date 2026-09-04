@@ -25,8 +25,9 @@ import { getMappedSkus } from '@/app/actions/sales/get-mapped-skus'
 import { getWinProbabilityOptions } from '@/app/actions/hubspot/getDealProperties'
 import { updateDealProperties } from '@/app/actions/hubspot/updateDealProperties'
 import { depotLabel } from '@/lib/depot-constants'
-import { WIN_PROBABILITY_VALUES } from '@/lib/quote-math'
-import { priceCart } from '@/lib/quote-pricing'
+import { WIN_PROBABILITY_VALUES, roundCents, validateLineItems } from '@/lib/quote-math'
+import { priceCart, type CartLine } from '@/lib/quote-pricing'
+import type { EditableCartLine } from '@/lib/quote-edit'
 import { retryHubSpotQuote } from '@/app/actions/sales/publish-quote'
 import {
   QuoteFailedPanel,
@@ -51,13 +52,23 @@ interface LineItem {
   name: string
   sku?: string
   description?: string
-  quantity: number
+  /**
+   * The three numeric fields are held as free-text STRINGS so a box can be
+   * cleared and retyped, and are coerced to numbers only at the boundary
+   * (toNumeric). The raise-po form learned this first and wrote down why.
+   *
+   * Holding them as numbers is what produced "0200". React updates a
+   * `type="number"` input only when `node.value != value`, and "0200" != 200
+   * is false, so React left the DOM alone and the box stayed wrong for good.
+   * The `|| 0` fallback then re-rendered a 0 that could not be deleted or
+   * typed in front of.
+   */
+  quantity: string
   /** What the rep typed. Only used for a SKU with no Supabase price; for
    *  everything else the resolved base wins on both sides. */
-  unitPrice: number
-  total: number
+  unitPrice: string
   discountMode?: DiscountMode
-  discountValue?: number
+  discountValue?: string
 }
 
 interface QuoteContact {
@@ -103,6 +114,9 @@ interface CreateQuoteFormProps {
   /** The rep agent already on the HubSpot deal, if any. Optional field, so
    *  unlike the template and probability it never blocks the setup step. */
   initialRepAgent?: string
+  /** Will Call already on deals_registry, so re-opening the builder shows the
+   *  deal's current answer rather than re-asking it. */
+  initialIsCollection?: boolean
   /**
    * Set when this is an edit of a recalled quote rather than a new one.
    *
@@ -115,7 +129,9 @@ interface CreateQuoteFormProps {
     dealQuoteId: string
     quoteNumber: string | null
     linkBeforeEdit: string | null
-    cartLines: LineItem[]
+    /** The published quote's own snapshot, numeric as it was stored. The form
+     *  converts it to its own string-held fields with fromCartLine. */
+    cartLines: EditableCartLine[]
   }
   /** The price list, the customer's contract prices and this rep's discount
    *  limit, loaded once by the page. The browser prices the cart with the same
@@ -139,18 +155,54 @@ interface CreateQuoteFormProps {
 // explicit sentinel item that maps back to '' in state.
 const DEPOT_UNDECIDED = '__undecided__'
 
+/** A number as input text. Zero and anything non-numeric seed '' so the box
+ *  starts EMPTY rather than holding a 0 the rep has to delete first. */
+const numberToField = (value: unknown): string => {
+  const n = Number(value)
+  return Number.isFinite(n) && n !== 0 ? String(n) : ''
+}
+
+/** Input text as a number. '' is 0 (an empty price is a free line, as before).
+ *  Anything else that is not a number stays NaN, so validateLineItems refuses
+ *  it instead of the line quietly pricing at zero. */
+const fieldToNumber = (value: string): number => (value.trim() === '' ? 0 : Number(value.trim()))
+
+/** The ONE place a cart line becomes numbers. Every consumer (pricing, the
+ *  totals, both submit payloads) goes through here, so none can drift. */
+const toNumeric = (item: LineItem): CartLine => ({
+  productId: item.productId,
+  name: item.name,
+  sku: item.sku,
+  description: item.description,
+  quantity: fieldToNumber(item.quantity),
+  unitPrice: fieldToNumber(item.unitPrice),
+  discountMode: item.discountMode,
+  discountValue: item.discountValue?.trim() ? Number(item.discountValue) : undefined,
+})
+
+/** The reverse, for edit mode: the stored quote snapshot is numeric. */
+const fromCartLine = (line: EditableCartLine): LineItem => ({
+  productId: line.productId,
+  name: line.name,
+  sku: line.sku,
+  description: line.description,
+  quantity: numberToField(line.quantity),
+  unitPrice: numberToField(line.unitPrice),
+  discountMode: line.discountMode,
+  discountValue: line.discountValue != null ? numberToField(line.discountValue) : undefined,
+})
+
 const mapInitialLineItems = (items: HubSpotLineItem[]): LineItem[] =>
   items.map((item) => ({
     productId: item.properties.hs_product_id ?? '',
     name: item.properties.name ?? '',
     sku: item.properties.hs_sku,
     description: item.properties.description,
-    quantity: Number(item.properties.quantity) || 0,
-    unitPrice: Number(item.properties.price) || 0,
-    total: Number(item.properties.amount) || 0,
+    quantity: numberToField(item.properties.quantity),
+    unitPrice: numberToField(item.properties.price),
   }))
 
-export default function CreateQuoteForm({ dealId, dealName, settings, products, salesRep, contact, companyName, initialLineItems = [], initialDepot = '', initialComments = '', dealCurrency = 'USD', initialWinProbability = '', initialRepAgent = '', editing, pricing, companyId = null, bccAddress = null }: CreateQuoteFormProps) {
+export default function CreateQuoteForm({ dealId, dealName, settings, products, salesRep, contact, companyName, initialLineItems = [], initialDepot = '', initialComments = '', dealCurrency = 'USD', initialWinProbability = '', initialRepAgent = '', initialIsCollection = false, editing, pricing, companyId = null, bccAddress = null }: CreateQuoteFormProps) {
   const money = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: dealCurrency,
@@ -188,6 +240,11 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   // recognise is more likely a new option than a bad one, and RepAgentSelect
   // says so on screen rather than dropping it.
   const [repAgent, setRepAgent] = useState<string>(initialRepAgent)
+  // Will Call. Answered here so the depot decision and the collect decision are
+  // made together, carried on deals_registry, confirmed at acceptance, and used
+  // to seed the draft invoice. Never blocks Generate: an undecided quote is
+  // simply a delivered one, which is what every quote was before this existed.
+  const [isCollection, setIsCollection] = useState<boolean>(initialIsCollection)
   const [winProbabilityOptions, setWinProbabilityOptions] = useState<{ label: string; value: string }[]>([])
   const [setupLoading, setSetupLoading] = useState(false)
 
@@ -196,7 +253,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   // discounts; mapInitialLineItems drops them, so seeding an edit from the
   // deal's line items would quietly republish at full price.
   const [lineItems, setLineItems] = useState<LineItem[]>(() =>
-    editing ? editing.cartLines : mapInitialLineItems(initialLineItems)
+    editing ? editing.cartLines.map(fromCartLine) : mapInitialLineItems(initialLineItems)
   )
   // Free-text rep comments — printed on the quote under "Comments from {rep}".
   const [comments, setComments] = useState<string>(initialComments)
@@ -369,9 +426,8 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
       sku: product.properties.hs_sku,
       // Prefilled from HubSpot, freely editable — this is what prints on the quote.
       description: product.properties.description,
-      quantity: 1,
-      unitPrice: Number(product.properties.price) || 0,
-      total: Number(product.properties.price) || 0
+      quantity: '1',
+      unitPrice: numberToField(product.properties.price),
     }
 
     setLineItems([...lineItems, newItem])
@@ -381,31 +437,24 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   /** A discount is stored as the rep entered it, percentage or money off each
    *  unit, and resolved into prices by priceCart. Storing the entry rather than
    *  the result keeps one source of truth for what they chose. */
-  const updateLineItemDiscount = (index: number, patch: { mode?: DiscountMode; value?: number }) => {
+  const updateLineItemDiscount = (index: number, patch: { mode?: DiscountMode; value?: string }) => {
     const newItems = [...lineItems]
     newItems[index] = {
       ...newItems[index],
       ...(patch.mode !== undefined ? { discountMode: patch.mode } : {}),
-      ...(patch.value !== undefined ? { discountValue: Math.max(0, patch.value) } : {}),
+      ...(patch.value !== undefined ? { discountValue: patch.value } : {}),
     }
     setLineItems(newItems)
   }
 
-  const updateLineItem = (index: number, field: keyof LineItem, value: number) => {
-    const newItems = [...lineItems]
-    const item = newItems[index]
-
-    // Friendly-layer clamp: the server validates too, but negative/fractional
-    // quantities and negative prices shouldn't even render as a valid total here.
-    if (field === 'quantity') {
-      item.quantity = Math.max(0, Math.trunc(value) || 0)
-      item.total = item.quantity * item.unitPrice
-    } else if (field === 'unitPrice') {
-      item.unitPrice = Math.max(0, value)
-      item.total = item.quantity * item.unitPrice
-    }
-
-    setLineItems(newItems)
+  /**
+   * Stores exactly what was typed. No clamping and no truncation here on
+   * purpose: rewriting the value mid-edit is what stopped the box from being
+   * clearable. An impossible entry is caught by validateLineItems below, which
+   * is the server's own rule, and Generate stays disabled until it passes.
+   */
+  const updateLineItem = (index: number, field: 'quantity' | 'unitPrice', value: string) => {
+    setLineItems((items) => items.map((it, i) => (i === index ? { ...it, [field]: value } : it)))
   }
 
   const updateLineItemDescription = (index: number, description: string) => {
@@ -427,9 +476,12 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
    * how a 1.00 HubSpot placeholder could reach a customer quote.
    */
   const today = new Date().toISOString().slice(0, 10)
-  const pricedLines = lineItems.map((item) =>
+  /** The cart as numbers, computed once and reused by pricing, the totals and
+   *  both submit payloads. */
+  const numericLines = lineItems.map(toNumeric)
+  const pricedLines = numericLines.map((line) =>
     priceCart({
-      lines: [item],
+      lines: [line],
       currency: dealCurrency,
       companyId,
       listPrices: pricing?.listPrices,
@@ -448,9 +500,11 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   // Friendly-layer validation: the server re-validates on submit, but there's
   // no reason to let Generate fire with a line item that can't possibly be
   // valid, or with a discount the server is going to refuse anyway.
-  const hasInvalidLineItems =
-    lineItems.some((item) => item.quantity < 1 || item.unitPrice < 0) ||
-    pricedLines.some((r) => !r.ok)
+  // The server's OWN rule, not a second copy of it, so the button can never
+  // enable for a line createQuote is about to refuse. It also catches a box
+  // holding letters: fieldToNumber leaves those NaN.
+  const lineItemsError = validateLineItems(numericLines)
+  const hasInvalidLineItems = lineItemsError !== null || pricedLines.some((r) => !r.ok)
 
   const generate = async () => {
     // In-flight guard against a double click. The server has its own, on the
@@ -478,7 +532,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     if (!editing) return
     const result = await republishEditedQuote({
       dealQuoteId: editing.dealQuoteId,
-      lines: lineItems,
+      lines: numericLines,
       comments,
     })
 
@@ -516,10 +570,17 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
       distributor: isDistributorSelected ? distributor : 'Direct Sale',
       depot: depot || undefined,
       template,
-      lineItems,
+      // `total` is required by the action's interface and recomputed there, so
+      // this value is only ever a courtesy.
+      lineItems: numericLines.map((line) => ({
+        ...line,
+        total: roundCents(line.quantity * line.unitPrice),
+      })),
       totalAmount: calculateGrandTotal(),
       winProbability, // backbone: persisted to deals_registry.deal_probability
       comments,
+      // A distributor quote has no depot, so it can have no collection either.
+      isCollection: isDistributorSelected ? false : isCollection,
       isPreview: false,
     })
 
@@ -655,6 +716,26 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                   The depot is required when the deal is marked Quotation Accepted, and it can be
                   chosen then. Without one, the product list covers all your depots.
                 </p>
+
+                {/* Will Call sits with the depot because it is the same
+                    decision: which depot, and does the customer come to it.
+                    Copy mirrors the invoice editor's checkbox so the rep meets
+                    the same words in both places. */}
+                <label className="flex items-start gap-2 pt-1 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={isCollection}
+                    onChange={(e) => setIsCollection(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300"
+                  />
+                  <span>
+                    Collected by the customer (Will Call)
+                    <span className="block text-xs text-gray-500">
+                      Sales tax is charged at the collection depot, not at a delivery address.
+                      Carried through to acceptance and the invoice.
+                    </span>
+                  </span>
+                </label>
               </div>
             )}
 
@@ -765,6 +846,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
               {isDistributorSelected ? distributor : depot ? depotLabel(depot) : '—'}
             </span>{' '}
             · template {template || '—'} · {winProbability || '—'} to close
+            {!isDistributorSelected && isCollection ? ' · Will Call' : ''}
           </span>
           <button
             type="button"
@@ -810,7 +892,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                       )}
                     </SelectContent>
                   </Select>
-                  <Button onClick={addLineItem} disabled={!selectedProduct} size="icon" className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0 bg-echo-yellow text-black hover:bg-echo-yellow/90">
+                  <Button onClick={addLineItem} disabled={!selectedProduct} size="icon" aria-label="Add product" className="min-h-11 min-w-11 lg:min-h-0 lg:min-w-0 bg-echo-yellow text-black hover:bg-echo-yellow/90">
                     <Plus className="w-4 h-4" />
                   </Button>
                 </div>
@@ -861,11 +943,23 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                         <div className="max-sm:min-w-0 sm:w-24">
                           <Label className="text-xs text-gray-500">Qty</Label>
                           <Input
-                            type="number"
-                            min="1"
+                            inputMode="numeric"
+                            aria-label="Quantity"
                             value={item.quantity}
-                            onChange={(e) => updateLineItem(index, 'quantity', parseInt(e.target.value) || 0)}
-                            className="h-11 sm:h-8"
+                            onChange={(e) => updateLineItem(index, 'quantity', e.target.value)}
+                            onBlur={(e) => {
+                              // Tidy on the way OUT, never mid-edit. Blank
+                              // becomes 1 so a line cannot submit empty, and a
+                              // number is re-rendered from Number() so "0200"
+                              // reads back as 200. Nothing is truncated: 1.5
+                              // stays and validateLineItems refuses it.
+                              const raw = e.target.value.trim()
+                              if (raw === '') updateLineItem(index, 'quantity', '1')
+                              else if (Number.isFinite(Number(raw))) {
+                                updateLineItem(index, 'quantity', String(Number(raw)))
+                              }
+                            }}
+                            className="h-11 sm:h-8 tabular-nums"
                           />
                         </div>
 
@@ -873,12 +967,12 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                           <Label className="text-xs text-gray-500">{isManual ? 'Price' : 'List price'}</Label>
                           {isManual ? (
                             <Input
-                              type="number"
-                              min="0"
-                              step="0.01"
+                              inputMode="decimal"
+                              aria-label="Unit price"
+                              placeholder="0.00"
                               value={item.unitPrice}
-                              onChange={(e) => updateLineItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                              className="h-11 sm:h-8"
+                              onChange={(e) => updateLineItem(index, 'unitPrice', e.target.value)}
+                              className="h-11 sm:h-8 tabular-nums"
                             />
                           ) : (
                             <p className="pt-1 font-mono text-gray-500 line-through decoration-gray-300">
@@ -892,13 +986,12 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                             <Label className="text-xs text-gray-500">Discount</Label>
                             <div className="flex gap-1">
                               <Input
-                                type="number"
-                                min="0"
-                                step="0.01"
+                                inputMode="decimal"
+                                aria-label="Discount"
                                 value={item.discountValue ?? ''}
                                 placeholder="0"
-                                onChange={(e) => updateLineItemDiscount(index, { value: parseFloat(e.target.value) || 0 })}
-                                className="h-11 sm:h-8"
+                                onChange={(e) => updateLineItemDiscount(index, { value: e.target.value })}
+                                className="h-11 sm:h-8 tabular-nums"
                               />
                               <select
                                 aria-label="Discount type"
@@ -916,7 +1009,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                         <div className="sm:w-24 text-left sm:text-right">
                           <Label className="text-xs text-gray-500">Unit</Label>
                           <p className="font-mono font-medium pt-1">
-                            {money.format(priced?.priced.netUnitPrice ?? item.unitPrice)}
+                            {money.format(priced?.priced.netUnitPrice ?? numericLines[index].unitPrice)}
                           </p>
                         </div>
 
@@ -1046,7 +1139,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                 </Button>
                 {hasInvalidLineItems && !submitted && (
                   <p className="text-xs text-red-600 text-center">
-                    Fix line item quantities (at least 1) and prices (0 or more) to generate.
+                    {lineItemsError ?? 'Fix line item quantities (at least 1) and prices (0 or more) to generate.'}
                   </p>
                 )}
                 {publishedQuote ? (

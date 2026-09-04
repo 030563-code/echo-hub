@@ -176,7 +176,7 @@ export function DealQuotesCard({
                 <p className="mt-1 text-xs text-gray-500">
                   {formatDate(quote.created_at)}
                   {quote.created_by_label ? ` by ${quote.created_by_label}` : ''}
-                  {quote.expires_on ? `, expires ${quote.expires_on}` : ''}
+                  {quote.expires_on ? `, expires ${formatDate(quote.expires_on)}` : ''}
                 </p>
 
                 {quote.status === 'failed' && quote.error_message && (

@@ -24,8 +24,9 @@ import {
 
 const Input = z.object({
   dealId: z.string().regex(/^\d+$/),
-  // Set only by rebuildInvoiceFromDeal, which must carry a Will Call flag over
-  // to the replacement draft. A fresh draft is always delivered.
+  // Set by rebuildInvoiceFromDeal, whose reviewed flag must win over the deal's.
+  // A fresh draft takes its answer from deals_registry.is_collection, given at
+  // Quote Setup and confirmed at acceptance.
   isCollection: z.boolean().optional(),
 })
 
@@ -43,7 +44,6 @@ export async function openInvoiceForDeal(input: {
   const parsed = Input.safeParse(input)
   if (!parsed.success) return { success: false, error: 'Invalid deal id' }
   const { dealId } = parsed.data
-  const isCollection = parsed.data.isCollection ?? false
 
   const admin = createAdminClient()
 
@@ -58,12 +58,16 @@ export async function openInvoiceForDeal(input: {
   const { data: deal, error: dealError } = await admin
     .from('deals_registry')
     .select(
-      'hubspot_deal_id, hubspot_company_id, deal_name, deal_status, depot_code, currency, line_items_raw, quote_reference, delivery_street, delivery_city, delivery_state, delivery_zip',
+      'hubspot_deal_id, hubspot_company_id, deal_name, deal_status, depot_code, currency, line_items_raw, quote_reference, delivery_street, delivery_city, delivery_state, delivery_zip, is_collection',
     )
     .eq('hubspot_deal_id', dealId)
     .maybeSingle()
   if (dealError) return { success: false, error: 'Failed to load the deal from the registry.' }
   if (!deal) return { success: false, error: 'This deal has no registry row yet. It appears a minute or two after acceptance.' }
+
+  // The rebuild's explicit flag wins: it carries what the REVIEWER decided on
+  // the invoice being replaced, which is later information than the deal's.
+  const isCollection = parsed.data.isCollection ?? deal.is_collection === true
 
   // Same rule as the queue, enforced here because this action is directly
   // POSTable: the deal must have ENTERED Quotation Accepted on or after the

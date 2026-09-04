@@ -23,12 +23,32 @@ export function formatMoney(amount: number | null | undefined, currency = "USD")
   }).format(amount)
 }
 
-export function formatDate(dateStr: string | null) {
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * A date for a person to read: "September 5, 2026".
+ *
+ * en-US for the same reason formatMoney is: the screens and documents are
+ * written for US readers.
+ *
+ * Two kinds of value arrive here and they must be treated differently. A
+ * DATE-ONLY string ("2026-09-05", which is what expires_on, valid_from and
+ * week_start_date hold) is parsed by the Date constructor as UTC midnight, so
+ * in any America/* zone it renders a day EARLY unless it is formatted in UTC.
+ * A TIMESTAMP (created_at) is a real instant and is rendered in the viewer's
+ * own zone, as before.
+ */
+export function formatDate(dateStr: string | null | undefined) {
   if (!dateStr) return "—"
-  return new Date(dateStr).toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
+  const trimmed = dateStr.trim()
+  const date = new Date(trimmed)
+  // Better to show the raw value than "Invalid Date".
+  if (Number.isNaN(date.getTime())) return trimmed
+  return date.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
     year: "numeric",
+    ...(DATE_ONLY_RE.test(trimmed) ? { timeZone: "UTC" } : {}),
   })
 }
 

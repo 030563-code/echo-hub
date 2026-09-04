@@ -121,3 +121,31 @@ export function sanitizeUSAddress(input: Partial<USDeliveryAddress> | null | und
 
   return { ok: true, value: { street, city, state, zip } }
 }
+
+export interface USAcceptanceFields {
+  /** HubSpot win_probability option value, '' when unset. */
+  winProbability: string
+  /** Will Call: the customer collects from the sending depot. */
+  isCollection: boolean
+  hasAssociatedCompany: boolean
+  delivery: Partial<USDeliveryAddress>
+}
+
+/**
+ * Whether the Change Stage dialog may submit a US acceptance.
+ *
+ * A COLLECTED order needs no delivery address: the sale is taxed at the depot
+ * the customer collects from, which is exactly how calculate-tax.ts treats
+ * customer_invoices.is_collection, and demanding an address the order does not
+ * have was what made Will Call impossible to accept from the Hub.
+ *
+ * A delivered order needs the full address, checked with the SAME sanitizer
+ * updateDealStage runs, so the dialog can never enable a submit the server is
+ * about to refuse.
+ */
+export function usAcceptanceComplete(fields: USAcceptanceFields): boolean {
+  if (!fields.hasAssociatedCompany) return false
+  if (fields.winProbability === '') return false
+  if (fields.isCollection) return true
+  return sanitizeUSAddress(fields.delivery).ok
+}

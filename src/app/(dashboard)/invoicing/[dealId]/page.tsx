@@ -8,6 +8,8 @@ import { getAcceptedAt, isAcceptedSinceCutover } from '@/app/actions/invoicing/s
 import { US_ACCEPTED_DEAL_STATUS, isUSDepot } from '@/lib/customer-invoice/constants'
 import { OpenInvoiceButton } from '../open-invoice-button'
 import { InvoiceEditor } from './invoice-editor'
+import { InvoiceAttachments } from '@/components/invoicing/invoice-attachments'
+import type { InvoiceAttachmentRow } from '@/app/actions/invoicing/attachments'
 
 export const dynamic = 'force-dynamic'
 
@@ -78,7 +80,17 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
   const linesChanged = deal ? sourceLinesHash(deal.line_items_raw) !== sourceLinesHash(invoice.source_lines_snapshot) : false
 
+  // invoice_attachments is service-role only (no grant, no policy), and the
+  // capability check above has already run, so the admin client is the right
+  // reader here and RLS has nothing to add.
+  const { data: attachmentRows } = await admin
+    .from('invoice_attachments')
+    .select('id, filename, storage_path, content_type, size_bytes, uploaded_by_label, created_at')
+    .eq('invoice_id', invoice.id)
+    .order('created_at', { ascending: true })
+
   return (
+    <>
     <InvoiceEditor
       // The editor holds the draft in local state. Keying it on the row's id +
       // updated_at remounts it whenever the server copy changes (after a save,
@@ -92,5 +104,13 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       linesChanged={linesChanged}
       canManage={canManage}
     />
+    <div className="mt-6">
+      <InvoiceAttachments
+        invoiceId={invoice.id as string}
+        attachments={(attachmentRows ?? []) as InvoiceAttachmentRow[]}
+        canManage={canManage}
+      />
+    </div>
+    </>
   )
 }
