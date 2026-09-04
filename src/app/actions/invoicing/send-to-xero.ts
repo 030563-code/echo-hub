@@ -17,6 +17,8 @@ import { linesHash } from '@/lib/customer-invoice/hash'
 import { parseLineTracking, toXeroTracking } from '@/lib/customer-invoice/tracking'
 import { dueDateFromTerms } from '@/lib/customer-invoice/payment-terms'
 import { xeroFindContact } from '@/lib/xero-hub'
+import { renderInvoicePdf } from './document-data'
+import { closeDealWon } from '@/app/actions/hubspot/closeDealWon'
 import {
   requireInvoicingManage,
   loadInvoiceWithLines,
@@ -189,6 +191,18 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
     .update({ invoice_date: invoiceDate, due_date: dueDate, updated_at: new Date().toISOString() })
     .eq('id', invoiceId)
 
+  // Rendered before the payload is built. A failure here must NOT stop the
+  // invoice reaching Xero: the books matter more than the attachment, and the
+  // customer already has the document. Warned about instead, below.
+  let pdf: { filename: string; bytes: Buffer } | null = null
+  let pdfError: string | null = null
+  try {
+    pdf = await renderInvoicePdf(invoice, lines)
+  } catch (err) {
+    pdfError = err instanceof Error ? err.message : String(err)
+    console.error('send-to-xero PDF render failed', pdfError)
+  }
+
   const payload = {
     idempotency_key: invoice.idempotency_key,
     invoice_id: invoice.id,
@@ -197,10 +211,31 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
     // burned even if the invoice is deleted.
     invoice_number: invoiceNumber,
     holding_reference: invoice.holding_reference,
-    // Created as a DRAFT: the Hub renders and sends the document, then flips
-    // it to AUTHORISED, so the ledger only carries invoices that actually went
-    // out.
-    xero_status: 'DRAFT' as const,
+    // AUTHORISED, not DRAFT.
+    //
+    // The old comment here promised a later flip to AUTHORISED. That flip was
+    // never built: xero_status was written as DRAFT in this one place and
+    // nothing anywhere ever changed it, so every invoice sat in Xero as a draft
+    // for good, out of the ledger and out of the aged receivables.
+    //
+    // Authorising here is safe because the document has ALREADY gone out: this
+    // action refuses to run unless the invoice status is 'sent', which is set
+    // only after the customer has been emailed the PDF. So the ledger still
+    // never carries an invoice the customer has not seen, which is what the
+    // draft was protecting.
+    //
+    // And it is safe on Xero's terms. Xero validates a supplied SubTotal and
+    // TotalTax against its own calculated line totals on an AUTHORISED invoice
+    // and ignores them on a draft, which would be the thing to fear here since
+    // the tax comes from TaxJar rather than from Xero. This payload sends
+    // neither: `totals` below is carried for n8n's own use and is not mapped
+    // into the Xero body. Xero only ever sees per-line TaxAmount with TaxType
+    // NONE, which was verified live against Echo Barrier USA LLC.
+    //
+    // n8n already honours this: Build Invoice Payload reads body.xero_status
+    // and posts AUTHORISED when it says so, DRAFT otherwise. No n8n change was
+    // needed for the flip itself.
+    xero_status: 'AUTHORISED' as const,
     hubspot_deal_id: invoice.hubspot_deal_id,
     quote_reference: null as string | null,
     reference: invoice.customer_po_number ?? '',
@@ -264,6 +299,18 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
     // n8n Xero email branch can never see a truthy value, even if the branch
     // itself is still wired up over there.
     email_to_customer: false,
+    // The customer's invoice PDF, for n8n to PUT onto the Xero invoice
+    // (PUT /Invoices/{id}/Attachments/{FileName}, application/octet-stream,
+    // scope accounting.attachments). Xero's IncludeOnline defaults to false, so
+    // this is an internal record on the books and is NOT shown to the customer
+    // on Xero's online invoice: they already have this exact file by email.
+    //
+    // Sent as base64 rather than a signed URL. The 1 MB server-action body
+    // limit does not apply here: this is a server-to-server fetch, not a client
+    // action payload. Re-rendered rather than stored, the same deterministic
+    // render the email sent, so the bytes on the ledger are the bytes the
+    // customer holds.
+    attachment: pdf ? { filename: pdf.filename, content_base64: pdf.bytes.toString('base64') } : null,
   }
 
   // The deal's quote reference lives on deals_registry; carried for the Xero
@@ -336,10 +383,9 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
     return { success: false, error: message }
   }
 
-  // The invoice now exists in Xero as a DRAFT carrying our number. It is NOT
-  // authorised: the Hub renders and sends the document, and only then is the
-  // Xero invoice flipped to AUTHORISED, so the ledger never carries an invoice
-  // that has not actually gone out.
+  // The invoice now exists in Xero as an AUTHORISED invoice carrying our
+  // number, with the customer's PDF attached to it, and the customer already
+  // had that PDF by email before this action would run.
   const now = new Date().toISOString()
   await admin
     .from('customer_invoices')
@@ -353,10 +399,20 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
     })
     .eq('id', invoiceId)
     .eq('status', 'authorizing')
-  await logInvoiceEvent(invoiceId, 'xero_draft_created', gate.auth.user.id, {
+  await logInvoiceEvent(invoiceId, 'xero_invoice_authorised', gate.auth.user.id, {
     invoice_number: invoiceNumber,
     xero_invoice_id: response.xero_invoice_id,
   })
+
+  // The deal is done: it has been quoted, accepted, invoiced, the document has
+  // gone to the customer and the invoice is on the ledger. Dean's call that
+  // this is the point it becomes Closed Won.
+  //
+  // AFTER the invoice row is marked completed, and never allowed to undo it. A
+  // HubSpot failure here leaves a correct invoice and a stale deal stage, which
+  // a human can fix in one click; the reverse would leave the Hub thinking an
+  // authorised Xero invoice had not been created.
+  const closedWon = await closeDealWon(invoice.hubspot_deal_id)
 
   // Filing is deliberately NOT done here. A TaxJar order transaction is the
   // record that reports the sale on a return, and it is keyed on the invoice
@@ -364,8 +420,18 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
   // that is later discarded would leave a filed sale behind. Send to TaxJar
   // does it explicitly, once the number exists.
   const warnings: string[] = [
-    `Invoice ${invoiceNumber} is a DRAFT in Xero and has not been filed to TaxJar. Use Send to TaxJar to file it.`,
+    `Invoice ${invoiceNumber} is AUTHORISED in Xero and has not been filed to TaxJar. Use Send to TaxJar to file it.`,
   ]
+  if (pdfError) {
+    warnings.push(
+      'The invoice PDF could not be rendered, so it is not attached to the Xero invoice. The customer still has the copy that was emailed.',
+    )
+  }
+  if (!closedWon.success) {
+    warnings.push(
+      `The invoice is on the Xero ledger, but the HubSpot deal could not be moved to Closed won (${closedWon.error}). Move it by hand.`,
+    )
+  }
 
   revalidatePath('/invoicing/sent')
   revalidatePath('/invoicing/completed')
