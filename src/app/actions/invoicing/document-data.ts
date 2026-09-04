@@ -27,6 +27,12 @@ import type { CustomerInvoiceRow, CustomerInvoiceLineRow } from './shared'
  * would quietly alter an already-issued invoice fails loudly instead of going
  * out. That is the audit property a storage bucket would have bought, without
  * the bucket or the question of who can reach the URL.
+ *
+ * That reasoning is specific to the PDF and does not extend to attachments. A
+ * file a reviewer uploads exists nowhere else and cannot be re-derived, so it
+ * IS stored, in the private invoice-attachments bucket, reachable only through
+ * a short-lived signed url minted after an invoicing.manage check. See
+ * actions/invoicing/attachments.ts.
  */
 
 let logoCache: string | null | undefined

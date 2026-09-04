@@ -76,7 +76,7 @@ export default async function CreateQuotePage(props: {
   // Comments already saved for this deal (if the builder was opened before).
   const { data: registryRow } = await supabase
     .from('deals_registry')
-    .select('quote_comments')
+    .select('quote_comments, is_collection')
     .eq('hubspot_deal_id', params.dealId)
     .maybeSingle()
   const initialComments = registryRow?.quote_comments ?? ''
@@ -189,6 +189,7 @@ export default async function CreateQuotePage(props: {
         editing={editing}
         initialWinProbability={(deal?.properties?.win_probability || '').trim()}
         initialRepAgent={(deal?.properties?.[REP_AGENT_PROPERTY] || '').trim()}
+        initialIsCollection={registryRow?.is_collection === true}
         settings={settings}
         products={products}
         salesRep={salesRep}

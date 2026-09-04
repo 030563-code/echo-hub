@@ -52,6 +52,17 @@ interface CreateQuoteParams {
   winProbability?: string
   /** Free-text rep comments, printed on the quote under "Comments from {rep}". */
   comments?: string
+  /**
+   * Will Call: the customer collects from the sending depot.
+   *
+   * ALWAYS written to deals_registry.is_collection, unlike depot and
+   * probability which are only written when supplied. Those are guarded
+   * because n8n syncs them from HubSpot and a blank re-quote must not null a
+   * synced value. HubSpot has no collect-versus-deliver property at all, so
+   * the Hub is this column's only writer and the checkbox IS the answer,
+   * including when the rep unticks it.
+   */
+  isCollection?: boolean
   isPreview?: boolean
   pdfBlob?: Blob // We can't pass Blob to server action directly, need FormData or base64
 }
@@ -451,6 +462,9 @@ export async function createQuote(params: CreateQuoteParams) {
     deal_status: 'Quote Created',
     amount: computedTotal,
     quote_reference: quoteReference, // Will preserve existing ref if upserting
+    // A distributor quote has no depot, so it can have no collection. `=== true`
+    // because this action has no zod schema and the value crosses the wire.
+    is_collection: isDirectSale && params.isCollection === true,
     // Written in the SAME key shape the rest of the system uses, not the
     // builder's camelCase. notify_quote_accepted() reads unit_price,
     // total_amount and hs_product_id straight off these elements and COALESCEs

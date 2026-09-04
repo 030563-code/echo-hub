@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { DealQuotesCard, type DealQuoteRow } from '@/components/quotes/deal-quotes-card'
 import { RepAgentSelect } from '@/components/quotes/rep-agent-select'
 import { REP_AGENT_LABEL, REP_AGENT_PROPERTY } from '@/lib/deal-properties'
+import { formatDate } from '@/lib/utils'
 import { AssignContractorDialog } from '@/components/quotes/assign-contractor-dialog'
 import { isClosedStage } from '@/lib/deals-board'
 import { stageChipClass } from '@/lib/stage-chip'
@@ -32,11 +33,6 @@ const makeMoney = (currency: string) => {
   return (value: unknown) => formatter.format(Number(value) || 0)
 }
 
-const formatDate = (value: unknown) => {
-  if (value == null || value === '') return '-'
-  const date = new Date(value as string | number)
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString()
-}
 
 interface HubSpotAssociationResult {
   id: string
@@ -123,7 +119,7 @@ export default async function QuoteRequestDetailsPage(props: {
   const supabase = await createServerClient()
   const { data: registryEntry } = await supabase
     .from('deals_registry')
-    .select('deal_probability, delivery_street, delivery_city, delivery_state, delivery_zip')
+    .select('deal_probability, delivery_street, delivery_city, delivery_state, delivery_zip, is_collection')
     .eq('hubspot_deal_id', params.id)
     .maybeSingle()
   const dealProbability: number | null = registryEntry?.deal_probability ?? null
@@ -202,6 +198,7 @@ export default async function QuoteRequestDetailsPage(props: {
                hasAssociatedCompany={Boolean(companyId)}
                currentWinProbability={deal.properties.win_probability ?? null}
                initialDelivery={initialDelivery}
+               initialIsCollection={registryEntry?.is_collection === true}
              />
            )}
            {process.env.NEXT_PUBLIC_HUBSPOT_PORTAL_ID && (
