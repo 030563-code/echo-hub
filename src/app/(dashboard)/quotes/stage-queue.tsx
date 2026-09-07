@@ -11,6 +11,7 @@ import { parseStageQueueDealFilters } from '@/lib/deal-filters'
 import { HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
 import { formatMoney } from '@/lib/utils'
 import { stageChip } from '@/lib/stage-chip'
+import { withStoredQuotesFilters } from '@/lib/page-state-server'
 
 /**
  * One stage-scoped queue: Deals, Sent, Accepted or Won.
@@ -65,7 +66,8 @@ export async function StageQueue({
   actionStyle,
   searchParams,
 }: StageQueueProps) {
-  const params = searchParams
+  // See withStoredQuotesFilters: a bare url is an arrival, not a choice.
+  const params = await withStoredQuotesFilters(searchParams)
 
 
   const page = Math.max(1, parseInt(typeof params.page === 'string' ? params.page : '1', 10) || 1)

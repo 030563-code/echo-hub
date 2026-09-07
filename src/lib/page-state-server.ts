@@ -19,6 +19,12 @@ import 'server-only'
 
 import { createServerClient } from '@/lib/supabase/server'
 import { isPageKey, type StoredPageState } from '@/lib/page-state'
+import {
+  QUOTES_FILTERS_KEY,
+  RESTORABLE_QUOTE_PARAMS,
+  hasAnyRestorableParam,
+  parseQuotesFilters,
+} from '@/lib/page-drafts'
 
 export async function readPageState(pageKey: string): Promise<StoredPageState | null> {
   if (!isPageKey(pageKey)) return null
@@ -60,3 +66,39 @@ export async function deletePageState(pageKey: string): Promise<void> {
   }
 }
 
+
+/**
+ * Put back the filters this user last chose, WITHOUT touching the url.
+ *
+ * Every url-changing version of this crashed Next's client Router with
+ * "Rendered more hooks than during the previous render", which the browser
+ * shows as "This page couldn't load. Reload to try again, or go back.":
+ * a second redirect() on the board, a router.replace() from the tab bar, and
+ * folding the filters into the /quotes redirect (which, because it has to
+ * await this read first, turns into an in-stream client redirect that never
+ * lands). One click may change the url once, and /quotes -> /quotes/board is
+ * already that one change.
+ *
+ * So the page keeps its bare url and simply reads with the remembered filters.
+ * The filter bar is seeded from the same values, so what is on screen always
+ * matches what was fetched, and the moment anything is changed the bar's own
+ * GET form puts it in the url again.
+ *
+ * A url carrying any recognised parameter is a deliberate request (a shared
+ * link, a bookmark, Clear, a filter just applied) and is returned untouched.
+ */
+export async function withStoredQuotesFilters(
+  params: Record<string, string | string[] | undefined>,
+): Promise<Record<string, string | string[] | undefined>> {
+  if (hasAnyRestorableParam(params, RESTORABLE_QUOTE_PARAMS)) return params
+
+  const stored = parseQuotesFilters((await readPageState(QUOTES_FILTERS_KEY))?.data)
+  if (!stored) return params
+
+  const merged = { ...params }
+  for (const name of RESTORABLE_QUOTE_PARAMS) {
+    const value = stored.params[name]
+    if (value !== undefined) merged[name] = value
+  }
+  return merged
+}

@@ -131,7 +131,7 @@ describe('one click may change the url only once', () => {
     ]) {
       const source = readFileSync(join(process.cwd(), file), 'utf8')
       expect(source, file).not.toContain('restoreViewParams')
-      expect(source, file).not.toMatch(/\bredirect\(/)
+      expect(source, file).not.toMatch(/^\s*redirect\(/m)
     }
 
     // The tab bar records filters; it must never navigate.
@@ -139,11 +139,23 @@ describe('one click may change the url only once', () => {
     expect(nav).not.toContain('useRouter')
     expect(nav).not.toMatch(/router\.(replace|push)\(/)
 
-    // The index is the single hop, and it builds the query itself.
+    // The index redirect is the one url change a Quotes click is allowed, and
+    // it must stay synchronous: an await here makes Next answer with an
+    // in-stream client redirect that never lands.
     const index = readFileSync(join(process.cwd(), 'src/app/(dashboard)/quotes/page.tsx'), 'utf8')
-    expect(index).toContain('pickRestorableParams')
-    // Calls only: the comment above the function names redirect() too.
     expect(index.match(/^\s*redirect\(/gm) ?? []).toHaveLength(1)
+    expect(index).not.toContain('await')
+    expect(index).not.toContain('async')
+
+    // The restore itself never touches the url.
+    for (const file of [
+      'src/app/(dashboard)/quotes/board/page.tsx',
+      'src/app/(dashboard)/quotes/all/page.tsx',
+      'src/app/(dashboard)/quotes/stage-queue.tsx',
+    ]) {
+      const source = readFileSync(join(process.cwd(), file), 'utf8')
+      expect(source, file).toContain('withStoredQuotesFilters')
+    }
   })
 })
 

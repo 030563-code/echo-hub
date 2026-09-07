@@ -6,6 +6,7 @@ import { ownerLabel, teamLabel } from '@/lib/hubspot-owners'
 import { DealFilterBar } from '@/components/quotes/deal-filter-bar'
 import { parseDealFilters } from '@/lib/deal-filters'
 import { HUBSPOT_PIPELINES, stageLabel } from '@/lib/hubspot-constants'
+import { withStoredQuotesFilters } from '@/lib/page-state-server'
 
 /** Paging and scope, plus every deal-filter parameter, so the filters survive
  *  a page change. */
@@ -20,7 +21,8 @@ export default async function AllQuotesPage({
 }: {
   searchParams: Promise<SearchParams>
 }) {
-  const params = await searchParams
+  // See withStoredQuotesFilters: a bare url is an arrival, not a choice.
+  const params = await withStoredQuotesFilters(await searchParams)
 
 
   const page = Math.max(1, parseInt(typeof params.page === 'string' ? params.page : '1', 10) || 1)

@@ -9,6 +9,7 @@ import { FilterNotice } from '@/components/quotes/filter-notice'
 import { DealFilterBar } from '@/components/quotes/deal-filter-bar'
 import { dealFiltersToQuery, parseBoardDealFilters } from '@/lib/deal-filters'
 import { HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
+import { withStoredQuotesFilters } from '@/lib/page-state-server'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,7 +32,9 @@ export default async function DealsBoardPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   await requireCapability(['quotes.view', 'quotes.create'])
-  const params = await searchParams
+  // A bare url means the sidebar, so read with the filters this rep last
+  // chose. Anything explicit (a link, a bookmark, Clear) is obeyed as written.
+  const params = await withStoredQuotesFilters(await searchParams)
 
 
   const windowDays = Number(params.window) || 60
