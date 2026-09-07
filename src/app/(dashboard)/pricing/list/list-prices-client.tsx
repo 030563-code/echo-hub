@@ -1,5 +1,7 @@
 'use client'
 
+// page-state: none (dialog-scoped, committed on save)
+
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { Card } from '@/components/ui/card'

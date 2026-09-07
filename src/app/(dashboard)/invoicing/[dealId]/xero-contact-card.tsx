@@ -1,5 +1,7 @@
 'use client'
 
+// page-state: none (a read of Xero, refetched on every open; nothing here is typed)
+
 /**
  * The Xero customer behind the invoice.
  *

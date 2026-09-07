@@ -1,5 +1,7 @@
 'use client'
 
+// page-state: none (terminal: the quote exists by the time this renders)
+
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import { Check, Copy, ExternalLink, FileText, Mail, RefreshCw } from 'lucide-react'

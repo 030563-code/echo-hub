@@ -20,6 +20,8 @@ import {
   republishBlockReason,
 } from '@/lib/quote-edit'
 import type { DiscountMode } from '@/lib/pricing'
+import { deletePageState } from '@/lib/page-state-server'
+import { quoteBuilderKey } from '@/lib/quote-builder-draft'
 import {
   HS,
   failQuoteStep,
@@ -640,6 +642,11 @@ export async function republishEditedQuote(input: RepublishQuoteInput): Promise<
   // either way and only the registry write is withheld.
   // Fails CLOSED: if the deal's state cannot be read, the registry is left
   // alone rather than written on an optimistic guess.
+  // The edit is published, so the draft that fed it is spent. Same reasoning
+  // as createQuote: the browser clears it too, this covers the browser that
+  // never got the chance.
+  await deletePageState(quoteBuilderKey(row.hubspot_deal_id, row.id))
+
   const acceptance = await readAcceptance(row.hubspot_deal_id)
   const resyncError = acceptance.accepted
     ? ACCEPTED_MID_EDIT_MESSAGE

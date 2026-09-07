@@ -8,12 +8,21 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { SearchBox } from "@/components/ui/search-box";
 import type { WarehouseStock } from "@/lib/erp-types";
 import { cn } from "@/lib/utils";
+import { usePersistedView } from "@/hooks/use-page-state";
+import { parseSearchView, type SearchView } from "@/lib/page-drafts";
 
 export default function WarehouseClient({ initialStock }: { initialStock: WarehouseStock[] }) {
   const [stock, setStock] = useState(initialStock);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
-  const [q, setQ] = useState("");
+  // Counting stock means looking one SKU up, leaving, and coming back to it.
+  const [qView, setQView] = usePersistedView<SearchView>(
+    "warehouse-stock",
+    { v: 1, q: "" },
+    parseSearchView,
+  );
+  const q = qView.q;
+  const setQ = (next: string) => setQView({ v: 1, q: next });
   const [, startTransition] = useTransition();
 
   const needle = q.trim().toLowerCase();

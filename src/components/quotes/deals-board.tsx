@@ -1,5 +1,7 @@
 'use client'
 
+// page-state: none (a drag in progress)
+
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import Link from 'next/link'

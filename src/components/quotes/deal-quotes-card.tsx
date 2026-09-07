@@ -1,5 +1,7 @@
 'use client'
 
+// page-state: none (in-flight flags only)
+
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'

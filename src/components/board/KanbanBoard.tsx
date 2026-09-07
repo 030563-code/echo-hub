@@ -1,5 +1,7 @@
 "use client";
 
+// page-state: none (a drag in progress, and per-card expansion of a board that reorders under it)
+
 import { useState } from "react";
 import { ChevronDown, ChevronUp, Package, Clock, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";

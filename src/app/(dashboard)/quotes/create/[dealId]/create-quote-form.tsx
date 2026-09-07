@@ -36,6 +36,16 @@ import {
 } from '@/components/quotes/quote-published-panel'
 import { describeCap, type ContractPriceRow, type DiscountCap, type DiscountMode, type ListPriceRow } from '@/lib/pricing'
 import { useRouter } from 'next/navigation'
+import { usePageState } from '@/hooks/use-page-state'
+import { DraftStrip } from '@/components/page-state/draft-strip'
+import {
+  isQuoteDraftEmpty,
+  parseQuoteBuilderDraft,
+  quoteBuilderBase,
+  quoteBuilderKey,
+  type LineItem,
+  type QuoteBuilderDraft,
+} from '@/lib/quote-builder-draft'
 
 interface Product {
   id: string
@@ -45,34 +55,6 @@ interface Product {
     description?: string
     hs_sku?: string
   }
-}
-
-interface LineItem {
-  productId: string
-  name: string
-  sku?: string
-  description?: string
-  /**
-   * The three numeric fields are held as free-text STRINGS so a box can be
-   * cleared and retyped, and are coerced to numbers only at the boundary
-   * (toNumeric). The raise-po form learned this first and wrote down why.
-   *
-   * Holding them as numbers is what produced "0200". React updates a
-   * `type="number"` input only when `node.value != value`, and "0200" != 200
-   * is false, so React left the DOM alone and the box stayed wrong for good.
-   * The `|| 0` fallback then re-rendered a 0 that could not be deleted or
-   * typed in front of.
-   */
-  quantity: string
-  /** What the rep typed. Only used for a SKU with no Supabase price; for
-   *  everything else the resolved base wins on both sides. */
-  unitPrice: string
-  discountMode?: DiscountMode
-  discountValue?: string
-  /** What the rep typed into the Unit box, verbatim. Held separately from the
-   *  discount so the field is never rewritten mid-edit; it is converted into a
-   *  discount by applyTypedPrice at pricing time. */
-  priceDraft?: string
 }
 
 interface QuoteContact {
@@ -212,30 +194,40 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
 
   // State for the Initial Setup Dialog
   const router = useRouter()
-  // Never opened on an edit. Every field it asks for is already fixed on the
-  // existing quote, and the template association in particular CANNOT be
-  // changed after creation, so asking again would offer a choice that does not
-  // exist.
-  const [showSetupDialog, setShowSetupDialog] = useState(!editing)
+
+  // How this page looks before anyone touches it. Written once, used three
+  // times: to seed the state below, to tell an untouched page from a real
+  // draft, and to put Start again back exactly here.
+  const seedDepot = initialDepot && settings.allowed_depots.includes(initialDepot) ? initialDepot : ''
+  const seedWinProbability =
+    initialWinProbability && WIN_PROBABILITY_VALUES.includes(initialWinProbability)
+      ? initialWinProbability
+      : ''
+  // An edit seeds from the published quote's own snapshot, which carries the
+  // discounts; mapInitialLineItems drops them, so seeding an edit from the
+  // deal's line items would quietly republish at full price.
+  const seedLines: LineItem[] = editing
+    ? editing.cartLines.map(fromCartLine)
+    : mapInitialLineItems(initialLineItems)
+
+  // Starts CLOSED and is opened once the saved draft has been read, because
+  // whether to ask Quote Setup at all is the first thing the draft answers.
+  // Opening it first and closing it on restore would flash the dialog at
+  // someone who already filled it in.
+  const [showSetupDialog, setShowSetupDialog] = useState(false)
   // Distinguishes the first, blocking open from a later re-open via Edit setup.
   const [hasCompletedSetup, setHasCompletedSetup] = useState(!!editing)
   const [distributor, setDistributor] = useState<string>('none')
   // Seeded from the deal's existing sending_depot (if any and still allowed) so
   // re-opening the builder doesn't misreport a decided deal as "Decide later".
-  const [depot, setDepot] = useState<string>(() =>
-    initialDepot && settings.allowed_depots.includes(initialDepot) ? initialDepot : ''
-  )
+  const [depot, setDepot] = useState<string>(seedDepot)
   const [template, setTemplate] = useState<string>('')
   // Seeded from the deal's own win_probability, mirroring the depot seeding
   // above, so re-opening the builder does not re-ask a question the deal has
   // already answered. Honest limit: once the create-deal wizard stops asking
   // for it, a Hub-created deal carries none, so this helps HubSpot-originated
   // deals and re-opens after a Generate (which PATCHes the property).
-  const [winProbability, setWinProbability] = useState<string>(() =>
-    initialWinProbability && WIN_PROBABILITY_VALUES.includes(initialWinProbability)
-      ? initialWinProbability
-      : ''
-  )
+  const [winProbability, setWinProbability] = useState<string>(seedWinProbability)
   // Seeded raw rather than filtered against the known values, because unlike
   // win_probability this list is editable in HubSpot: a value we do not
   // recognise is more likely a new option than a bad one, and RepAgentSelect
@@ -250,12 +242,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   const [setupLoading, setSetupLoading] = useState(false)
 
   // State for Quote Builder
-  // An edit seeds from the published quote's own snapshot, which carries the
-  // discounts; mapInitialLineItems drops them, so seeding an edit from the
-  // deal's line items would quietly republish at full price.
-  const [lineItems, setLineItems] = useState<LineItem[]>(() =>
-    editing ? editing.cartLines.map(fromCartLine) : mapInitialLineItems(initialLineItems)
-  )
+  const [lineItems, setLineItems] = useState<LineItem[]>(seedLines)
   // Free-text rep comments — printed on the quote under "Comments from {rep}".
   const [comments, setComments] = useState<string>(initialComments)
   const [submitting, setSubmitting] = useState(false)
@@ -279,6 +266,136 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   // Holds the last generated PDF so "Retry attach" can re-run just the upload
   // step without regenerating (and re-saving) the whole quote.
   const prevDepotRef = useRef<string | null>(null)
+
+  // ------------------------------------------------------------------
+  // The saved draft.
+  //
+  // Everything above this line used to exist only for as long as the component
+  // was mounted. Stepping out to /pricing to check a number and coming back
+  // meant answering Quote Setup again and rebuilding the cart from nothing,
+  // which is the complaint this exists to answer.
+  //
+  // The draft is this rep's own, keyed to this deal, saved as they type and
+  // deleted the moment the quote is published.
+  // ------------------------------------------------------------------
+  const draftKey = quoteBuilderKey(dealId, editing?.dealQuoteId)
+  const draftBase = quoteBuilderBase(initialLineItems, editing?.dealQuoteId)
+
+  /** The whole page as a draft, in the schema's own key order so an untouched
+   *  restore compares equal and writes nothing back. */
+  const buildDraft = (): QuoteBuilderDraft => ({
+    v: 1,
+    setupDone: hasCompletedSetup,
+    setup: { distributor, depot, template, winProbability, repAgent, isCollection },
+    lines: lineItems,
+    comments,
+  })
+
+  /** What buildDraft returns on an untouched page. A draft equal to this is not
+   *  worth offering to resume, so it is treated as empty and no row is kept:
+   *  otherwise merely opening the builder would light up "Resume quote draft"
+   *  on the deal page. */
+  const seedDraftJson = JSON.stringify({
+    v: 1,
+    setupDone: !!editing,
+    setup: {
+      distributor: 'none',
+      depot: seedDepot,
+      template: '',
+      winProbability: seedWinProbability,
+      repAgent: initialRepAgent,
+      isCollection: initialIsCollection,
+    },
+    lines: seedLines,
+    comments: initialComments,
+  })
+
+  /**
+   * Put a saved draft back on screen, or open Quote Setup because there is
+   * none. Runs once, from inside the read, rather than as an effect that
+   * copies state into state.
+   */
+  const applyDraft = (restored: { data: QuoteBuilderDraft } | null) => {
+    const draft = restored?.data
+    if (!draft) {
+      // Nothing saved: behave exactly as this page always has.
+      setShowSetupDialog(!editing)
+      return
+    }
+
+    setDistributor(draft.setup.distributor)
+    setDepot(draft.setup.depot)
+    setTemplate(draft.setup.template)
+    setWinProbability(draft.setup.winProbability)
+    setRepAgent(draft.setup.repAgent)
+    setIsCollection(draft.setup.isCollection)
+    setLineItems(draft.lines)
+    setComments(draft.comments)
+    setHasCompletedSetup(draft.setupDone || !!editing)
+    // Restoring a depot is not the rep CHANGING one, so the "items may not be
+    // available from this depot" warning must not fire on the way back in.
+    prevDepotRef.current = draft.setup.depot
+    // The point of the whole feature: setup answered once stays answered.
+    setShowSetupDialog(!editing && !draft.setupDone)
+  }
+
+  const {
+    status: draftStatus,
+    restored: restoredDraft,
+    save: saveDraft,
+    clear: clearDraft,
+    saveStatus: draftSaveStatus,
+    savedAt: draftSavedAt,
+  } = usePageState<QuoteBuilderDraft>({
+    pageKey: draftKey,
+    parse: parseQuoteBuilderDraft,
+    onRestore: applyDraft,
+    base: draftBase,
+    // A published quote must not be followed by a write that re-creates the
+    // draft it was built from.
+    enabled: !submitted,
+    isEmpty: (draft) => isQuoteDraftEmpty(draft) || JSON.stringify(draft) === seedDraftJson,
+  })
+  const draftReady = draftStatus === 'ready'
+
+  // Save as they type. Debounced inside the hook, and an unchanged page writes
+  // nothing, so this is safe to run on every render.
+  useEffect(() => {
+    if (!draftReady || submitted) return
+    saveDraft(buildDraft())
+    // buildDraft is a plain closure over exactly these values; listing them is
+    // what makes it re-run.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    draftReady,
+    submitted,
+    saveDraft,
+    hasCompletedSetup,
+    distributor,
+    depot,
+    template,
+    winProbability,
+    repAgent,
+    isCollection,
+    lineItems,
+    comments,
+  ])
+
+  /** Throw the draft away and put the page back exactly as it opened. */
+  const startAgain = async () => {
+    await clearDraft()
+    setDistributor('none')
+    setDepot(seedDepot)
+    setTemplate('')
+    setWinProbability(seedWinProbability)
+    setRepAgent(initialRepAgent)
+    setIsCollection(initialIsCollection)
+    setLineItems(seedLines)
+    setComments(initialComments)
+    setHasCompletedSetup(!!editing)
+    prevDepotRef.current = seedDepot
+    setShowSetupDialog(!editing)
+  }
 
   useEffect(() => {
     async function fetchWinProbability() {
@@ -572,6 +689,9 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     }
 
     setSubmitted(true)
+    // The work this draft existed for is done. Cleared here as well as
+    // server-side, so the deal page stops offering to resume it.
+    void clearDraft()
     setPublishedQuote({ ...result.quote, currency: dealCurrency })
     setQuoteError(null)
 
@@ -619,6 +739,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     // The deal, its line items and the Hub record are committed from here on,
     // whatever HubSpot does with the quote, so the button latches.
     setSubmitted(true)
+    void clearDraft()
 
     // Mirror the probability onto the HubSpot deal. Non-fatal: the value is
     // already in deals_registry.deal_probability, which is what the forecasting
@@ -864,9 +985,32 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
         </div>
       )}
 
+      {/* Nothing is shown until the saved draft has been read. The alternative
+          is a flash of an empty cart, or worse the setup dialog opening at
+          someone who already answered it, which is what this is here to stop. */}
+      {!draftReady && (
+        <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-3">
+          <p className="text-sm text-gray-600">Opening the quote builder…</p>
+        </div>
+      )}
+
+      {/* Says out loud that what is on screen is the rep's own unfinished work,
+          and offers the way out of it. */}
+      {draftReady && restoredDraft && !submitted && (
+        <DraftStrip
+          what="your unfinished quote"
+          savedAt={draftSavedAt}
+          stale={restoredDraft.stale}
+          staleNote="This deal's line items changed in HubSpot after you saved this. Publishing replaces them with what is on screen here."
+          onStartAgain={startAgain}
+          startAgainLabel="Start this quote again"
+          saveStatus={draftSaveStatus}
+        />
+      )}
+
       {/* Chosen setup, with a way back in — the dialog is otherwise one-way.
           Hidden on an edit: none of it can be changed on an existing quote. */}
-      {!showSetupDialog && !editing && (
+      {draftReady && !showSetupDialog && !editing && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600">
           <span>
             <span className="font-medium text-gray-900">
@@ -886,7 +1030,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
       )}
 
       {/* Main Quote Builder UI */}
-      {!showSetupDialog && (
+      {draftReady && !showSetupDialog && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
           {/* Left: Line Items */}
           <div className="lg:col-span-2 space-y-6">

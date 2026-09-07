@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -13,6 +13,8 @@ import {
 } from "@tanstack/react-table";
 import { ChevronUp, ChevronDown, ChevronsUpDown, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { usePersistedView } from "@/hooks/use-page-state";
+import { parseTableView, type TableView } from "@/lib/page-drafts";
 
 interface BoardTableProps<T> {
   data: T[];
@@ -21,18 +23,105 @@ interface BoardTableProps<T> {
   searchPlaceholder?: string;
   onRowClick?: (row: T) => void;
   emptyMessage?: string;
+  /**
+   * Remember this table's search box and sort for this user, under this key.
+   * Omit and the table behaves exactly as it always has, resetting on every
+   * visit.
+   */
+  stateKey?: string;
 }
 
-export default function BoardTable<T>({
+const EMPTY_VIEW: TableView = { v: 1, q: "", sort: [] };
+
+/**
+ * Two shells around one table, chosen by whether a stateKey was given.
+ *
+ * A conditional hook is not allowed, and the alternative (always calling the
+ * persistence hook with a placeholder key) would read and write rows for tables
+ * that never asked to be remembered. Splitting the component keeps both paths
+ * honest; stateKey is fixed per call site, so nothing ever swaps between them.
+ */
+export default function BoardTable<T>(props: BoardTableProps<T>) {
+  return props.stateKey ? (
+    <PersistedBoardTable {...props} stateKey={props.stateKey} />
+  ) : (
+    <LocalBoardTable {...props} />
+  );
+}
+
+function LocalBoardTable<T>(props: BoardTableProps<T>) {
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [globalFilter, setGlobalFilter] = useState("");
+  return (
+    <BoardTableView
+      {...props}
+      sorting={sorting}
+      onSortingChange={setSorting}
+      globalFilter={globalFilter}
+      onGlobalFilterChange={setGlobalFilter}
+    />
+  );
+}
+
+function PersistedBoardTable<T>({ stateKey, ...props }: BoardTableProps<T> & { stateKey: string }) {
+  const [view, setView] = usePersistedView<TableView>(stateKey, EMPTY_VIEW, parseTableView);
+
+  // TanStack hands either the next value or a function of the current one.
+  const onSortingChange = useCallback(
+    (updater: SortingState | ((old: SortingState) => SortingState)) => {
+      setView({
+        v: 1,
+        q: view.q,
+        sort: typeof updater === "function" ? updater(view.sort) : updater,
+      });
+    },
+    [setView, view],
+  );
+
+  const onGlobalFilterChange = useCallback(
+    (updater: string | ((old: string) => string)) => {
+      setView({
+        v: 1,
+        q: typeof updater === "function" ? updater(view.q) : updater,
+        sort: view.sort,
+      });
+    },
+    [setView, view],
+  );
+
+  return (
+    <BoardTableView
+      {...props}
+      sorting={view.sort}
+      onSortingChange={onSortingChange}
+      globalFilter={view.q}
+      onGlobalFilterChange={onGlobalFilterChange}
+    />
+  );
+}
+
+function BoardTableView<T>({
   data,
   columns,
   pageSize = 25,
   searchPlaceholder = "Search...",
   onRowClick,
   emptyMessage = "No records found",
-}: BoardTableProps<T>) {
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [globalFilter, setGlobalFilter] = useState("");
+  sorting,
+  onSortingChange,
+  globalFilter,
+  onGlobalFilterChange,
+}: Omit<BoardTableProps<T>, "stateKey"> & {
+  sorting: SortingState;
+  onSortingChange: (updater: SortingState | ((old: SortingState) => SortingState)) => void;
+  globalFilter: string;
+  onGlobalFilterChange: (updater: string | ((old: string) => string)) => void;
+}) {
+  // The page index is deliberately NOT remembered. TanStack resets it whenever
+  // the row model changes, so a restored sort or search immediately writes
+  // page 0 back, and forcing it past that would land someone on a page a
+  // shrunken board no longer has. Same reasoning that keeps paging cursors out
+  // of the quotes tab bar.
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize });
 
   const table = useReactTable({
@@ -43,8 +132,8 @@ export default function BoardTable<T>({
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     state: { sorting, globalFilter, pagination },
-    onSortingChange: setSorting,
-    onGlobalFilterChange: setGlobalFilter,
+    onSortingChange,
+    onGlobalFilterChange,
     onPaginationChange: setPagination,
   });
 
@@ -55,7 +144,7 @@ export default function BoardTable<T>({
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#4b5563]" />
         <input
           value={globalFilter}
-          onChange={(e) => setGlobalFilter(e.target.value)}
+          onChange={(e) => onGlobalFilterChange(e.target.value)}
           placeholder={searchPlaceholder}
           className="w-full pl-8 pr-3 py-2 bg-[#1e1e1e] border border-[#2a2a2a] rounded-lg text-base sm:text-sm text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026]/50 transition-colors"
         />

@@ -1,5 +1,7 @@
 'use client'
 
+// page-state: none (dialog-scoped, committed on save; the dialog already keeps typed values on a save error)
+
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { Card } from '@/components/ui/card'

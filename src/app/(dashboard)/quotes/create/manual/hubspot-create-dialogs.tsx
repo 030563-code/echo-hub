@@ -1,5 +1,7 @@
 'use client'
 
+// page-state: none (a company or contact is created on submit; a half-typed one is not a thing yet)
+
 import { useState, type RefObject } from 'react'
 import { toast } from 'sonner'
 import { Plus } from 'lucide-react'

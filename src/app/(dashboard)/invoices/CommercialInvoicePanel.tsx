@@ -7,6 +7,8 @@ import type { ShipmentContent } from "@/lib/erp-types";
 import type { CommercialInvoiceDoc } from "@/lib/commercial-invoice";
 import { generateCommercialInvoice } from "@/app/actions/invoices/generate-commercial-invoice";
 import CommercialInvoiceModal from "./CommercialInvoiceModal";
+import { usePersistedView } from "@/hooks/use-page-state";
+import { parseSearchView, type SearchView } from "@/lib/page-drafts";
 
 interface ContainerGroup {
   container_ref: string;
@@ -27,7 +29,16 @@ export default function CommercialInvoicePanel({
   const [busyRef, setBusyRef] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<{ doc: CommercialInvoiceDoc; warnings: string[] } | null>(null);
-  const [destCountry, setDestCountry] = useState("");
+  // Reuses the plain {q} shape: one remembered string is one remembered string,
+  // and a second schema for the same thing would only be a second thing to keep
+  // in step.
+  const [destView, setDestView] = usePersistedView<SearchView>(
+    "commercial-invoices:create",
+    { v: 1, q: "" },
+    parseSearchView,
+  );
+  const destCountry = destView.q;
+  const setDestCountry = (next: string) => setDestView({ v: 1, q: next });
 
   const containers = useMemo<ContainerGroup[]>(() => {
     const byRef = new Map<string, { skus: Set<string>; units: number; pos: Set<string>; spot: string | null }>();

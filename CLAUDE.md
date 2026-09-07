@@ -51,5 +51,12 @@ The previous sales-hub leaked its **service_role key in a public repo**, shipped
   reworking schema. Not for a plain read query.
 - MCP: **`supabase-echobarrier`** (both projects), **`n8n-echobarrier`** (workflows).
 
+## Remembering where someone was
+Every screen keeps its state (drafts, filters, search boxes) in
+`public.user_page_state`, per user, via `src/hooks/use-page-state.ts`. A client
+component holding `useState` must either use those hooks or carry a
+`// page-state: none (reason)` marker, and `tests/unit/page-state-guard.test.ts`
+fails CI otherwise. Read `docs/page-state.md` before adding a screen.
+
 ## Deploy
 Netlify → `quotes.echobarrier.com` (Cloudflare DNS, grey-cloud CNAME). Do the security pass **before** any real user. See Obsidian `Echo Barrier/CORTEX/Dean's Runbook — Technical Steps.md` §C–D.

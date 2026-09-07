@@ -1,5 +1,7 @@
 'use client'
 
+// page-state: none (a stage change is decided and confirmed in one sitting, and its guards read live HubSpot state)
+
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'

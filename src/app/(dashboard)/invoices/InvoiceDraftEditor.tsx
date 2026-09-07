@@ -1,11 +1,18 @@
 "use client";
 
 import * as Dialog from "@radix-ui/react-dialog";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { X, Plus, Trash2, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import type { CommercialInvoiceDoc } from "@/lib/commercial-invoice";
 import { editInvoiceDraft } from "@/app/actions/invoices/edit-invoice-draft";
+import { usePageState } from "@/hooks/use-page-state";
+import { DraftStrip } from "@/components/page-state/draft-strip";
+import {
+  commercialInvoiceKey,
+  parseCommercialInvoiceDraft,
+  type CommercialInvoiceDraft,
+} from "@/lib/page-drafts";
 
 // Editable-draft override. Full manual control over a DRAFT invoice's lines before
 // issuing: edit a description/price/HS code, DELETE ancillary lines (consolidation),
@@ -50,6 +57,47 @@ export default function InvoiceDraftEditor({
   const [err, setErr] = useState<string | null>(null);
   const sym = doc.currency === "USD" ? "$" : "€";
 
+  // Unsaved line edits, kept across a close and a reopen.
+  //
+  // Fingerprinted on the lines this was opened against: if the invoice was
+  // regenerated in the meantime, the typing belongs to a different set of lines
+  // and is dropped rather than reapplied on top.
+  const storedRows = () =>
+    doc.lines.map((l) => ({
+      sku: l.sku,
+      product_name: l.product_name,
+      qty: String(l.qty),
+      unit_value: String(l.unit_value ?? 0),
+      hs_code: l.hs_code ?? "",
+    }));
+  const draftBase = JSON.stringify(storedRows());
+
+  const {
+    restored: restoredDraft,
+    save: saveDraft,
+    clear: clearDraft,
+    saveStatus: draftSaveStatus,
+    savedAt: draftSavedAt,
+  } = usePageState<CommercialInvoiceDraft>({
+    pageKey: commercialInvoiceKey(invoiceId),
+    parse: parseCommercialInvoiceDraft,
+    base: draftBase,
+    onRestore: (restored) => {
+      if (!restored) return;
+      if (restored.stale) {
+        void clearDraft();
+        return;
+      }
+      setRows(restored.data.rows);
+    },
+    // Untouched lines are not an edit; only a real change is worth keeping.
+    isEmpty: (d) => JSON.stringify(d.rows) === draftBase,
+  });
+
+  useEffect(() => {
+    saveDraft({ v: 1, rows });
+  }, [saveDraft, rows]);
+
   const lineTotal = (r: Row) => round2(num(r.qty) * round2(num(r.unit_value)));
   const subtotal = round2(rows.reduce((s, r) => s + lineTotal(r), 0));
 
@@ -80,6 +128,8 @@ export default function InvoiceDraftEditor({
         toast.error(res.error);
       } else {
         toast.success("Draft saved");
+        // The edits are on the invoice now.
+        void clearDraft();
         onSaved();
       }
     });
@@ -101,6 +151,22 @@ export default function InvoiceDraftEditor({
               <X className="w-4 h-4" />
             </button>
           </div>
+          {restoredDraft && (
+            <div className="mb-4">
+              <DraftStrip
+                dark
+                what="the line edits you had typed"
+                savedAt={draftSavedAt}
+                onStartAgain={async () => {
+                  await clearDraft();
+                  setRows(storedRows());
+                }}
+                startAgainLabel="Discard them"
+                saveStatus={draftSaveStatus}
+              />
+            </div>
+          )}
+
           <p className="text-xs text-[#6b7280] mb-4">
             Adjust the lines for customs — bundle (delete a line, fold its value into another), split (add lines with their own HS
             codes), or correct a price. Totals recompute automatically and every change is recorded. Draft only.

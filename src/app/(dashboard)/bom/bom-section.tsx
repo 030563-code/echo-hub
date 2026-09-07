@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ChevronDown, ChevronRight, Loader2, PackageOpen, FileText } from "lucide-react";
@@ -10,6 +10,17 @@ import { updateMaterialPrices } from "@/app/actions/bom/update-material-price";
 import BamidaPoModal from "./bamida-po-modal";
 import type { BamidaPo } from "@/lib/bamida-po";
 import type { BomMasterRow, MaterialPrice, SroPoBom, SroPoBomLine } from "@/lib/erp-types";
+import { usePersistedView, usePageState } from "@/hooks/use-page-state";
+import { DraftStrip } from "@/components/page-state/draft-strip";
+import {
+  BOM_MATERIAL_PRICES_KEY,
+  parseBomView,
+  parseMaterialPriceDraft,
+  parseSearchView,
+  type BomView,
+  type MaterialPriceDraft,
+  type SearchView,
+} from "@/lib/page-drafts";
 
 const inputCls =
   "w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-base sm:text-sm text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026] transition-colors";
@@ -44,7 +55,16 @@ export default function BomSection({
   canViewCost,
   bamidaByPo,
 }: Props) {
-  const [tab, setTab] = useState<"orders" | "materials" | "master">("orders");
+  // Which tab, remembered. The materials search box below has its OWN key
+  // because it lives inside MaterialsTab: one row per call site, or the two
+  // would overwrite each other's shape on every keystroke.
+  const [bomView, setBomView] = usePersistedView<BomView>(
+    "bom",
+    { v: 1, tab: "orders", q: "" },
+    parseBomView,
+  );
+  const tab = bomView.tab;
+  const setTab = (next: "orders" | "materials" | "master") => setBomView({ ...bomView, tab: next });
 
   return (
     <div>
@@ -228,7 +248,45 @@ function MaterialsTab({ materials, week, error, canEdit }: { materials: Material
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [q, setQ] = useState("");
+
+  // Typed prices that have not been committed yet.
+  //
+  // Fingerprinted on the BOM week, and DISCARDED rather than restored when the
+  // week has rolled over: these numbers reprice every product that uses the
+  // material, so putting last week's typing back on this week's list is the one
+  // restore here that could quietly cost money.
+  const {
+    restored: restoredPrices,
+    save: savePrices,
+    clear: clearPrices,
+    saveStatus: pricesSaveStatus,
+    savedAt: pricesSavedAt,
+  } = usePageState<MaterialPriceDraft>({
+    pageKey: BOM_MATERIAL_PRICES_KEY,
+    parse: parseMaterialPriceDraft,
+    base: week ?? null,
+    enabled: canEdit,
+    onRestore: (restored) => {
+      if (!restored || restored.stale) {
+        if (restored?.stale) void clearPrices();
+        return;
+      }
+      setDraft(restored.data.prices);
+    },
+    isEmpty: (d) => Object.keys(d.prices).length === 0,
+  });
+
+  useEffect(() => {
+    if (!canEdit) return;
+    savePrices({ v: 1, prices: draft });
+  }, [canEdit, savePrices, draft]);
+  const [qView, setQView] = usePersistedView<SearchView>(
+    "bom:materials",
+    { v: 1, q: "" },
+    parseSearchView,
+  );
+  const q = qView.q;
+  const setQ = (next: string) => setQView({ v: 1, q: next });
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -301,12 +359,30 @@ function MaterialsTab({ materials, week, error, canEdit }: { materials: Material
           (res.missing ? ` (${res.missing} not found)` : "")
       );
       setDraft({});
+      // The prices are committed, so the typing behind them is spent.
+      void clearPrices();
       router.refresh();
     });
   }
 
   return (
     <>
+      {restoredPrices && (
+        <div className="mb-3">
+          <DraftStrip
+            dark
+            what="the prices you had typed"
+            savedAt={pricesSavedAt}
+            onStartAgain={async () => {
+              await clearPrices();
+              setDraft({});
+            }}
+            startAgainLabel="Discard them"
+            saveStatus={pricesSaveStatus}
+          />
+        </div>
+      )}
+
       <div className="flex items-start justify-between gap-3 mb-3">
         <p className="text-xs text-[#6b7280]">
           Edit a material price once — it applies to <span className="text-[#9ca3af]">every product</span> that uses it. Quantities (the recipe) come from the synced sheet and aren&apos;t editable here.

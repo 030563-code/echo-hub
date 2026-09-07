@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { login, anyCreds } from './helpers'
+import { login, anyCreds, clearQuoteDraft } from './helpers'
 
 /**
  * Will Call is askable at Quote Setup and confirmable at acceptance.
@@ -8,9 +8,10 @@ import { login, anyCreds } from './helpers'
  * from the queue started delivered and a collected order had to be corrected by
  * hand at review, after the tax had already been calculated at the wrong place.
  *
- * READ-ONLY. It asserts the controls RENDER. It never clicks Start Quote,
- * never Publishes, and cancels out of the stage dialog rather than confirming,
- * because confirming would move a real deal and upsert deals_registry.
+ * Asserts the controls RENDER. It never clicks Start Quote, never Publishes, and
+ * cancels out of the stage dialog rather than confirming, because confirming
+ * would move a real deal and upsert deals_registry. The only thing it can write
+ * is its own persona's saved draft, which it clears on the way in.
  */
 const hasToken = !!process.env.HUBSPOT_ACCESS_TOKEN
 const dealId = process.env.E2E_DEAL_ID
@@ -27,7 +28,8 @@ test.describe('Will Call', () => {
     test.skip(!hasToken, 'Set HUBSPOT_ACCESS_TOKEN to load the HubSpot-backed builder')
     test.skip(!dealId, 'Set E2E_DEAL_ID to a deal the persona can quote')
 
-    await page.goto(`/quotes/create/${dealId}`)
+    // A draft left by an earlier run would restore instead of asking setup.
+    await clearQuoteDraft(page, dealId!)
     await expect(page.getByText('Quote Setup')).toBeVisible()
     // Sits with the depot, because it is the same decision: which depot, and
     // does the customer come to it. Hidden for a distributor quote, which is

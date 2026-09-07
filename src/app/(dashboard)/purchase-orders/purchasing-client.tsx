@@ -23,6 +23,8 @@ import { stageLabel, type LifecycleStage } from "@/lib/po-lifecycle";
 import { setPoStage } from "@/app/actions/purchase-orders/set-po-stage";
 import type { PurchaseOrder } from "@/lib/erp-types";
 import type { ColumnDef } from "@tanstack/react-table";
+import { usePersistedView } from "@/hooks/use-page-state";
+import { parsePoBoardView, type PoBoardView } from "@/lib/page-drafts";
 
 const inputCls =
   "w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-sm text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026] transition-colors";
@@ -98,12 +100,23 @@ interface Props {
 
 export default function PurchasingClient({ orders, canReceive, canManageAttachments, canDetectShipment, canViewCost, canMoveStage, parties, fx }: Props) {
   const router = useRouter();
-  const [view, setView] = useState<"kanban" | "table">("kanban");
+  // Kanban or table, and the search box, both remembered. The OPEN CARD is
+  // not: a PO can be approved or cancelled while somebody is away, and
+  // re-opening a drawer onto a row that has moved on is worse than opening
+  // none.
+  const [boardView, setBoardView] = usePersistedView<PoBoardView>(
+    "po-board",
+    { v: 1, view: "kanban", q: "" },
+    parsePoBoardView,
+  );
+  const view = boardView.view;
+  const setView = (next: "kanban" | "table") => setBoardView({ ...boardView, view: next });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [receiveTarget, setReceiveTarget] = useState<PurchaseOrder | null>(null);
   const [syncing, startSync] = useTransition();
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
-  const [q, setQ] = useState("");
+  const q = boardView.q;
+  const setQ = (next: string) => setBoardView({ ...boardView, q: next });
 
   // Optimistic lifecycle-stage moves — the dragged card jumps columns instantly,
   // then the server persists + router.refresh() reconciles (useOptimistic reverts
@@ -247,6 +260,7 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
         />
       ) : (
         <BoardTable
+          stateKey="po-board:table"
           data={visibleOrders}
           columns={TABLE_COLUMNS}
           searchPlaceholder="Search PO number, entity, SKU..."

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -9,6 +9,9 @@ import { createPurchaseOrder } from "@/app/actions/purchase-orders/create-po";
 import { saveTemplate, deleteTemplate } from "@/app/actions/purchase-orders/templates";
 import { isLineShort } from "@/lib/po-stock";
 import type { PoProductCatalogItem, PoDeliveryAddress, PoHsCode, ProductEntityCodes, PoTemplate } from "@/lib/erp-types";
+import { usePageState } from "@/hooks/use-page-state";
+import { DraftStrip } from "@/components/page-state/draft-strip";
+import { RAISE_PO_KEY, parseRaisePoDraft, type RaisePoDraft } from "@/lib/page-drafts";
 
 // Which product_code_master column holds the Xero product code for each depot.
 const DEPOT_CODE_COL: Record<string, keyof ProductEntityCodes> = {
@@ -63,6 +66,74 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
   const [templateId, setTemplateId] = useState("");
   const [savingTpl, setSavingTpl] = useState(false);
   const [tplNotice, setTplNotice] = useState<string | null>(null);
+
+  // ------------------------------------------------------------------
+  // The saved draft. A part-typed PO used to die on any navigation, including
+  // stepping out to look up a code on another page.
+  // ------------------------------------------------------------------
+  const buildDraft = (): RaisePoDraft => ({
+    v: 1,
+    fromEntity,
+    deliveryAddress,
+    notes,
+    lines,
+    templateId,
+  });
+  const seedDraftJson = JSON.stringify({
+    v: 1,
+    fromEntity: depots[0] ?? "",
+    deliveryAddress: "",
+    notes: "",
+    lines: [emptyLine()],
+    templateId: "",
+  });
+
+  const applyDraft = (restored: { data: RaisePoDraft } | null) => {
+    const draft = restored?.data;
+    if (!draft) return;
+    // A depot the profile no longer carries would raise a PO the server refuses,
+    // so fall back rather than restore it.
+    setFromEntity(depots.includes(draft.fromEntity) ? draft.fromEntity : depots[0] ?? "");
+    setDeliveryAddress(draft.deliveryAddress);
+    setNotes(draft.notes);
+    setLines(draft.lines.length > 0 ? draft.lines : [emptyLine()]);
+    setTemplateId(draft.templateId);
+  };
+
+  const {
+    status: draftStatus,
+    restored: restoredDraft,
+    save: saveDraft,
+    clear: clearDraft,
+    saveStatus: draftSaveStatus,
+    savedAt: draftSavedAt,
+  } = usePageState<RaisePoDraft>({
+    pageKey: RAISE_PO_KEY,
+    parse: parseRaisePoDraft,
+    onRestore: applyDraft,
+    enabled: !success,
+    isEmpty: (draft) => JSON.stringify(draft) === seedDraftJson,
+  });
+  const draftReady = draftStatus === "ready";
+
+  useEffect(() => {
+    if (!draftReady || success) return;
+    saveDraft(buildDraft());
+    // buildDraft is a plain closure over exactly these values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftReady, success, saveDraft, fromEntity, deliveryAddress, notes, lines, templateId]);
+
+  /** Throw the draft away and put the form back as it opened. */
+  const startAgain = async () => {
+    await clearDraft();
+    setFromEntity(depots[0] ?? "");
+    setDeliveryAddress("");
+    setNotes("");
+    setLines([emptyLine()]);
+    setTemplateId("");
+    setError(null);
+    setFieldErrors({ lines: {} });
+  };
 
   function applyTemplate(id: string) {
     setTemplateId(id);
@@ -223,6 +294,9 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
       });
       if (res.success) {
         setSuccess(res.po_number);
+        // The PO exists now, so the draft that built it is spent. Cleared
+        // server-side too, for the browser that never got this far.
+        void clearDraft();
         toast.success("Purchase order raised");
         router.refresh();
       } else {
@@ -230,6 +304,14 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
         toast.error(res.error);
       }
     });
+  }
+
+  if (!draftReady) {
+    return (
+      <div className="border border-[#2a2a2a] bg-[#1a1a1a] rounded-xl px-4 py-3">
+        <p className="text-sm text-[#9ca3af]">Opening the purchase order form…</p>
+      </div>
+    );
   }
 
   if (depots.length === 0) {
@@ -276,6 +358,17 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {restoredDraft && !success && (
+        <DraftStrip
+          dark
+          what="your unfinished purchase order"
+          savedAt={draftSavedAt}
+          onStartAgain={startAgain}
+          startAgainLabel="Start this PO again"
+          saveStatus={draftSaveStatus}
+        />
+      )}
+
       {/* Templates — recurring-order autofill */}
       <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-4 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">

@@ -12,6 +12,8 @@ import { chainNumber, displayPoNumber } from "@/lib/po-number";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SearchBox } from "@/components/ui/search-box";
 import type { PurchaseOrder } from "@/lib/erp-types";
+import { usePersistedView } from "@/hooks/use-page-state";
+import { parseSearchView, type SearchView } from "@/lib/page-drafts";
 
 const inputCls =
   "w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-base sm:text-sm text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026] transition-colors";
@@ -29,7 +31,14 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
   const [notice, setNotice] = useState<{ kind: "success" | "warn" | "error"; text: string } | null>(null);
   const [rejectTarget, setRejectTarget] = useState<PurchaseOrder | null>(null);
   const [rejectNote, setRejectNote] = useState("");
-  const [q, setQ] = useState("");
+  // Approvals is a queue people filter and step away from, so the box survives the trip.
+  const [qView, setQView] = usePersistedView<SearchView>(
+    "po-approvals",
+    { v: 1, q: "" },
+    parseSearchView,
+  );
+  const q = qView.q;
+  const setQ = (next: string) => setQView({ v: 1, q: next });
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
