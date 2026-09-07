@@ -29,10 +29,9 @@ export function chainNumber(po: Pick<PurchaseOrder, 'po_number' | 'master_ref' |
 }
 
 /**
- * A Hub-minted placeholder number (`PO-01105`) vs a real Xero number written back
- * by n8n (`EBG26086`, `EBUSA26013`, `EBSRO…`). We keep the placeholder internally
- * (it chains master_ref + reference), but never surface it: the real PO number is
- * the Xero one, and until n8n writes it back we show "Awaiting Xero PO number".
+ * A Hub-minted number (`PO-01105`) vs a real Xero number written back by n8n
+ * (`EBG26086`, `EBUSA26013`, `EBSRO…`). Kept as a predicate because the two are
+ * still worth telling apart; it no longer decides what the screen shows.
  */
 export function isPlaceholderPoNumber(poNumber: string | null | undefined): boolean {
   return !poNumber || /^PO-\d+$/i.test(poNumber.trim())
@@ -40,9 +39,19 @@ export function isPlaceholderPoNumber(poNumber: string | null | undefined): bool
 
 export const AWAITING_XERO_PO = 'Awaiting Xero PO number'
 
-/** What to SHOW for a PO number: the real Xero number, else the awaiting label. */
+/**
+ * What to SHOW for a PO number.
+ *
+ * This used to hide a Hub-minted number behind "Awaiting Xero PO number", on the
+ * reasoning that the Xero number is the real one. With the Xero hand-off switched
+ * off for the feedback round that label is simply wrong: no number is coming, and
+ * an order with no visible number cannot be discussed, searched for or matched to
+ * a shipment. So the Hub number is shown, and the Xero number replaces it in the
+ * same field once n8n writes it back. Only a genuinely absent number falls back to
+ * the label.
+ */
 export function displayPoNumber(poNumber: string | null | undefined): string {
-  return isPlaceholderPoNumber(poNumber) ? AWAITING_XERO_PO : (poNumber as string)
+  return poNumber?.trim() ? poNumber : AWAITING_XERO_PO
 }
 
 /** Human label for a leg — shared so the board, table and kanban never disagree. */

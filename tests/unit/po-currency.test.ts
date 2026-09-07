@@ -40,7 +40,7 @@ describe("convertCurrency — the USD→GBP→EUR chain", () => {
   });
 });
 
-describe("displayPoNumber — hide Hub placeholders, show Xero numbers", () => {
+describe("displayPoNumber — show whatever number the order has", () => {
   it("treats PO-NNNNN as a placeholder", () => {
     expect(isPlaceholderPoNumber("PO-01105")).toBe(true);
     expect(isPlaceholderPoNumber("PO-1")).toBe(true);
@@ -52,8 +52,16 @@ describe("displayPoNumber — hide Hub placeholders, show Xero numbers", () => {
     expect(isPlaceholderPoNumber("EBUSA26013")).toBe(false);
     expect(isPlaceholderPoNumber("EBSRO2026001-01")).toBe(false);
   });
-  it("displays the awaiting label for placeholders, the number otherwise", () => {
-    expect(displayPoNumber("PO-01105")).toBe(AWAITING_XERO_PO);
+  it("shows the Hub number rather than hiding it behind the awaiting label", () => {
+    // Dean, 2026-09-07: the Xero hand-off is off for the feedback round, so no
+    // Xero number is coming and an order with no visible number cannot be
+    // discussed or searched for. The Xero number replaces it once n8n writes back.
+    expect(displayPoNumber("PO-01105")).toBe("PO-01105");
     expect(displayPoNumber("EBG26086")).toBe("EBG26086");
+  });
+  it("falls back to the awaiting label only when there is no number at all", () => {
+    expect(displayPoNumber(null)).toBe(AWAITING_XERO_PO);
+    expect(displayPoNumber("")).toBe(AWAITING_XERO_PO);
+    expect(displayPoNumber("   ")).toBe(AWAITING_XERO_PO);
   });
 });
