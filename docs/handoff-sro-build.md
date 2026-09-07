@@ -4,7 +4,7 @@ Open a new Claude Code session **in this repo** (`echo-barrier-hub/`) with the *
 
 ---
 
-You're continuing the **Echo Barrier Hub** — the SRO / purchase-order / BOM side. Repo: `/Users/deanjeggels/Documents/CH-ISE/Clients/Echo_Barrier/echo-barrier-hub`.
+You're continuing the **Echo Barrier Hub** — the SRO / purchase-order / BOM side. Repo: `echo-barrier-hub`.
 
 **Read first, in order:**
 1. `./CLAUDE.md` — architecture + the per-user capability model + security rules.
