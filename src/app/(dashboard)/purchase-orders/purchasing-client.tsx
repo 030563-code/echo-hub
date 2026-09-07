@@ -1,20 +1,38 @@
 "use client";
 
-import { useState } from "react";
-import { LayoutGrid, List, X } from "lucide-react";
+import { useMemo, useOptimistic, useRef, useState, useTransition } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import * as Dialog from "@radix-ui/react-dialog";
+import { toast } from "sonner";
+import { LayoutGrid, List, X, PackageCheck, Loader2, Check, Paperclip, Download, Upload, Trash2, Ship, Inbox, FileDown } from "lucide-react";
 import KanbanBoard from "@/components/board/KanbanBoard";
 import BoardTable from "@/components/board/BoardTable";
 import StatusBadge from "@/components/board/StatusBadge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SearchBox } from "@/components/ui/search-box";
 import { cn, formatRelative } from "@/lib/utils";
+import { recordReceipt } from "@/app/actions/purchase-orders/receive-po";
+import { uploadPoAttachment, getPoAttachmentUrl, deletePoAttachment } from "@/app/actions/purchase-orders/attachments";
+import { resolvePoShipment, syncAllPoShipments } from "@/app/actions/purchase-orders/po-shipments";
+import { raiseCargoPo } from "@/app/actions/purchase-orders/raise-cargo-po";
+import { chainNumber, isFullyReceived, legLabel, displayPoNumber } from "@/lib/po-number";
+import { downloadPoPdf, type PdfParty } from "@/lib/po-pdf";
+import { entityPoCurrency, type FxRates } from "@/lib/po-currency";
+import { stageLabel, type LifecycleStage } from "@/lib/po-lifecycle";
+import { setPoStage } from "@/app/actions/purchase-orders/set-po-stage";
 import type { PurchaseOrder } from "@/lib/erp-types";
 import type { ColumnDef } from "@tanstack/react-table";
+
+const inputCls =
+  "w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-sm text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026] transition-colors";
 
 const TABLE_COLUMNS: ColumnDef<PurchaseOrder, unknown>[] = [
   {
     accessorKey: "po_number",
     header: "PO Number",
     cell: ({ getValue }) => (
-      <span className="font-mono text-[#FF7026] text-xs font-medium">{getValue() as string}</span>
+      <span className="font-mono text-[#FF7026] text-xs font-medium">{displayPoNumber(getValue() as string)}</span>
     ),
   },
   {
@@ -32,7 +50,7 @@ const TABLE_COLUMNS: ColumnDef<PurchaseOrder, unknown>[] = [
     header: "Leg",
     cell: ({ getValue }) => (
       <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#2a2a2a] text-[#6b7280]">
-        {getValue() === "DEPOT_TO_EB_GROUP" ? "Depot → Group" : "Group → SRO"}
+        {legLabel(getValue() as string)}
       </span>
     ),
   },
@@ -67,11 +85,92 @@ const TABLE_COLUMNS: ColumnDef<PurchaseOrder, unknown>[] = [
 
 interface Props {
   orders: PurchaseOrder[];
+  canReceive: boolean;
+  canManageAttachments: boolean;
+  canDetectShipment: boolean;
+  canViewCost: boolean;
+  /** Can drag PO cards between lifecycle columns (po.approve / po.receive). */
+  canMoveStage: boolean;
+  /** From/To party addresses + weekly FX for the branded PO PDF (server-built). */
+  parties: Record<string, PdfParty>;
+  fx: FxRates | null;
 }
 
-export default function PurchasingClient({ orders }: Props) {
+export default function PurchasingClient({ orders, canReceive, canManageAttachments, canDetectShipment, canViewCost, canMoveStage, parties, fx }: Props) {
+  const router = useRouter();
   const [view, setView] = useState<"kanban" | "table">("kanban");
-  const [selected, setSelected] = useState<PurchaseOrder | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [receiveTarget, setReceiveTarget] = useState<PurchaseOrder | null>(null);
+  const [syncing, startSync] = useTransition();
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+
+  // Optimistic lifecycle-stage moves — the dragged card jumps columns instantly,
+  // then the server persists + router.refresh() reconciles (useOptimistic reverts
+  // to the fresh base once the transition settles, so there is no flicker).
+  const [optimisticOrders, applyMove] = useOptimistic(
+    orders,
+    (state: PurchaseOrder[], move: { poId: string; stage: LifecycleStage }) =>
+      state.map((o) => (o.id === move.poId ? { ...o, lifecycle_stage: move.stage } : o))
+  );
+  const [, startMove] = useTransition();
+
+  function moveCard(poId: string, stage: LifecycleStage) {
+    startMove(async () => {
+      applyMove({ poId, stage });
+      const res = await setPoStage({ poId, stage });
+      if (res.success) toast.success(`Moved to “${stageLabel(stage)}”`);
+      else toast.error(res.error);
+      router.refresh();
+    });
+  }
+
+  const visibleOrders = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return optimisticOrders;
+    return optimisticOrders.filter((o) =>
+      [
+        o.po_number,
+        chainNumber(o),
+        o.from_entity,
+        o.to_entity,
+        o.status,
+        o.fulfilment_type,
+        o.reference_po_number,
+        legLabel(o.leg),
+        (o.lines ?? []).map((l) => l.sku).join(" "),
+      ]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(s))
+    );
+  }, [optimisticOrders, q]);
+
+  function syncShipments() {
+    setSyncMsg(null);
+    startSync(async () => {
+      const res = await syncAllPoShipments();
+      if (res.success) {
+        const text = `Checked ${res.checked} PO(s) — ${res.resolved} shipment(s) linked.`;
+        setSyncMsg(text);
+        toast.success(text);
+      } else {
+        setSyncMsg(res.error);
+        toast.error(res.error);
+      }
+      router.refresh();
+    });
+  }
+
+  // Derive the open panel's PO from live orders so it stays current after a
+  // router.refresh (e.g. logging a delivery / attaching a file) — no sync effect.
+  const selected = selectedId ? optimisticOrders.find((o) => o.id === selectedId) ?? null : null;
+
+  // The cost is entered on the root (depot) leg in that depot's currency; the PDF
+  // converts it into the leg's own currency. Resolve the chain root for the rate.
+  const rootCurrencyFor = (po: PurchaseOrder) => {
+    const root = optimisticOrders.find((o) => o.master_ref === po.master_ref && !o.parent_po_id) ?? po;
+    return entityPoCurrency(root.from_entity);
+  };
 
   return (
     <div className="relative">
@@ -92,18 +191,66 @@ export default function PurchasingClient({ orders }: Props) {
             </button>
           ))}
         </div>
-        <span className="text-xs text-[#4b5563]">{orders.length} orders</span>
+        <span className="text-xs text-[#4b5563]">{visibleOrders.length} orders</span>
+        <SearchBox
+          value={q}
+          onChange={setQ}
+          dark
+          placeholder="Search PO, entity, status…"
+          className="ml-auto"
+        />
+        {canDetectShipment && (
+          <button
+            onClick={syncShipments}
+            disabled={syncing}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#9ca3af] hover:text-white border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-lg transition-colors disabled:opacity-50"
+            title="Auto-detect each PO's Cargo Partner SPOT ID + shipment from its PO number"
+          >
+            {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ship className="w-3.5 h-3.5" />}
+            Sync shipments
+          </button>
+        )}
+        {syncMsg && <span className="text-xs text-[#6b7280]">{syncMsg}</span>}
       </div>
 
       {/* Board */}
-      {view === "kanban" ? (
-        <KanbanBoard orders={orders} onCardClick={setSelected} />
+      {visibleOrders.length === 0 ? (
+        orders.length === 0 ? (
+          <EmptyState
+            dark
+            icon={<Inbox className="w-8 h-8" />}
+            title="No purchase orders yet"
+            description="Raise a PO to start the Depot → Group → SRO approval chain. It'll appear here once created."
+            action={
+              <Link
+                href="/purchase-orders/create"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#FF7026] hover:bg-[#f2641b] text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                Raise a PO
+              </Link>
+            }
+          />
+        ) : (
+          <EmptyState
+            dark
+            icon={<Inbox className="w-8 h-8" />}
+            title="No matching purchase orders"
+            description="Nothing matches your search. Try a different PO number, entity, status or SKU."
+          />
+        )
+      ) : view === "kanban" ? (
+        <KanbanBoard
+          orders={visibleOrders}
+          onCardClick={(o) => setSelectedId(o.id)}
+          canMove={canMoveStage}
+          onMove={moveCard}
+        />
       ) : (
         <BoardTable
-          data={orders}
+          data={visibleOrders}
           columns={TABLE_COLUMNS}
           searchPlaceholder="Search PO number, entity, SKU..."
-          onRowClick={setSelected}
+          onRowClick={(o) => setSelectedId(o.id)}
           emptyMessage="No purchase orders found"
         />
       )}
@@ -113,11 +260,13 @@ export default function PurchasingClient({ orders }: Props) {
         <div className="fixed inset-y-0 right-0 w-full max-w-md sm:w-96 bg-[#161616] border-l border-[#2a2a2a] z-50 flex flex-col shadow-2xl">
           <div className="flex items-center justify-between px-5 py-4 border-b border-[#2a2a2a]">
             <div>
-              <p className="font-mono text-[#FF7026] font-medium">{selected.po_number}</p>
-              <p className="text-xs text-[#4b5563]">{selected.master_ref && `ref: ${selected.master_ref}`}</p>
+              <p className="font-mono text-[#FF7026] font-medium">{displayPoNumber(selected.po_number)}</p>
+              {selected.reference_po_number && (
+                <p className="text-xs text-[#4b5563]">Ref: {displayPoNumber(selected.reference_po_number)}</p>
+              )}
             </div>
             <button
-              onClick={() => setSelected(null)}
+              onClick={() => setSelectedId(null)}
               className="p-2.5 sm:p-1.5 hover:bg-[#2a2a2a] rounded-lg transition-colors text-[#6b7280] hover:text-white"
             >
               <X className="w-4 h-4" />
@@ -125,15 +274,23 @@ export default function PurchasingClient({ orders }: Props) {
           </div>
 
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
+            <DownloadPoPdfButton po={selected} canViewCost={canViewCost} parties={parties} fx={fx} rootCurrency={rootCurrencyFor(selected)} />
+
             <DetailSection label="Status">
               <StatusBadge status={selected.status} />
             </DetailSection>
 
             <DetailSection label="Route">
               <p className="text-sm text-[#e5e5e5]">{selected.from_entity}</p>
-              <p className="text-xs text-[#4b5563]">↓</p>
+              <p className="text-xs text-[#4b5563]">↓ {legLabel(selected.leg)}</p>
               <p className="text-sm text-[#e5e5e5]">{selected.to_entity}</p>
             </DetailSection>
+
+            {selected.reference_po_number && (
+              <DetailSection label="Reference PO">
+                <p className="text-sm font-mono text-[#9ca3af]">{selected.reference_po_number}</p>
+              </DetailSection>
+            )}
 
             {selected.fulfilment_type && (
               <DetailSection label="Fulfilment Type">
@@ -142,27 +299,52 @@ export default function PurchasingClient({ orders }: Props) {
             )}
 
             {(selected.lines ?? []).length > 0 && (
-              <DetailSection label="Line Items">
+              <DetailSection label="Line Items & Deliveries">
                 <div className="space-y-2">
-                  {(selected.lines ?? []).map((line) => (
-                    <div key={line.id} className="flex items-center justify-between bg-[#1e1e1e] rounded-lg px-3 py-2">
-                      <div>
-                        <p className="text-xs font-mono text-[#e5e5e5]">
-                          {line.sku}{line.sku_suffix ? `-${line.sku_suffix}` : ""}
-                        </p>
-                        {line.product_name && (
-                          <p className="text-[10px] text-[#4b5563]">{line.product_name}</p>
-                        )}
+                  {(selected.lines ?? []).map((line) => {
+                    const received = line.qty_received ?? 0;
+                    const complete = received >= line.quantity;
+                    return (
+                      <div key={line.id} className="flex items-center justify-between bg-[#1e1e1e] rounded-lg px-3 py-2">
+                        <div>
+                          <p className="text-xs font-mono text-[#e5e5e5]">
+                            {line.sku}{line.sku_suffix ? `-${line.sku_suffix}` : ""}
+                          </p>
+                          {line.product_name && (
+                            <p className="text-[10px] text-[#4b5563]">{line.product_name}</p>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-[#e5e5e5] font-medium">×{line.quantity}</p>
+                          {received > 0 && (
+                            <p className={"text-[10px] " + (complete ? "text-green-300" : "text-yellow-300")}>
+                              {received}/{line.quantity} received
+                            </p>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-xs text-[#e5e5e5] font-medium">×{line.quantity}</p>
-                        {line.stock_available != null && (
-                          <p className="text-[10px] text-[#4b5563]">{line.stock_available} in stock</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
+                {/* Physical goods land at the DEPOT that ordered them, so the depot
+                    leg is the single receiving point — the Group→SRO legs are
+                    intercompany paperwork, not physical receipts. */}
+                {canReceive && selected.source === "hub" && selected.status === "approved" && selected.leg === "DEPOT_TO_EB_GROUP" && !isFullyReceived(selected.lines ?? []) && (
+                  <button
+                    onClick={() => setReceiveTarget(selected)}
+                    className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-[#FF7026] hover:bg-[#f2641b] rounded-lg transition-colors"
+                  >
+                    <PackageCheck className="w-3.5 h-3.5" /> Log delivery
+                  </button>
+                )}
+                {selected.source === "hub" && selected.status === "approved" && selected.leg !== "DEPOT_TO_EB_GROUP" && (
+                  <p className="mt-2 text-[10px] text-[#4b5563]">Intercompany leg — goods are received against the depot order.</p>
+                )}
+                {selected.status === "delivered" && (
+                  <p className="mt-2 inline-flex items-center gap-1 text-[10px] text-green-300">
+                    <Check className="w-3 h-3" /> Fully received
+                  </p>
+                )}
               </DetailSection>
             )}
 
@@ -174,15 +356,369 @@ export default function PurchasingClient({ orders }: Props) {
               {selected.delivered_at && <TimelineItem label="Delivered" date={selected.delivered_at} />}
             </DetailSection>
 
+            {canDetectShipment && selected.leg === "EB_GROUP_TO_SRO" && <CargoPoButton po={selected} />}
+
+            <ShipmentSection po={selected} canDetect={canDetectShipment} />
+
             {selected.notes && (
               <DetailSection label="Notes">
                 <p className="text-sm text-[#9ca3af]">{selected.notes}</p>
               </DetailSection>
             )}
+
+            <AttachmentsSection po={selected} canManage={canManageAttachments} />
           </div>
         </div>
       )}
+
+      {receiveTarget && <ReceiveModal po={receiveTarget} onClose={() => setReceiveTarget(null)} />}
     </div>
+  );
+}
+
+function DownloadPoPdfButton({
+  po,
+  canViewCost,
+  parties,
+  fx,
+  rootCurrency,
+}: {
+  po: PurchaseOrder;
+  canViewCost: boolean;
+  parties: Record<string, PdfParty>;
+  fx: FxRates | null;
+  rootCurrency: ReturnType<typeof entityPoCurrency>;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      onClick={async () => {
+        setBusy(true);
+        try {
+          await downloadPoPdf(po, { canViewCost, parties, fx, rootCurrency });
+          toast.success("PO PDF downloaded");
+        } catch {
+          toast.error("Could not generate the PDF");
+        } finally {
+          setBusy(false);
+        }
+      }}
+      disabled={busy}
+      className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-white bg-[#025945] hover:bg-[#03674f] disabled:opacity-60 rounded-lg transition-colors"
+    >
+      {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />} Download PDF
+    </button>
+  );
+}
+
+function CargoPoButton({ po }: { po: PurchaseOrder }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  function raise() {
+    setErr(null);
+    setMsg(null);
+    startTransition(async () => {
+      const res = await raiseCargoPo({ sro_po_id: po.id });
+      if (!res.ok) {
+        setErr(res.error);
+        toast.error(res.error);
+      } else {
+        setMsg(`Cargo PO raised — ${res.chain} (${res.po_number}).`);
+        toast.success(`Cargo PO raised — ${res.chain}`);
+        router.refresh();
+      }
+    });
+  }
+
+  return (
+    <div className="border-t border-[#222] pt-4">
+      <p className="text-[10px] uppercase tracking-wider text-[#4b5563] mb-2">Cargo / Transport PO</p>
+      <button
+        onClick={raise}
+        disabled={pending}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#9ca3af] hover:text-white border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-lg transition-colors disabled:opacity-50"
+      >
+        {pending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ship className="w-3.5 h-3.5" />}
+        Raise cargo PO ({chainNumber(po)}-2)
+      </button>
+      {msg && <p className="text-[10px] text-green-400 mt-2">{msg}</p>}
+      {err && <p className="text-[10px] text-yellow-400 mt-2">{err}</p>}
+    </div>
+  );
+}
+
+function ReceiveModal({ po, onClose }: { po: PurchaseOrder; onClose: () => void }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [batchRef, setBatchRef] = useState("");
+  const [note, setNote] = useState("");
+  const [qty, setQty] = useState<Record<string, string>>({});
+
+  const lines = (po.lines ?? []).map((l) => ({
+    id: l.id,
+    sku: l.sku,
+    ordered: l.quantity,
+    received: l.qty_received ?? 0,
+    remaining: l.quantity - (l.qty_received ?? 0),
+  }));
+
+  function submit() {
+    setError(null);
+    const payload = lines
+      .map((l) => ({ lineId: l.id, qty: Number(qty[l.id]) || 0 }))
+      .filter((l) => l.qty > 0);
+    if (!payload.length) {
+      setError("Enter a received quantity on at least one line.");
+      return;
+    }
+    const over = payload.find((p) => {
+      const l = lines.find((x) => x.id === p.lineId)!;
+      return p.qty > l.remaining;
+    });
+    if (over) {
+      const l = lines.find((x) => x.id === over.lineId)!;
+      setError(`${l.sku}: receiving ${over.qty} exceeds the ${l.remaining} outstanding.`);
+      return;
+    }
+    startTransition(async () => {
+      const res = await recordReceipt({
+        poId: po.id,
+        batchRef: batchRef.trim() || undefined,
+        note: note.trim() || undefined,
+        lines: payload,
+      });
+      if (!res.success) {
+        setError(res.error);
+        toast.error(res.error);
+        return;
+      }
+      toast.success(`Delivery logged for ${chainNumber(po)}`);
+      router.refresh();
+      onClose();
+    });
+  }
+
+  return (
+    <Dialog.Root open onOpenChange={(o) => !o && onClose()}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60]" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[70] w-full max-w-lg max-h-[90vh] overflow-y-auto bg-[#141414] border border-[#2a2a2a] rounded-2xl p-6 shadow-2xl">
+          <div className="flex items-center justify-between mb-1">
+            <Dialog.Title className="text-lg font-semibold text-white" style={{ fontFamily: "Varela Round, sans-serif" }}>
+              Log delivery — <span className="font-mono text-[#FF7026]">{chainNumber(po)}</span>
+            </Dialog.Title>
+            <Dialog.Close className="p-1.5 text-[#4b5563] hover:text-white transition-colors rounded-lg hover:bg-[#2a2a2a]">
+              <X className="w-4 h-4" />
+            </Dialog.Close>
+          </div>
+          <p className="text-xs text-[#6b7280] mb-4">Enter quantities received in this batch. The PO closes once every line is fully received.</p>
+
+          <div className="space-y-2">
+            {lines.map((l) => (
+              <div key={l.id} className="flex items-center justify-between gap-3 bg-[#1e1e1e] rounded-lg px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-mono text-[#e5e5e5]">{l.sku}</p>
+                  <p className="text-[10px] text-[#4b5563]">{l.received}/{l.ordered} received · {l.remaining} outstanding</p>
+                </div>
+                <input
+                  value={qty[l.id] ?? ""}
+                  onChange={(e) => setQty((q) => ({ ...q, [l.id]: e.target.value }))}
+                  inputMode="numeric"
+                  placeholder="0"
+                  aria-label={`receive-${l.sku}`}
+                  disabled={l.remaining <= 0}
+                  className="w-24 px-3 py-1.5 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-sm text-right tabular-nums text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026] disabled:opacity-40"
+                />
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 mt-3">
+            <input value={batchRef} onChange={(e) => setBatchRef(e.target.value)} placeholder="Batch / delivery ref (optional)" className={inputCls} />
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" className={inputCls} />
+          </div>
+
+          {error && (
+            <p className="text-red-400 text-sm bg-red-900/20 border border-red-800/30 rounded-lg px-3 py-2 mt-3">{error}</p>
+          )}
+
+          <div className="flex justify-end gap-2 mt-5">
+            <Dialog.Close className="px-4 py-2 text-sm text-[#9ca3af] hover:text-white transition-colors rounded-lg hover:bg-[#2a2a2a]">
+              Cancel
+            </Dialog.Close>
+            <button
+              onClick={submit}
+              disabled={pending}
+              className="inline-flex items-center gap-2 px-5 py-2 bg-[#FF7026] hover:bg-[#f2641b] disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              {pending && <Loader2 className="w-4 h-4 animate-spin" />}
+              Log delivery
+            </button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+function ShipmentSection({ po, canDetect }: { po: PurchaseOrder; canDetect: boolean }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [msg, setMsg] = useState<string | null>(null);
+  const s = po.shipment;
+
+  function detect() {
+    setMsg(null);
+    startTransition(async () => {
+      const res = await resolvePoShipment(po.id);
+      if (!res.success) {
+        setMsg(res.error);
+        toast.error(res.error);
+      } else if (!res.found) {
+        setMsg("No Cargo Partner shipment found for this PO number yet.");
+      } else {
+        toast.success("Shipment linked from Cargo Partner");
+      }
+      router.refresh();
+    });
+  }
+
+  return (
+    <DetailSection label="Shipment (Cargo Partner)">
+      {s ? (
+        <div className="space-y-0.5">
+          <p className="text-xs">
+            <span className="text-[#4b5563]">SPOT ID</span> <span className="font-mono text-[#FF7026]">{s.spot_id}</span>
+          </p>
+          {s.container_ref && (
+            <p className="text-xs text-[#9ca3af]">Container <span className="font-mono">{s.container_ref}</span></p>
+          )}
+          {s.vessel && <p className="text-xs text-[#9ca3af]">Vessel {s.vessel}{s.carrier ? ` · ${s.carrier}` : ""}</p>}
+          {s.eta && <p className="text-xs text-[#9ca3af]">ETA {s.eta}</p>}
+          {s.last_event && (
+            <p className="text-[10px] text-[#6b7280]">Last: {s.last_event}{s.last_event_at ? ` · ${s.last_event_at}` : ""}</p>
+          )}
+          {(s.match_count ?? 1) > 1 && (
+            <p className="text-[10px] text-yellow-400">{s.match_count} shipments matched this PO — first shown.</p>
+          )}
+        </div>
+      ) : (
+        <p className="text-[10px] text-[#4b5563]">No shipment linked yet.</p>
+      )}
+      {canDetect && (
+        <button
+          onClick={detect}
+          disabled={pending}
+          className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#9ca3af] hover:text-white border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-lg transition-colors disabled:opacity-50"
+        >
+          {pending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ship className="w-3.5 h-3.5" />}
+          {s ? "Refresh shipment" : "Detect shipment"}
+        </button>
+      )}
+      {msg && <p className="text-[10px] text-yellow-400 mt-1">{msg}</p>}
+    </DetailSection>
+  );
+}
+
+function AttachmentsSection({ po, canManage }: { po: PurchaseOrder; canManage: boolean }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [err, setErr] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const atts = po.attachments ?? [];
+
+  function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setErr(null);
+    const fd = new FormData();
+    fd.append("poId", po.id);
+    fd.append("file", file);
+    startTransition(async () => {
+      const res = await uploadPoAttachment(fd);
+      if (!res.success) {
+        setErr(res.error);
+        toast.error(res.error);
+      } else {
+        toast.success(`${file.name} attached`);
+      }
+      if (fileRef.current) fileRef.current.value = "";
+      router.refresh();
+    });
+  }
+
+  async function download(id: string) {
+    setErr(null);
+    const res = await getPoAttachmentUrl(id);
+    if (res.success) window.open(res.url, "_blank");
+    else {
+      setErr(res.error);
+      toast.error(res.error);
+    }
+  }
+
+  function remove(id: string) {
+    if (!window.confirm("Delete this attachment?")) return;
+    setErr(null);
+    startTransition(async () => {
+      const res = await deletePoAttachment(id);
+      if (!res.success) {
+        setErr(res.error);
+        toast.error(res.error);
+      } else {
+        toast.success("Attachment deleted");
+      }
+      router.refresh();
+    });
+  }
+
+  return (
+    <DetailSection label="Attachments">
+      <div className="space-y-1.5">
+        {atts.map((a) => (
+          <div key={a.id} className="flex items-center justify-between gap-2 bg-[#1e1e1e] rounded-lg px-3 py-2">
+            <button onClick={() => download(a.id)} className="flex items-center gap-2 min-w-0 text-left hover:opacity-80">
+              <Paperclip className="w-3.5 h-3.5 text-[#6b7280] flex-shrink-0" />
+              <span className="text-xs text-[#e5e5e5] truncate">{a.filename}</span>
+            </button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button onClick={() => download(a.id)} className="text-[#6b7280] hover:text-[#FF7026] transition-colors" title="Download">
+                <Download className="w-3.5 h-3.5" />
+              </button>
+              {canManage && (
+                <button onClick={() => remove(a.id)} className="text-[#6b7280] hover:text-red-400 transition-colors" title="Delete">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        {atts.length === 0 && <p className="text-[10px] text-[#4b5563]">No files attached.</p>}
+      </div>
+      {canManage && (
+        <>
+          <input
+            ref={fileRef}
+            type="file"
+            className="hidden"
+            onChange={onPick}
+            accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.txt,.csv,.doc,.docx,.xls,.xlsx"
+          />
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={pending}
+            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#9ca3af] hover:text-white border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-lg transition-colors disabled:opacity-50"
+          >
+            {pending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />} Attach file
+          </button>
+        </>
+      )}
+      {err && <p className="text-red-400 text-xs mt-2">{err}</p>}
+    </DetailSection>
   );
 }
 

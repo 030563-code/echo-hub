@@ -2,6 +2,7 @@
 
 import { getAuthorizedUser, hasCapability } from '@/lib/authz'
 import { resolveHubSpotOwnerId } from '@/lib/hubspot-owner'
+import { externalCallsDisabled, STAGING_SKIP_NOTE } from '@/lib/env'
 
 interface CreateCompanyParams {
   name: string
@@ -81,6 +82,8 @@ export async function createHubSpotCompany(params: CreateCompanyParams): Promise
   if (!(await hasCapability('quotes.create'))) {
     return { success: false, error: 'Forbidden: missing quotes.create capability' }
   }
+
+  if (externalCallsDisabled()) return { success: false, error: STAGING_SKIP_NOTE }
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
   if (!accessToken) return { success: false, error: 'Token Missing' }

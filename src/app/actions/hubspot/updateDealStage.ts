@@ -1,6 +1,7 @@
 'use server'
 
 import { assertDealAccess } from '@/lib/authz'
+import { externalCallsDisabled, STAGING_SKIP_NOTE } from '@/lib/env'
 import { createServerClient } from '@/lib/supabase/server'
 import { HUBSPOT_PIPELINES, QUOTATION_ACCEPTED_STAGES } from '@/lib/hubspot-constants'
 import { DEPOT_MAPPING } from '@/lib/depot-constants'
@@ -116,6 +117,12 @@ export async function updateDealStage(dealId: string, pipelineId: string, stageI
       }
     }
   }
+
+  // Staging kill switch. Restored in the operations merge: main's rewrite of this
+  // action predates it, so taking main's file wholesale would have let the sandbox
+  // move real deal stages in HubSpot. Sits after every authorization and validation
+  // check so the guard cannot mask a permission bug.
+  if (externalCallsDisabled()) return { success: false, error: STAGING_SKIP_NOTE }
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
   if (!accessToken) {

@@ -8,8 +8,20 @@ import type { NextRequest } from 'next/server'
 // requireCapability(), and RLS enforces row access server-side.
 const PUBLIC_PATHS = ['/login', '/onboarding', '/auth/callback']
 
+// Machine endpoints that carry their OWN authentication and must never be
+// session-gated: a cookieless caller (n8n cron) would otherwise be 307'd to
+// /login, and — because a redirect chain ends in a 200 HTML page — the caller
+// would record the failure as success. Kept as an exact-match allowlist rather
+// than a blanket "/api" so a future API route cannot silently lose the session
+// gate by inheriting an exemption it never asked for. Each entry MUST enforce
+// its own auth (this one: Bearer MRP_CRON_SECRET, constant-time, fail-closed).
+const SELF_AUTHENTICATED_PATHS = ['/api/mrp/run']
+
 function isPublic(pathname: string): boolean {
-  return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))
+  return (
+    SELF_AUTHENTICATED_PATHS.includes(pathname) ||
+    PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))
+  )
 }
 
 export async function middleware(req: NextRequest) {
