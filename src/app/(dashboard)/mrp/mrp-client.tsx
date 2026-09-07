@@ -1,7 +1,9 @@
 "use client";
 
+import { PackageSearch } from "lucide-react";
 import BoardTable from "@/components/board/BoardTable";
 import TrafficLight from "@/components/board/TrafficLight";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { MRPRow } from "@/lib/erp-types";
 import type { ColumnDef } from "@tanstack/react-table";
 
@@ -88,6 +90,16 @@ const COLUMNS: ColumnDef<MRPRow, unknown>[] = [
 ];
 
 export default function MRPClient({ rows }: { rows: MRPRow[] }) {
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        dark
+        icon={<PackageSearch className="w-7 h-7" />}
+        title="No SKUs to reorder"
+        description="No SKUs found in warehouse_stock_levels."
+      />
+    );
+  }
   return (
     <BoardTable
       data={rows}

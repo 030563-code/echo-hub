@@ -29,7 +29,7 @@ const LineSchema = z.object({
 
 const CreatePOSchema = z.object({
   from_entity: z.string().trim().min(1, "Select the raising depot"),
-  delivery_address: z.string().trim().max(2000).optional(),
+  delivery_address: z.string().trim().min(1, "Select a delivery address").max(2000),
   notes: z.string().trim().max(2000).optional(),
   lines: z.array(LineSchema).min(1, "Add at least one line item").max(100),
 });

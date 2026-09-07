@@ -3,6 +3,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasCapability } from "@/lib/authz";
 import type { MRPRow } from "@/lib/erp-types";
+import { netOnOrderBySku, sumReceiptsByLine, sumStockBySku } from "@/lib/mrp/legacy-aggregates";
 
 // Allowlist of valid SKUs — guards untrusted JSONB line_items_raw data
 // NA-suffix = North America-facing SKUs; SK-suffix = SRO / Slovakia-internal SKUs
@@ -138,9 +139,23 @@ export async function calculateMRP(): Promise<MRPRow[]> {
   // 3. On Order — purchase_orders with active manufacturing/stock statuses
   const { data: poData, error: poErr } = await supabase
     .from("purchase_orders")
-    .select("id, status, lines:purchase_order_lines(sku, quantity)")
+    .select("id, status, lines:purchase_order_lines(id, sku, quantity)")
     .in("status", ["requested", "approved", "sro_evaluating", "fulfilling_from_stock", "in_manufacturing"]);
   if (poErr) throw new Error("Failed to load purchase orders");
+
+  // 3b. Receipts against those PO lines — recordReceipt increments warehouse
+  // stock immediately, so the received portion must be netted off On Order or
+  // it is counted twice in cip (once as in_stock, once as ordered).
+  const poLineIds = (poData ?? []).flatMap((po) => (po.lines ?? []).map((l: { id: string }) => l.id));
+  let receivedByLine = new Map<string, number>();
+  if (poLineIds.length) {
+    const { data: receiptData, error: receiptErr } = await supabase
+      .from("po_line_receipts")
+      .select("po_line_id, qty_received")
+      .in("po_line_id", poLineIds);
+    if (receiptErr) throw new Error("Failed to load PO receipts");
+    receivedByLine = sumReceiptsByLine(receiptData ?? []);
+  }
 
   // 4. Pipeline Demand — deals_registry (open/active deals with line items)
   const { data: dealsData, error: dealsErr } = await supabase
@@ -159,10 +174,8 @@ export async function calculateMRP(): Promise<MRPRow[]> {
   if (closedErr) throw new Error("Failed to load closed deals");
 
   // --- Aggregate by SKU ---
-  const skuMap = new Map<string, { product_name: string | null; in_stock: number }>();
-  (stockData ?? []).forEach((row) => {
-    skuMap.set(row.sku, { product_name: row.product_name, in_stock: row.quantity_on_hand });
-  });
+  // Summed across depots: warehouse_stock_levels is one row per (warehouse, sku).
+  const skuMap = sumStockBySku(stockData ?? []);
 
   // In transit
   const inTransit = new Map<string, number>();
@@ -170,13 +183,8 @@ export async function calculateMRP(): Promise<MRPRow[]> {
     inTransit.set(sku, (inTransit.get(sku) ?? 0) + qty);
   });
 
-  // On order
-  const onOrder = new Map<string, number>();
-  (poData ?? []).forEach((po) => {
-    (po.lines ?? []).forEach(({ sku, quantity }: { sku: string; quantity: number }) => {
-      onOrder.set(sku, (onOrder.get(sku) ?? 0) + quantity);
-    });
-  });
+  // On order — net of receipts already added to in_stock (per line, floored at 0).
+  const onOrder = netOnOrderBySku(poData ?? [], receivedByLine);
 
   // Pipeline demand
   const pipelineDemand = new Map<string, number>();

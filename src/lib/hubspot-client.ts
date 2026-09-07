@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { externalCallsDisabled, STAGING_SKIP_NOTE } from './env'
+
 /**
  * Rate-limit-aware fetch wrapper for the HubSpot API. Ported from the sales-hub.
  *
@@ -35,6 +37,12 @@ export async function hubspotFetch(url: string, options: HubSpotFetchOptions = {
   }
 
   const { retries = DEFAULT_RETRIES, headers, body, ...rest } = options
+
+  // Staging kill switch: never mutate the live CRM. Reads (GET/HEAD) still pass.
+  const method = (rest.method ?? 'GET').toUpperCase()
+  if (externalCallsDisabled() && method !== 'GET' && method !== 'HEAD') {
+    throw new HubSpotConfigError(STAGING_SKIP_NOTE)
+  }
 
   // Don't set Content-Type for FormData — the runtime sets the multipart boundary.
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
