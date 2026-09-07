@@ -1,6 +1,7 @@
 'use server'
 
 import { assertDealAccess } from '@/lib/authz'
+import { externalCallsDisabled, STAGING_SKIP_NOTE } from '@/lib/env'
 import { HUBSPOT_PIPELINES, CLOSED_WON_STAGES } from '@/lib/hubspot-constants'
 
 /**
@@ -79,6 +80,11 @@ export async function closeDealWon(
         error: `no Closed won stage is mapped for this deal's pipeline (${pipelineId || 'unknown'})`,
       }
     }
+
+    // Staging kill switch. This action PATCHes HubSpot with a raw fetch rather than
+    // through hubspotFetch, so the client's central block never sees it and the
+    // guard has to be here. Sits after the access check so it cannot mask one.
+    if (externalCallsDisabled()) return { success: false, error: STAGING_SKIP_NOTE }
 
     const response = await fetch(`https://api.hubapi.com/crm/v3/objects/deals/${dealId}`, {
       method: 'PATCH',

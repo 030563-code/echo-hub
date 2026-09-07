@@ -17,6 +17,7 @@
 
 import { z } from 'zod'
 import { assertDealAccess } from '@/lib/authz'
+import { externalCallsDisabled, STAGING_SKIP_NOTE } from '@/lib/env'
 import {
   HUBSPOT_PIPELINES,
   QUOTATION_SENT_STAGES,
@@ -93,6 +94,11 @@ export async function markQuoteSent(input: { dealId: string }): Promise<MarkQuot
         error: `no Quotation sent stage is mapped for this deal's pipeline (${pipelineId || 'unknown'})`,
       }
     }
+
+    // Staging kill switch. This action PATCHes HubSpot with a raw fetch rather than
+    // through hubspotFetch, so the client's central block never sees it and the
+    // guard has to be here. Sits after the access check so it cannot mask one.
+    if (externalCallsDisabled()) return { success: false, error: STAGING_SKIP_NOTE }
 
     // dealstage alone. The pipeline is not written back: the deal is already in
     // it, and sending it would let a stale read move the deal between pipelines.

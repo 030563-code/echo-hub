@@ -56,6 +56,36 @@ export interface PricedCartLine {
   lineTotal: number
 }
 
+/**
+ * Turn a price the rep typed into the discount the cart actually travels as.
+ *
+ * The line still leaves the browser as a discount off the resolved list price,
+ * never as a price. That is the whole point: the server re-derives the net from
+ * ITS OWN list price, so a crafted request cannot name a number nobody agreed
+ * to, and the rep still gets to type what they want to charge.
+ *
+ * Three cases worth stating, because each is a real thing a rep does:
+ *  - an EMPTY box is not a zero price, it means "no override", so the line
+ *    quotes at list;
+ *  - a price ABOVE list clamps to no discount rather than inventing an uplift,
+ *    since nothing downstream can express a negative discount;
+ *  - a price BELOW the floor is left alone here and refused by checkDiscount,
+ *    so the rep sees the floor named in the error rather than a silent clamp.
+ */
+export function applyTypedPrice(
+  line: CartLine,
+  typedPrice: string | undefined,
+  listUnitPrice: number | null,
+): CartLine {
+  const draft = typedPrice?.trim()
+  if (!draft || listUnitPrice === null) return line
+  const typed = Number(draft)
+  if (!Number.isFinite(typed) || typed < 0) return line
+  const off = roundCents(listUnitPrice - typed)
+  if (off <= 0) return { ...line, discountMode: undefined, discountValue: undefined }
+  return { ...line, discountMode: 'amount', discountValue: off }
+}
+
 export interface PriceCartInput {
   lines: readonly CartLine[]
   currency: string

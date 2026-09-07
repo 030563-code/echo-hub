@@ -1,6 +1,7 @@
 'use server'
 
 import { assertDealAccess } from '@/lib/authz'
+import { externalCallsDisabled, STAGING_SKIP_NOTE } from '@/lib/env'
 
 /**
  * Write ONLY the HubSpot deal's amount.
@@ -36,6 +37,11 @@ export async function updateDealAmount(
   if (!Number.isFinite(amount) || amount < 0) {
     return { success: false, error: 'Refusing to write a deal amount that is not a positive number' }
   }
+
+  // Staging kill switch. This action PATCHes HubSpot with a raw fetch rather than
+  // through hubspotFetch, so the client's central block never sees it and the
+  // guard has to be here. Sits after the access check so it cannot mask one.
+  if (externalCallsDisabled()) return { success: false, error: STAGING_SKIP_NOTE }
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
   if (!accessToken) return { success: false, error: 'HubSpot Access Token not configured' }

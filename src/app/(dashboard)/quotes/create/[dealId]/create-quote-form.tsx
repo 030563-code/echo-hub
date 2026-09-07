@@ -26,7 +26,7 @@ import { getWinProbabilityOptions } from '@/app/actions/hubspot/getDealPropertie
 import { updateDealProperties } from '@/app/actions/hubspot/updateDealProperties'
 import { depotLabel } from '@/lib/depot-constants'
 import { WIN_PROBABILITY_VALUES, roundCents, validateLineItems } from '@/lib/quote-math'
-import { priceCart, type CartLine } from '@/lib/quote-pricing'
+import { applyTypedPrice, priceCart, type CartLine } from '@/lib/quote-pricing'
 import type { EditableCartLine } from '@/lib/quote-edit'
 import { retryHubSpotQuote } from '@/app/actions/sales/publish-quote'
 import {
@@ -69,6 +69,10 @@ interface LineItem {
   unitPrice: string
   discountMode?: DiscountMode
   discountValue?: string
+  /** What the rep typed into the Unit box, verbatim. Held separately from the
+   *  discount so the field is never rewritten mid-edit; it is converted into a
+   *  discount by applyTypedPrice at pricing time. */
+  priceDraft?: string
 }
 
 interface QuoteContact {
@@ -438,6 +442,9 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     const newItems = [...lineItems]
     newItems[index] = {
       ...newItems[index],
+      // The two boxes express the same thing. Whichever was touched last wins,
+      // rather than stacking a percentage on top of a typed price.
+      priceDraft: undefined,
       ...(patch.mode !== undefined ? { discountMode: patch.mode } : {}),
       ...(patch.value !== undefined ? { discountValue: patch.value } : {}),
     }
@@ -452,6 +459,16 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
    */
   const updateLineItem = (index: number, field: 'quantity' | 'unitPrice', value: string) => {
     setLineItems((items) => items.map((it, i) => (i === index ? { ...it, [field]: value } : it)))
+  }
+
+  /** The rep types the price they want to charge. Stored verbatim and converted
+   *  to a discount at pricing time, so the box never fights them mid-edit. */
+  const updateLineItemPrice = (index: number, value: string) => {
+    setLineItems((items) =>
+      items.map((it, i) =>
+        i === index ? { ...it, priceDraft: value, discountMode: undefined, discountValue: undefined } : it,
+      ),
+    )
   }
 
   const updateLineItemDescription = (index: number, description: string) => {
@@ -476,7 +493,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   /** The cart as numbers, computed once and reused by pricing, the totals and
    *  both submit payloads. */
   const numericLines = lineItems.map(toNumeric)
-  const pricedLines = numericLines.map((line) =>
+  const priceOne = (line: CartLine) =>
     priceCart({
       lines: [line],
       currency: dealCurrency,
@@ -486,8 +503,21 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
       cap: pricing?.cap,
       isSuperAdmin: pricing?.isSuperAdmin,
       today,
-    }),
+    })
+
+  // Pass one resolves each line's LIST price with any discount stripped, because
+  // that is what a typed price is measured against. Pass two prices the line the
+  // rep actually asked for. Two passes rather than one because the conversion
+  // needs the list price, and the list price comes out of pricing.
+  const basePriced = numericLines.map((line) =>
+    priceOne({ ...line, discountMode: undefined, discountValue: undefined }),
   )
+  const listUnitFor = (i: number) => (basePriced[i].ok ? basePriced[i].lines[0].priced.listUnitPrice : null)
+  /** The cart as it will actually be sent: a typed price folded into a discount. */
+  const effectiveLines = numericLines.map((line, i) =>
+    applyTypedPrice(line, lineItems[i].priceDraft, listUnitFor(i)),
+  )
+  const pricedLines = effectiveLines.map(priceOne)
 
   const calculateGrandTotal = () => {
     const sum = pricedLines.reduce((acc, r) => acc + (r.ok ? r.lines[0].lineTotal : 0), 0)
@@ -500,7 +530,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
   // The server's OWN rule, not a second copy of it, so the button can never
   // enable for a line createQuote is about to refuse. It also catches a box
   // holding letters: fieldToNumber leaves those NaN.
-  const lineItemsError = validateLineItems(numericLines)
+  const lineItemsError = validateLineItems(effectiveLines)
   const hasInvalidLineItems = lineItemsError !== null || pricedLines.some((r) => !r.ok)
 
   const generate = async () => {
@@ -529,7 +559,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
     if (!editing) return
     const result = await republishEditedQuote({
       dealQuoteId: editing.dealQuoteId,
-      lines: numericLines,
+      lines: effectiveLines,
       comments,
     })
 
@@ -569,7 +599,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
       template,
       // `total` is required by the action's interface and recomputed there, so
       // this value is only ever a courtesy.
-      lineItems: numericLines.map((line) => ({
+      lineItems: effectiveLines.map((line) => ({
         ...line,
         total: roundCents(line.quantity * line.unitPrice),
       })),
@@ -904,12 +934,24 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                 <div className="space-y-4">
                   {lineItems.map((item, index) => {
                     const result = pricedLines[index]
+                    const listUnit = listUnitFor(index)
+                    const typedPrice = item.priceDraft?.trim()
+                    const aboveList =
+                      !!typedPrice &&
+                      Number.isFinite(Number(typedPrice)) &&
+                      listUnit != null &&
+                      Number(typedPrice) > listUnit
                     const priced = result?.ok ? result.lines[0] : null
                     const priceError = result && !result.ok ? result.error : null
                     // A SKU nobody has priced yet keeps the free price box, which
                     // is exactly today's behaviour. Everything else shows the
                     // resolved base and discounts from it.
-                    const isManual = priced ? priced.priceSource === 'manual' : true
+                    // Whether the SKU has a Supabase price is a property of the SKU, so it
+                    // is read from the DISCOUNT-FREE pass. Reading it from `priced` meant a
+                    // refused discount (below the floor, say) made the row flip to the manual
+                    // layout mid-typing, swapping the price box out from under the rep.
+                    const base = basePriced[index]
+                    const isManual = base.ok ? base.lines[0].priceSource === 'manual' : true
                     return (
                     <div key={index} className="p-4 bg-gray-50 rounded-lg border border-gray-100 space-y-3">
                       <div className="grid grid-cols-2 gap-3 sm:flex sm:items-center sm:gap-4">
@@ -1014,11 +1056,31 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                           </div>
                         )}
 
-                        <div className="sm:w-24 text-left sm:text-right">
+                        <div className="sm:w-28 text-left sm:text-right">
                           <Label className="text-xs text-gray-500">Unit</Label>
-                          <p className="font-mono font-medium pt-1">
-                            {money.format(priced?.priced.netUnitPrice ?? numericLines[index].unitPrice)}
-                          </p>
+                          {isManual ? (
+                            <p className="font-mono font-medium pt-1">
+                              {money.format(priced?.priced.netUnitPrice ?? effectiveLines[index].unitPrice)}
+                            </p>
+                          ) : (
+                            <>
+                              {/* Typing here is the same act as filling the Discount box; it is
+                                  converted to a discount off the list price before it is sent. */}
+                              <Input
+                                inputMode="decimal"
+                                aria-label="Unit price charged"
+                                placeholder={listUnit != null ? String(listUnit) : '0.00'}
+                                value={item.priceDraft ?? (priced ? String(priced.priced.netUnitPrice) : '')}
+                                onChange={(e) => updateLineItemPrice(index, e.target.value)}
+                                className="h-11 sm:h-8 tabular-nums sm:text-right"
+                              />
+                              {aboveList && (
+                                <p className="text-[11px] text-amber-700 mt-0.5">
+                                  Above list, quoting at {money.format(listUnit ?? 0)}
+                                </p>
+                              )}
+                            </>
+                          )}
                         </div>
 
                         <div className="sm:w-24 text-left sm:text-right">
