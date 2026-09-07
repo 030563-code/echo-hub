@@ -16,6 +16,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { loadPricingForQuote } from '@/app/actions/pricing/get-pricing'
 import type { DiscountMode } from '@/lib/pricing'
 import { assertDealAccess } from '@/lib/authz'
+import { deletePageState } from '@/lib/page-state-server'
+import { quoteBuilderKey } from '@/lib/quote-builder-draft'
 import { findOutOfScopeSkus } from '@/lib/quote-sku-scope'
 
 interface QuoteLineItem {
@@ -539,6 +541,12 @@ export async function createQuote(params: CreateQuoteParams) {
       error: 'The quote was created in HubSpot but could not be saved to the Hub database — it is safe to click Generate again.',
     }
   }
+
+  // The builder's saved draft has done its job. Cleared HERE as well as in the
+  // browser, because a rep whose laptop closed between the deal writes and the
+  // quote publishing would otherwise be offered a draft for work already done.
+  // Best effort: the deal is already written and must not fail over this.
+  await deletePageState(supabase, quoteBuilderKey(params.dealId))
 
   // 6. LAST: the HubSpot quote itself.
   //

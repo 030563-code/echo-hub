@@ -1,6 +1,8 @@
 import { getDealDetails } from '@/app/actions/hubspot/getDealDetails'
 import { createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { readPageState } from '@/lib/page-state-server'
+import { quoteBuilderKey } from '@/lib/quote-builder-draft'
 import { DealQuotesCard, type DealQuoteRow } from '@/components/quotes/deal-quotes-card'
 import { RepAgentSelect } from '@/components/quotes/rep-agent-select'
 import { REP_AGENT_LABEL, REP_AGENT_PROPERTY } from '@/lib/deal-properties'
@@ -119,6 +121,14 @@ export default async function QuoteRequestDetailsPage(props: {
     .eq('hubspot_deal_id', params.id)
     .maybeSingle()
   const dealProbability: number | null = registryEntry?.deal_probability ?? null
+
+  // Does this rep have a half-built quote parked on this deal? Only changes the
+  // BUTTON'S WORDS, never where it goes, which is why reading it here is safe:
+  // Next reuses this page's payload on browser Back, so a label read on the
+  // server can lag by a navigation. Lagging on a word is fine; the builder
+  // itself reads the draft in the browser precisely because lagging on a cart
+  // is not.
+  const parkedQuoteDraft = await readPageState(supabase, quoteBuilderKey(params.id))
   const initialDelivery = registryEntry
     ? {
         street: registryEntry.delivery_street ?? '',
@@ -220,7 +230,11 @@ export default async function QuoteRequestDetailsPage(props: {
            {canChangeStage && !dealIsClosed && (
              <Link href={`/quotes/create/${deal.id}`} className="w-full sm:w-auto">
                <Button className="w-full sm:w-auto min-h-11 sm:min-h-0 bg-echo-yellow text-black hover:bg-echo-yellow/90">
-                 {isQuoteRequest ? 'Generate Quote' : 'New quote'}
+                 {parkedQuoteDraft
+                   ? 'Resume quote draft'
+                   : isQuoteRequest
+                     ? 'Generate Quote'
+                     : 'New quote'}
                </Button>
              </Link>
            )}
