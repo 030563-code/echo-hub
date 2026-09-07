@@ -311,6 +311,26 @@ export const NEVER_RESTORED_PARAMS = ['page', 'cursors'] as const
  *
  * Pure, so the rule can be tested without a database or a router.
  */
+/**
+ * Did this URL ask for something specific?
+ *
+ * A URL carrying any recognised parameter is a deliberate request: a shared
+ * link, a bookmark, Clear, or a filter the user just applied. Those are never
+ * overridden and never recorded over.
+ */
+export function hasAnyRestorableParam(
+  params: URLSearchParams | Record<string, string | string[] | undefined>,
+  accepted: readonly string[],
+): boolean {
+  if (params instanceof URLSearchParams) {
+    return accepted.some((name) => (params.get(name) ?? '') !== '')
+  }
+  return accepted.some((name) => {
+    const value = params[name]
+    return Array.isArray(value) ? value.length > 0 : typeof value === 'string' && value !== ''
+  })
+}
+
 export function pickRestorableParams(
   stored: QuotesFilters | null,
   accepted: readonly string[],

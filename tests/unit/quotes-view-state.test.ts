@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   NEVER_RESTORED_PARAMS,
+  hasAnyRestorableParam,
   QUOTES_LIST_ROUTES,
   RESTORABLE_QUOTE_PARAMS,
   isQuotesListRoute,
@@ -92,6 +93,41 @@ describe('what a saved view may put back', () => {
     expect(parseQuotesFilters({ v: 2, params: {} })).toBeNull()
     expect(parseQuotesFilters('nonsense')).toBeNull()
     expect(parseQuotesFilters({ v: 1, params: { q: 5 } })).toBeNull()
+  })
+})
+
+describe('a URL that asks for something specific is obeyed', () => {
+  it('spots an explicit parameter, whatever its shape', () => {
+    expect(hasAnyRestorableParam({ scope: 'mine' }, RESTORABLE_QUOTE_PARAMS)).toBe(true)
+    expect(hasAnyRestorableParam({ stages: ['a'] }, RESTORABLE_QUOTE_PARAMS)).toBe(true)
+    expect(hasAnyRestorableParam(new URLSearchParams('q=herc'), RESTORABLE_QUOTE_PARAMS)).toBe(true)
+  })
+
+  it('treats a bare url as an arrival, not a choice', () => {
+    expect(hasAnyRestorableParam({}, RESTORABLE_QUOTE_PARAMS)).toBe(false)
+    expect(hasAnyRestorableParam(new URLSearchParams(''), RESTORABLE_QUOTE_PARAMS)).toBe(false)
+    // Paging alone is not a filter choice.
+    expect(hasAnyRestorableParam({ page: '3' }, RESTORABLE_QUOTE_PARAMS)).toBe(false)
+    // Nor is an empty value.
+    expect(hasAnyRestorableParam({ scope: '' }, RESTORABLE_QUOTE_PARAMS)).toBe(false)
+  })
+})
+
+describe('no quotes route may redirect on a GET', () => {
+  it('the restore happens in the browser, never in a server component', () => {
+    // A redirect() on one of these routes fires during Next's PREFETCH of any
+    // link pointing at it, and the router follows it as a real navigation. That
+    // is what threw someone from /invoicing/accepted to /quotes/board: the
+    // sidebar had only prefetched /quotes.
+    for (const file of [
+      'src/app/(dashboard)/quotes/board/page.tsx',
+      'src/app/(dashboard)/quotes/all/page.tsx',
+      'src/app/(dashboard)/quotes/stage-queue.tsx',
+    ]) {
+      const source = readFileSync(join(process.cwd(), file), 'utf8')
+      expect(source, file).not.toContain('restoreViewParams')
+      expect(source, file).not.toMatch(/\bredirect\(/)
+    }
   })
 })
 

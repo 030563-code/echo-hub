@@ -5,8 +5,6 @@ import { getOwnerIndex } from '@/app/actions/hubspot/getOwners'
 import { ownerLabel, teamLabel } from '@/lib/hubspot-owners'
 import { DealFilterBar } from '@/components/quotes/deal-filter-bar'
 import { parseDealFilters } from '@/lib/deal-filters'
-import { restoreViewParams } from '@/lib/page-state-server'
-import { QUOTES_FILTERS_KEY, RESTORABLE_QUOTE_PARAMS } from '@/lib/page-drafts'
 import { HUBSPOT_PIPELINES, stageLabel } from '@/lib/hubspot-constants'
 
 /** Paging and scope, plus every deal-filter parameter, so the filters survive
@@ -24,13 +22,6 @@ export default async function AllQuotesPage({
 }) {
   const params = await searchParams
 
-  // See the board: a bare arrival restores, anything explicit is left alone.
-  await restoreViewParams({
-    pageKey: QUOTES_FILTERS_KEY,
-    basePath: '/quotes/all',
-    params,
-    accepted: RESTORABLE_QUOTE_PARAMS,
-  })
 
   const page = Math.max(1, parseInt(typeof params.page === 'string' ? params.page : '1', 10) || 1)
   const cursorStack = typeof params.cursors === 'string' ? params.cursors : ''

@@ -8,8 +8,6 @@ import { Card } from '@/components/ui/card'
 import { FilterNotice } from '@/components/quotes/filter-notice'
 import { DealFilterBar } from '@/components/quotes/deal-filter-bar'
 import { dealFiltersToQuery, parseBoardDealFilters } from '@/lib/deal-filters'
-import { restoreViewParams } from '@/lib/page-state-server'
-import { QUOTES_FILTERS_KEY, RESTORABLE_QUOTE_PARAMS } from '@/lib/page-drafts'
 import { HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
 
 export const dynamic = 'force-dynamic'
@@ -35,15 +33,6 @@ export default async function DealsBoardPage({
   await requireCapability(['quotes.view', 'quotes.create'])
   const params = await searchParams
 
-  // Arriving with no parameters at all means the sidebar, not a shared link, so
-  // put back the filters this rep last used. Anything with a recognised
-  // parameter (including Clear) is left exactly as asked.
-  await restoreViewParams({
-    pageKey: QUOTES_FILTERS_KEY,
-    basePath: '/quotes/board',
-    params,
-    accepted: RESTORABLE_QUOTE_PARAMS,
-  })
 
   const windowDays = Number(params.window) || 60
 
