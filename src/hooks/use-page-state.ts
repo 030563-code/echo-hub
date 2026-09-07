@@ -246,6 +246,20 @@ export function usePageState<T>({
 
     let cancelled = false
     void (async () => {
+      // Yield one macrotask before touching the server.
+      //
+      // This effect can mount on a page the user reached through a redirect
+      // (/quotes -> /quotes/board), and calling a Server Action while Next's
+      // own Router is still committing that navigation makes the Router throw
+      //   "Rendered more hooks than during the previous render."  (React #310)
+      // from inside itself, which the browser shows as "This page couldn't
+      // load. Reload to try again, or go back." Reproduced on Next 16.2.9 with
+      // this hook in the quotes tab bar; removing the yield brings it straight
+      // back. Waiting for the current task to finish puts the call safely
+      // after the commit, and costs a tick nobody can perceive.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      if (cancelled || seq !== loadSeqRef.current) return
+
       const result = await loadPageState(pageKey)
       if (cancelled || seq !== loadSeqRef.current) return
 
