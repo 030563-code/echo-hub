@@ -1,5 +1,7 @@
 'use client'
 
+// page-state: none (the value belongs to the deal and is written there, not held here)
+
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'

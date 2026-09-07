@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { login, anyCreds } from './helpers'
+import { login, anyCreds, clearQuoteDraft } from './helpers'
 
 /**
  * The quantity box can be cleared and retyped.
@@ -10,9 +10,10 @@ import { login, anyCreds } from './helpers'
  * alone and the field stayed showing 0200 for good. Clearing it produced `|| 0`
  * and re-rendered a 0 that could not be deleted or typed in front of.
  *
- * READ-ONLY, like every spec here. It completes the setup dialog, which is
- * client state only (handleSetupComplete just closes it), and NEVER clicks
- * Publish, which is what writes to HubSpot and deals_registry.
+ * Writes nothing to HubSpot or deals_registry: it completes the setup dialog and
+ * NEVER clicks Publish. It does now touch ONE row of its own: the builder saves
+ * a draft as you type, so this creates and then deletes a user_page_state row
+ * for its own persona, which nobody else can see.
  */
 const hasToken = !!process.env.HUBSPOT_ACCESS_TOKEN
 const dealId = process.env.E2E_DEAL_ID
@@ -26,7 +27,8 @@ test.describe('Quote builder numeric inputs', () => {
     test.skip(!dealId, 'Set E2E_DEAL_ID to a deal the persona can quote')
 
     await login(page, c!)
-    await page.goto(`/quotes/create/${dealId}`)
+    // A draft left by an earlier run would restore instead of asking setup.
+    await clearQuoteDraft(page, dealId!)
     await expect(page.getByText('Quote Setup')).toBeVisible()
 
     // Template and probability are the only two required fields. Choosing them
@@ -64,5 +66,9 @@ test.describe('Quote builder numeric inputs', () => {
     await qty.pressSequentially('0200')
     await qty.blur()
     await expect(qty).toHaveValue('200')
+
+    // Leave nothing behind for the next run, or for the next person on this
+    // shared account.
+    await clearQuoteDraft(page, dealId!)
   })
 })

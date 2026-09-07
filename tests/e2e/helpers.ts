@@ -40,3 +40,22 @@ export async function login(page: Page, c: Creds) {
 export async function canSeeMrp(page: Page): Promise<boolean> {
   return (await page.locator('aside').getByRole('link', { name: 'MRP', exact: true }).count()) > 0
 }
+
+/**
+ * Put the quote builder back to a clean, draft-free state.
+ *
+ * The builder now saves what the rep is doing, so completing setup leaves a row
+ * behind for this persona and the NEXT run would arrive to a restored draft
+ * instead of the setup dialog. Clicking Start again deletes it.
+ *
+ * Waits for the builder to finish reading before deciding: the draft is loaded
+ * in the browser, so for the first frames neither the strip nor the dialog is on
+ * screen and a bare isVisible() check would race it.
+ */
+export async function clearQuoteDraft(page: Page, dealId: string) {
+  await page.goto(`/quotes/create/${dealId}`)
+  const strip = page.getByRole('button', { name: /Start this quote again/i })
+  const setup = page.getByText('Quote Setup')
+  await expect(strip.or(setup).first()).toBeVisible({ timeout: 30000 })
+  if (await strip.isVisible()) await strip.click()
+}

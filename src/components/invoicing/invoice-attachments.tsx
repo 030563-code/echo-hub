@@ -1,5 +1,7 @@
 'use client'
 
+// page-state: none (an upload commits immediately; there is no draft between picking a file and having it)
+
 import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'

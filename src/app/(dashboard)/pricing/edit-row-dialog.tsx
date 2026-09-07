@@ -1,5 +1,7 @@
 'use client'
 
+// page-state: none (open/close and an error message, nothing worth outliving the dialog)
+
 import { useState, useTransition, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'

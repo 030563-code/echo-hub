@@ -17,8 +17,10 @@ import 'server-only'
  * user_id filter means RLS is defence in depth rather than the only control.
  */
 
+import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase/server'
 import { isPageKey, type StoredPageState } from '@/lib/page-state'
+import { parseQuotesFilters, pickRestorableParams } from '@/lib/page-drafts'
 
 export async function readPageState(pageKey: string): Promise<StoredPageState | null> {
   if (!isPageKey(pageKey)) return null
@@ -58,4 +60,38 @@ export async function deletePageState(pageKey: string): Promise<void> {
   } catch {
     // deliberately swallowed, see above
   }
+}
+
+/**
+ * Put someone back on the filters they last used, when they arrive with none.
+ *
+ * Only ever fires on a BARE url. A link someone shared, a bookmark, the Clear
+ * button and every in-page filter change all carry at least one recognised
+ * parameter, and each of those is left exactly alone. That single rule is what
+ * keeps this from being the kind of magic that traps people on a view they
+ * cannot get out of.
+ */
+export async function restoreViewParams({
+  pageKey,
+  basePath,
+  params,
+  accepted,
+}: {
+  pageKey: string
+  basePath: string
+  params: Record<string, string | string[] | undefined>
+  accepted: readonly string[]
+}): Promise<void> {
+  // The user asked for something specific. Never override that.
+  const arrivedWithOne = accepted.some((name) => {
+    const value = params[name]
+    return Array.isArray(value) ? value.length > 0 : typeof value === 'string' && value !== ''
+  })
+  if (arrivedWithOne) return
+
+  const stored = await readPageState(pageKey)
+  const query = pickRestorableParams(parseQuotesFilters(stored?.data), accepted)
+  if (!query) return
+
+  redirect(`${basePath}?${query}`)
 }

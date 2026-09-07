@@ -11,6 +11,8 @@ import { setInvoiceStatus } from "@/app/actions/invoices/set-invoice-status";
 import type { InvoiceListRow } from "./page";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SearchBox } from "@/components/ui/search-box";
+import { usePersistedView } from "@/hooks/use-page-state";
+import { parseSearchView, type SearchView } from "@/lib/page-drafts";
 
 const STATUS_STYLE: Record<string, string> = {
   draft: "bg-[#2a2a2a] text-[#9ca3af]",
@@ -36,7 +38,14 @@ export default function InvoicesClient({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [err, setErr] = useState<string | null>(null);
-  const [q, setQ] = useState("");
+  // Its own key: the create panel beside this list owns a separate one, and one row per call site is the rule.
+  const [qView, setQView] = usePersistedView<SearchView>(
+    "commercial-invoices:list",
+    { v: 1, q: "" },
+    parseSearchView,
+  );
+  const q = qView.q;
+  const setQ = (next: string) => setQView({ v: 1, q: next });
 
   function transition(id: string, action: "issue" | "void") {
     if (action === "void" && !window.confirm("Void this invoice? It stays in the list for the audit trail and frees the container/leg to be re-issued.")) return;

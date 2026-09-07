@@ -335,6 +335,7 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
 
       {items.length > 0 ? (
         <BoardTable
+          stateKey="transport:table"
           data={items}
           columns={COLUMNS}
           searchPlaceholder="Search Spot ID, container, SKU..."

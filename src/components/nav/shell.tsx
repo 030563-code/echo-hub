@@ -1,5 +1,7 @@
 'use client'
 
+// page-state: none (the mobile drawer, which is chrome and closes itself on navigation)
+
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { Menu, X } from 'lucide-react'

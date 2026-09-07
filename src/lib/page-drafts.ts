@@ -229,3 +229,136 @@ export function parseInvoiceEditorDraft(raw: unknown): InvoiceEditorDraft | null
   const parsed = invoiceEditorDraftSchema.safeParse(raw)
   return parsed.success ? parsed.data : null
 }
+
+// ---------------------------------------------------------------------------
+// The quotes filter bar, shared by the board, the stage queues and All
+//
+// These filters already live in the URL, which is right: a filtered view is
+// linkable and survives a refresh. What was missing is the bare arrival from
+// the sidebar, which threw away a filter set the rep had just built.
+// ---------------------------------------------------------------------------
+
+export const QUOTES_FILTERS_KEY = 'quotes:filters'
+
+/**
+ * The six routes that own the filter bar, and the ONLY ones allowed to record
+ * it.
+ *
+ * QuotesNav is rendered by the layout that wraps the whole /quotes/* subtree,
+ * so without an exact-path test the recorder would also fire on a deal, on the
+ * quote builder and on the create wizard. Those carry no filter parameters, so
+ * each visit would record an empty set over the filters the rep had just built,
+ * and opening a deal is the most common click in the module. The feature would
+ * have looked simply broken.
+ */
+export const QUOTES_LIST_ROUTES = [
+  '/quotes/board',
+  '/quotes/deals',
+  '/quotes/sent',
+  '/quotes/accepted',
+  '/quotes/won',
+  '/quotes/all',
+] as const
+
+export function isQuotesListRoute(pathname: string): boolean {
+  return (QUOTES_LIST_ROUTES as readonly string[]).includes(pathname)
+}
+
+/**
+ * The parameters a saved view may put back: every filter the bar owns, plus the
+ * three the pages own themselves (which reps and which region, and how far back
+ * the board looks). Anything not on this list is ignored on the way out, so a
+ * row written by a future version cannot redirect anyone somewhere odd.
+ */
+export const RESTORABLE_QUOTE_PARAMS = [
+  'q',
+  'pipeline',
+  'stages',
+  'owner',
+  'depot',
+  'amountMin',
+  'amountMax',
+  'createdFrom',
+  'createdTo',
+  'company',
+  'contact',
+  'scope',
+  'window',
+] as const
+
+export const quotesFiltersSchema = z.object({
+  v: z.literal(1),
+  params: z.record(z.string().max(40), z.union([z.string().max(200), z.array(z.string().max(200)).max(20)])),
+})
+
+export type QuotesFilters = z.infer<typeof quotesFiltersSchema>
+
+export function parseQuotesFilters(raw: unknown): QuotesFilters | null {
+  const parsed = quotesFiltersSchema.safeParse(raw)
+  return parsed.success ? parsed.data : null
+}
+
+/**
+ * Paging belongs to the result set it came from, never to a remembered view.
+ * The quotes tab bar already drops these when moving between tabs, for the same
+ * reason: page 4 of Sent is meaningless on Won.
+ */
+export const NEVER_RESTORED_PARAMS = ['page', 'cursors'] as const
+
+/**
+ * Turn a saved filter set into a query string, or null when there is nothing
+ * worth redirecting for.
+ *
+ * Pure, so the rule can be tested without a database or a router.
+ */
+export function pickRestorableParams(
+  stored: QuotesFilters | null,
+  accepted: readonly string[],
+): string | null {
+  if (!stored) return null
+  const query = new URLSearchParams()
+  for (const [name, value] of Object.entries(stored.params)) {
+    if (!accepted.includes(name)) continue
+    if ((NEVER_RESTORED_PARAMS as readonly string[]).includes(name)) continue
+    if (Array.isArray(value)) for (const v of value) query.append(name, v)
+    else query.set(name, value)
+  }
+  const out = query.toString()
+  return out === '' ? null : out
+}
+
+// ---------------------------------------------------------------------------
+// The commercial invoice draft editor
+//
+// Fingerprinted on the lines it was opened against, so edits typed before
+// somebody regenerated the invoice are dropped rather than reapplied to a
+// different set of lines.
+// ---------------------------------------------------------------------------
+
+export function commercialInvoiceKey(invoiceId: string): string {
+  return `commercial-invoice:${invoiceId}`
+}
+
+export const commercialInvoiceDraftSchema = z.object({
+  v: z.literal(1),
+  rows: z
+    .array(
+      z.object({
+        sku: z.string(),
+        product_name: z.string(),
+        // Free text, like every other money box in the Hub, so a half-typed
+        // "12." survives the trip.
+        qty: z.string(),
+        unit_value: z.string(),
+        hs_code: z.string(),
+      }),
+    )
+    .max(120),
+})
+
+export type CommercialInvoiceDraft = z.infer<typeof commercialInvoiceDraftSchema>
+
+export function parseCommercialInvoiceDraft(raw: unknown): CommercialInvoiceDraft | null {
+  const parsed = commercialInvoiceDraftSchema.safeParse(raw)
+  return parsed.success ? parsed.data : null
+}

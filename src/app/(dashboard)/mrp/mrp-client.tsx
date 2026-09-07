@@ -102,6 +102,7 @@ export default function MRPClient({ rows }: { rows: MRPRow[] }) {
   }
   return (
     <BoardTable
+      stateKey="mrp-board"
       data={rows}
       columns={COLUMNS}
       pageSize={20}

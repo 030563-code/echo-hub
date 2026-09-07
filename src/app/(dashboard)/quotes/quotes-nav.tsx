@@ -1,8 +1,16 @@
 'use client'
 
+import { useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { LinkSpinner } from '@/components/nav/link-spinner'
+import { usePageState } from '@/hooks/use-page-state'
+import {
+  QUOTES_FILTERS_KEY,
+  isQuotesListRoute,
+  parseQuotesFilters,
+  type QuotesFilters,
+} from '@/lib/page-drafts'
 
 /**
  * Sub-navigation for the Quotes module.
@@ -41,6 +49,39 @@ export function QuotesNav() {
   }
   const query = carried.toString()
   const withFilters = (href: string) => (query ? `${href}?${query}` : href)
+
+  // Remember the filter set, so arriving at a bare /quotes/board from the
+  // sidebar puts back what was last being looked at.
+  //
+  // Written ONLY from the six list routes, by exact path. This component is
+  // rendered by the layout that wraps the entire /quotes/* subtree, so without
+  // that test opening a deal or the quote builder would record their empty
+  // parameter set over the filters the rep had just built. That is the most
+  // common click in the module, so it would have looked like the feature simply
+  // did not work.
+  const onListRoute = isQuotesListRoute(pathname)
+  const { save: saveFilters } = usePageState<QuotesFilters>({
+    pageKey: QUOTES_FILTERS_KEY,
+    parse: parseQuotesFilters,
+    enabled: onListRoute,
+    // No filters is not worth a row: it restores to the same place as no row.
+    isEmpty: (stored) => Object.keys(stored.params).length === 0,
+  })
+
+  useEffect(() => {
+    if (!onListRoute) return
+    const params: Record<string, string | string[]> = {}
+    for (const [name, value] of carried.entries()) {
+      const existing = params[name]
+      if (existing === undefined) params[name] = value
+      else if (Array.isArray(existing)) existing.push(value)
+      else params[name] = [existing, value]
+    }
+    saveFilters({ v: 1, params })
+    // `query` is the serialised form of `carried`, so it changes exactly when
+    // the parameters do.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onListRoute, saveFilters, query])
 
   return (
     <nav aria-label="Quotes" className="mb-6 border-b border-gray-200">
