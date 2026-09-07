@@ -113,12 +113,17 @@ describe('a URL that asks for something specific is obeyed', () => {
   })
 })
 
-describe('no quotes route may redirect on a GET', () => {
-  it('the restore happens in the browser, never in a server component', () => {
-    // A redirect() on one of these routes fires during Next's PREFETCH of any
-    // link pointing at it, and the router follows it as a real navigation. That
-    // is what threw someone from /invoicing/accepted to /quotes/board: the
-    // sidebar had only prefetched /quotes.
+describe('one click may change the url only once', () => {
+  it('the filter restore rides the index redirect, and nothing else moves the url', () => {
+    // Two shapes of this both crashed Next's own client Router with "Rendered
+    // more hooks than during the previous render", which the browser shows as
+    // "This page couldn't load. Reload to try again, or go back.":
+    //
+    //   /quotes -> /quotes/board -> /quotes/board?scope=mine   (two redirects)
+    //   /quotes -> /quotes/board, then router.replace(?scope=mine)
+    //
+    // Both changed the url twice for one click. Only /quotes may redirect, and
+    // it must carry the filters itself so there is no second hop.
     for (const file of [
       'src/app/(dashboard)/quotes/board/page.tsx',
       'src/app/(dashboard)/quotes/all/page.tsx',
@@ -128,6 +133,17 @@ describe('no quotes route may redirect on a GET', () => {
       expect(source, file).not.toContain('restoreViewParams')
       expect(source, file).not.toMatch(/\bredirect\(/)
     }
+
+    // The tab bar records filters; it must never navigate.
+    const nav = readFileSync(join(process.cwd(), 'src/app/(dashboard)/quotes/quotes-nav.tsx'), 'utf8')
+    expect(nav).not.toContain('useRouter')
+    expect(nav).not.toMatch(/router\.(replace|push)\(/)
+
+    // The index is the single hop, and it builds the query itself.
+    const index = readFileSync(join(process.cwd(), 'src/app/(dashboard)/quotes/page.tsx'), 'utf8')
+    expect(index).toContain('pickRestorableParams')
+    // Calls only: the comment above the function names redirect() too.
+    expect(index.match(/^\s*redirect\(/gm) ?? []).toHaveLength(1)
   })
 })
 

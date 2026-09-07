@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import Link from 'next/link'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { LinkSpinner } from '@/components/nav/link-spinner'
 import { usePageState } from '@/hooks/use-page-state'
 import {
@@ -11,7 +11,6 @@ import {
   hasAnyRestorableParam,
   isQuotesListRoute,
   parseQuotesFilters,
-  pickRestorableParams,
   type QuotesFilters,
 } from '@/lib/page-drafts'
 
@@ -44,7 +43,6 @@ const TABS = [
 
 export function QuotesNav() {
   const pathname = usePathname()
-  const router = useRouter()
   const searchParams = useSearchParams()
 
   const carried = new URLSearchParams()
@@ -68,7 +66,7 @@ export function QuotesNav() {
    *  over and not overridden. A bare URL is an arrival, not a choice. */
   const explicit = hasAnyRestorableParam(searchParams, RESTORABLE_QUOTE_PARAMS)
 
-  const { restored: restoredFilters, save: saveFilters } = usePageState<QuotesFilters>({
+  const { save: saveFilters } = usePageState<QuotesFilters>({
     pageKey: QUOTES_FILTERS_KEY,
     parse: parseQuotesFilters,
     // Only a deliberate view is worth recording. Writing on a bare arrival
@@ -92,30 +90,6 @@ export function QuotesNav() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onListRoute, explicit, saveFilters, query])
 
-  /**
-   * Put the last-used filters back on a bare arrival.
-   *
-   * Done HERE, in an effect, and NOT with a redirect() in the page.
-   *
-   * A redirect on one of these routes fires during Next's PREFETCH of any link
-   * pointing at it, and the router follows that redirect as though the user had
-   * asked for it. The visible symptom was being on a deal, clicking Invoicing,
-   * arriving at /invoicing/accepted, and then being thrown to /quotes/board:
-   * the sidebar had merely prefetched /quotes, which redirects to /quotes/board,
-   * which then redirected again. An effect never runs during a prefetch, so it
-   * cannot do that.
-   *
-   * `replace`, not `push`, so Back still leaves the section instead of bouncing
-   * off the bare url it just came from.
-   */
-  const restoredRef = useRef(false)
-  useEffect(() => {
-    if (!onListRoute || explicit || restoredRef.current) return
-    const next = pickRestorableParams(restoredFilters?.data ?? null, RESTORABLE_QUOTE_PARAMS)
-    if (!next) return
-    restoredRef.current = true
-    router.replace(`${pathname}?${next}`)
-  }, [onListRoute, explicit, restoredFilters, pathname, router])
 
   return (
     <nav aria-label="Quotes" className="mb-6 border-b border-gray-200">
