@@ -37,6 +37,7 @@ export function DraftStrip({
   startAgainLabel = 'Start again',
   saveStatus = 'idle',
   what = 'where you left off',
+  dark = false,
 }: {
   /** When the draft on screen was saved. */
   savedAt: string | null
@@ -49,34 +50,46 @@ export function DraftStrip({
   saveStatus?: SaveStatus
   /** Completes "Picked up ...". */
   what?: string
+  /** The operations screens are dark; a light strip on them reads as a bug. */
+  dark?: boolean
 }) {
   const when = savedTime(savedAt)
+  const shell = stale
+    ? dark
+      ? 'border-amber-700/50 bg-amber-900/20'
+      : 'border-amber-300 bg-amber-50'
+    : dark
+      ? 'border-[#2a2a2a] bg-[#1a1a1a]'
+      : 'border-gray-200 bg-gray-50'
+  const bodyText = dark ? 'text-[#9ca3af]' : 'text-gray-700'
+  const strongText = dark ? 'text-white' : 'text-gray-900'
+  const linkText = dark
+    ? 'text-[#e5e5e5] hover:text-white'
+    : 'text-gray-900 hover:text-black'
+  const mutedText = dark ? 'text-[#6b7280]' : 'text-gray-500'
+
   return (
-    <div
-      className={`rounded-md border px-4 py-2.5 ${
-        stale ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-gray-50'
-      }`}
-    >
+    <div className={`rounded-md border px-4 py-2.5 ${shell}`}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <p className="text-sm text-gray-700">
-          <span className="font-medium text-gray-900">Picked up {what}</span>
+        <p className={`text-sm ${bodyText}`}>
+          <span className={`font-medium ${strongText}`}>Picked up {what}</span>
           {when ? `, saved ${when}` : ''}.
         </p>
 
         <button
           type="button"
           onClick={onStartAgain}
-          className="inline-flex items-center gap-1.5 min-h-11 sm:min-h-0 text-sm font-medium text-gray-900 underline underline-offset-2 hover:text-black"
+          className={`inline-flex items-center gap-1.5 min-h-11 sm:min-h-0 text-sm font-medium underline underline-offset-2 ${linkText}`}
         >
           <RotateCcw className="h-3.5 w-3.5" />
           {startAgainLabel}
         </button>
 
-        <span className="ml-auto text-xs text-gray-500" aria-live="polite">
+        <span className={`ml-auto text-xs ${mutedText}`} aria-live="polite">
           {saveStatus === 'saving' ? (
             'Saving…'
           ) : saveStatus === 'saved' ? (
-            <span className="inline-flex items-center gap-1 text-gray-500">
+            <span className={`inline-flex items-center gap-1 ${mutedText}`}>
               <Check className="h-3 w-3" />
               Saved
             </span>
@@ -89,7 +102,9 @@ export function DraftStrip({
         </span>
       </div>
 
-      {stale && staleNote && <p className="mt-1 text-xs text-amber-800">{staleNote}</p>}
+      {stale && staleNote && (
+        <p className={`mt-1 text-xs ${dark ? 'text-amber-300' : 'text-amber-800'}`}>{staleNote}</p>
+      )}
     </div>
   )
 }

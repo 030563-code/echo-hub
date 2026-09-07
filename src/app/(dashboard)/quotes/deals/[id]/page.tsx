@@ -128,7 +128,7 @@ export default async function QuoteRequestDetailsPage(props: {
   // server can lag by a navigation. Lagging on a word is fine; the builder
   // itself reads the draft in the browser precisely because lagging on a cart
   // is not.
-  const parkedQuoteDraft = await readPageState(supabase, quoteBuilderKey(params.id))
+  const parkedQuoteDraft = await readPageState(quoteBuilderKey(params.id))
   const initialDelivery = registryEntry
     ? {
         street: registryEntry.delivery_street ?? '',

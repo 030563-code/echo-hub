@@ -34,10 +34,22 @@ export const PAGE_KEY_MAX = 160
 /**
  * A cart, a wizard or a filter set is a few kilobytes. This is a guard against
  * a page persisting something it should not (a product catalogue, a base64
- * attachment), not a budget to spend: savePageState refuses at this size with a
- * readable message, and the database refuses at the same size as a backstop.
+ * attachment), not a budget to spend.
+ *
+ * Deliberately BELOW the database's own 65536 CHECK. Postgres re-serialises
+ * jsonb on the way in (a space after every colon, key order normalised), so a
+ * payload measured at exactly the limit here can arrive over it there, and the
+ * user would get an unexplainable database error instead of this module's
+ * readable refusal. page-state-key.test.ts asserts the gap still exists.
  */
-export const PAGE_STATE_MAX_BYTES = 65536
+export const PAGE_STATE_MAX_BYTES = 60000
+
+/** What the database itself refuses, which must stay strictly larger. */
+export const PAGE_STATE_DB_MAX_BYTES = 65536
+
+/** A fingerprint is a short digest, not a place to put data. Bounded because
+ *  it sits outside the size check on `state` and reaches a public endpoint. */
+export const PAGE_STATE_BASE_MAX = 400
 
 export function isPageKey(key: unknown): key is string {
   return (

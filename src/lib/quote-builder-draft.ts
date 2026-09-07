@@ -43,9 +43,15 @@ export interface LineItem {
   priceDraft?: string
 }
 
-/** A cart this long is a mistake, not a quote. Caps what one page can store
- *  well below the table's own 64KB limit. */
-const MAX_LINES = 200
+/**
+ * A cart this long is a mistake, not a quote.
+ *
+ * 120 rather than a rounder number because it is measured, not guessed: a line
+ * with every field at the long end of what HubSpot returns is 348 bytes, so 120
+ * of them plus a full comments box is about 44KB against a 60KB ceiling.
+ * quote-builder-draft.test.ts asserts that still holds.
+ */
+const MAX_LINES = 120
 
 const lineSchema = z.object({
   productId: z.string(),

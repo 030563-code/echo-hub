@@ -31,6 +31,14 @@ interface CompanyResult {
 }
 
 import { createHubSpotDeal } from '@/app/actions/hubspot/createDeal'
+import { usePageState } from '@/hooks/use-page-state'
+import { DraftStrip } from '@/components/page-state/draft-strip'
+import {
+  DEAL_WIZARD_KEY,
+  emptyDealWizardDraft,
+  parseDealWizardDraft,
+  type DealWizardDraft,
+} from '@/lib/deal-wizard-draft'
 
 export default function CreateManualRequestForm({
   restrictedToOwn = true,
@@ -214,6 +222,103 @@ export default function CreateManualRequestForm({
     fetchContactsPage(companyId, '', undefined)
   }
 
+  // ------------------------------------------------------------------
+  // The saved draft.
+  //
+  // Three steps of typing and two HubSpot searches used to end the moment this
+  // page unmounted. Now the choices come back; the lists they were chosen from
+  // are refetched, because they are HubSpot's and may have moved on.
+  // ------------------------------------------------------------------
+  const buildDraft = (): DealWizardDraft => ({
+    v: 1,
+    step,
+    companyName,
+    selectedCompany,
+    contactName,
+    contactEmail,
+    selectedContact,
+    dealName,
+    description,
+    currency,
+  })
+  const seedDraftJson = JSON.stringify(emptyDealWizardDraft(defaultCurrency))
+
+  const applyDraft = (restored: { data: DealWizardDraft } | null) => {
+    const draft = restored?.data
+    if (!draft) return
+
+    setStep(draft.step)
+    setCompanyName(draft.companyName)
+    setSelectedCompany(draft.selectedCompany)
+    setContactName(draft.contactName)
+    setContactEmail(draft.contactEmail)
+    setSelectedContact(draft.selectedContact)
+    setDealName(draft.dealName)
+    setDescription(draft.description)
+    setCurrency(draft.currency)
+
+    // Landing back on the contacts step needs the list itself, which is not
+    // stored. Claiming the company id first stops enterContactsStep's
+    // company-changed branch from clearing the contact that was just restored.
+    if (draft.step >= 2 && draft.selectedCompany) {
+      prevContactsCompanyIdRef.current = draft.selectedCompany.id
+      void fetchContactsPage(draft.selectedCompany.id, '', undefined)
+    }
+  }
+
+  const {
+    status: draftStatus,
+    restored: restoredDraft,
+    save: saveDraft,
+    clear: clearDraft,
+    saveStatus: draftSaveStatus,
+    savedAt: draftSavedAt,
+  } = usePageState<DealWizardDraft>({
+    pageKey: DEAL_WIZARD_KEY,
+    parse: parseDealWizardDraft,
+    onRestore: applyDraft,
+    enabled: !isSubmitting,
+    isEmpty: (draft) => JSON.stringify(draft) === seedDraftJson,
+  })
+  const draftReady = draftStatus === 'ready'
+
+  useEffect(() => {
+    if (!draftReady || isSubmitting) return
+    saveDraft(buildDraft())
+    // buildDraft is a plain closure over exactly these values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    draftReady,
+    isSubmitting,
+    saveDraft,
+    step,
+    companyName,
+    selectedCompany,
+    contactName,
+    contactEmail,
+    selectedContact,
+    dealName,
+    description,
+    currency,
+  ])
+
+  /** Throw the draft away and start the wizard from an empty step 1. */
+  const startAgain = async () => {
+    await clearDraft()
+    setStep(1)
+    setCompanyName('')
+    setSelectedCompany(null)
+    setCompanySearchResults([])
+    setContactName('')
+    setContactEmail('')
+    setSelectedContact(null)
+    setContacts([])
+    setDealName('')
+    setDescription('')
+    setCurrency(defaultCurrency)
+    prevContactsCompanyIdRef.current = null
+  }
+
   const handleClearCompany = () => {
     setSelectedCompany(null)
     setCompanyName('')
@@ -372,12 +477,36 @@ export default function CreateManualRequestForm({
     // and this page stays interactive until the next route resolves, so
     // releasing it would let a second click create a second deal.
     if (createdDealId) {
+      // Awaited, not fired and forgotten: router.push starts a navigation that
+      // would otherwise race the clear, and a wizard draft surviving the deal
+      // it created would offer to re-create it.
+      await clearDraft()
       router.push(`/quotes/create/${createdDealId}`)
     }
   }
 
+  if (!draftReady) {
+    return (
+      <div className="max-w-3xl mx-auto">
+        <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-3">
+          <p className="text-sm text-gray-600">Opening the deal wizard…</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-3xl mx-auto space-y-8">
+      {restoredDraft && !isSubmitting && (
+        <DraftStrip
+          what="your unfinished deal"
+          savedAt={draftSavedAt}
+          onStartAgain={startAgain}
+          startAgainLabel="Start this deal again"
+          saveStatus={draftSaveStatus}
+        />
+      )}
+
       {/* Progress Steps */}
       <div className="flex items-center justify-between px-2 sm:px-10">
         <div className={`flex flex-col items-center ${step >= 1 ? 'text-echo-yellow' : 'text-gray-400'}`}>

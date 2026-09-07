@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { PAGE_STATE_MAX_BYTES, pageStateBytes } from '@/lib/page-state'
 import {
   isQuoteDraftEmpty,
   parseQuoteBuilderDraft,
@@ -81,14 +82,14 @@ describe('anything unreadable is treated as no draft', () => {
   })
 
   it('refuses a cart longer than any real quote', () => {
-    const lines = Array.from({ length: 201 }, () => ({
+    const lines = Array.from({ length: 121 }, () => ({
       productId: '1',
       name: 'H9',
       quantity: '1',
       unitPrice: '1',
     }))
     expect(parseQuoteBuilderDraft(draft({ lines }))).toBeNull()
-    expect(parseQuoteBuilderDraft(draft({ lines: lines.slice(0, 200) }))).not.toBeNull()
+    expect(parseQuoteBuilderDraft(draft({ lines: lines.slice(0, 120) }))).not.toBeNull()
   })
 })
 
@@ -149,5 +150,26 @@ describe('staleness fingerprint', () => {
 
   it('separates an edit from a new quote on the same deal', () => {
     expect(quoteBuilderBase([item('1', 2, 10)], 'q1')).not.toBe(quoteBuilderBase([item('1', 2, 10)]))
+  })
+})
+
+describe('a full cart fits in what the store accepts', () => {
+  it('a full cart of 120 long lines stays under the limit', () => {
+    // The cap is only meaningful if a cart at the cap can actually be saved.
+    // Field lengths here are at the long end of what HubSpot returns.
+    const lines = Array.from({ length: 120 }, (_, i) => ({
+      productId: `1234567890${i}`,
+      name: 'Echo Barrier H9 Acoustic Panel, green PVC front, black back',
+      sku: 'EBH9NA-LONG-VARIANT-CODE',
+      description:
+        'Green PVC front / black back / acoustic absorbent inside. Panels only, substrate by others.',
+      quantity: '1200',
+      unitPrice: '1234.56',
+      discountMode: 'percent' as const,
+      discountValue: '12.5',
+      priceDraft: '1080.00',
+    }))
+    const full = draft({ lines, comments: 'x'.repeat(2000) })
+    expect(pageStateBytes(full)).toBeLessThan(PAGE_STATE_MAX_BYTES)
   })
 })

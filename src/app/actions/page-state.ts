@@ -22,7 +22,13 @@
  */
 
 import { createServerClient } from '@/lib/supabase/server'
-import { isPageKey, pageStateBytes, PAGE_STATE_MAX_BYTES, type StoredPageState } from '@/lib/page-state'
+import {
+  isPageKey,
+  pageStateBytes,
+  PAGE_STATE_BASE_MAX,
+  PAGE_STATE_MAX_BYTES,
+  type StoredPageState,
+} from '@/lib/page-state'
 
 export type LoadPageStateResult =
   | { ok: true; state: StoredPageState | null }
@@ -76,9 +82,17 @@ export async function savePageState(
   if (!session) return { ok: false, error: NO_SESSION }
 
   // Refused here with a readable message rather than letting the CHECK
-  // constraint reject it as a database error the user cannot act on.
+  // constraint reject it as a database error the user cannot act on. The limit
+  // here is deliberately below the database's, because Postgres re-serialises
+  // jsonb and a payload measured at exactly the limit can arrive over it.
   if (pageStateBytes(data) > PAGE_STATE_MAX_BYTES) {
     return { ok: false, error: 'This page holds too much to save. Your work is still on screen.' }
+  }
+
+  // A fingerprint is a short digest. It sits outside the size check on `state`,
+  // and this is a public endpoint, so it gets its own bound.
+  if (typeof base === 'string' && base.length > PAGE_STATE_BASE_MAX) {
+    return { ok: false, error: 'Could not save your progress.' }
   }
 
   const updatedAt = new Date().toISOString()
@@ -96,7 +110,18 @@ export async function savePageState(
     { onConflict: 'user_id,page_key' },
   )
 
-  if (error) return { ok: false, error: 'Could not save your progress.' }
+  if (error) {
+    // The row cap is a check violation raised by a trigger. Anyone hitting it
+    // has a runaway page, not a full afternoon's work, so say something they
+    // can act on rather than a generic failure.
+    const capped = error.code === '23514' && String(error.message).includes('row cap')
+    return {
+      ok: false,
+      error: capped
+        ? 'Too many saved pages. Finish or discard some drafts before this one can be saved.'
+        : 'Could not save your progress.',
+    }
+  }
   return { ok: true, updatedAt }
 }
 

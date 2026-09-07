@@ -10,6 +10,9 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import { usePageState } from '@/hooks/use-page-state'
+import { DraftStrip } from '@/components/page-state/draft-strip'
+import { invoiceEditorDraftSchema, invoiceEditorKey, parseInvoiceEditorDraft, type InvoiceEditorDraft } from '@/lib/page-drafts'
 import { toast } from 'sonner'
 import { AlertTriangle, Loader2, Lock, MapPin, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -125,6 +128,22 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
   const router = useRouter()
   const [pendingAction, setPendingAction] = useState<string | null>(null)
   const [, startTransition] = useTransition()
+
+  /** The header exactly as the database holds it. One declaration, so the
+   *  initial state and Start again can never drift apart. */
+  const storedHeader = () => ({
+    invoice_date: invoice.invoice_date ?? '',
+    due_date: invoice.due_date ?? '',
+    customer_po_number: invoice.customer_po_number ?? '',
+    taxjar_customer_id: invoice.taxjar_customer_id ?? '',
+    delivery_street: invoice.delivery_street ?? '',
+    delivery_city: invoice.delivery_city ?? '',
+    delivery_state: invoice.delivery_state ?? '',
+    delivery_zip: invoice.delivery_zip ?? '',
+    delivery_location: invoice.delivery_location ?? '',
+    delivery_requested_by: invoice.delivery_requested_by ?? '',
+    is_collection: invoice.is_collection,
+  })
 
   const [header, setHeader] = useState({
     invoice_date: invoice.invoice_date ?? '',
@@ -270,6 +289,61 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
     canManage && (status === 'draft' || status === 'tax_calculated' || status === 'filed' || status === 'documented' || status === 'sent')
   /** True once the normal Save button is gone, so coding needs its own save. */
   const codingNeedsOwnSave = codingEditable && !editable
+
+  // ------------------------------------------------------------------
+  // The saved draft.
+  //
+  // Unlike every other page here, a stale draft on an invoice is DANGEROUS: the
+  // numbers on screen become a tax filing and a Xero document. So the draft is
+  // fingerprinted against the invoice row it was typed on, and if the invoice
+  // has moved since (a tax calculation, a send, a rebuild from the deal) the
+  // draft is thrown away rather than restored, and the editor says so.
+  //
+  // The fingerprint is free: this component is already remounted by page.tsx on
+  // `${invoice.id}-${invoice.updated_at}`, so a server-side change always
+  // produces a fresh mount to notice it.
+  const draftBase = `${invoice.updated_at}:${invoice.status}`
+  const [droppedStaleDraft, setDroppedStaleDraft] = useState(false)
+
+  const {
+    restored: restoredDraft,
+    save: saveDraft,
+    clear: clearDraft,
+    saveStatus: draftSaveStatus,
+    savedAt: draftSavedAt,
+  } = usePageState<InvoiceEditorDraft>({
+    pageKey: invoiceEditorKey(invoice.id),
+    parse: parseInvoiceEditorDraft,
+    base: draftBase,
+    // A frozen invoice is not being typed into, so nothing about it is worth
+    // saving; the Xero coding has its own save and its own rules.
+    enabled: editable,
+    onRestore: (restored) => {
+      if (!restored) return
+      if (restored.stale) {
+        // The invoice changed underneath these edits. Restoring them could put
+        // back a line that a rebuild removed, or a figure the tax was not
+        // calculated on.
+        setDroppedStaleDraft(true)
+        void clearDraft()
+        return
+      }
+      setHeader(restored.data.header)
+      setRows(restored.data.rows)
+    },
+  })
+
+  useEffect(() => {
+    if (!editable) return
+    saveDraft({ v: 1, header, rows })
+  }, [editable, saveDraft, header, rows])
+
+  /** Throw the unsaved edits away and go back to the invoice as stored. */
+  const startAgain = async () => {
+    await clearDraft()
+    setHeader(storedHeader())
+    setRows(lines.map(toEditable))
+  }
 
   /**
    * Xero's item-to-account map, fetched once and reused.
@@ -562,6 +636,8 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
       }
       for (const warning of result.warnings) toast.warning(warning, { duration: 10000 })
       toast.success(`Saved. Tax ${money.format(result.taxTotal)}, total ${money.format(result.total)}.`)
+      // These edits are on the invoice row now, so the draft has done its job.
+      void clearDraft()
       router.refresh()
     })
 
@@ -737,6 +813,23 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
               Xero account number filled in below.
             </p>
           </div>
+        </Card>
+      )}
+
+      {restoredDraft && editable && (
+        <DraftStrip
+          what="your unsaved invoice edits"
+          savedAt={draftSavedAt}
+          onStartAgain={startAgain}
+          startAgainLabel="Discard them"
+          saveStatus={draftSaveStatus}
+        />
+      )}
+
+      {droppedStaleDraft && (
+        <Card className="border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
+          You had unsaved edits to this invoice, but the invoice itself changed
+          afterwards, so they were discarded rather than put back over it.
         </Card>
       )}
 

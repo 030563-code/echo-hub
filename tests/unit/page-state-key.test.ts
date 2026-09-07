@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   PAGE_KEY_MAX,
+  PAGE_STATE_BASE_MAX,
+  PAGE_STATE_DB_MAX_BYTES,
   PAGE_STATE_MAX_BYTES,
   isPageKey,
   isStale,
@@ -12,6 +14,10 @@ import {
 
 const MIGRATION = readFileSync(
   join(process.cwd(), 'supabase/migrations/20260907120000_user_page_state.sql'),
+  'utf8',
+)
+const LIMITS = readFileSync(
+  join(process.cwd(), 'supabase/migrations/20260907130000_user_page_state_limits.sql'),
   'utf8',
 )
 
@@ -77,8 +83,26 @@ describe('the database agrees with the app', () => {
     expect(MIGRATION).toContain(`length(page_key) <= ${PAGE_KEY_MAX}`)
   })
 
-  it('the CHECK constraint uses exactly this size cap', () => {
-    expect(MIGRATION).toContain(`octet_length(state::text) <= ${PAGE_STATE_MAX_BYTES}`)
+  it('the size CHECK leaves the app headroom rather than matching it exactly', () => {
+    // Postgres re-serialises jsonb on the way in (a space after every colon),
+    // so a payload measured at exactly the app's limit can arrive over the
+    // database's. The app refuses first, with a message; the database is the
+    // backstop.
+    expect(MIGRATION).toContain(`octet_length(state::text) <= ${PAGE_STATE_DB_MAX_BYTES}`)
+    expect(PAGE_STATE_MAX_BYTES).toBeLessThan(PAGE_STATE_DB_MAX_BYTES)
+  })
+
+  it('bounds the fingerprint, which sits outside the size check', () => {
+    expect(LIMITS).toContain(`length(base) <= ${PAGE_STATE_BASE_MAX}`)
+  })
+
+  it('caps how many pages one person can accumulate', () => {
+    // savePageState is a public endpoint; without this a loop could write keys
+    // until the table stopped being small.
+    expect(LIMITS).toContain('before insert on public.user_page_state')
+    expect(LIMITS).toContain('n >= 100')
+    // Reached from a public endpoint, so the advisor's search_path rule applies.
+    expect(LIMITS).toContain("set search_path = ''")
   })
 
   it('keeps the table owner-only and out of anon reach', () => {

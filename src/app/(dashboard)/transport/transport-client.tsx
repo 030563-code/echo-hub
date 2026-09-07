@@ -1,6 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { usePageState } from "@/hooks/use-page-state";
+import { DraftStrip } from "@/components/page-state/draft-strip";
+import { TRANSPORT_ADD_SHIPMENT_KEY, parseShipmentDraft, type ShipmentDraft } from "@/lib/page-drafts";
 import { useRouter } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
 import { toast } from "sonner";
@@ -205,9 +208,53 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  function openModal() {
+  // ------------------------------------------------------------------
+  // The saved draft. A container has nine fields plus a lookup, and closing the
+  // dialog or leaving the page used to throw all of it away on purpose.
+  // ------------------------------------------------------------------
+  const seedDraftJson = JSON.stringify({ v: 1, form: EMPTY_FORM, lookupRef: "" });
+
+  const {
+    restored: restoredDraft,
+    save: saveDraft,
+    clear: clearDraft,
+    saveStatus: draftSaveStatus,
+    savedAt: draftSavedAt,
+  } = usePageState<ShipmentDraft>({
+    pageKey: TRANSPORT_ADD_SHIPMENT_KEY,
+    parse: parseShipmentDraft,
+    onRestore: (restored) => {
+      // Anyone who opened the dialog and started typing before the read landed
+      // keeps what they typed.
+      if (!restored || open) return;
+      setForm(restored.data.form);
+      setLookupRef(restored.data.lookupRef);
+    },
+    isEmpty: (draft) => JSON.stringify(draft) === seedDraftJson,
+  });
+
+  useEffect(() => {
+    saveDraft({ v: 1, form, lookupRef });
+  }, [saveDraft, form, lookupRef]);
+
+  function resetForm() {
     setForm(EMPTY_FORM);
     setLookupRef("");
+    setLookupStatus("idle");
+    setLookupInfo(null);
+    setSubmitError(null);
+  }
+
+  /** Throw the half-filled shipment away and start from an empty form. */
+  const startAgain = async () => {
+    await clearDraft();
+    resetForm();
+  };
+
+  function openModal() {
+    // Deliberately does NOT wipe the form any more. Resetting on every open is
+    // the behaviour this feature exists to undo; the strip inside the dialog
+    // says what was kept and offers the way out of it.
     setLookupStatus("idle");
     setLookupInfo(null);
     setSubmitError(null);
@@ -264,6 +311,9 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
         toast.success("Shipment saved — check the PO reference note");
       } else {
         setOpen(false);
+        // The shipment exists, so the draft that built it is spent.
+        void clearDraft();
+        resetForm();
         router.refresh();
         toast.success("Shipment added");
       }
@@ -357,6 +407,19 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
                 <p className="text-[10px] text-yellow-400 mt-2">No Cargo Partner shipment for that PO yet — enter the SPOT ID manually.</p>
               )}
             </div>
+
+            {restoredDraft && (
+              <div className="mb-4">
+                <DraftStrip
+                  dark
+                  what="the shipment you were adding"
+                  savedAt={draftSavedAt}
+                  onStartAgain={startAgain}
+                  startAgainLabel="Clear this form"
+                  saveStatus={draftSaveStatus}
+                />
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -189,7 +189,16 @@ export function usePageState<T>({
     (data: T) => {
       if (stoppedRef.current || !enabledRef.current) return
       const json = JSON.stringify(data)
-      if (json === lastJsonRef.current) return
+      if (json === lastJsonRef.current) {
+        // Back to what the server already holds. Cancel the queued write as
+        // well as skipping this one: typing a line and then deleting it again
+        // would otherwise let the intermediate value land after the edit that
+        // undid it.
+        if (timerRef.current) clearTimeout(timerRef.current)
+        timerRef.current = null
+        pendingRef.current = null
+        return
+      }
       pendingRef.current = json
       if (timerRef.current) clearTimeout(timerRef.current)
       timerRef.current = setTimeout(() => {

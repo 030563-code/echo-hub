@@ -3,6 +3,8 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase/server";
+import { deletePageState } from "@/lib/page-state-server";
+import { RAISE_PO_KEY } from "@/lib/page-drafts";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
 
@@ -139,5 +141,9 @@ export async function createPurchaseOrder(input: CreatePOInput): Promise<CreateP
 
   revalidatePath("/purchase-orders");
   revalidatePath("/purchase-orders/approvals");
+  // The PO exists, so the form draft behind it is spent. Cleared here as well
+  // as in the browser, for the tab that was closed between the two.
+  await deletePageState(RAISE_PO_KEY);
+
   return { success: true, po_number: po.po_number, po_id: po.id };
 }

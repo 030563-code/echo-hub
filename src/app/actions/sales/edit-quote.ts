@@ -645,7 +645,7 @@ export async function republishEditedQuote(input: RepublishQuoteInput): Promise<
   // The edit is published, so the draft that fed it is spent. Same reasoning
   // as createQuote: the browser clears it too, this covers the browser that
   // never got the chance.
-  await deletePageState(supabase, quoteBuilderKey(row.hubspot_deal_id, row.id))
+  await deletePageState(quoteBuilderKey(row.hubspot_deal_id, row.id))
 
   const acceptance = await readAcceptance(row.hubspot_deal_id)
   const resyncError = acceptance.accepted

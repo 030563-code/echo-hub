@@ -546,7 +546,7 @@ export async function createQuote(params: CreateQuoteParams) {
   // browser, because a rep whose laptop closed between the deal writes and the
   // quote publishing would otherwise be offered a draft for work already done.
   // Best effort: the deal is already written and must not fail over this.
-  await deletePageState(supabase, quoteBuilderKey(params.dealId))
+  await deletePageState(quoteBuilderKey(params.dealId))
 
   // 6. LAST: the HubSpot quote itself.
   //
