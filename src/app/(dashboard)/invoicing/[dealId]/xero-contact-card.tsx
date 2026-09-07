@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useState, useTransition } from 'react'
 import { US_STATES, normalizeUSState } from '@/lib/us-address'
+import { COUNTRIES } from '@/lib/countries'
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card } from '@/components/ui/card'
@@ -46,6 +47,14 @@ const EMPTY: Form = {
   postal_code: '', country: 'USA', terms_day: '', terms_type: 'DAYSAFTERBILLDATE',
 }
 
+/** Xero holds the country as free text, and this flow has always written
+ *  "USA". Accept the ISO code and the ISO name too, so a contact created
+ *  outside the Hub is still recognised as American. */
+function isUSA(country: string | null | undefined): boolean {
+  const value = (country ?? '').trim().toLowerCase()
+  return value === '' || value === 'usa' || value === 'us' || value === 'united states'
+}
+
 function toForm(c: XeroContact, fallbackName: string): Form {
   return {
     name: c.name ?? fallbackName,
@@ -53,9 +62,10 @@ function toForm(c: XeroContact, fallbackName: string): Form {
     line1: c.address?.line1 ?? '',
     line2: c.address?.line2 ?? '',
     city: c.address?.city ?? '',
-    // Xero can hold "California"; the picker's options are codes, so an
-    // un-normalised value would show as nothing selected.
-    region: normalizeUSState(c.address?.region),
+    // Xero can hold "California"; the US picker's options are codes, so an
+    // un-normalised value would show as nothing selected. Only for a US
+    // address though: normalising "Ontario" would simply erase it.
+    region: isUSA(c.address?.country) ? normalizeUSState(c.address?.region) : (c.address?.region ?? ''),
     postal_code: c.address?.postal_code ?? '',
     country: c.address?.country ?? 'USA',
     terms_day: c.payment_terms?.day != null ? String(c.payment_terms.day) : '',
@@ -140,6 +150,9 @@ export function XeroContactCard({
       toast.success(contactId ? 'Xero contact updated.' : 'Xero contact created.')
     })
 
+  /** Drives whether the field beside Country is a US state picker. */
+  const usa = isUSA(form.country)
+
   const field = (key: keyof Form, label: string, placeholder?: string) => (
     <div>
       <Label htmlFor={`xc-${key}`}>{label}</Label>
@@ -206,20 +219,35 @@ export function XeroContactCard({
                 as a mistake on the customer's invoice. The options come from
                 the same list the delivery-address validator accepts. */}
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600" htmlFor="xero-region">State</label>
-              <select
-                id="xero-region"
-                className="flex h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-1 text-sm shadow-sm"
-                value={form.region}
-                onChange={(e) => setForm({ ...form, region: e.target.value })}
-              >
-                <option value="">—</option>
-                {US_STATES.map((state) => (
-                  <option key={state.code} value={state.code}>
-                    {state.code} — {state.name}
-                  </option>
-                ))}
-              </select>
+              <label className="mb-1 block text-xs font-medium text-gray-600" htmlFor="xero-region">
+                {usa ? 'State' : 'State / Province'}
+              </label>
+              {usa ? (
+                <select
+                  id="xero-region"
+                  className="flex h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-1 text-sm shadow-sm"
+                  value={form.region}
+                  onChange={(e) => setForm({ ...form, region: e.target.value })}
+                >
+                  <option value="">—</option>
+                  {US_STATES.map((state) => (
+                    <option key={state.code} value={state.code}>
+                      {state.code} — {state.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                /* Outside the US there is no list worth constraining people
+                   to: a province, a prefecture and a county are all this
+                   field, and Xero takes the string as written. */
+                <Input
+                  id="xero-region"
+                  value={form.region}
+                  onChange={(e) => setForm({ ...form, region: e.target.value })}
+                  placeholder="Province or region"
+                  disabled={!editable || pending}
+                />
+              )}
             </div>
             {field('postal_code', 'Zip')}
             <div>
@@ -228,9 +256,26 @@ export function XeroContactCard({
                 id="xero-country"
                 className="flex h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-1 text-sm shadow-sm"
                 value={form.country}
-                onChange={(e) => setForm({ ...form, country: e.target.value })}
+                onChange={(e) => {
+                  const country = e.target.value
+                  // Moving in or out of the US changes what the field beside
+                  // this one means, and a Californian "CA" left sitting on a
+                  // Canadian address is worse than an empty box.
+                  const region = isUSA(country) === isUSA(form.country) ? form.region : ''
+                  setForm({ ...form, country, region })
+                }}
               >
-                <option value="USA">USA</option>
+                {/* Whatever Xero already holds stays selectable even when it
+                    is not one of ours, so opening this card can never quietly
+                    rewrite a country nobody meant to touch. */}
+                {!COUNTRIES.some((c) => c.name === form.country) && form.country !== '' && (
+                  <option value={form.country}>{form.country}</option>
+                )}
+                {COUNTRIES.map((c) => (
+                  <option key={c.code} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
