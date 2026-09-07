@@ -56,6 +56,23 @@ effect would run holding the pre-restore values and queue a write of the empty
 seed over the draft. It is also the shape this codebase already settled on to
 avoid cascading renders, in `change-stage-dialog.tsx`.
 
+**Nothing is written until the read has finished, and nothing typed during it
+is thrown away.** These two pull against each other and both were learned by
+watching a real draft disappear. A page renders its defaults first, so an
+unguarded save sends an empty form the instant it mounts and deletes the row
+that is being read at that very moment. But simply dropping saves during the
+read loses the last keystrokes whenever the read is slower than the typing,
+which on a cold route it is. So a save made during the read is QUEUED, and when
+the read finishes the queue is not flushed immediately: it arms the debounce
+instead. The page reacts to the restore in the same tick, and its own save
+either matches what the server holds, cancelling the queued one, or replaces it
+with what was really typed. Both settle long before the timer fires.
+
+**Guard a restore on whether the user typed, never on whether a dialog is
+open.** Opening a dialog is not typing. Gating on `open` meant clicking Add
+Shipment before the read landed skipped the restore, and the empty form then
+deleted the saved draft. Keep a `touchedRef` set by the change handlers.
+
 **Never store paging.** Not `page`, not `cursors`, not a table's page index. A
 cursor belongs to the result set it came from, so restoring page 4 lands someone
 on rows that have since moved, which reads as data loss. For the shared

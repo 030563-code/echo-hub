@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { usePageState } from "@/hooks/use-page-state";
 import { DraftStrip } from "@/components/page-state/draft-strip";
 import { TRANSPORT_ADD_SHIPMENT_KEY, parseShipmentDraft, type ShipmentDraft } from "@/lib/page-drafts";
@@ -204,7 +204,12 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
+  /** Set once the user actually changes something, so a slow read cannot land
+   *  on top of their typing. */
+  const touchedRef = useRef(false);
+
   function set<K extends keyof ShipmentForm>(key: K, value: ShipmentForm[K]) {
+    touchedRef.current = true;
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -224,9 +229,10 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
     pageKey: TRANSPORT_ADD_SHIPMENT_KEY,
     parse: parseShipmentDraft,
     onRestore: (restored) => {
-      // Anyone who opened the dialog and started typing before the read landed
-      // keeps what they typed.
-      if (!restored || open) return;
+      // Only actual typing blocks a restore. Gating on the dialog being open
+      // meant that clicking Add Shipment before the read landed skipped the
+      // restore entirely, and the empty form then deleted the saved draft.
+      if (!restored || touchedRef.current) return;
       setForm(restored.data.form);
       setLookupRef(restored.data.lookupRef);
     },
@@ -373,7 +379,7 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
                 <input
                   type="text"
                   value={lookupRef}
-                  onChange={(e) => setLookupRef(e.target.value)}
+                  onChange={(e) => { touchedRef.current = true; setLookupRef(e.target.value); }}
                   onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleLookup(); } }}
                   placeholder="e.g. PO-00001364"
                   aria-label="PO number"

@@ -137,11 +137,20 @@ export function usePageState<T>({
   const hasStoredRef = useRef(false)
   const stoppedRef = useRef(false)
   const keyRef = useRef(pageKey)
+  /** False until the row for the CURRENT key has been read. */
+  const loadedRef = useRef(false)
 
   /** Write whatever is pending, then keep going if something newer arrived
    *  while that was in flight. A loop rather than recursion so the callback
    *  never has to reference itself. */
   const drain = useCallback(async () => {
+    // Nothing may be WRITTEN before the read has finished, because until then
+    // there is no way to know what is being overwritten. Saves that arrive
+    // first are held in pendingRef and flushed by the load itself, so a page
+    // typed into during a slow read still keeps what was typed. Dropping them
+    // instead lost the last keystrokes whenever the read was slower than the
+    // typing, which on a cold route it is.
+    if (!loadedRef.current) return
     if (inFlightRef.current) return
     inFlightRef.current = true
     try {
@@ -231,6 +240,7 @@ export function usePageState<T>({
     keyRef.current = pageKey
     const seq = ++loadSeqRef.current
     stoppedRef.current = false
+    loadedRef.current = false
     lastJsonRef.current = null
     hasStoredRef.current = false
 
@@ -265,15 +275,35 @@ export function usePageState<T>({
         }
       }
 
+      // Set BEFORE the callback, so anything the page saves in response to the
+      // restore is written rather than held.
+      loadedRef.current = true
       setSavedAt(value?.savedAt ?? null)
       setLoaded({ key: pageKey, restored: value })
       onRestoreRef.current?.(value)
+
+      // Anything queued while the read was in flight is still waiting, and it
+      // may be either of two very different things: what the user typed during
+      // a slow read, or the page's empty defaults from before the restore
+      // landed. Writing the second would delete the row that was just restored.
+      //
+      // So this ARMS the debounce rather than flushing. The page reacts to the
+      // restore in the same tick, and its own save then either matches what the
+      // server holds (cancelling this one) or replaces it with what was really
+      // typed. Both cases resolve long before the timer fires.
+      if (pendingRef.current !== null) {
+        if (timerRef.current) clearTimeout(timerRef.current)
+        timerRef.current = setTimeout(() => {
+          timerRef.current = null
+          void drain()
+        }, DEBOUNCE_MS)
+      }
     })()
 
     return () => {
       cancelled = true
     }
-  }, [pageKey])
+  }, [pageKey, drain])
 
   // Stopping (a successful submit) must also kill anything already queued.
   useEffect(() => {
