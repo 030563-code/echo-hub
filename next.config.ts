@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Pin the workspace root to THIS app. A parent package-lock.json exists higher up
-// the tree (…/CH-ISE/), which Next would otherwise infer as the root.
+// the tree, outside the repo, which Next would otherwise infer as the root.
 const projectRoot = dirname(fileURLToPath(import.meta.url));
 
 // Content-Security-Policy. connect-src is locked to Supabase + HubSpot (the only

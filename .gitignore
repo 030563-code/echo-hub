@@ -43,3 +43,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# LaTeX build artifacts (they record absolute local paths)
+*.fls
+*.fdb_latexmk
+*.aux
+*.out
+*.toc

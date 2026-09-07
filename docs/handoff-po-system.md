@@ -7,7 +7,7 @@ MCPs are connected, then paste the prompt below.
 ---
 
 You're building the next phase of the **Echo Barrier Hub**: the **Purchase Order (PO)
-system**. You're in its repo: `/Users/deanjeggels/Documents/CH-ISE/Clients/Echo_Barrier/echo-barrier-hub`.
+system**. You're in its repo, `echo-barrier-hub`.
 
 ## Where things stand (the Hub is already LIVE)
 - **Deployed:** Netlify site `hub-echo.netlify.app` → **https://hub.echobarrier.com** (SSL provisioned, Cloudflare grey-cloud CNAME `hub` → the Netlify site + a TXT ownership record).

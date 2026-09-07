@@ -4,7 +4,7 @@ Open a new Claude Code session **in this folder** (`echo-barrier-hub/`), make su
 
 ---
 
-You're building the **Echo Barrier Hub**. You're in its repo: `/Users/deanjeggels/Documents/CH-ISE/Clients/Echo_Barrier/echo-barrier-hub`.
+You're building the **Echo Barrier Hub**. You're in its repo, `echo-barrier-hub`.
 
 **Read first, in order:**
 1. `./CLAUDE.md` — architecture, the per-user access model, the apps to connect, the data layer, and the security rules. Read it fully.
