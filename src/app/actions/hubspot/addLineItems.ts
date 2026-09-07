@@ -2,6 +2,7 @@
 
 import { assertDealAccess } from '@/lib/authz'
 import { lineItemIdsFromAssociations, LINE_ITEM_ASSOCIATION_PARAM } from '@/lib/hubspot-associations'
+import { externalCallsDisabled, STAGING_SKIP_NOTE } from '@/lib/env'
 
 interface LineItem {
   productId: string
@@ -28,6 +29,8 @@ export async function addLineItemsToDeal(dealId: string, lineItems: LineItem[], 
   if (!access.ok) {
     return { success: false, error: access.error }
   }
+
+  if (externalCallsDisabled()) return { success: false, error: STAGING_SKIP_NOTE }
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
   if (!accessToken) {

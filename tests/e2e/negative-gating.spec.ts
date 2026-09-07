@@ -40,7 +40,7 @@ test.describe('Negative capability gating (scoped user)', () => {
 
   test('visiting a forbidden module (/mrp) redirects to the dashboard', async ({ page }) => {
     await page.goto('/mrp')
-    await expect(page).toHaveURL(/\/$/)
+    await expect(page).toHaveURL(/^https?:\/\/[^/]+\/$/) // dashboard root, host-agnostic
   })
 
   test('visiting Quotes (allowed) is NOT redirected away', async ({ page }) => {

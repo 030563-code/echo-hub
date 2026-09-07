@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { Menu, X } from 'lucide-react'
 import { Sidebar } from '@/components/nav/sidebar'
+import { isStaging } from '@/lib/env'
 import type { CapabilityKey } from '@/lib/capabilities'
 
 interface ShellProps {
@@ -73,6 +74,13 @@ export function Shell({ capabilities, displayName, children }: ShellProps) {
           wide board (kanban/table) scrolls INSIDE the content area instead of growing
           `main` past the viewport and sliding over the fixed sidebar. */}
       <main className="flex-1 lg:ml-64 flex flex-col min-h-screen min-w-0">
+        {/* Carried over from the layout this Shell replaced: the sandbox banner has to
+            sit above the sticky header, not inside it, or it scrolls away. */}
+        {isStaging() && (
+          <div className="bg-amber-400 text-amber-950 text-center text-xs font-semibold px-4 py-1.5 border-b border-amber-500">
+            STAGING SANDBOX &middot; test data only, not connected to live Xero, HubSpot or Cargo Partner
+          </div>
+        )}
         <header className="bg-white border-b border-gray-200 px-4 sm:px-6 lg:px-8 py-3 lg:py-4 flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-3">
             <button

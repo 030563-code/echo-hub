@@ -3,9 +3,11 @@ export interface PurchaseOrder {
   po_number: string;
   parent_po_id: string | null;
   master_ref: string | null;
-  leg: "DEPOT_TO_EB_GROUP" | "EB_GROUP_TO_SRO";
+  leg: "DEPOT_TO_EB_GROUP" | "EB_GROUP_TO_SRO" | "SRO_TO_SUPPLIER" | "SRO_TO_CARGO";
   from_entity: string;
   to_entity: string;
+  /** Cross-reference to the parent leg's PO# (group → master depot#, sro → EBG#). */
+  reference_po_number: string | null;
   status:
     | "requested"
     | "approved"
@@ -17,6 +19,15 @@ export interface PurchaseOrder {
     | "delivered"
     | "cancelled";
   fulfilment_type: "stock" | "manufacture" | null;
+  /** Board kanban column (demo lifecycle: depot_group → … → shipping). Null = derive from leg+status. */
+  lifecycle_stage:
+    | "depot_group"
+    | "group_sro"
+    | "sro"
+    | "sent_manufacturing"
+    | "manufacturing"
+    | "shipping"
+    | null;
   notes: string | null;
   /** Origin marker. 'hub' = raised/approved in the Hub; 'n8n' = the legacy Xero-poll flow. */
   source: "hub" | "n8n";
@@ -34,6 +45,36 @@ export interface PurchaseOrder {
   shipped_at: string | null;
   delivered_at: string | null;
   lines?: PurchaseOrderLine[];
+  attachments?: PoAttachment[];
+  shipment?: PoShipment | null;
+}
+
+/** A PO's Cargo Partner shipment, auto-resolved from the PO number + persisted. */
+export interface PoShipment {
+  po_id: string;
+  po_number: string;
+  spot_id: string;
+  container_ref: string | null;
+  eta: string | null;
+  shipped_at: string | null;
+  vessel: string | null;
+  carrier: string | null;
+  last_event: string | null;
+  last_event_at: string | null;
+  match_count: number | null;
+  resolved_at: string;
+}
+
+/** A file attached to a PO (stored in the private po-attachments bucket). */
+export interface PoAttachment {
+  id: string;
+  po_id: string;
+  storage_path: string;
+  filename: string;
+  content_type: string | null;
+  size_bytes: number | null;
+  uploaded_by_uid: string | null;
+  created_at: string;
 }
 
 export interface PurchaseOrderLine {
@@ -47,8 +88,42 @@ export interface PurchaseOrderLine {
   stock_available: number | null;
   hs_code: string | null;
   unit_price: number | null;
+  /** Σ of logged receipts for this line — populated by the board query (slice 4). */
+  qty_received?: number;
   created_at: string;
   updated_at: string;
+}
+
+/** One logged delivery/receipt against a PO line (partial-delivery tracking). */
+export interface PoLineReceipt {
+  id: string;
+  po_id: string;
+  po_line_id: string;
+  qty_received: number;
+  batch_ref: string | null;
+  note: string | null;
+  received_at: string;
+  received_by_uid: string | null;
+  created_at: string;
+}
+
+/** A reusable recurring-order template that pre-fills the raise form. */
+export interface PoTemplateLine {
+  sku: string;
+  quantity: number;
+  hs_code?: string | null;
+  unit_price?: number | null;
+}
+
+export interface PoTemplate {
+  id: string;
+  name: string;
+  from_entity: string | null;
+  delivery_address: string | null;
+  notes: string | null;
+  lines: PoTemplateLine[];
+  created_by_uid: string | null;
+  created_at: string;
 }
 
 // Hub-owned PO picklists (seeded in 20260615000000_hub_po_write_flow.sql).
@@ -58,6 +133,18 @@ export interface PoProductCatalogItem {
   product_family: string | null;
   region: string;
   active: boolean;
+  /** product_code_master key → resolves the per-entity Xero product code. */
+  internal_sku: string | null;
+}
+
+/** Per-entity Xero product codes for one product (from product_code_master). */
+export interface ProductEntityCodes {
+  internal_sku: string;
+  code_usa_balt: string | null;
+  code_usa_sb: string | null;
+  code_canada: string | null;
+  code_grp: string | null;
+  code_sro: string | null;
 }
 
 export interface PoDeliveryAddress {
@@ -71,6 +158,33 @@ export interface PoDeliveryAddress {
 export interface PoHsCode {
   code: string;
   description: string | null;
+  active: boolean;
+}
+
+/** A supplier/vendor (po_suppliers) — picklist source for supplier & BOM POs. */
+export interface PoSupplier {
+  id: string;
+  code: string;
+  name: string;
+  city: string | null;
+  country: string | null;
+  currency: string | null;
+  /** Full multiline address (only known for some, e.g. Bamida). */
+  address: string | null;
+  /** VAT / IČ DPH, where known. */
+  tax_number: string | null;
+  /** Hardcoded into the n8n Xero flow once fetched (see the "Fetch Supplier Contact IDs" utility). */
+  xero_contact_id: string | null;
+  active: boolean;
+}
+
+/** One row of the full Unleashed item master (item_catalog) — picklist source for BOM/supplier POs. */
+export interface ItemCatalogEntry {
+  code: string;
+  description: string | null;
+  product_group: string | null;
+  base_unit: string | null;
+  currency: string | null;
   active: boolean;
 }
 
@@ -102,7 +216,20 @@ export interface BomMasterRow {
   bom_total_eur: number | null;
   fx_gbp_eur: number | null;
   bom_change_pct: number | null;
+  /** The synced snapshot's bom_total (the Sheet baseline) — for the Δ-vs-snapshot change view. */
+  original_bom_total_eur?: number | null;
   component_detail: BomComponent[];
+}
+
+/** One material in the Hub price master (material_prices) + how many products use it. */
+export interface MaterialPrice {
+  material_code: string;
+  description: string | null;
+  unit_price_eur: number;
+  currency: string;
+  used_in_products: number;
+  updated_at: string;
+  updated_by_label: string | null;
 }
 
 /** One SRO-PO line, exploded into its BOM (component qty/cost × the line qty). */
@@ -134,6 +261,9 @@ export interface SroPoBom {
   lines: SroPoBomLine[];
   bamida_total: number;
   sro_total: number;
+  /** True when these figures are the cost FROZEN at approval (authoritative), not a live re-explosion. */
+  cost_frozen?: boolean;
+  cost_snapshot_at?: string | null;
 }
 
 export interface Deal {
@@ -171,6 +301,67 @@ export interface InvoiceRecord {
   xero_invoice_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** A legal entity / invoice party (entities table). */
+export interface Entity {
+  code: string;
+  legal_name: string;
+  address_lines: string[];
+  vat_tax_id: string | null;
+  eori: string | null;
+  default_currency: string;
+  xero_contact_id: string | null;
+  xero_tenant_id: string | null;
+}
+
+/** Per-SKU intercompany transfer price (intercompany_prices table). */
+export interface IntercompanyPrice {
+  id: string;
+  sku: string;
+  leg: string;
+  unit_value: number;
+  currency: string;
+  active: boolean;
+}
+
+/** A persisted commercial invoice header (commercial_invoices table). */
+export interface CommercialInvoice {
+  id: string;
+  invoice_number: string;
+  leg: "SRO_TO_GROUP" | "GROUP_TO_USA";
+  seller_entity_code: string;
+  buyer_entity_code: string;
+  shipment_spot_id: string | null;
+  container_ref: string | null;
+  po_reference: string | null;
+  currency: string;
+  fx_pair: string | null;
+  fx_rate: number | null;
+  fx_method: string | null;
+  fx_week_start: string | null;
+  subtotal: number;
+  tax_total: number;
+  total: number;
+  status: "draft" | "issued" | "sent" | "superseded";
+  notes: string | null;
+  issued_at: string | null;
+  created_by_uid: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CommercialInvoiceLineRow {
+  id: string;
+  invoice_id: string;
+  sku: string;
+  product_name: string;
+  qty: number;
+  unit_value: number;
+  line_total: number;
+  hs_code: string | null;
+  container_ref: string | null;
+  sort_order: number;
 }
 
 export interface WarehouseStock {

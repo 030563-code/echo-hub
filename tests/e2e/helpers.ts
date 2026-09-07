@@ -21,7 +21,8 @@ export function anyCreds(): Creds | null {
   return adminCreds() ?? limitedCreds()
 }
 
-/** Log in via the real form and wait for the dashboard. */
+/** Log in via the real form and wait for the dashboard. Host-agnostic, so it works
+ *  against localhost AND a deployed URL (E2E_BASE_URL). */
 export async function login(page: Page, c: Creds) {
   await page.goto('/login')
   await page.getByPlaceholder('name@echobarrier.com').fill(c.email)
@@ -29,9 +30,10 @@ export async function login(page: Page, c: Creds) {
   await page.getByRole('button', { name: 'Sign In' }).click()
   // Relative, so the suite follows the config's baseURL. An absolute
   // localhost:3000 pinned it to one port and broke on any machine where
-  // something else already held it.
-  await page.waitForURL((url) => url.pathname === '/', { timeout: 15_000 })
-  await expect(page.getByText('Welcome to the Echo Barrier Hub')).toBeVisible()
+  // something else already held it. The generous timeouts are for a cold
+  // dev server compiling the route on first visit.
+  await page.waitForURL((u) => new URL(u).pathname === '/', { timeout: 25_000 })
+  await expect(page.getByText('Welcome to the Echo Barrier Hub')).toBeVisible({ timeout: 15_000 })
 }
 
 /** Proxy for "is this user privileged?" — only admins/ops users see the MRP nav. */

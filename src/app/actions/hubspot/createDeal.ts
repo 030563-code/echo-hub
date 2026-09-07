@@ -1,6 +1,7 @@
 'use server'
 
 import { getAuthorizedUser } from '@/lib/authz'
+import { externalCallsDisabled, STAGING_SKIP_NOTE } from '@/lib/env'
 import { HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
 import { allowedCurrenciesForPipeline } from '@/lib/pipeline-config'
 
@@ -23,6 +24,8 @@ export async function createHubSpotDeal(params: CreateDealParams): Promise<{ suc
     return { success: false, error: 'Forbidden: missing quotes.create capability' }
   }
   const { user, profile } = auth
+
+  if (externalCallsDisabled()) return { success: false, error: STAGING_SKIP_NOTE }
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
   if (!accessToken) return { success: false, error: 'Token Missing' }

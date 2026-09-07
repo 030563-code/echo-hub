@@ -1,8 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check, Pencil, X } from "lucide-react";
+import { toast } from "sonner";
+import { Check, Pencil, X, Warehouse } from "lucide-react";
 import { updateWarehouseStock } from "./actions";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SearchBox } from "@/components/ui/search-box";
 import type { WarehouseStock } from "@/lib/erp-types";
 import { cn } from "@/lib/utils";
 
@@ -10,9 +13,15 @@ export default function WarehouseClient({ initialStock }: { initialStock: Wareho
   const [stock, setStock] = useState(initialStock);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [q, setQ] = useState("");
   const [, startTransition] = useTransition();
 
-  const grouped = stock.reduce<Record<string, WarehouseStock[]>>((acc, item) => {
+  const needle = q.trim().toLowerCase();
+  const filtered = needle
+    ? stock.filter((s) => (s.sku + " " + (s.product_name ?? "")).toLowerCase().includes(needle))
+    : stock;
+
+  const grouped = filtered.reduce<Record<string, WarehouseStock[]>>((acc, item) => {
     if (!acc[item.warehouse_code]) acc[item.warehouse_code] = [];
     acc[item.warehouse_code].push(item);
     return acc;
@@ -30,6 +39,9 @@ export default function WarehouseClient({ initialStock }: { initialStock: Wareho
           prev.map((s) => s.id === item.id ? { ...s, quantity_on_hand: qty } : s)
         );
       });
+      toast.success(`${item.sku} stock updated to ${qty}`);
+    } else {
+      toast.error(result.error);
     }
     setEditingId(null);
   }
@@ -42,7 +54,20 @@ export default function WarehouseClient({ initialStock }: { initialStock: Wareho
 
   return (
     <div className="space-y-6">
-      {Object.entries(grouped).map(([warehouse, items]) => (
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs text-[#4b5563]">{stock.length} SKU{stock.length !== 1 ? "s" : ""} on hand</span>
+        <SearchBox value={q} onChange={setQ} placeholder="Search SKU or product…" dark />
+      </div>
+
+      {Object.keys(grouped).length === 0 ? (
+        <EmptyState
+          dark
+          icon={<Warehouse className="w-7 h-7" />}
+          title={needle ? "No matching stock" : "No stock records"}
+          description={needle ? `Nothing matches “${q}”.` : "No warehouse stock levels to show yet."}
+        />
+      ) : (
+        Object.entries(grouped).map(([warehouse, items]) => (
         <div key={warehouse}>
           <div className="flex items-center gap-2 mb-3">
             <span className="text-sm font-medium text-white px-2 py-1 bg-[#1e2a3a] border border-blue-900/40 rounded-lg font-mono">
@@ -116,7 +141,8 @@ export default function WarehouseClient({ initialStock }: { initialStock: Wareho
             </table>
           </div>
         </div>
-      ))}
+        ))
+      )}
     </div>
   );
 }

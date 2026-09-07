@@ -1,9 +1,21 @@
 import { calculateMRP } from "./actions";
 import MRPClient from "./mrp-client";
+import V2ShadowBoard from "./v2-board";
+import { getV2Board, type V2BoardData } from "./v2-data";
 
 export const dynamic = "force-dynamic";
 
 export default async function MRPPage() {
+  // v2 SHADOW board (Task 12): loaded independently so a v2 failure (or the
+  // documented "no engine run yet" empty state) can never take down the legacy
+  // board — decisions still run on the LEGACY board until the Phase-2 cutover.
+  let v2: V2BoardData | null = null;
+  try {
+    v2 = await getV2Board();
+  } catch {
+    v2 = null;
+  }
+
   let rows;
   try {
     rows = await calculateMRP();
@@ -21,6 +33,11 @@ export default async function MRPPage() {
   const yellow = rows.filter((r) => r.status === "yellow").length;
   const green = rows.filter((r) => r.status === "green").length;
 
+  // Legacy formula line: lead time now sourced from mrp_buffer_profile
+  // dlt_days (most common value across profiles — the 75d seed today);
+  // 90 remains only as the fallback when profiles are unavailable.
+  const dltSeedDays = v2?.dltSeedDays ?? 90;
+
   return (
     <div className="p-6">
       <div className="mb-6">
@@ -31,6 +48,11 @@ export default async function MRPPage() {
           Reorder point engine — CIP vs Lead Time Demand + Safety Stock per SKU
         </p>
       </div>
+
+      {/* v2 SHADOW board — observation only until the Phase-2 cutover */}
+      <V2ShadowBoard data={v2} />
+
+      {/* ===== LEGACY BOARD (decisions run HERE until Phase-2 cutover) ===== */}
 
       {/* Traffic light summary */}
       <div className="grid grid-cols-3 gap-3 mb-6">
@@ -65,7 +87,13 @@ export default async function MRPPage() {
         <p className="text-blue-300 font-medium mb-2">Formula Reference</p>
         <p><span className="text-[#9ca3af]">CIP</span> = In Stock + In Transit + On Order</p>
         <p><span className="text-[#9ca3af]">Pipeline Demand</span> = Σ(Quote Qty × Deal Probability)</p>
-        <p><span className="text-[#9ca3af]">Lead Time Demand</span> = (Daily Run Rate × {90} days) + Pipeline Demand</p>
+        <p>
+          <span className="text-[#9ca3af]">Lead Time Demand</span> = (Daily Run Rate × {dltSeedDays} days) + Pipeline Demand{" "}
+          {/* 90d = DEFAULT_LEAD_TIME_DAYS in actions.ts — the legacy engine's
+              computation input, disclosed here so operators can reproduce the
+              board's numbers while the display shows the profile-sourced DLT. */}
+          <span className="text-[#4b5563]">(target lead time from mrp_buffer_profile; seed — recalibrating from live shipments; the legacy trigger above still computes with 90d until cutover)</span>
+        </p>
         <p><span className="text-red-400">Trigger</span> = CIP ≤ Lead Time Demand + Safety Stock</p>
         <p className="text-[#4b5563] pt-1">⚠ All stock currently at 0 — red status expected until Dave provides real quantities</p>
       </div>
