@@ -73,6 +73,10 @@ export function QuotesNav() {
     // would blank the row a moment before it is read back.
     enabled: onListRoute && explicit,
     isEmpty: (stored) => Object.keys(stored.params).length === 0,
+    // Records only. The pages put the filters back themselves, server-side,
+    // and reading from here would call a Server Action while the router is
+    // still resolving /quotes -> /quotes/board. See the `load` option.
+    load: false,
   })
 
   useEffect(() => {

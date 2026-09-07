@@ -69,6 +69,20 @@ export interface UsePageStateOptions<T> {
   /** "Nothing worth keeping." An empty page never creates a row, and emptying a
    *  page deletes the row it had, so a resume prompt never points at nothing. */
   isEmpty?: (data: T) => boolean
+  /**
+   * False for a WRITE-ONLY consumer: one that records what the user chose but
+   * never puts it back, because something else does.
+   *
+   * This is not an optimisation. A Server Action called from an effect that
+   * mounts while Next's Router is resolving a redirect makes the Router throw
+   * "Rendered more hooks than during the previous render" (React #310) from
+   * inside itself, and the browser shows "This page couldn't load". The quotes
+   * tab bar is rendered by the layout that also covers /quotes, which
+   * redirects to /quotes/board, so it mounts in exactly that window on every
+   * click of the sidebar's Quotes entry. It has no use for the read anyway:
+   * the pages restore their own filters server-side.
+   */
+  load?: boolean
 }
 
 export interface UsePageStateResult<T> {
@@ -98,6 +112,7 @@ export function usePageState<T>({
   base = null,
   enabled = true,
   isEmpty,
+  load = true,
 }: UsePageStateOptions<T>): UsePageStateResult<T> {
   const [loaded, setLoaded] = useState<Loaded<T> | null>(null)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
@@ -106,7 +121,8 @@ export function usePageState<T>({
   // A key change reads as "loading" immediately, with no render in between and
   // no setState in an effect to get there.
   const isLoaded = loaded !== null && loaded.key === pageKey
-  const status: 'loading' | 'ready' = isLoaded ? 'ready' : 'loading'
+  // A write-only consumer has nothing to wait for, so it is ready at once.
+  const status: 'loading' | 'ready' = isLoaded || !load ? 'ready' : 'loading'
   const restored = isLoaded ? loaded.restored : null
 
   // Values and callbacks whose identity changes every render, held in refs so
@@ -244,6 +260,13 @@ export function usePageState<T>({
     lastJsonRef.current = null
     hasStoredRef.current = false
 
+    // Write-only: nothing to read, so open the gate on writes and touch no
+    // Server Action while the router may still be mid-navigation.
+    if (!load) {
+      loadedRef.current = true
+      return
+    }
+
     let cancelled = false
     void (async () => {
       // Yield one macrotask before touching the server.
@@ -317,7 +340,7 @@ export function usePageState<T>({
     return () => {
       cancelled = true
     }
-  }, [pageKey, drain])
+  }, [pageKey, drain, load])
 
   // Stopping (a successful submit) must also kill anything already queued.
   useEffect(() => {
