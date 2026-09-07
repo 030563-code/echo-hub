@@ -7,6 +7,8 @@ import { LinkSpinner } from '@/components/nav/link-spinner'
 import { usePageState } from '@/hooks/use-page-state'
 import {
   QUOTES_FILTERS_KEY,
+  RESTORABLE_QUOTE_PARAMS,
+  hasAnyRestorableParam,
   isQuotesListRoute,
   parseQuotesFilters,
   type QuotesFilters,
@@ -60,16 +62,25 @@ export function QuotesNav() {
   // common click in the module, so it would have looked like the feature simply
   // did not work.
   const onListRoute = isQuotesListRoute(pathname)
+  /** Did this URL ask for something specific? If so it is obeyed, not recorded
+   *  over and not overridden. A bare URL is an arrival, not a choice. */
+  const explicit = hasAnyRestorableParam(searchParams, RESTORABLE_QUOTE_PARAMS)
+
   const { save: saveFilters } = usePageState<QuotesFilters>({
     pageKey: QUOTES_FILTERS_KEY,
     parse: parseQuotesFilters,
-    enabled: onListRoute,
-    // No filters is not worth a row: it restores to the same place as no row.
+    // Only a deliberate view is worth recording. Writing on a bare arrival
+    // would blank the row a moment before it is read back.
+    enabled: onListRoute && explicit,
     isEmpty: (stored) => Object.keys(stored.params).length === 0,
+    // Records only. The pages put the filters back themselves, server-side,
+    // and reading from here would call a Server Action while the router is
+    // still resolving /quotes -> /quotes/board. See the `load` option.
+    load: false,
   })
 
   useEffect(() => {
-    if (!onListRoute) return
+    if (!onListRoute || !explicit) return
     const params: Record<string, string | string[]> = {}
     for (const [name, value] of carried.entries()) {
       const existing = params[name]
@@ -81,7 +92,8 @@ export function QuotesNav() {
     // `query` is the serialised form of `carried`, so it changes exactly when
     // the parameters do.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onListRoute, saveFilters, query])
+  }, [onListRoute, explicit, saveFilters, query])
+
 
   return (
     <nav aria-label="Quotes" className="mb-6 border-b border-gray-200">

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   NEVER_RESTORED_PARAMS,
+  hasAnyRestorableParam,
   QUOTES_LIST_ROUTES,
   RESTORABLE_QUOTE_PARAMS,
   isQuotesListRoute,
@@ -92,6 +93,69 @@ describe('what a saved view may put back', () => {
     expect(parseQuotesFilters({ v: 2, params: {} })).toBeNull()
     expect(parseQuotesFilters('nonsense')).toBeNull()
     expect(parseQuotesFilters({ v: 1, params: { q: 5 } })).toBeNull()
+  })
+})
+
+describe('a URL that asks for something specific is obeyed', () => {
+  it('spots an explicit parameter, whatever its shape', () => {
+    expect(hasAnyRestorableParam({ scope: 'mine' }, RESTORABLE_QUOTE_PARAMS)).toBe(true)
+    expect(hasAnyRestorableParam({ stages: ['a'] }, RESTORABLE_QUOTE_PARAMS)).toBe(true)
+    expect(hasAnyRestorableParam(new URLSearchParams('q=herc'), RESTORABLE_QUOTE_PARAMS)).toBe(true)
+  })
+
+  it('treats a bare url as an arrival, not a choice', () => {
+    expect(hasAnyRestorableParam({}, RESTORABLE_QUOTE_PARAMS)).toBe(false)
+    expect(hasAnyRestorableParam(new URLSearchParams(''), RESTORABLE_QUOTE_PARAMS)).toBe(false)
+    // Paging alone is not a filter choice.
+    expect(hasAnyRestorableParam({ page: '3' }, RESTORABLE_QUOTE_PARAMS)).toBe(false)
+    // Nor is an empty value.
+    expect(hasAnyRestorableParam({ scope: '' }, RESTORABLE_QUOTE_PARAMS)).toBe(false)
+  })
+})
+
+describe('one click may change the url only once', () => {
+  it('the filter restore rides the index redirect, and nothing else moves the url', () => {
+    // Two shapes of this both crashed Next's own client Router with "Rendered
+    // more hooks than during the previous render", which the browser shows as
+    // "This page couldn't load. Reload to try again, or go back.":
+    //
+    //   /quotes -> /quotes/board -> /quotes/board?scope=mine   (two redirects)
+    //   /quotes -> /quotes/board, then router.replace(?scope=mine)
+    //
+    // Both changed the url twice for one click. Only /quotes may redirect, and
+    // it must carry the filters itself so there is no second hop.
+    for (const file of [
+      'src/app/(dashboard)/quotes/board/page.tsx',
+      'src/app/(dashboard)/quotes/all/page.tsx',
+      'src/app/(dashboard)/quotes/stage-queue.tsx',
+    ]) {
+      const source = readFileSync(join(process.cwd(), file), 'utf8')
+      expect(source, file).not.toContain('restoreViewParams')
+      expect(source, file).not.toMatch(/^\s*redirect\(/m)
+    }
+
+    // The tab bar records filters; it must never navigate.
+    const nav = readFileSync(join(process.cwd(), 'src/app/(dashboard)/quotes/quotes-nav.tsx'), 'utf8')
+    expect(nav).not.toContain('useRouter')
+    expect(nav).not.toMatch(/router\.(replace|push)\(/)
+
+    // The index redirect is the one url change a Quotes click is allowed, and
+    // it must stay synchronous: an await here makes Next answer with an
+    // in-stream client redirect that never lands.
+    const index = readFileSync(join(process.cwd(), 'src/app/(dashboard)/quotes/page.tsx'), 'utf8')
+    expect(index.match(/^\s*redirect\(/gm) ?? []).toHaveLength(1)
+    expect(index).not.toContain('await')
+    expect(index).not.toContain('async')
+
+    // The restore itself never touches the url.
+    for (const file of [
+      'src/app/(dashboard)/quotes/board/page.tsx',
+      'src/app/(dashboard)/quotes/all/page.tsx',
+      'src/app/(dashboard)/quotes/stage-queue.tsx',
+    ]) {
+      const source = readFileSync(join(process.cwd(), file), 'utf8')
+      expect(source, file).toContain('withStoredQuotesFilters')
+    }
   })
 })
 

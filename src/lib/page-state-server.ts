@@ -17,10 +17,14 @@ import 'server-only'
  * user_id filter means RLS is defence in depth rather than the only control.
  */
 
-import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase/server'
 import { isPageKey, type StoredPageState } from '@/lib/page-state'
-import { parseQuotesFilters, pickRestorableParams } from '@/lib/page-drafts'
+import {
+  QUOTES_FILTERS_KEY,
+  RESTORABLE_QUOTE_PARAMS,
+  hasAnyRestorableParam,
+  parseQuotesFilters,
+} from '@/lib/page-drafts'
 
 export async function readPageState(pageKey: string): Promise<StoredPageState | null> {
   if (!isPageKey(pageKey)) return null
@@ -62,36 +66,39 @@ export async function deletePageState(pageKey: string): Promise<void> {
   }
 }
 
+
 /**
- * Put someone back on the filters they last used, when they arrive with none.
+ * Put back the filters this user last chose, WITHOUT touching the url.
  *
- * Only ever fires on a BARE url. A link someone shared, a bookmark, the Clear
- * button and every in-page filter change all carry at least one recognised
- * parameter, and each of those is left exactly alone. That single rule is what
- * keeps this from being the kind of magic that traps people on a view they
- * cannot get out of.
+ * Every url-changing version of this crashed Next's client Router with
+ * "Rendered more hooks than during the previous render", which the browser
+ * shows as "This page couldn't load. Reload to try again, or go back.":
+ * a second redirect() on the board, a router.replace() from the tab bar, and
+ * folding the filters into the /quotes redirect (which, because it has to
+ * await this read first, turns into an in-stream client redirect that never
+ * lands). One click may change the url once, and /quotes -> /quotes/board is
+ * already that one change.
+ *
+ * So the page keeps its bare url and simply reads with the remembered filters.
+ * The filter bar is seeded from the same values, so what is on screen always
+ * matches what was fetched, and the moment anything is changed the bar's own
+ * GET form puts it in the url again.
+ *
+ * A url carrying any recognised parameter is a deliberate request (a shared
+ * link, a bookmark, Clear, a filter just applied) and is returned untouched.
  */
-export async function restoreViewParams({
-  pageKey,
-  basePath,
-  params,
-  accepted,
-}: {
-  pageKey: string
-  basePath: string
-  params: Record<string, string | string[] | undefined>
-  accepted: readonly string[]
-}): Promise<void> {
-  // The user asked for something specific. Never override that.
-  const arrivedWithOne = accepted.some((name) => {
-    const value = params[name]
-    return Array.isArray(value) ? value.length > 0 : typeof value === 'string' && value !== ''
-  })
-  if (arrivedWithOne) return
+export async function withStoredQuotesFilters(
+  params: Record<string, string | string[] | undefined>,
+): Promise<Record<string, string | string[] | undefined>> {
+  if (hasAnyRestorableParam(params, RESTORABLE_QUOTE_PARAMS)) return params
 
-  const stored = await readPageState(pageKey)
-  const query = pickRestorableParams(parseQuotesFilters(stored?.data), accepted)
-  if (!query) return
+  const stored = parseQuotesFilters((await readPageState(QUOTES_FILTERS_KEY))?.data)
+  if (!stored) return params
 
-  redirect(`${basePath}?${query}`)
+  const merged = { ...params }
+  for (const name of RESTORABLE_QUOTE_PARAMS) {
+    const value = stored.params[name]
+    if (value !== undefined) merged[name] = value
+  }
+  return merged
 }
