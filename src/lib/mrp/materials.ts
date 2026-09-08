@@ -171,3 +171,86 @@ export function materialsCeiling(
 
   return { ...base, maxBuildable: lo, bindingComponent, bindingDesc, bomEstimated };
 }
+
+/** One gating component that will not cover a build of the requested size. */
+export interface MaterialShortage {
+  code: string;
+  description: string | null;
+  /** Total draw for the whole build, per-unit and per-pallet rows combined. */
+  need: number;
+  /** Physical stock on the shelf. */
+  have: number;
+  /** need − have, always positive. What to go and buy. */
+  short: number;
+}
+
+export interface MaterialShortages {
+  /** Empty means the materials are there. Worst shortfall first. */
+  shortages: MaterialShortage[];
+  /** Gating components with no matching stock card. Unknown, not zero. */
+  unjoined: string[];
+  /** True when per_pallet rows had to be skipped for want of a pallet size. */
+  palletSizeUnknown: boolean;
+}
+
+/**
+ * What is missing for a build of exactly `qty` units.
+ *
+ * The ceiling above answers "how many could they build"; this answers "can they
+ * build THIS order, and if not, what is short". The Bamida email needs the
+ * second question: Dean's rule is that short materials do not block the send,
+ * they change the wording to "we want to manufacture, we have detected you do
+ * not have enough materials, here is what we make short".
+ *
+ * Same two traps as the ceiling. Per-pallet rows are charged by whole pallets,
+ * so 71 units of a 70/pallet product needs two full sets of consumables, and a
+ * component with no stock card is reported as unknown rather than counted as
+ * zero, which would invent a shortage out of a missing join.
+ */
+export function shortagesFor(
+  product: BomProductRow,
+  components: BomComponentRow[],
+  stockByCode: Map<string, number>,
+  qty: number
+): MaterialShortages {
+  const palletSize = product.pallet_size && product.pallet_size > 0 ? product.pallet_size : null;
+
+  const unjoined: string[] = [];
+  const seenUnjoined = new Set<string>();
+  const usable: BomComponentRow[] = [];
+  let palletSizeUnknown = false;
+
+  for (const c of components) {
+    if (!c.is_gating) continue;
+    if (c.basis === "per_pallet" && palletSize === null) {
+      palletSizeUnknown = true;
+      continue;
+    }
+    if (!stockByCode.has(c.component_code)) {
+      if (!seenUnjoined.has(c.component_code)) {
+        seenUnjoined.add(c.component_code);
+        unjoined.push(c.component_code);
+      }
+      continue;
+    }
+    if (c.qty > 0) usable.push(c);
+  }
+
+  const shortages: MaterialShortage[] = [];
+  if (qty > 0) {
+    for (const [code, need] of requiredFor(usable, palletSize, qty)) {
+      const have = Math.max(stockByCode.get(code) ?? 0, 0);
+      if (need <= have) continue;
+      shortages.push({
+        code,
+        description: usable.find((c) => c.component_code === code)?.component_desc ?? null,
+        need,
+        have,
+        short: need - have,
+      });
+    }
+    shortages.sort((a, b) => b.short - a.short || a.code.localeCompare(b.code));
+  }
+
+  return { shortages, unjoined, palletSizeUnknown };
+}

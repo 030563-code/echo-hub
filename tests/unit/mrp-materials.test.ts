@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   materialsCeiling,
   requiredFor,
+  shortagesFor,
   type BomComponentRow,
   type BomProductRow,
 } from "@/lib/mrp/materials";
@@ -252,4 +253,84 @@ describe('bomEstimated — an estimate must not read as an engineering BOM', () 
     expect(r.maxBuildable).toBe(0)
     expect(r.bomEstimated).toBe(true)
   })
+})
+
+describe("shortagesFor — can they build THIS order", () => {
+  it("reports nothing when the materials are there", () => {
+    const out = shortagesFor(product(70), [comp("A", 2, "per_unit")], stock([["A", 500]]), 100);
+    expect(out.shortages).toEqual([]);
+    expect(out.unjoined).toEqual([]);
+    expect(out.palletSizeUnknown).toBe(false);
+  });
+
+  it("names what is short, by how much, worst first", () => {
+    const out = shortagesFor(
+      product(70),
+      [comp("A", 2, "per_unit"), comp("B", 10, "per_unit")],
+      stock([
+        ["A", 150],
+        ["B", 900],
+      ]),
+      100
+    );
+    expect(out.shortages).toEqual([
+      { code: "B", description: "desc B", need: 1000, have: 900, short: 100 },
+      { code: "A", description: "desc A", need: 200, have: 150, short: 50 },
+    ]);
+  });
+
+  it("charges a per_pallet row by WHOLE pallets, so one unit over the boundary is short", () => {
+    // 4 sets of consumables on the shelf. 280 units is exactly 4 pallets and fits;
+    // 281 spills into a fifth and does not. This is the live H9 constraint.
+    const bom = [comp("1781", 1, "per_pallet")];
+    expect(shortagesFor(product(70), bom, stock([["1781", 4]]), 280).shortages).toEqual([]);
+    expect(shortagesFor(product(70), bom, stock([["1781", 4]]), 281).shortages).toEqual([
+      { code: "1781", description: "desc 1781", need: 5, have: 4, short: 1 },
+    ]);
+  });
+
+  it("agrees with the ceiling: the largest build with no shortage is maxBuildable", () => {
+    const bom = [comp("1781", 1, "per_pallet"), comp("2189", 39, "per_unit")];
+    const shelf = stock([
+      ["1781", 4],
+      ["2189", 75093],
+    ]);
+    const ceiling = materialsCeiling(product(70), bom, shelf).maxBuildable
+    expect(ceiling).toBe(280);
+    expect(shortagesFor(product(70), bom, shelf, ceiling!).shortages).toEqual([]);
+    expect(shortagesFor(product(70), bom, shelf, ceiling! + 1).shortages.length).toBeGreaterThan(0);
+  });
+
+  it("reports a component with no stock card as unknown, never as a shortage", () => {
+    const out = shortagesFor(product(70), [comp("GHOST", 5, "per_unit")], stock([]), 100);
+    expect(out.shortages).toEqual([]);
+    expect(out.unjoined).toEqual(["GHOST"]);
+  });
+
+  it("ignores non-gating rows, which are absent from the live feed by design", () => {
+    const out = shortagesFor(
+      product(70),
+      [comp("A", 1000, "per_unit", false)],
+      stock([["A", 1]]),
+      100
+    );
+    expect(out.shortages).toEqual([]);
+  });
+
+  it("says so rather than guessing when a per_pallet row has no pallet size", () => {
+    const out = shortagesFor(product(null), [comp("A", 16, "per_pallet")], stock([["A", 1]]), 100);
+    expect(out.shortages).toEqual([]);
+    expect(out.palletSizeUnknown).toBe(true);
+  });
+
+  it("treats a negative stock reading as zero rather than as a credit", () => {
+    const out = shortagesFor(product(70), [comp("A", 1, "per_unit")], stock([["A", -165717]]), 10);
+    expect(out.shortages).toEqual([
+      { code: "A", description: "desc A", need: 10, have: 0, short: 10 },
+    ]);
+  });
+
+  it("asks for nothing when nothing is ordered", () => {
+    expect(shortagesFor(product(70), [comp("A", 1, "per_unit")], stock([["A", 0]]), 0).shortages).toEqual([]);
+  });
 })
