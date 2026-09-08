@@ -84,7 +84,7 @@ export default function ShipmentPanel({
               </h3>
               <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                 <Pair label="Status">
-                  {shipment.status ? <StatusBadge status={shipment.status} /> : <Dash />}
+                  {shipment.status ? <StatusBadge dark={false} status={shipment.status} /> : <Dash />}
                 </Pair>
                 <Pair label="Units">
                   <span className="tabular-nums text-gray-900">{shipment.totalQty}</span>

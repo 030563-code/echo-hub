@@ -160,7 +160,7 @@ const COLUMNS: ColumnDef<GroupedShipment, unknown>[] = [
     header: "Status",
     cell: ({ getValue }) => {
       const status = getValue() as string | null;
-      return status ? <StatusBadge status={status} /> : <span className="text-gray-400">—</span>;
+      return status ? <StatusBadge dark={false} status={status} /> : <span className="text-gray-400">{"—"}</span>;
     },
   },
   {
