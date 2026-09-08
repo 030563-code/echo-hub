@@ -16,7 +16,7 @@ afterEach(() => {
 const REAL = {
   to: 'bamida@example.sk',
   cc: 'juraj@echobarrier.eu, dave.lindsay@echobarrier.com',
-  bcc: 'dean@ch-ise.co.za',
+  bcc: 'tester@example.com',
 }
 
 describe('resolveRecipients with no override', () => {
@@ -27,7 +27,7 @@ describe('resolveRecipients with no override', () => {
     expect(out.intended).toBeNull()
     expect(out.to).toEqual(['bamida@example.sk'])
     expect(out.cc).toEqual(['juraj@echobarrier.eu', 'dave.lindsay@echobarrier.com'])
-    expect(out.bcc).toEqual(['dean@ch-ise.co.za'])
+    expect(out.bcc).toEqual(['tester@example.com'])
   })
 
   it('treats an override of only whitespace as unset', () => {
@@ -40,11 +40,11 @@ describe('resolveRecipients with no override', () => {
 
 describe('resolveRecipients with the override set', () => {
   it('sends only to the override and CLEARS cc and bcc', () => {
-    process.env.HUB_EMAIL_TEST_RECIPIENT = 'dean@ch-ise.co.za'
+    process.env.HUB_EMAIL_TEST_RECIPIENT = 'tester@example.com'
     const out = resolveRecipients(REAL)
 
     expect(out.isTest).toBe(true)
-    expect(out.to).toEqual(['dean@ch-ise.co.za'])
+    expect(out.to).toEqual(['tester@example.com'])
     // The whole point. Redirecting `to` while leaving a real cc in place would
     // still mail Juraj, which is the failure this switch exists to prevent.
     expect(out.cc).toEqual([])
@@ -52,7 +52,7 @@ describe('resolveRecipients with the override set', () => {
   })
 
   it('keeps no real address anywhere in the outgoing lists', () => {
-    process.env.HUB_EMAIL_TEST_RECIPIENT = 'dean@ch-ise.co.za'
+    process.env.HUB_EMAIL_TEST_RECIPIENT = 'tester@example.com'
     const out = resolveRecipients(REAL)
     const outgoing = [...out.to, ...out.cc, ...out.bcc].join(' ').toLowerCase()
 
@@ -62,20 +62,20 @@ describe('resolveRecipients with the override set', () => {
   })
 
   it('reports the real audience under intended, so the body can print it', () => {
-    process.env.HUB_EMAIL_TEST_RECIPIENT = 'dean@ch-ise.co.za'
+    process.env.HUB_EMAIL_TEST_RECIPIENT = 'tester@example.com'
     const out = resolveRecipients(REAL)
 
     expect(out.intended).toEqual({
       to: ['bamida@example.sk'],
       cc: ['juraj@echobarrier.eu', 'dave.lindsay@echobarrier.com'],
-      bcc: ['dean@ch-ise.co.za'],
+      bcc: ['tester@example.com'],
     })
   })
 
   it('accepts more than one test address', () => {
-    process.env.HUB_EMAIL_TEST_RECIPIENT = 'dean@ch-ise.co.za, dave.lindsay@echobarrier.com'
+    process.env.HUB_EMAIL_TEST_RECIPIENT = 'tester@example.com, dave.lindsay@echobarrier.com'
     const out = resolveRecipients({ to: 'bamida@example.sk' })
-    expect(out.to).toEqual(['dean@ch-ise.co.za', 'dave.lindsay@echobarrier.com'])
+    expect(out.to).toEqual(['tester@example.com', 'dave.lindsay@echobarrier.com'])
   })
 })
 
@@ -116,9 +116,9 @@ describe('sendDescription', () => {
   })
 
   it('says plainly that the real recipient did not get it', () => {
-    process.env.HUB_EMAIL_TEST_RECIPIENT = 'dean@ch-ise.co.za'
+    process.env.HUB_EMAIL_TEST_RECIPIENT = 'tester@example.com'
     expect(sendDescription(resolveRecipients({ to: 'bamida@example.sk' }))).toBe(
-      'Sent to the test address (dean@ch-ise.co.za), not bamida@example.sk',
+      'Sent to the test address (tester@example.com), not bamida@example.sk',
     )
   })
 })

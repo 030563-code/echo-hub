@@ -97,12 +97,12 @@ describe('notifySroPoReady, when it may send', () => {
 
 describe('notifySroPoReady honours the test switch', () => {
   it('reaches only the test address, with Juraj nowhere in the send', async () => {
-    process.env.HUB_EMAIL_TEST_RECIPIENT = 'dean@ch-ise.co.za'
+    process.env.HUB_EMAIL_TEST_RECIPIENT = 'tester@example.com'
     process.env.SRO_NOTIFY_CC = 'dave.lindsay@echobarrier.com'
     await notifySroPoReady(INPUT)
 
     const body = lastBody()
-    expect(body.to).toEqual(['dean@ch-ise.co.za'])
+    expect(body.to).toEqual(['tester@example.com'])
     expect(body.cc).toEqual([])
     expect(body.bcc).toEqual([])
     expect(body.is_test).toBe(true)
@@ -113,7 +113,7 @@ describe('notifySroPoReady honours the test switch', () => {
   })
 
   it('still tells n8n who it would have gone to, so a test send is verifiable', async () => {
-    process.env.HUB_EMAIL_TEST_RECIPIENT = 'dean@ch-ise.co.za'
+    process.env.HUB_EMAIL_TEST_RECIPIENT = 'tester@example.com'
     await notifySroPoReady(INPUT)
     expect((lastBody().intended as { to: string[] }).to).toEqual(['juraj@echobarrier.eu'])
   })
