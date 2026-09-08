@@ -4,6 +4,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { toast } from "sonner";
 import { X, FileDown } from "lucide-react";
 import type { BamidaPo } from "@/lib/bamida-po";
+import { buildBamidaPoPdf, bamidaPoPdfFilename } from "@/lib/bamida-po-pdf";
 
 const eur = (v: number | null) =>
   v == null ? "—" : `€${v.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -16,64 +17,13 @@ export default function BamidaPoModal({ bamida, onClose }: { bamida: BamidaPo; o
 
   async function downloadPdf() {
     try {
-    const { default: jsPDF } = await import("jspdf");
-    const autoTable = (await import("jspdf-autotable")).default;
-    const doc = new jsPDF();
-    const W = doc.internal.pageSize.width;
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.text(priced ? "OBJEDNÁVKOVÝ LIST" : "BOM / SPECIFICATION", W / 2, 16, { align: "center" });
-    doc.setFontSize(10);
-    doc.text(`${priced ? "PURCHASE ORDER" : "BOM"} ${bamida.poNumber}`, W / 2, 22, { align: "center" });
-
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "bold");
-    doc.text("Supplier", 14, 34);
-    doc.text("Buyer", W / 2 + 6, 34);
-    doc.setFont("helvetica", "normal");
-    doc.text([bamida.supplier.name, ...bamida.supplier.address], 14, 39);
-    doc.text([bamida.buyer.name, ...bamida.buyer.address, `Tax: ${bamida.buyer.taxNumber}`], W / 2 + 6, 39);
-    doc.text(`Date: ${bamida.date}`, 14, 64);
-    if (bamida.reference) doc.text(`Reference: ${bamida.reference}`, 14, 69);
-
-    const head = priced
-      ? [["Ln", "Code", "Description", "Qty", "Unit", "Price", "Amount", "Tax"]]
-      : [["Ln", "Code", "Description", "Qty", "Unit"]];
-    const body = bamida.lines.map((l, i) => {
-      const base = [String(i + 1), l.code, l.description, l.qty.toString(), l.unit];
-      return priced
-        ? [
-            ...base,
-            (l.price ?? 0).toFixed(2),
-            (l.amount ?? 0).toLocaleString("en-GB", { minimumFractionDigits: 2 }),
-            `${(l.taxRate ?? 0).toFixed(2)}%`,
-          ]
-        : base;
-    });
-
-    autoTable(doc, {
-      startY: 76,
-      head,
-      body,
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [40, 40, 40] },
-      columnStyles: priced ? { 5: { halign: "right" }, 6: { halign: "right" }, 7: { halign: "right" } } : {},
-    });
-
-    if (priced) {
-      const finalY = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? 90;
-      doc.setFontSize(9);
-      doc.text(`SUBTOTAL (EUR)   ${(bamida.subtotal ?? 0).toLocaleString("en-GB", { minimumFractionDigits: 2 })}`, W - 14, finalY + 8, { align: "right" });
-      doc.text(`TAX (EUR)   ${(bamida.tax ?? 0).toLocaleString("en-GB", { minimumFractionDigits: 2 })}`, W - 14, finalY + 14, { align: "right" });
-      doc.setFont("helvetica", "bold");
-      doc.text(`TOTAL INCL. TAX (EUR)   ${(bamida.total ?? 0).toLocaleString("en-GB", { minimumFractionDigits: 2 })}`, W - 14, finalY + 21, { align: "right" });
-    }
-
-    doc.save(`${priced ? "Bamida" : "BOM"}_${bamida.poNumber}.pdf`);
+      // The drawing itself lives in @/lib/bamida-po-pdf, because the same bytes
+      // now also have to be emailed to Bamida from the server.
+      const doc = await buildBamidaPoPdf(bamida);
+      doc.save(bamidaPoPdfFilename(bamida));
       toast.success(`${docLabel} ${bamida.poNumber} downloaded`);
     } catch {
-      toast.error("Couldn't generate the PDF — please try again.");
+      toast.error("Couldn't generate the PDF, please try again.");
     }
   }
 

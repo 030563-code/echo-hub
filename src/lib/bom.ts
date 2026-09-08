@@ -160,7 +160,11 @@ export async function loadSroPoBoms(): Promise<{ pos: SroPoBom[]; week: string |
       'id, po_number, master_ref, from_entity, to_entity, approved_at, created_at, cost_snapshot, cost_snapshot_at, lines:purchase_order_lines(sku, product_name, quantity)'
     )
     .eq('leg', 'EB_GROUP_TO_SRO')
-    .eq('status', 'approved')
+    // 'approved' alone used to be right, when the SRO leg never left that
+    // status. It does now: choosing to manufacture moves it to
+    // in_manufacturing, and an order being built is exactly the one whose bill
+    // of materials people need to look at.
+    .in('status', ['approved', 'in_manufacturing'])
     .order('created_at', { ascending: false })
 
   if (!pos || pos.length === 0) return { pos: [], week: null }
@@ -186,6 +190,39 @@ export async function loadSroPoBoms(): Promise<{ pos: SroPoBom[]; week: string |
     return explodePo(po as unknown as PoForExplode, ctx as ExplodeCtx)
   })
   return { pos: out, week }
+}
+
+/**
+ * One SRO order's BOM, for the Bamida document that gets emailed.
+ *
+ * The frozen cost_snapshot is authoritative and is what almost every order
+ * carries, so this is usually a single row read with no manufacturing round
+ * trip. Only an order predating the snapshot column needs a live explosion, and
+ * that path is the same one loadSroPoBoms uses.
+ */
+export async function loadSroPoBom(poId: string): Promise<SroPoBom | null> {
+  const supabase = await createServerClient()
+  const { data: po } = await supabase
+    .from('purchase_orders')
+    .select(
+      'id, po_number, master_ref, from_entity, to_entity, approved_at, created_at, cost_snapshot, cost_snapshot_at, lines:purchase_order_lines(sku, product_name, quantity)'
+    )
+    .eq('id', poId)
+    .maybeSingle()
+  if (!po) return null
+
+  const snap = (po as { cost_snapshot?: unknown }).cost_snapshot
+  if (snap) {
+    return {
+      ...(snap as SroPoBom),
+      cost_frozen: true,
+      cost_snapshot_at: (po as { cost_snapshot_at?: string | null }).cost_snapshot_at ?? null,
+    }
+  }
+
+  if (!mfgConfigured()) return null
+  const { ctx } = await buildExplodeCtx(supabase, createMfgClient(), [po as unknown as PoForExplode])
+  return explodePo(po as unknown as PoForExplode, ctx)
 }
 
 /**
