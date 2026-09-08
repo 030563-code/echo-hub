@@ -159,8 +159,10 @@ export default function ShipmentPanel({
                         {detail.route!.map((p, i) => (
                           <li key={i} className="flex justify-between gap-3">
                             <span className="text-gray-900">{p.name ?? p.type}</span>
-                            <span className="shrink-0 text-gray-500">
-                              {p.estimatedArrival ? formatDate(p.estimatedArrival) : p.type}
+                            {/* Nothing on the right when the only thing to say
+                                there is the label already on the left. */}
+                            <span className="shrink-0 whitespace-nowrap text-gray-500">
+                              {p.estimatedArrival ? formatDate(p.estimatedArrival) : p.name ? p.type : ''}
                             </span>
                           </li>
                         ))}
@@ -174,7 +176,7 @@ export default function ShipmentPanel({
                       <ol className="mt-1.5 space-y-1.5">
                         {detail.events!.map((e, i) => (
                           <li key={i} className="flex gap-3 text-sm">
-                            <span className="w-24 shrink-0 tabular-nums text-gray-500">
+                            <span className="w-32 shrink-0 whitespace-nowrap tabular-nums text-gray-500">
                               {formatDate(e.date)}
                             </span>
                             <span className="text-gray-900">
