@@ -1,6 +1,14 @@
 import 'server-only'
 
-import { parseSpotIds, extractShipmentDetail, type CargoDetail } from './cargo-parse'
+import {
+  parseSpotIds,
+  extractShipmentDetail,
+  parseEvents,
+  parseRoutingPoints,
+  type CargoDetail,
+  type CargoEvent,
+  type RoutingPoint,
+} from './cargo-parse'
 import { externalCallsDisabled } from './env'
 
 // Server-only Cargo Partner client. Token + the two endpoints (lookup-by-reference
@@ -63,5 +71,37 @@ export async function fetchShipmentDetail(token: string, spotId: string): Promis
     return extractShipmentDetail(await res.json())
   } catch {
     return {}
+  }
+}
+
+/**
+ * The same GET, kept whole: summary plus the event timeline and the route.
+ *
+ * The board only ever needed the summary, so fetchShipmentDetail throws the
+ * rest away. The shipment panel wants the milestones, and fetching twice to get
+ * them would double the calls against Cargo Partner for one screen.
+ *
+ * READ ONLY, like everything else in this file. There is no create, no update
+ * and no event POST anywhere in the Hub: a transport order is a real booking
+ * with a freight forwarder and Dean flips that switch, not the code.
+ */
+export async function fetchShipmentFull(
+  token: string,
+  spotId: string,
+): Promise<{ detail: CargoDetail; events: CargoEvent[]; route: RoutingPoint[] } | null> {
+  try {
+    const res = await fetch(`${API}/shipments/${encodeURIComponent(spotId)}`, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      cache: 'no-store',
+    })
+    if (!res.ok) return null
+    const body = await res.json()
+    return {
+      detail: extractShipmentDetail(body),
+      events: parseEvents(body),
+      route: parseRoutingPoints(body),
+    }
+  } catch {
+    return null
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { usePageState } from "@/hooks/use-page-state";
 import { DraftStrip } from "@/components/page-state/draft-strip";
 import { TRANSPORT_ADD_SHIPMENT_KEY, parseShipmentDraft, type ShipmentDraft } from "@/lib/page-drafts";
@@ -13,6 +13,8 @@ import BoardTable from "@/components/board/BoardTable";
 import StatusBadge from "@/components/board/StatusBadge";
 import { formatDate } from "@/lib/utils";
 import type { ShipmentContent } from "@/lib/erp-types";
+import { groupBySpotId, type GroupedShipment } from "@/lib/shipment-grouping";
+import ShipmentPanel from "./shipment-panel";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   lookupCargoPartnerShipment,
@@ -89,52 +91,65 @@ const EMPTY_FORM: ShipmentForm = {
   po_reference: "",
 };
 
-const COLUMNS: ColumnDef<ShipmentContent, unknown>[] = [
+/**
+ * One row per shipment. shipment_contents stores a line per product, so a
+ * container of four models used to fill four identical-looking rows and reading
+ * the board meant recognising that four rows were one thing.
+ */
+const COLUMNS: ColumnDef<GroupedShipment, unknown>[] = [
   {
-    accessorKey: "spot_id",
+    accessorKey: "spotId",
     header: "Spot ID",
     cell: ({ getValue }) => (
-      <span className="font-mono text-xs text-[#FF7026] font-medium">{getValue() as string}</span>
+      <span className="font-mono text-xs font-medium text-echo-orange">{getValue() as string}</span>
     ),
   },
   {
-    accessorKey: "container_ref",
+    accessorKey: "containerRef",
     header: "Container",
+    cell: ({ getValue }) => {
+      const ref = getValue() as string | null;
+      return ref ? (
+        <span className="font-mono text-xs text-gray-600">{ref}</span>
+      ) : (
+        <span className="text-xs text-gray-400">split</span>
+      );
+    },
+  },
+  {
+    id: "contents",
+    header: "Contents",
+    accessorFn: (row) => row.lines.map((l) => l.sku).join(" "),
+    cell: ({ row }) => {
+      const lines = row.original.lines;
+      const first = lines[0];
+      return (
+        <div className="max-w-[240px]">
+          <p className="truncate text-sm text-gray-900">
+            {first?.product_name ?? first?.sku ?? "—"}
+          </p>
+          {lines.length > 1 && (
+            <p className="text-xs text-gray-500">and {lines.length - 1} more</p>
+          )}
+        </div>
+      );
+    },
+  },
+  {
+    accessorKey: "totalQty",
+    header: "Units",
     cell: ({ getValue }) => (
-      <span className="font-mono text-xs text-[#9ca3af]">{(getValue() as string | null) ?? "—"}</span>
+      <span className="text-sm font-semibold tabular-nums text-gray-900">{getValue() as number}</span>
     ),
   },
   {
-    accessorKey: "sku",
-    header: "SKU",
-    cell: ({ getValue }) => (
-      <span className="font-mono text-xs text-[#e5e5e5]">{getValue() as string}</span>
-    ),
-  },
-  {
-    accessorKey: "product_name",
-    header: "Product",
-    cell: ({ getValue }) => (
-      <span className="text-sm text-[#9ca3af] max-w-[180px] truncate block">
-        {(getValue() as string | null) ?? "—"}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "qty",
-    header: "Qty",
-    cell: ({ getValue }) => (
-      <span className="text-sm font-bold text-white tabular-nums">{getValue() as number}</span>
-    ),
-  },
-  {
-    accessorKey: "depot_destination",
+    accessorKey: "depot",
     header: "Depot",
     cell: ({ getValue }) => {
       const code = getValue() as string | null;
-      if (!code) return <span className="text-[#4b5563]">—</span>;
+      if (!code) return <span className="text-xs text-gray-400">mixed</span>;
       return (
-        <span className="text-[10px] px-2 py-0.5 rounded bg-[#1e2a3a] border border-blue-900/50 text-blue-300 font-mono">
+        <span className="rounded border border-blue-200 bg-blue-50 px-2 py-0.5 font-mono text-[10px] text-blue-800">
           {code}
         </span>
       );
@@ -143,13 +158,16 @@ const COLUMNS: ColumnDef<ShipmentContent, unknown>[] = [
   {
     accessorKey: "status",
     header: "Status",
-    cell: ({ getValue }) => <StatusBadge status={getValue() as string} />,
+    cell: ({ getValue }) => {
+      const status = getValue() as string | null;
+      return status ? <StatusBadge status={status} /> : <span className="text-gray-400">—</span>;
+    },
   },
   {
-    accessorKey: "shipped_at",
+    accessorKey: "shippedAt",
     header: "Shipped",
     cell: ({ getValue }) => (
-      <span className="text-xs text-[#4b5563]">{formatDate(getValue() as string | null)}</span>
+      <span className="text-xs text-gray-500">{formatDate(getValue() as string | null)}</span>
     ),
   },
   {
@@ -157,12 +175,12 @@ const COLUMNS: ColumnDef<ShipmentContent, unknown>[] = [
     header: "ETA",
     cell: ({ getValue }) => {
       const date = getValue() as string | null;
-      if (!date) return <span className="text-[#4b5563]">—</span>;
+      if (!date) return <span className="text-gray-400">—</span>;
       const daysLeft = Math.ceil((new Date(date).getTime() - Date.now()) / 86400000);
-      const color = daysLeft < 0 ? "text-red-300" : daysLeft < 7 ? "text-yellow-300" : "text-emerald-300";
+      const color = daysLeft < 0 ? "text-red-600" : daysLeft < 7 ? "text-amber-600" : "text-emerald-700";
       return (
         <div>
-          <p className="text-xs text-[#e5e5e5]">{formatDate(date)}</p>
+          <p className="text-xs text-gray-900">{formatDate(date)}</p>
           <p className={`text-[10px] ${color}`}>
             {daysLeft < 0 ? `${Math.abs(daysLeft)}d overdue` : daysLeft === 0 ? "Today" : `${daysLeft}d`}
           </p>
@@ -171,32 +189,46 @@ const COLUMNS: ColumnDef<ShipmentContent, unknown>[] = [
     },
   },
   {
-    accessorKey: "po_reference",
+    id: "poReferences",
     header: "PO Ref",
-    cell: ({ getValue }) => (
-      <span className="font-mono text-[10px] text-[#4b5563]">{(getValue() as string | null) ?? "—"}</span>
-    ),
+    accessorFn: (row) => row.poReferences.join(" "),
+    cell: ({ row }) => {
+      const refs = row.original.poReferences;
+      if (refs.length === 0) return <span className="text-gray-400">—</span>;
+      return (
+        <span className="font-mono text-[10px] text-gray-500">
+          {/* Every PO on the container, not just the first: a multi-PO container
+              used to lose all but one. */}
+          {refs.join(", ")}
+        </span>
+      );
+    },
   },
 ];
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs text-[#9ca3af] mb-1">{label}</label>
+      <label className="block text-xs text-gray-600 mb-1">{label}</label>
       {children}
     </div>
   );
 }
 
 const inputCls =
-  "w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-base sm:text-sm text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026] transition-colors";
+  "w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-base sm:text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-echo-orange transition-colors";
 
 const selectCls =
-  "w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-base sm:text-sm text-[#e5e5e5] focus:outline-none focus:border-[#FF7026] transition-colors";
+  "w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-base sm:text-sm text-gray-900 focus:outline-none focus:border-echo-orange transition-colors";
 
 export default function ShippingClient({ items }: { items: ShipmentContent[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<GroupedShipment | null>(null);
+
+  // useMemo, not a plain call: BoardTable memoises off the data reference, and
+  // a fresh array on every keystroke in its search box resets the table.
+  const shipments = useMemo(() => groupBySpotId(items), [items]);
   const [form, setForm] = useState<ShipmentForm>(EMPTY_FORM);
   const [lookupRef, setLookupRef] = useState("");
   const [lookupStatus, setLookupStatus] = useState<"idle" | "loading" | "found" | "not_found">("idle");
@@ -329,50 +361,56 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
   return (
     <>
       <div className="flex items-center justify-between mb-4">
-        <p className="text-xs text-[#4b5563]">{items.length} shipment line{items.length !== 1 ? "s" : ""}</p>
+        <p className="text-xs text-gray-500">
+          {shipments.length} shipment{shipments.length !== 1 ? "s" : ""}, {items.length} line
+          {items.length !== 1 ? "s" : ""}
+        </p>
         <button
           onClick={openModal}
-          className="flex items-center gap-1.5 px-3 py-3 sm:py-1.5 bg-[#FF7026] hover:bg-[#f2641b] text-white text-sm font-medium rounded-lg transition-colors"
+          className="flex items-center gap-1.5 rounded-lg bg-echo-orange px-3 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-echo-orange-hover sm:py-1.5"
         >
           <Plus className="w-3.5 h-3.5" />
           Add Shipment
         </button>
       </div>
 
-      {items.length > 0 ? (
+      {shipments.length > 0 ? (
         <BoardTable
+          dark={false}
           stateKey="transport:table"
-          data={items}
+          data={shipments}
           columns={COLUMNS}
-          searchPlaceholder="Search Spot ID, container, SKU..."
+          onRowClick={setSelected}
+          searchPlaceholder="Search Spot ID, container, SKU, PO..."
           emptyMessage="No shipments found"
         />
       ) : (
         <EmptyState
-          dark
           icon={<Ship className="w-7 h-7" />}
           title="No shipments tracked yet"
-          description="Add a shipment above — enter a PO number to auto-retrieve its SPOT ID."
+          description="Add a shipment above. Enter a PO number to retrieve its SPOT ID automatically."
         />
       )}
 
+      {selected && <ShipmentPanel shipment={selected} onClose={() => setSelected(null)} />}
+
       <Dialog.Root open={open} onOpenChange={setOpen}>
         <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[calc(100%-2rem)] sm:w-full max-w-lg max-h-[calc(100dvh-2rem)] sm:max-h-[90vh] overflow-y-auto bg-[#141414] border border-[#2a2a2a] rounded-2xl p-6 shadow-2xl">
+          <Dialog.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[calc(100%-2rem)] sm:w-full max-w-lg max-h-[calc(100dvh-2rem)] sm:max-h-[90vh] overflow-y-auto bg-white border border-gray-200 rounded-2xl p-6 shadow-2xl">
             <div className="flex items-center justify-between mb-5">
-              <Dialog.Title className="text-lg font-semibold text-white" style={{ fontFamily: "Varela Round, sans-serif" }}>
+              <Dialog.Title className="text-lg font-semibold text-gray-900" style={{ fontFamily: "Varela Round, sans-serif" }}>
                 Add Shipment
               </Dialog.Title>
-              <Dialog.Close className="p-2.5 sm:p-1.5 text-[#4b5563] hover:text-white transition-colors rounded-lg hover:bg-[#2a2a2a]">
+              <Dialog.Close className="p-2.5 sm:p-1.5 text-gray-400 hover:text-gray-900 transition-colors rounded-lg hover:bg-gray-100">
                 <X className="w-4 h-4" />
               </Dialog.Close>
             </div>
 
             {/* Cargo Partner SPOT-ID auto-retrieve by PO number */}
-            <div className="bg-[#1a1a2e] border border-blue-900/30 rounded-xl p-4 mb-5">
-              <p className="text-xs text-blue-300 font-medium mb-2">Find shipment by PO number</p>
-              <p className="text-[10px] text-[#4b5563] mb-3">
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5">
+              <p className="text-xs text-blue-800 font-medium mb-2">Find shipment by PO number</p>
+              <p className="text-[10px] text-gray-400 mb-3">
                 Enter the PO number (general reference) — Cargo Partner&apos;s SPOT ID, container and ETA are retrieved automatically.
               </p>
               <div className="flex gap-2">
@@ -389,7 +427,7 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
                   type="button"
                   onClick={handleLookup}
                   disabled={lookupStatus === "loading" || !lookupRef.trim()}
-                  className="px-3 py-2 bg-blue-900/50 hover:bg-blue-800/60 border border-blue-900/50 text-blue-300 text-sm rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1.5 whitespace-nowrap"
+                  className="px-3 py-2 bg-blue-600 hover:bg-blue-700 border border-blue-600 text-gray-900 text-sm rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1.5 whitespace-nowrap"
                 >
                   {lookupStatus === "loading" ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -400,25 +438,24 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
                 </button>
               </div>
               {lookupStatus === "found" && (
-                <p className="text-[10px] text-emerald-400 mt-2">
+                <p className="text-[10px] text-emerald-700 mt-2">
                   Found — SPOT ID <span className="font-mono">{lookupInfo?.spot_id}</span> retrieved
                   {lookupInfo?.vessel ? `, vessel ${lookupInfo.vessel}` : ""}; container + ETA pre-filled below.
                 </p>
               )}
               {lookupStatus === "found" && (lookupInfo?.count ?? 1) > 1 && (
-                <p className="text-[10px] text-yellow-400 mt-1">
+                <p className="text-[10px] text-amber-700 mt-1">
                   {lookupInfo?.count} shipments matched this PO — showing the first; verify it&apos;s the right one.
                 </p>
               )}
               {lookupStatus === "not_found" && (
-                <p className="text-[10px] text-yellow-400 mt-2">No Cargo Partner shipment for that PO yet — enter the SPOT ID manually.</p>
+                <p className="text-[10px] text-amber-700 mt-2">No Cargo Partner shipment for that PO yet — enter the SPOT ID manually.</p>
               )}
             </div>
 
             {restoredDraft && (
               <div className="mb-4">
                 <DraftStrip
-                  dark
                   what="the shipment you were adding"
                   savedAt={draftSavedAt}
                   onStartAgain={startAgain}
@@ -538,18 +575,18 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
               </Field>
 
               {submitError && (
-                <p className="text-red-400 text-sm bg-red-900/20 border border-red-800/30 rounded-lg px-3 py-2">
+                <p className="text-red-700 text-sm bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                   {submitError}
                 </p>
               )}
 
               <div className="flex justify-end gap-2 pt-1">
-                <Dialog.Close className="px-4 py-3 sm:py-2 text-sm text-[#6b7280] hover:text-white transition-colors rounded-lg hover:bg-[#2a2a2a]">
+                <Dialog.Close className="px-4 py-3 sm:py-2 text-sm text-gray-500 hover:text-gray-900 transition-colors rounded-lg hover:bg-gray-100">
                   Cancel
                 </Dialog.Close>
                 <button
                   type="submit"
-                  className="px-4 py-3 sm:py-2 bg-[#FF7026] hover:bg-[#f2641b] text-white text-sm font-medium rounded-lg transition-colors"
+                  className="px-4 py-3 sm:py-2 bg-echo-orange hover:bg-echo-orange-hover text-gray-900 text-sm font-medium rounded-lg transition-colors"
                 >
                   Add Shipment
                 </button>

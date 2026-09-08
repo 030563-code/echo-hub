@@ -29,9 +29,52 @@ interface BoardTableProps<T> {
    * visit.
    */
   stateKey?: string;
+  /**
+   * The board surface this table sits on. Dark by default, because Purchase
+   * Orders and MRP were built that way and are not changing here. Transport
+   * passes false; converting the other modules is a separate job.
+   */
+  dark?: boolean;
 }
 
 const EMPTY_VIEW: TableView = { v: 1, q: "", sort: [] };
+
+/**
+ * One palette per surface, so a colour cannot be half-converted. Same
+ * convention as search-box.tsx, empty-state.tsx and draft-strip.tsx.
+ */
+const SKIN = {
+  dark: {
+    searchIcon: "text-[#4b5563]",
+    input:
+      "bg-[#1e1e1e] border-[#2a2a2a] text-[#e5e5e5] placeholder-[#4b5563] focus:border-[#FF7026]/50",
+    frame: "border-[#2a2a2a]",
+    headRow: "border-[#2a2a2a] bg-[#161616]",
+    headCell: "text-[#6b7280]",
+    headCellHover: "hover:text-[#e5e5e5]",
+    sortIcon: "text-[#4b5563]",
+    empty: "text-[#4b5563]",
+    bodyRow: "border-[#1e1e1e] hover:bg-[#1a1a1a]",
+    bodyCell: "text-[#e5e5e5]",
+    pager: "text-[#6b7280]",
+    pagerHover: "hover:bg-[#1e1e1e]",
+  },
+  light: {
+    searchIcon: "text-gray-400",
+    input:
+      "bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-echo-orange/60",
+    frame: "border-gray-200",
+    headRow: "border-gray-200 bg-gray-50",
+    headCell: "text-gray-500",
+    headCellHover: "hover:text-gray-900",
+    sortIcon: "text-gray-400",
+    empty: "text-gray-400",
+    bodyRow: "border-gray-100 hover:bg-gray-50",
+    bodyCell: "text-gray-900",
+    pager: "text-gray-600",
+    pagerHover: "hover:bg-gray-100",
+  },
+} as const;
 
 /**
  * Two shells around one table, chosen by whether a stateKey was given.
@@ -107,6 +150,7 @@ function BoardTableView<T>({
   searchPlaceholder = "Search...",
   onRowClick,
   emptyMessage = "No records found",
+  dark = true,
   sorting,
   onSortingChange,
   globalFilter,
@@ -123,6 +167,7 @@ function BoardTableView<T>({
   // shrunken board no longer has. Same reasoning that keeps paging cursors out
   // of the quotes tab bar.
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize });
+  const skin = dark ? SKIN.dark : SKIN.light;
 
   const table = useReactTable({
     data,
@@ -141,34 +186,39 @@ function BoardTableView<T>({
     <div className="flex flex-col gap-3">
       {/* Search */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#4b5563]" />
+        <Search className={cn("absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5", skin.searchIcon)} />
         <input
           value={globalFilter}
           onChange={(e) => onGlobalFilterChange(e.target.value)}
           placeholder={searchPlaceholder}
-          className="w-full pl-8 pr-3 py-2 bg-[#1e1e1e] border border-[#2a2a2a] rounded-lg text-base sm:text-sm text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026]/50 transition-colors"
+          className={cn(
+            "w-full pl-8 pr-3 py-2 border rounded-lg text-base sm:text-sm focus:outline-none transition-colors",
+            skin.input,
+          )}
         />
       </div>
 
       {/* Table */}
-      <div className="overflow-auto rounded-lg border border-[#2a2a2a]">
+      <div className={cn("overflow-auto rounded-lg border", skin.frame)}>
         <table className="w-full min-w-[640px] text-sm">
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id} className="border-b border-[#2a2a2a] bg-[#161616]">
+              <tr key={headerGroup.id} className={cn("border-b", skin.headRow)}>
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
                     className={cn(
-                      "px-4 py-3 text-left text-xs font-medium text-[#6b7280] uppercase tracking-wider whitespace-nowrap",
-                      header.column.getCanSort() && "cursor-pointer select-none hover:text-[#e5e5e5] transition-colors"
+                      "px-4 py-3 text-left text-xs font-medium uppercase tracking-wider whitespace-nowrap",
+                      skin.headCell,
+                      header.column.getCanSort() &&
+                        cn("cursor-pointer select-none transition-colors", skin.headCellHover)
                     )}
                     onClick={header.column.getToggleSortingHandler()}
                   >
                     <span className="inline-flex items-center gap-1">
                       {flexRender(header.column.columnDef.header, header.getContext())}
                       {header.column.getCanSort() && (
-                        <span className="text-[#4b5563]">
+                        <span className={skin.sortIcon}>
                           {header.column.getIsSorted() === "asc" ? (
                             <ChevronUp className="w-3 h-3" />
                           ) : header.column.getIsSorted() === "desc" ? (
@@ -189,7 +239,7 @@ function BoardTableView<T>({
               <tr>
                 <td
                   colSpan={columns.length}
-                  className="px-4 py-12 text-center text-[#4b5563] text-sm"
+                  className={cn("px-4 py-12 text-center text-sm", skin.empty)}
                 >
                   {emptyMessage}
                 </td>
@@ -200,12 +250,13 @@ function BoardTableView<T>({
                   key={row.id}
                   onClick={() => onRowClick?.(row.original)}
                   className={cn(
-                    "border-b border-[#1e1e1e] last:border-0 hover:bg-[#1a1a1a] transition-colors",
+                    "border-b last:border-0 transition-colors",
+                    skin.bodyRow,
                     onRowClick && "cursor-pointer"
                   )}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-4 py-3 text-[#e5e5e5] whitespace-nowrap">
+                    <td key={cell.id} className={cn("px-4 py-3 whitespace-nowrap", skin.bodyCell)}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}
@@ -218,7 +269,7 @@ function BoardTableView<T>({
 
       {/* Pagination */}
       {table.getPageCount() > 1 && (
-        <div className="flex items-center justify-between text-sm text-[#6b7280]">
+        <div className={cn("flex items-center justify-between text-sm", skin.pager)}>
           <span>
             {table.getState().pagination.pageIndex * pageSize + 1}–
             {Math.min((table.getState().pagination.pageIndex + 1) * pageSize, table.getFilteredRowModel().rows.length)} of{" "}
@@ -228,14 +279,14 @@ function BoardTableView<T>({
             <button
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
-              className="p-2.5 sm:p-1.5 rounded hover:bg-[#1e1e1e] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className={cn("p-2.5 sm:p-1.5 rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors", skin.pagerHover)}
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
             <button
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
-              className="p-2.5 sm:p-1.5 rounded hover:bg-[#1e1e1e] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className={cn("p-2.5 sm:p-1.5 rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors", skin.pagerHover)}
             >
               <ChevronRight className="w-4 h-4" />
             </button>

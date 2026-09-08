@@ -1,13 +1,13 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
-// ShippingClient always renders a real BoardTable (dark theme), so this mirrors
-// page.tsx's header + stats strip plus a dark table skeleton matching its columns.
+// Mirrors page.tsx's header and stats strip plus a table skeleton matching the
+// grouped shipment columns. Light, like the screen it stands in for; the
+// --skeleton-bg override the dark board needed is gone with it.
 const HEADINGS = [
   "Spot ID",
   "Container",
-  "SKU",
-  "Product",
-  "Qty",
+  "Contents",
+  "Units",
   "Depot",
   "Status",
   "Shipped",
@@ -17,11 +17,7 @@ const HEADINGS = [
 
 export default function TransportLoading() {
   return (
-    <div
-      className="p-6"
-      role="status"
-      style={{ '--skeleton-bg': 'rgba(255,255,255,0.10)' } as React.CSSProperties}
-    >
+    <div className="p-6" role="status">
       <span className="sr-only">Loading…</span>
 
       {/* Header */}
@@ -33,7 +29,7 @@ export default function TransportLoading() {
       {/* Stats strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="bg-[#1e1e1e] border border-[#2a2a2a] rounded-lg px-4 py-3">
+          <div key={i} className="bg-white border border-gray-200 rounded-lg px-4 py-3">
             <Skeleton className="h-3 w-20 mb-2" />
             <Skeleton className="h-6 w-10" />
           </div>
@@ -50,12 +46,12 @@ export default function TransportLoading() {
       <Skeleton className="h-9 w-full rounded-lg mb-3" />
 
       {/* Table */}
-      <div className="overflow-auto rounded-lg border border-[#2a2a2a]">
+      <div className="overflow-auto rounded-lg border border-gray-200">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-[#2a2a2a] bg-[#161616]">
+            <tr className="border-b border-gray-200 bg-gray-50">
               {HEADINGS.map((h) => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-medium text-[#6b7280] uppercase tracking-wider whitespace-nowrap">
+                <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                   {h}
                 </th>
               ))}
@@ -63,7 +59,7 @@ export default function TransportLoading() {
           </thead>
           <tbody>
             {Array.from({ length: 5 }).map((_, r) => (
-              <tr key={r} className="border-b border-[#1e1e1e] last:border-0">
+              <tr key={r} className="border-b border-gray-100 last:border-0">
                 {HEADINGS.map((h, c) => (
                   <td key={c} className="px-4 py-3">
                     <Skeleton className="h-3 w-full max-w-[100px]" />

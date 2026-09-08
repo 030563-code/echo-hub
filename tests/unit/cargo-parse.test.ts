@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { parseSpotIds, pickEta, pickLatestEvent, extractShipmentDetail } from '@/lib/cargo-parse'
+import {
+  parseSpotIds,
+  pickEta,
+  pickLatestEvent,
+  extractShipmentDetail,
+  parseEvents,
+  parseRoutingPoints,
+} from '@/lib/cargo-parse'
 
 describe('parseSpotIds (the /shipments/lookup body → SPOT IDs)', () => {
   it('returns the cleaned id list, sorted newest (highest) first for determinism', () => {
@@ -71,5 +78,69 @@ describe('extractShipmentDetail', () => {
       container_ref: undefined, eta: undefined, shipped_at: undefined, vessel: undefined, carrier: undefined,
       last_event: undefined, last_event_at: undefined,
     })
+  })
+})
+
+describe('parseEvents (the whole timeline, for the shipment panel)', () => {
+  const body = {
+    events: [
+      { eventTypeName: 'Arrived', eventTimestamp: { date: '2026-10-01', time: '09:00' }, location: { name: 'Baltimore' } },
+      { eventTypeName: 'Departed', eventTimestamp: { date: '2026-09-01', time: '17:30' } },
+      { eventTypeName: 'Loaded', eventTimestamp: { date: '2026-09-01', time: '08:00' } },
+    ],
+  }
+
+  it('returns every milestone, oldest first', () => {
+    expect(parseEvents(body).map((e) => e.name)).toEqual(['Loaded', 'Departed', 'Arrived'])
+  })
+
+  it('keeps the location when the API gave one', () => {
+    expect(parseEvents(body)[2].location).toBe('Baltimore')
+    expect(parseEvents(body)[0].location).toBeUndefined()
+  })
+
+  it('drops an event with no name or no date rather than rendering a blank row', () => {
+    expect(
+      parseEvents({
+        events: [
+          { eventTypeName: '', eventTimestamp: { date: '2026-09-01' } },
+          { eventTypeName: 'Loaded', eventTimestamp: {} },
+          { eventTypeName: 'Real', eventTimestamp: { date: '2026-09-02' } },
+        ],
+      }).map((e) => e.name),
+    ).toEqual(['Real'])
+  })
+
+  it('returns [] for a body with no events at all', () => {
+    expect(parseEvents({})).toEqual([])
+    expect(parseEvents(null)).toEqual([])
+    expect(parseEvents({ events: 'nope' })).toEqual([])
+  })
+
+  it('still agrees with pickLatestEvent, which now reads through it', () => {
+    expect(pickLatestEvent(body)).toEqual({ name: 'Arrived', date: '2026-10-01' })
+  })
+})
+
+describe('parseRoutingPoints', () => {
+  it('returns the route with names and estimated arrivals', () => {
+    expect(
+      parseRoutingPoints({
+        routingInformation: {
+          routingPoints: [
+            { routingPointType: 'PORT_OF_LOADING', location: { name: 'Koper' } },
+            { routingPointType: 'PORT_OF_DISCHARGE', location: { name: 'Baltimore' }, estimatedArrival: { date: '2026-10-01' } },
+          ],
+        },
+      }),
+    ).toEqual([
+      { type: 'PORT_OF_LOADING', name: 'Koper', estimatedArrival: undefined },
+      { type: 'PORT_OF_DISCHARGE', name: 'Baltimore', estimatedArrival: '2026-10-01' },
+    ])
+  })
+
+  it('drops a point with no type and copes with a body that has no routing at all', () => {
+    expect(parseRoutingPoints({ routingInformation: { routingPoints: [{ location: { name: 'X' } }] } })).toEqual([])
+    expect(parseRoutingPoints({})).toEqual([])
   })
 })

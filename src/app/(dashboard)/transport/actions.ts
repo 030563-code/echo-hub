@@ -4,7 +4,8 @@ import { z } from "zod";
 import { createServerClient } from "@/lib/supabase/server";
 import { hasCapability } from "@/lib/authz";
 import { revalidatePath } from "next/cache";
-import { getCargoToken, fetchSpotIds, fetchShipmentDetail } from "@/lib/cargo-client";
+import { getCargoToken, fetchSpotIds, fetchShipmentDetail, fetchShipmentFull } from "@/lib/cargo-client";
+import type { CargoEvent, RoutingPoint } from "@/lib/cargo-parse";
 
 const SKU_NAMES: Record<string, string> = {
   // NA — North America-facing
@@ -67,6 +68,42 @@ export async function lookupCargoPartnerShipment(
     // 404 is returned above as a clean { found:false } (no shipment); this catch
     // is the transient-5xx / network path — retryable, not "no shipment".
     return { found: false, error: "Couldn't reach Cargo Partner — please try again." };
+  }
+}
+
+export interface ShipmentDetailResult {
+  found: boolean;
+  container_ref?: string;
+  eta?: string;
+  shipped_at?: string;
+  vessel?: string;
+  carrier?: string;
+  events?: CargoEvent[];
+  route?: RoutingPoint[];
+  error?: string;
+}
+
+/**
+ * Everything Cargo Partner know about one shipment, for the details panel.
+ *
+ * Same credentialed proxy as the lookup above and gated the same way: without
+ * transport.view this would let anyone enumerate shipments against Echo
+ * Barrier's account. Read only. The Hub makes no transport-order writes at all.
+ */
+export async function getShipmentDetail(spotId: string): Promise<ShipmentDetailResult> {
+  if (!(await hasCapability("transport.view"))) {
+    return { found: false, error: "Forbidden: missing transport capability" };
+  }
+  const id = spotId.trim();
+  if (!id) return { found: false };
+
+  try {
+    const token = await getCargoToken();
+    const full = await fetchShipmentFull(token, id);
+    if (!full) return { found: false };
+    return { found: true, ...full.detail, events: full.events, route: full.route };
+  } catch {
+    return { found: false, error: "Couldn't reach Cargo Partner, please try again." };
   }
 }
 

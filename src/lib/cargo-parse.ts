@@ -15,16 +15,59 @@ export interface CargoDetail {
   last_event_at?: string
 }
 
+export interface CargoEvent {
+  name: string
+  date: string
+  /** '' when the API gave a date but no time. Kept so sorting stays stable. */
+  time: string
+  location?: string
+}
+
+/**
+ * The whole tracking timeline, oldest first.
+ *
+ * pickLatestEvent used to do this inline and throw the rest away, which was
+ * right while the board only showed a status. The shipment panel wants the
+ * milestones themselves, and parsing them twice in two places is how the two
+ * would end up disagreeing.
+ */
+export function parseEvents(d: any): CargoEvent[] {
+  const evs: any[] = Array.isArray(d?.events) ? d.events : []
+  return evs
+    .map((e) => ({
+      name: String(e?.eventTypeName ?? ''),
+      date: String(e?.eventTimestamp?.date ?? ''),
+      time: String(e?.eventTimestamp?.time ?? ''),
+      location: e?.location?.name ? String(e.location.name) : undefined,
+    }))
+    .filter((e) => e.name && e.date)
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+}
+
 /** The most recent event by timestamp (the live tracking status). */
 export function pickLatestEvent(d: any): { name: string; date: string } | undefined {
-  const evs: any[] = Array.isArray(d?.events) ? d.events : []
-  const cleaned = evs
-    .map((e) => ({ name: e?.eventTypeName ?? '', date: e?.eventTimestamp?.date ?? '', time: e?.eventTimestamp?.time ?? '' }))
-    .filter((e) => e.name && e.date)
-  if (!cleaned.length) return undefined
-  cleaned.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
-  const last = cleaned[cleaned.length - 1]
+  const events = parseEvents(d)
+  if (!events.length) return undefined
+  const last = events[events.length - 1]
   return { name: last.name, date: last.date }
+}
+
+/** Route, oldest first, for the panel's "where has it been" line. */
+export interface RoutingPoint {
+  type: string
+  name?: string
+  estimatedArrival?: string
+}
+
+export function parseRoutingPoints(d: any): RoutingPoint[] {
+  const rp: any[] = d?.routingInformation?.routingPoints ?? []
+  return rp
+    .map((p) => ({
+      type: String(p?.routingPointType ?? ''),
+      name: p?.location?.name ? String(p.location.name) : undefined,
+      estimatedArrival: p?.estimatedArrival?.date ? String(p.estimatedArrival.date) : undefined,
+    }))
+    .filter((p) => p.type)
 }
 
 /** Normalise the /shipments/lookup body to a clean list of SPOT IDs. */

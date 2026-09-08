@@ -21,21 +21,21 @@ export default async function ShippingPage() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white" style={{ fontFamily: "Varela Round, sans-serif" }}>
+        <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: "Varela Round, sans-serif" }}>
           Logistics & Shipping
         </h1>
-        <p className="text-[#6b7280] text-sm mt-1">Active containers and shipments in transit</p>
+        <p className="text-gray-500 text-sm mt-1">Active containers and shipments in transit</p>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
-          { label: "Total Lines", value: items.length, color: "text-white" },
-          { label: "On Water", value: onWater, color: "text-blue-300" },
-          { label: "At Port / Customs", value: atPort + customs, color: "text-yellow-300" },
-          { label: "Units in Transit", value: totalUnits, color: "text-[#FF7026]" },
+          { label: "Total Lines", value: items.length, color: "text-gray-900" },
+          { label: "On Water", value: onWater, color: "text-blue-700" },
+          { label: "At Port / Customs", value: atPort + customs, color: "text-amber-700" },
+          { label: "Units in Transit", value: totalUnits, color: "text-echo-orange" },
         ].map(({ label, value, color }) => (
-          <div key={label} className="bg-[#1e1e1e] border border-[#2a2a2a] rounded-lg px-4 py-3">
-            <p className="text-[#6b7280] text-xs mb-0.5">{label}</p>
+          <div key={label} className="bg-white border border-gray-200 rounded-lg px-4 py-3">
+            <p className="text-gray-500 text-xs mb-0.5">{label}</p>
             <p className={`text-2xl font-bold ${color}`}>{value}</p>
           </div>
         ))}
