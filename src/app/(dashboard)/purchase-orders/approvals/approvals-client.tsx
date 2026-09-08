@@ -69,8 +69,10 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
         toast.warning(res.warning);
       } else {
         const text = res.nextPoNumber
-          ? `${res.tier} approved — next tier raised as ${res.nextPoNumber}.`
-          : `${res.tier} approved — final tier, the chain is complete.`;
+          ? `${res.tier} approved. The next tier was raised as ${res.nextPoNumber}.`
+          : res.awaitingFulfilment
+            ? `${res.tier} approved. It is now with SRO, who choose whether to fulfil it from stock or manufacture it.`
+            : `${res.tier} approved. Final tier, the chain is complete.`;
         setNotice({ kind: "success", text });
         toast.success(text);
       }

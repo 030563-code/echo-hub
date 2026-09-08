@@ -38,7 +38,15 @@ const DecideSchema = z.object({
 export type DecidePOInput = z.infer<typeof DecideSchema>;
 
 export type DecidePOResult =
-  | { success: true; status: "approved" | "rejected"; tier: string; nextPoNumber?: string; warning?: string }
+  | {
+      success: true;
+      status: "approved" | "rejected";
+      tier: string;
+      nextPoNumber?: string;
+      /** The SRO leg raises nothing until somebody chooses stock or manufacture. */
+      awaitingFulfilment?: boolean;
+      warning?: string;
+    }
   | { success: false; error: string };
 
 type Leg = "DEPOT_TO_EB_GROUP" | "EB_GROUP_TO_SRO" | "SRO_TO_SUPPLIER";
@@ -161,6 +169,7 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
     next_leg?: string | null;
     child_id?: string | null;
     child_po_number?: string | null;
+    awaiting_fulfilment?: boolean;
   };
   if (!result.ok) {
     return {
@@ -252,5 +261,12 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
 
   revalidatePath("/purchase-orders");
   revalidatePath("/purchase-orders/approvals");
-  return { success: true, status: "approved", tier, nextPoNumber, warning };
+  return {
+    success: true,
+    status: "approved",
+    tier,
+    nextPoNumber,
+    awaitingFulfilment: result.awaiting_fulfilment === true,
+    warning,
+  };
 }
