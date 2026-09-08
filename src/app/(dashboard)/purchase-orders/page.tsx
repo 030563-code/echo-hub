@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { Plus, ClipboardCheck } from "lucide-react";
 import { createServerClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getCapabilities } from "@/lib/authz";
 import { stripPurchaseOrderCosts } from "@/lib/price-visibility";
 import { effectiveStage } from "@/lib/po-lifecycle";
 import { getPoPdfData } from "@/lib/po-pdf-data";
 import PurchasingClient from "./purchasing-client";
-import type { PurchaseOrder, PoAttachment, PoShipment } from "@/lib/erp-types";
+import type { PurchaseOrder, PoAttachment, PoShipment, PoManufacturing } from "@/lib/erp-types";
 
 export const dynamic = "force-dynamic";
 
@@ -71,6 +72,27 @@ export default async function PurchasingPage() {
     for (const o of all) o.shipment = shipByPo.get(o.id) ?? null;
   }
   const canDetectShipment = caps.has("transport.view");
+
+  // Attach manufacturing progress per PO: sent, dates given, finished. Read with
+  // the service-role client because po_manufacturing is not reachable by anon or
+  // authenticated at all, and narrowed to the four presentational columns.
+  if (poIds.length) {
+    const { data: mfgRows } = await createAdminClient()
+      .from("po_manufacturing")
+      .select("po_id, sent_at, sent_was_test, est_start, est_finish, finished_at")
+      .in("po_id", poIds);
+    const mfgByPo = new Map<string, PoManufacturing>();
+    for (const m of mfgRows ?? []) {
+      mfgByPo.set(String(m.po_id), {
+        sent_at: m.sent_at ?? null,
+        sent_was_test: m.sent_was_test === true,
+        est_start: m.est_start ?? null,
+        est_finish: m.est_finish ?? null,
+        finished_at: m.finished_at ?? null,
+      });
+    }
+    for (const o of all) o.manufacturing = mfgByPo.get(o.id) ?? null;
+  }
 
   // From/To party addresses + weekly FX for the branded PO PDF.
   const poPdfData = await getPoPdfData(supabase);

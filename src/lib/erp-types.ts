@@ -47,6 +47,21 @@ export interface PurchaseOrder {
   lines?: PurchaseOrderLine[];
   attachments?: PoAttachment[];
   shipment?: PoShipment | null;
+  /** Manufacturing progress, on SRO_TO_SUPPLIER orders that have been sent. */
+  manufacturing?: PoManufacturing | null;
+}
+
+/**
+ * What Bamida have done with a manufacturing order. Carries no cost and no
+ * addresses beyond who the Hub emailed, because the board shows it to anyone
+ * who can see purchase orders.
+ */
+export interface PoManufacturing {
+  sent_at: string | null;
+  sent_was_test: boolean;
+  est_start: string | null;
+  est_finish: string | null;
+  finished_at: string | null;
 }
 
 /** A PO's Cargo Partner shipment, auto-resolved from the PO number + persisted. */

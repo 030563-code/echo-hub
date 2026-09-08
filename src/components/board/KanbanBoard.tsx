@@ -166,6 +166,33 @@ function POCard({
         </div>
       )}
 
+      {/* Manufacturing progress: sent, dated, finished. Only ever present on a
+          SRO_TO_SUPPLIER order that has actually been sent to Bamida. */}
+      {order.manufacturing?.sent_at && (
+        <div className="mb-2 flex flex-wrap items-center gap-1">
+          <span
+            className={cn(
+              "text-[10px] px-1.5 py-0.5 rounded",
+              order.manufacturing.sent_was_test
+                ? "bg-amber-950 text-amber-300"
+                : "bg-[#2a2a2a] text-[#9ca3af]",
+            )}
+          >
+            {order.manufacturing.sent_was_test ? "Sent to test address" : "Sent to Bamida"}
+          </span>
+          {order.manufacturing.est_finish && !order.manufacturing.finished_at && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#2a2a2a] text-[#9ca3af]">
+              Due {order.manufacturing.est_finish}
+            </span>
+          )}
+          {order.manufacturing.finished_at && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300">
+              Manufacturing finished
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Line items summary */}
       {lines.length > 0 && (
         <div className="border-t border-[#2a2a2a] pt-2 mt-2">

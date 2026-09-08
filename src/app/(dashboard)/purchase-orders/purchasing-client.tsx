@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
 import { toast } from "sonner";
-import { LayoutGrid, List, X, PackageCheck, Loader2, Check, Paperclip, Download, Upload, Trash2, Ship, Inbox, FileDown } from "lucide-react";
+import { LayoutGrid, List, X, PackageCheck, Loader2, Check, Paperclip, Download, Upload, Trash2, Ship, Inbox, FileDown, ArrowRight } from "lucide-react";
 import KanbanBoard from "@/components/board/KanbanBoard";
 import BoardTable from "@/components/board/BoardTable";
 import StatusBadge from "@/components/board/StatusBadge";
@@ -293,6 +293,23 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
             <DetailSection label="Status">
               <StatusBadge status={selected.status} />
             </DetailSection>
+
+            {/* Where the decisions live: choose stock or manufacture on an
+                approved SRO leg, send a manufacturing order to Bamida. Reachable
+                from the board as well as from the email. */}
+            {(selected.leg === "EB_GROUP_TO_SRO" || selected.leg === "SRO_TO_SUPPLIER") && (
+              <Link
+                href={`/purchase-orders/${selected.id}`}
+                className="flex items-center justify-between gap-2 w-full px-4 py-2.5 text-sm text-[#e5e5e5] bg-[#1e1e1e] hover:bg-[#2a2a2a] border border-[#2a2a2a] rounded-lg transition-colors"
+              >
+                {selected.leg === "EB_GROUP_TO_SRO" && selected.status === "approved"
+                  ? "Choose how this is fulfilled"
+                  : selected.leg === "SRO_TO_SUPPLIER"
+                    ? "Manufacturing"
+                    : "Open this order"}
+                <ArrowRight className="w-3.5 h-3.5 text-[#6b7280]" />
+              </Link>
+            )}
 
             <DetailSection label="Route">
               <p className="text-sm text-[#e5e5e5]">{selected.from_entity}</p>
