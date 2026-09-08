@@ -8,7 +8,8 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { formatMoney, formatDate } from '@/lib/utils'
+import { formatMoney } from '@/lib/utils'
+import { pickContractPrice } from '@/lib/pricing'
 import { CURRENCY_NAME } from '@/lib/pipeline-config'
 import { searchCompanies } from '@/app/actions/hubspot/searchCompanies'
 import { saveContractPrice, saveContractor } from '@/app/actions/pricing/save-pricing'
@@ -43,7 +44,14 @@ interface CompanyHit {
  * Adds a contractor by searching HubSpot, so the id stored here is the same id
  * a deal carries. Typing a name by hand would give two records that never join.
  */
-function ContractorEditor({ existing }: { existing?: ContractorRow }) {
+function ContractorEditor({
+  existing,
+  trigger,
+}: {
+  existing?: ContractorRow
+  /** The company name in the grid's first column, when that is the trigger. */
+  trigger?: React.ReactNode
+}) {
   const router = useRouter()
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<CompanyHit[]>([])
@@ -83,9 +91,9 @@ function ContractorEditor({ existing }: { existing?: ContractorRow }) {
     <EditRowDialog
       title={existing ? existing.name : 'Add a contractor'}
       trigger={
-        existing
+        trigger ?? (existing
           ? <Button size="sm" variant="outline">Edit</Button>
-          : <Button size="sm">Add a contractor</Button>
+          : <Button size="sm">Add a contractor</Button>)
       }
       onSave={async () => {
         if (!picked) return { success: false as const, error: 'Search for the company in HubSpot and pick it.' }
@@ -160,6 +168,9 @@ function PriceEditor({
   existing,
   skus,
   productNames,
+  presetSku,
+  presetCurrency,
+  trigger,
 }: {
   contractor: ContractorRow
   existing?: ContractPriceRecord
@@ -167,10 +178,16 @@ function PriceEditor({
   /** SKU to the product name as it reads in HubSpot. A SKU with no list price
    *  simply has no entry, and the row falls back to showing its SKU alone. */
   productNames: Record<string, string>
+  /** Opening from a grid cell already knows which product and which currency
+   *  the price is for, so the dialog does not ask again. */
+  presetSku?: string
+  presetCurrency?: string
+  /** The cell itself, when the grid is the trigger rather than a button. */
+  trigger?: React.ReactNode
 }) {
   const router = useRouter()
-  const [sku, setSku] = useState(existing?.sku ?? '')
-  const [currency, setCurrency] = useState(existing?.currency ?? 'USD')
+  const [sku, setSku] = useState(existing?.sku ?? presetSku ?? '')
+  const [currency, setCurrency] = useState(existing?.currency ?? presetCurrency ?? 'USD')
   const [unitPrice, setUnitPrice] = useState(existing ? String(existing.unit_price ?? '') : '')
   const [validFrom, setValidFrom] = useState(existing?.valid_from ?? '')
   const [validTo, setValidTo] = useState(existing?.valid_to ?? '')
@@ -184,9 +201,9 @@ function PriceEditor({
     <EditRowDialog
       title={existing ? `${existing.sku} for ${contractor.name}` : `Add a price for ${contractor.name}`}
       trigger={
-        existing
+        trigger ?? (existing
           ? <Button size="sm" variant="outline">Edit</Button>
-          : <Button size="sm" variant="outline">Add a price</Button>
+          : <Button size="sm" variant="outline">Add a price</Button>)
       }
       onSave={async () => {
         if (!sku.trim()) return { success: false as const, error: 'Pick a SKU.' }
@@ -286,6 +303,7 @@ export function ContractPricesClient({
   skus,
   productNames,
   canEdit,
+  today,
 }: {
   contractors: ContractorRow[]
   prices: ContractPriceRecord[]
@@ -294,21 +312,66 @@ export function ContractPricesClient({
    *  prices the page already loads. */
   productNames: Record<string, string>
   canEdit: boolean
+  /** yyyy-mm-dd from the server, so the grid and the quote builder agree on
+   *  what is in force and the markup does not change under hydration. */
+  today: string
 }) {
-  const byCompany = new Map<string, ContractPriceRecord[]>()
-  for (const price of prices) {
-    const list = byCompany.get(price.hubspot_company_id) ?? []
-    list.push(price)
-    byCompany.set(price.hubspot_company_id, list)
+  // Contractors price in more than one currency (Herc and United Rentals hold
+  // both USD and CAD on the same products), and a cell can only hold one
+  // number. One currency at a time, which is also how a quote works.
+  // USD first because it is the default and every contractor has one.
+  const currencies = Array.from(new Set(prices.map((p) => p.currency))).sort((a, b) =>
+    a === 'USD' ? -1 : b === 'USD' ? 1 : a.localeCompare(b),
+  )
+  const [currency, setCurrency] = useState(currencies.includes('USD') ? 'USD' : (currencies[0] ?? 'USD'))
+
+  const forCurrency = prices.filter((p) => p.currency === currency)
+
+  // company id -> sku -> the rows behind that cell
+  const cells = new Map<string, Map<string, ContractPriceRecord[]>>()
+  for (const price of forCurrency) {
+    const byCompany = cells.get(price.hubspot_company_id) ?? new Map<string, ContractPriceRecord[]>()
+    byCompany.set(price.sku, [...(byCompany.get(price.sku) ?? []), price])
+    cells.set(price.hubspot_company_id, byCompany)
   }
+
+  // Only products somebody actually has a contract price for, so the grid stays
+  // as wide as the negotiated range rather than as wide as the whole catalogue.
+  const columns = Array.from(new Set(forCurrency.map((p) => p.sku))).sort((a, b) =>
+    (productNames[a] ?? a).localeCompare(productNames[b] ?? b),
+  )
+
+  const label = (sku: string) => productNames[sku] ?? sku
+  /** Every product is an Echo Barrier one, so the brand in twelve column
+   *  headings is six lines of wrapping that say nothing. The full name stays
+   *  on the heading's title. */
+  const shortLabel = (sku: string) => label(sku).replace(/^Echo\s*Barrier\s*/i, '').trim() || label(sku)
 
   return (
     <div className="space-y-4">
-      {canEdit && (
-        <div className="flex justify-end">
-          <ContractorEditor />
-        </div>
-      )}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {currencies.length > 1 ? (
+          <div className="inline-flex rounded-md border border-gray-200 bg-white p-0.5">
+            {currencies.map((code) => (
+              <button
+                key={code}
+                type="button"
+                onClick={() => setCurrency(code)}
+                className={
+                  code === currency
+                    ? 'rounded px-3 py-1.5 text-sm font-semibold bg-gray-900 text-white'
+                    : 'rounded px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900'
+                }
+              >
+                {code}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <span />
+        )}
+        {canEdit && <ContractorEditor />}
+      </div>
 
       {contractors.length === 0 ? (
         <Card className="bg-white border-gray-200">
@@ -317,83 +380,120 @@ export function ContractPricesClient({
             negotiated price for.
           </p>
         </Card>
+      ) : columns.length === 0 ? (
+        <Card className="bg-white border-gray-200">
+          <p className="text-sm text-gray-600">No contract prices in {currency} yet.</p>
+        </Card>
       ) : (
-        contractors.map((contractor) => {
-          const rows = byCompany.get(contractor.hubspot_company_id) ?? []
-          return (
-            <Card
-              key={contractor.hubspot_company_id}
-              className={`bg-white border-gray-200 p-0 overflow-hidden ${contractor.is_active === false ? 'opacity-60' : ''}`}
-            >
-              <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-                <div>
-                  <h2 className="font-semibold text-gray-900">
-                    {contractor.name}
-                    {contractor.is_active === false && (
-                      <span className="ml-2 text-xs font-normal text-gray-500">(switched off)</span>
-                    )}
-                  </h2>
-                  <p className="text-xs text-gray-500">{contractor.domain ?? 'no domain'}</p>
-                </div>
-                {canEdit && (
-                  <div className="flex gap-2">
-                    <ContractorEditor existing={contractor} />
-                    <PriceEditor contractor={contractor} skus={skus} productNames={productNames} />
-                  </div>
-                )}
-              </div>
-
-              {rows.length === 0 ? (
-                <p className="px-4 py-4 text-sm text-gray-500">No contract prices yet.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-200 text-left text-gray-600">
-                        <th className="px-4 py-2.5 font-medium">Product</th>
-                        <th className="px-4 py-2.5 font-medium">SKU</th>
-                        <th className="px-4 py-2.5 font-medium">Their code</th>
-                        <th className="px-4 py-2.5 font-medium text-right">Price</th>
-                        <th className="px-4 py-2.5 font-medium">In force</th>
-                        <th className="px-4 py-2.5 font-medium">Last changed by</th>
-                        {canEdit && <th className="px-4 py-2.5" />}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((row) => (
-                        <tr key={row.id} className={`border-b border-gray-100 last:border-0 ${row.is_active === false ? 'opacity-50' : ''}`}>
-                          {/* The product name, not the SKU, is what a person
-                              reads. A SKU with no list price has no name to
-                              resolve, so the cell shows the SKU rather than a
-                              dash that would look like missing data. */}
-                          <td className="px-4 py-2.5 font-medium text-gray-900">
-                            {productNames[row.sku] ?? row.sku}
+        <Card className="bg-white border-gray-200 p-0 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-separate border-spacing-0">
+              <thead>
+                <tr className="text-left text-gray-600">
+                  {/* Sticky, so the company is still readable once the grid is
+                      scrolled sideways past a dozen products. */}
+                  <th className="sticky left-0 z-10 bg-white border-b border-gray-200 px-4 py-2.5 font-medium">
+                    Contractor
+                  </th>
+                  {columns.map((sku) => (
+                    <th
+                      key={sku}
+                      title={label(sku)}
+                      className="w-28 min-w-28 border-b border-gray-200 px-3 py-2.5 text-right font-medium align-bottom"
+                    >
+                      <span className="block text-gray-900 leading-tight">{shortLabel(sku)}</span>
+                      <span className="block text-xs font-normal text-gray-500">{sku}</span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {contractors.map((contractor) => {
+                  const row = cells.get(contractor.hubspot_company_id)
+                  const off = contractor.is_active === false
+                  return (
+                    <tr key={contractor.hubspot_company_id} className={off ? 'opacity-60' : ''}>
+                      <th
+                        scope="row"
+                        className="sticky left-0 z-10 bg-white border-b border-gray-100 px-4 py-2.5 text-left font-medium text-gray-900 whitespace-nowrap"
+                      >
+                        {canEdit ? (
+                          <ContractorEditor
+                            existing={contractor}
+                            trigger={
+                              <button type="button" className="text-left hover:underline">
+                                {contractor.name}
+                              </button>
+                            }
+                          />
+                        ) : (
+                          contractor.name
+                        )}
+                        {off && <span className="ml-2 text-xs font-normal text-gray-500">(switched off)</span>}
+                      </th>
+                      {columns.map((sku) => {
+                        const found = row?.get(sku) ?? []
+                        // The same function the quote builder resolves with, so
+                        // a cell is never a price nobody is charged.
+                        const live = pickContractPrice(found, {
+                          sku,
+                          currency,
+                          companyId: contractor.hubspot_company_id,
+                          today,
+                        })
+                        // A price that exists but is not in force today is shown
+                        // greyed rather than hidden: an empty cell would read as
+                        // "no deal on this product", which is a different thing.
+                        const shown = live ?? found[0] ?? null
+                        const content = shown === null
+                          ? <span className="text-gray-300">&mdash;</span>
+                          : (
+                            <span
+                              className={live ? 'tabular-nums text-gray-900' : 'tabular-nums text-gray-400 italic'}
+                              title={live ? undefined : 'Not in force today'}
+                            >
+                              {formatMoney(Number(shown.unit_price), shown.currency)}
+                            </span>
+                          )
+                        return (
+                          <td key={sku} className="border-b border-gray-100 px-3 py-2.5 text-right">
+                            {canEdit ? (
+                              <PriceEditor
+                                contractor={contractor}
+                                existing={shown ?? undefined}
+                                presetSku={sku}
+                                presetCurrency={currency}
+                                skus={skus}
+                                productNames={productNames}
+                                trigger={
+                                  <button
+                                    type="button"
+                                    className="w-full rounded px-2 py-1 text-right hover:bg-gray-100"
+                                    title={shown ? 'Change this price' : `Set a ${currency} price for ${label(sku)}`}
+                                  >
+                                    {content}
+                                  </button>
+                                }
+                              />
+                            ) : (
+                              content
+                            )}
                           </td>
-                          <td className="px-4 py-2.5 text-xs text-gray-500">{row.sku}</td>
-                          <td className="px-4 py-2.5 text-gray-600">{row.customer_part_number ?? '—'}</td>
-                          <td className="px-4 py-2.5 text-right tabular-nums text-gray-900">
-                            {formatMoney(Number(row.unit_price), row.currency)}
-                          </td>
-                          <td className="px-4 py-2.5 text-gray-600">
-                            {row.valid_from ? formatDate(row.valid_from) : 'always'}
-                            {row.valid_to ? ` to ${formatDate(row.valid_to)}` : ''}
-                          </td>
-                          <td className="px-4 py-2.5 text-xs text-gray-500">{row.updated_by_label ?? '—'}</td>
-                          {canEdit && (
-                            <td className="px-4 py-2.5 text-right">
-                              <PriceEditor contractor={contractor} existing={row} skus={skus} productNames={productNames} />
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </Card>
-          )
-        })
+                        )
+                      })}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
+
+      <p className="text-xs text-gray-500">
+        Each cell is the price a quote would use today. Click one to change it, or an empty one to add
+        a price. Click a contractor to edit the company.
+      </p>
     </div>
   )
 }

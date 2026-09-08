@@ -157,6 +157,39 @@ function formatMoney(value: number, currency = 'USD'): string {
  * silent 1.00 placeholder reading as a real list price is the failure this
  * whole module exists to stop.
  */
+/**
+ * The contract price in force for one company, product and currency.
+ *
+ * Exported because the contract-prices grid shows one number per cell and it
+ * has to be THIS number: a grid resolving "in force" its own way would be a
+ * page of prices nobody is ever charged. Both callers now share the rule.
+ *
+ * Latest valid_from wins: it is the most recently negotiated price. A null
+ * valid_from is open ended backwards, so it sorts earliest and loses to any
+ * dated row, and rows sharing a date keep the first one seen.
+ */
+export function pickContractPrice<T extends ContractPriceRow>(
+  rows: readonly T[] | null | undefined,
+  where: { sku: string; currency: string; companyId: string; today: string },
+): T | null {
+  const sku = norm(where.sku)
+  const currency = norm(where.currency)
+  const companyId = String(where.companyId ?? '').trim()
+  const today = day(where.today)
+  if (sku === '' || companyId === '') return null
+
+  let best: T | null = null
+  for (const row of rows ?? []) {
+    if (norm(row.sku) !== sku) continue
+    if (norm(row.currency) !== currency) continue
+    if (String(row.hubspot_company_id ?? '').trim() !== companyId) continue
+    if (!isActive(row)) continue
+    if (!withinWindow(row, today)) continue
+    if (best === null || day(row.valid_from) > day(best.valid_from)) best = row
+  }
+  return best
+}
+
 export function resolveBasePrice(input: {
   sku: string
   currency: string
@@ -183,20 +216,7 @@ export function resolveBasePrice(input: {
   // from the list row even when a contract wins the price.
   const listFloor = listRow ? clampAmount(readNumber(listRow.floor_price)) : null
 
-  let contract: ContractPriceRow | null = null
-  if (sku !== '' && companyId !== '') {
-    for (const row of input.contractPrices ?? []) {
-      if (norm(row.sku) !== sku) continue
-      if (norm(row.currency) !== currency) continue
-      if (String(row.hubspot_company_id ?? '').trim() !== companyId) continue
-      if (!isActive(row)) continue
-      if (!withinWindow(row, today)) continue
-      // Latest valid_from wins: it is the most recently negotiated price. A
-      // null valid_from is open ended backwards so it sorts earliest and loses
-      // to any dated row. Rows sharing a date keep the first one seen.
-      if (contract === null || day(row.valid_from) > day(contract.valid_from)) contract = row
-    }
-  }
+  const contract = pickContractPrice(input.contractPrices, { sku, currency, companyId, today })
 
   if (contract !== null) {
     const unitPrice = roundCents(toMoney(contract.unit_price))

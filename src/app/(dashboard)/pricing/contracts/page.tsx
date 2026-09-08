@@ -99,6 +99,7 @@ export default async function ContractPricesPage() {
         skus={skus}
         productNames={productNames}
         canEdit={canEdit}
+        today={new Date().toISOString().slice(0, 10)}
       />
     </div>
   )
