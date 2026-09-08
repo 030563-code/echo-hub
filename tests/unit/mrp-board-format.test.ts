@@ -15,13 +15,13 @@ import {
 
 describe('zoneChipClasses', () => {
   it('maps each zone to its traffic-light palette', () => {
-    expect(zoneChipClasses('red')).toContain('text-red-300')
-    expect(zoneChipClasses('yellow')).toContain('text-yellow-300')
-    expect(zoneChipClasses('green')).toContain('text-emerald-300')
+    expect(zoneChipClasses('red')).toContain('text-red-700')
+    expect(zoneChipClasses('yellow')).toContain('text-amber-700')
+    expect(zoneChipClasses('green')).toContain('text-emerald-700')
   })
   it('unknown zones degrade to the neutral chip (zone column is nullable)', () => {
     for (const z of ['', 'purple', 'RED']) {
-      expect(zoneChipClasses(z)).toContain('text-[#9ca3af]')
+      expect(zoneChipClasses(z)).toContain('text-gray-600')
     }
   })
 })

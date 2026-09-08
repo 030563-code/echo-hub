@@ -29,51 +29,27 @@ interface BoardTableProps<T> {
    * visit.
    */
   stateKey?: string;
-  /**
-   * The board surface this table sits on. Dark by default, because Purchase
-   * Orders and MRP were built that way and are not changing here. Transport
-   * passes false; converting the other modules is a separate job.
-   */
-  dark?: boolean;
 }
 
 const EMPTY_VIEW: TableView = { v: 1, q: "", sort: [] };
 
 /**
- * One palette per surface, so a colour cannot be half-converted. Same
- * convention as search-box.tsx, empty-state.tsx and draft-strip.tsx.
+ * One palette, since every module is white now.
  */
 const SKIN = {
-  dark: {
-    searchIcon: "text-[#4b5563]",
-    input:
-      "bg-[#1e1e1e] border-[#2a2a2a] text-[#e5e5e5] placeholder-[#4b5563] focus:border-[#FF7026]/50",
-    frame: "border-[#2a2a2a]",
-    headRow: "border-[#2a2a2a] bg-[#161616]",
-    headCell: "text-[#6b7280]",
-    headCellHover: "hover:text-[#e5e5e5]",
-    sortIcon: "text-[#4b5563]",
-    empty: "text-[#4b5563]",
-    bodyRow: "border-[#1e1e1e] hover:bg-[#1a1a1a]",
-    bodyCell: "text-[#e5e5e5]",
-    pager: "text-[#6b7280]",
-    pagerHover: "hover:bg-[#1e1e1e]",
-  },
-  light: {
-    searchIcon: "text-gray-400",
-    input:
-      "bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-echo-orange/60",
-    frame: "border-gray-200",
-    headRow: "border-gray-200 bg-gray-50",
-    headCell: "text-gray-500",
-    headCellHover: "hover:text-gray-900",
-    sortIcon: "text-gray-400",
-    empty: "text-gray-400",
-    bodyRow: "border-gray-100 hover:bg-gray-50",
-    bodyCell: "text-gray-900",
-    pager: "text-gray-600",
-    pagerHover: "hover:bg-gray-100",
-  },
+  searchIcon: "text-gray-400",
+  input:
+    "bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-echo-orange/60",
+  frame: "border-gray-200",
+  headRow: "border-gray-200 bg-gray-50",
+  headCell: "text-gray-500",
+  headCellHover: "hover:text-gray-900",
+  sortIcon: "text-gray-400",
+  empty: "text-gray-400",
+  bodyRow: "border-gray-100 hover:bg-gray-50",
+  bodyCell: "text-gray-900",
+  pager: "text-gray-600",
+  pagerHover: "hover:bg-gray-100",
 } as const;
 
 /**
@@ -150,7 +126,6 @@ function BoardTableView<T>({
   searchPlaceholder = "Search...",
   onRowClick,
   emptyMessage = "No records found",
-  dark = true,
   sorting,
   onSortingChange,
   globalFilter,
@@ -167,7 +142,7 @@ function BoardTableView<T>({
   // shrunken board no longer has. Same reasoning that keeps paging cursors out
   // of the quotes tab bar.
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize });
-  const skin = dark ? SKIN.dark : SKIN.light;
+  const skin = SKIN;
 
   const table = useReactTable({
     data,

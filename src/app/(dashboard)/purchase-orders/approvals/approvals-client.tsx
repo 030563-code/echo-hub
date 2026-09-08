@@ -16,7 +16,7 @@ import { usePersistedView } from "@/hooks/use-page-state";
 import { parseSearchView, type SearchView } from "@/lib/page-drafts";
 
 const inputCls =
-  "w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-base sm:text-sm text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026] transition-colors";
+  "w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-base sm:text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-echo-orange transition-colors";
 
 const TIERS: { leg: PurchaseOrder["leg"]; n: number; title: string; route: string }[] = [
   { leg: "DEPOT_TO_EB_GROUP", n: 1, title: "Depot", route: "Depot → EB Group" },
@@ -103,14 +103,13 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
   if (orders.length === 0) {
     return (
       <EmptyState
-        dark
         icon={<Inbox className="w-8 h-8" />}
         title="Nothing awaiting approval"
         description="Raised POs flow through three approvals — Depot → Group → SRO — and appear here at each tier."
         action={
           <Link
             href="/purchase-orders/create"
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#FF7026] hover:bg-[#f2641b] text-white text-sm font-medium rounded-lg transition-colors"
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-echo-orange hover:bg-echo-orange-hover text-white text-sm font-medium rounded-lg transition-colors"
           >
             Raise a PO
           </Link>
@@ -122,8 +121,8 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs text-[#4b5563]">{filtered.length} awaiting approval</span>
-        <SearchBox value={q} onChange={setQ} dark placeholder="Search PO, entity, ref…" />
+        <span className="text-xs text-gray-400">{filtered.length} awaiting approval</span>
+        <SearchBox value={q} onChange={setQ} placeholder="Search PO, entity, ref…" />
       </div>
 
       {notice && (
@@ -131,10 +130,10 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
           className={
             "flex items-start gap-2 text-sm rounded-lg px-3 py-2 border " +
             (notice.kind === "error"
-              ? "text-red-400 bg-red-900/20 border-red-800/30"
+              ? "text-red-700 bg-red-50 border-red-200"
               : notice.kind === "warn"
-                ? "text-yellow-300 bg-yellow-900/20 border-yellow-800/30"
-                : "text-green-300 bg-green-900/20 border-green-800/30")
+                ? "text-amber-700 bg-amber-50 border-amber-200"
+                : "text-green-700 bg-green-50 border-green-200")
           }
         >
           {notice.kind === "success" ? (
@@ -148,7 +147,6 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
 
       {groups.length === 0 && (
         <EmptyState
-          dark
           icon={<Inbox className="w-8 h-8" />}
           title="No matching approvals"
           description="No pending PO matches your search. Try a different PO number, entity or reference."
@@ -158,31 +156,31 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
       {groups.map((g) => (
         <div key={g.leg}>
           <div className="flex items-center gap-2 mb-3">
-            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[#FF7026] text-white text-[11px] font-bold">
+            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-echo-orange text-white text-[11px] font-bold">
               {g.n}
             </span>
-            <h2 className="text-sm font-semibold text-[#e5e5e5]">Approval {g.n} · {g.title}</h2>
-            <span className="text-xs text-[#4b5563]">{g.route}</span>
-            <span className="text-xs text-[#4b5563]">· {g.items.length}</span>
+            <h2 className="text-sm font-semibold text-gray-900">Approval {g.n} · {g.title}</h2>
+            <span className="text-xs text-gray-400">{g.route}</span>
+            <span className="text-xs text-gray-400">· {g.items.length}</span>
           </div>
 
           <div className="space-y-4">
             {g.items.map((po) => {
               const busy = busyId === po.id;
               return (
-                <div key={po.id} className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-5">
+                <div key={po.id} className="bg-white border border-gray-200 rounded-xl p-5">
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-3">
                     <div>
-                      <p className="font-mono text-[#FF7026] font-medium">{displayPoNumber(po.po_number)}</p>
-                      <p className="text-xs text-[#6b7280] mt-0.5">
+                      <p className="font-mono text-echo-orange font-medium">{displayPoNumber(po.po_number)}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
                         <span className="font-mono">{po.from_entity}</span> →{" "}
                         <span className="font-mono">{po.to_entity}</span>
-                        <span className="text-[#4b5563]"> · raised {formatRelative(po.created_at)}</span>
-                        {po.requested_by && <span className="text-[#4b5563]"> by {po.requested_by}</span>}
+                        <span className="text-gray-400"> · raised {formatRelative(po.created_at)}</span>
+                        {po.requested_by && <span className="text-gray-400"> by {po.requested_by}</span>}
                       </p>
                       {po.reference_po_number && (
-                        <p className="text-xs text-[#6b7280] mt-0.5">
-                          ref: <span className="font-mono text-[#9ca3af]">{displayPoNumber(po.reference_po_number)}</span>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          ref: <span className="font-mono text-gray-600">{displayPoNumber(po.reference_po_number)}</span>
                         </p>
                       )}
                     </div>
@@ -190,7 +188,7 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
                       <button
                         onClick={() => setRejectTarget(po)}
                         disabled={busy}
-                        className="inline-flex items-center gap-1.5 px-3 py-3 sm:py-1.5 text-sm text-red-300 hover:bg-red-900/20 border border-red-900/40 rounded-lg transition-colors disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 px-3 py-3 sm:py-1.5 text-sm text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors disabled:opacity-50"
                       >
                         <X className="w-3.5 h-3.5" />
                         Reject
@@ -206,10 +204,10 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
                     </div>
                   </div>
 
-                  <div className="rounded-lg border border-[#222] overflow-x-auto">
+                  <div className="rounded-lg border border-gray-100 overflow-x-auto">
                     <table className="w-full min-w-[480px] text-sm">
                       <thead>
-                        <tr className="bg-[#1a1a1a] text-[10px] uppercase tracking-wider text-[#4b5563]">
+                        <tr className="bg-gray-50 text-[10px] uppercase tracking-wider text-gray-500">
                           <th className="text-left font-medium px-3 py-1.5">Product</th>
                           <th className="text-right font-medium px-3 py-1.5">Qty</th>
                           <th className="text-left font-medium px-3 py-1.5">HS code</th>
@@ -218,15 +216,15 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
                       </thead>
                       <tbody>
                         {(po.lines ?? []).map((l) => (
-                          <tr key={l.id} className="border-t border-[#222]">
+                          <tr key={l.id} className="border-t border-gray-100">
                             <td className="px-3 py-1.5">
-                              <span className="font-mono text-xs text-[#e5e5e5]">{l.sku}</span>
-                              {l.product_name && <span className="text-[#6b7280] text-xs"> — {l.product_name}</span>}
+                              <span className="font-mono text-xs text-gray-900">{l.sku}</span>
+                              {l.product_name && <span className="text-gray-500 text-xs"> — {l.product_name}</span>}
                             </td>
-                            <td className="px-3 py-1.5 text-right tabular-nums text-[#e5e5e5]">{l.quantity}</td>
-                            <td className="px-3 py-1.5 font-mono text-xs text-[#9ca3af]">{l.hs_code ?? "—"}</td>
+                            <td className="px-3 py-1.5 text-right tabular-nums text-gray-900">{l.quantity}</td>
+                            <td className="px-3 py-1.5 font-mono text-xs text-gray-600">{l.hs_code ?? "—"}</td>
                             {canViewCost && (
-                              <td className="px-3 py-1.5 text-right tabular-nums text-[#9ca3af]">
+                              <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">
                                 {l.unit_price != null ? l.unit_price.toLocaleString() : "—"}
                               </td>
                             )}
@@ -239,13 +237,13 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
                   {(po.delivery_address || po.notes) && (
                     <div className="mt-3 space-y-1">
                       {po.delivery_address && (
-                        <p className="text-xs text-[#6b7280]">
-                          <span className="text-[#4b5563]">Deliver to:</span> {po.delivery_address}
+                        <p className="text-xs text-gray-500">
+                          <span className="text-gray-400">Deliver to:</span> {po.delivery_address}
                         </p>
                       )}
                       {po.notes && (
-                        <p className="text-xs text-[#6b7280]">
-                          <span className="text-[#4b5563]">Notes:</span> {po.notes}
+                        <p className="text-xs text-gray-500">
+                          <span className="text-gray-400">Notes:</span> {po.notes}
                         </p>
                       )}
                     </div>
@@ -259,12 +257,12 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
 
       <Dialog.Root open={rejectTarget !== null} onOpenChange={(o) => !o && setRejectTarget(null)}>
         <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[calc(100%-2rem)] sm:w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto bg-[#141414] border border-[#2a2a2a] rounded-2xl p-6 shadow-2xl">
-            <Dialog.Title className="text-lg font-semibold text-white" style={{ fontFamily: "Varela Round, sans-serif" }}>
+          <Dialog.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[calc(100%-2rem)] sm:w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto bg-white border border-gray-200 rounded-2xl p-6 shadow-2xl">
+            <Dialog.Title className="text-lg font-semibold text-gray-900" style={{ fontFamily: "Varela Round, sans-serif" }}>
               Reject {rejectTarget ? displayPoNumber(rejectTarget.po_number) : ""}
             </Dialog.Title>
-            <Dialog.Description className="text-xs text-[#6b7280] mt-1 mb-4">
+            <Dialog.Description className="text-xs text-gray-500 mt-1 mb-4">
               This marks the PO rejected and stops the chain at this tier. Add an optional reason.
             </Dialog.Description>
             <textarea
@@ -275,7 +273,7 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
               className={inputCls + " resize-none"}
             />
             <div className="flex justify-end gap-2 mt-4">
-              <Dialog.Close className="px-4 py-2 text-sm text-[#9ca3af] hover:text-white transition-colors rounded-lg hover:bg-[#2a2a2a]">
+              <Dialog.Close className="px-4 py-2 text-sm text-gray-700 hover:text-gray-900 transition-colors rounded-lg hover:bg-gray-100">
                 Cancel
               </Dialog.Close>
               <button

@@ -160,7 +160,7 @@ const COLUMNS: ColumnDef<GroupedShipment, unknown>[] = [
     header: "Status",
     cell: ({ getValue }) => {
       const status = getValue() as string | null;
-      return status ? <StatusBadge dark={false} status={status} /> : <span className="text-gray-400">{"—"}</span>;
+      return status ? <StatusBadge status={status} /> : <span className="text-gray-400">{"—"}</span>;
     },
   },
   {
@@ -367,7 +367,7 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
         </p>
         <button
           onClick={openModal}
-          className="flex items-center gap-1.5 rounded-lg bg-echo-orange px-3 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-echo-orange-hover sm:py-1.5"
+          className="flex items-center gap-1.5 rounded-lg bg-echo-orange px-3 py-3 text-sm font-medium text-white transition-colors hover:bg-echo-orange-hover sm:py-1.5"
         >
           <Plus className="w-3.5 h-3.5" />
           Add Shipment
@@ -376,7 +376,6 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
 
       {shipments.length > 0 ? (
         <BoardTable
-          dark={false}
           stateKey="transport:table"
           data={shipments}
           columns={COLUMNS}
@@ -586,7 +585,7 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
                 </Dialog.Close>
                 <button
                   type="submit"
-                  className="px-4 py-3 sm:py-2 bg-echo-orange hover:bg-echo-orange-hover text-gray-900 text-sm font-medium rounded-lg transition-colors"
+                  className="px-4 py-3 sm:py-2 bg-echo-orange hover:bg-echo-orange-hover text-white text-sm font-medium rounded-lg transition-colors"
                 >
                   Add Shipment
                 </button>

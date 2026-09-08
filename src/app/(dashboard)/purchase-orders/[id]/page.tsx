@@ -100,16 +100,16 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
     <div className="p-6 max-w-5xl">
       <Link
         href="/purchase-orders"
-        className="inline-flex items-center gap-1.5 text-sm text-[#6b7280] hover:text-white transition-colors"
+        className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
       >
         <ArrowLeft className="w-4 h-4" /> Purchase orders
       </Link>
 
       <div className="mt-4 mb-6">
-        <h1 className="text-2xl font-bold text-white" style={{ fontFamily: 'Varela Round, sans-serif' }}>
+        <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'Varela Round, sans-serif' }}>
           {displayPoNumber(po.po_number)}
         </h1>
-        <p className="text-sm text-[#6b7280] mt-1">
+        <p className="text-sm text-gray-500 mt-1">
           {legLabel(po.leg)} · <span className="font-mono">{chain}</span> ·{' '}
           <span className="font-mono">{po.from_entity}</span> to <span className="font-mono">{po.to_entity}</span>
           {po.reference_po_number ? (
@@ -118,10 +118,10 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
         </p>
       </div>
 
-      <div className="rounded-xl border border-[#2a2a2a] bg-[#141414] overflow-hidden mb-6">
+      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden mb-6">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-[#1a1a1a] text-[10px] uppercase tracking-wider text-[#4b5563]">
+            <tr className="bg-gray-50 text-[10px] uppercase tracking-wider text-gray-500">
               <th className="text-left font-medium px-4 py-2.5">SKU</th>
               <th className="text-left font-medium px-4 py-2.5">Product</th>
               <th className="text-right font-medium px-4 py-2.5">Quantity</th>
@@ -130,12 +130,12 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
           </thead>
           <tbody>
             {(po.lines ?? []).map((line) => (
-              <tr key={line.id} className="border-t border-[#222]">
-                <td className="px-4 py-2.5 font-mono text-[#e5e5e5]">{line.sku}</td>
-                <td className="px-4 py-2.5 text-[#9ca3af]">{line.product_name}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-[#e5e5e5]">{line.quantity}</td>
+              <tr key={line.id} className="border-t border-gray-100">
+                <td className="px-4 py-2.5 font-mono text-gray-900">{line.sku}</td>
+                <td className="px-4 py-2.5 text-gray-600">{line.product_name}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-gray-900">{line.quantity}</td>
                 {canViewCost && (
-                  <td className="px-4 py-2.5 text-right tabular-nums text-[#6b7280]">
+                  <td className="px-4 py-2.5 text-right tabular-nums text-gray-500">
                     {line.unit_price == null ? '' : line.unit_price.toFixed(2)}
                   </td>
                 )}
@@ -143,7 +143,7 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
             ))}
             {(po.lines ?? []).length === 0 && (
               <tr>
-                <td colSpan={canViewCost ? 4 : 3} className="px-4 py-8 text-center text-[#4b5563]">
+                <td colSpan={canViewCost ? 4 : 3} className="px-4 py-8 text-center text-gray-400">
                   This order has no lines.
                 </td>
               </tr>
@@ -167,9 +167,9 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
       )}
 
       {!awaitingFulfilment && !isManufacturingOrder && (
-        <p className="text-sm text-[#6b7280]">
+        <p className="text-sm text-gray-500">
           Nothing is waiting on this order here. Its status is{' '}
-          <span className="font-mono text-[#9ca3af]">{po.status}</span>.
+          <span className="font-mono text-gray-600">{po.status}</span>.
         </p>
       )}
     </div>

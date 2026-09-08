@@ -21,7 +21,7 @@ const DEPOT_CODE_COL: Record<string, keyof ProductEntityCodes> = {
 };
 
 const inputCls =
-  "w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-base sm:text-sm text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026] transition-colors";
+  "w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-base sm:text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-echo-orange transition-colors";
 const selectCls = inputCls;
 
 interface LineRow {
@@ -308,35 +308,35 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
 
   if (!draftReady) {
     return (
-      <div className="border border-[#2a2a2a] bg-[#1a1a1a] rounded-xl px-4 py-3">
-        <p className="text-sm text-[#9ca3af]">Opening the purchase order form…</p>
+      <div className="border border-gray-200 bg-white rounded-xl px-4 py-3">
+        <p className="text-sm text-gray-600">Opening the purchase order form…</p>
       </div>
     );
   }
 
   if (depots.length === 0) {
     return (
-      <div className="border border-dashed border-[#2a2a2a] rounded-xl p-12 text-center">
-        <p className="text-[#9ca3af] mb-1">No raising depot assigned to your account.</p>
-        <p className="text-xs text-[#4b5563]">Ask an administrator to add a depot to your profile before raising a PO.</p>
+      <div className="border border-dashed border-gray-200 rounded-xl p-12 text-center">
+        <p className="text-gray-600 mb-1">No raising depot assigned to your account.</p>
+        <p className="text-xs text-gray-400">Ask an administrator to add a depot to your profile before raising a PO.</p>
       </div>
     );
   }
 
   if (success) {
     return (
-      <div className="border border-green-800/40 bg-green-900/10 rounded-xl p-8 text-center">
-        <CheckCircle2 className="w-10 h-10 text-green-400 mx-auto mb-3" />
-        <p className="text-white text-lg font-semibold" style={{ fontFamily: "Varela Round, sans-serif" }}>
+      <div className="border border-green-200 bg-green-50 rounded-xl p-8 text-center">
+        <CheckCircle2 className="w-10 h-10 text-green-700 mx-auto mb-3" />
+        <p className="text-gray-900 text-lg font-semibold" style={{ fontFamily: "Varela Round, sans-serif" }}>
           Purchase order raised
         </p>
-        <p className="text-[#9ca3af] text-sm mt-1">
+        <p className="text-gray-600 text-sm mt-1">
           Your purchase order is now awaiting EB&nbsp;Group approval. Its Xero PO number appears once approved.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-2 mt-5">
           <Link
             href="/purchase-orders"
-            className="px-4 py-3 sm:py-2 bg-[#FF7026] hover:bg-[#f2641b] text-white text-sm font-medium rounded-lg transition-colors"
+            className="px-4 py-3 sm:py-2 bg-echo-orange hover:bg-echo-orange-hover text-white text-sm font-medium rounded-lg transition-colors"
           >
             View on the board
           </Link>
@@ -347,7 +347,7 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
               setNotes("");
               setDeliveryAddress("");
             }}
-            className="px-4 py-3 sm:py-2 text-sm text-[#9ca3af] hover:text-white border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-lg transition-colors"
+            className="px-4 py-3 sm:py-2 text-sm text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400 hover:bg-gray-50 rounded-lg transition-colors"
           >
             Raise another
           </button>
@@ -360,7 +360,6 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
     <form onSubmit={handleSubmit} className="space-y-6">
       {restoredDraft && !success && (
         <DraftStrip
-          dark
           what="your unfinished purchase order"
           savedAt={draftSavedAt}
           onStartAgain={startAgain}
@@ -370,9 +369,9 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
       )}
 
       {/* Templates — recurring-order autofill */}
-      <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-4 flex flex-wrap items-center gap-3">
+      <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
-          <Layers className="w-4 h-4 text-[#6b7280]" />
+          <Layers className="w-4 h-4 text-gray-500" />
           <select
             value={templateId}
             onChange={(e) => applyTemplate(e.target.value)}
@@ -389,7 +388,7 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
             <button
               type="button"
               onClick={removeTemplate}
-              className="p-1.5 text-[#6b7280] hover:text-red-400 transition-colors"
+              className="p-1.5 text-gray-500 hover:text-red-700 transition-colors"
               title="Delete template"
             >
               <Trash2 className="w-4 h-4" />
@@ -400,19 +399,19 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
           type="button"
           onClick={saveAsTemplate}
           disabled={savingTpl}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#9ca3af] hover:text-white border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-lg transition-colors disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50"
         >
           {savingTpl ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
           Save as template
         </button>
-        {tplNotice && <span className="text-xs text-[#6b7280]">{tplNotice}</span>}
+        {tplNotice && <span className="text-xs text-gray-500">{tplNotice}</span>}
       </div>
 
       {/* Header fields */}
-      <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-5 space-y-4">
+      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs text-[#9ca3af] mb-1">Raising depot *</label>
+            <label className="block text-xs text-gray-600 mb-1">Raising depot *</label>
             <select
               required
               value={fromEntity}
@@ -429,13 +428,13 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
               ))}
             </select>
             {fieldErrors.depot ? (
-              <p className="text-[10px] text-red-400 mt-1">{fieldErrors.depot}</p>
+              <p className="text-[10px] text-red-700 mt-1">{fieldErrors.depot}</p>
             ) : (
-              <p className="text-[10px] text-[#4b5563] mt-1">Raised to <span className="font-mono">EB-GROUP</span>.</p>
+              <p className="text-[10px] text-gray-400 mt-1">Raised to <span className="font-mono">EB-GROUP</span>.</p>
             )}
           </div>
           <div>
-            <label className="block text-xs text-[#9ca3af] mb-1">Delivery address *</label>
+            <label className="block text-xs text-gray-600 mb-1">Delivery address *</label>
             <select
               required
               value={deliveryAddress}
@@ -454,13 +453,13 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
               ))}
             </select>
             {fieldErrors.deliveryAddress && (
-              <p className="text-[10px] text-red-400 mt-1">{fieldErrors.deliveryAddress}</p>
+              <p className="text-[10px] text-red-700 mt-1">{fieldErrors.deliveryAddress}</p>
             )}
           </div>
         </div>
 
         <div>
-          <label className="block text-xs text-[#9ca3af] mb-1">Notes</label>
+          <label className="block text-xs text-gray-600 mb-1">Notes</label>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
@@ -472,13 +471,13 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
       </div>
 
       {/* Line items */}
-      <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-5">
+      <div className="bg-white border border-gray-200 rounded-xl p-5">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-medium text-[#e5e5e5]">Line items</p>
+          <p className="text-sm font-medium text-gray-900">Line items</p>
           <button
             type="button"
             onClick={addLine}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-[#FF7026] hover:bg-[#FF7026]/10 rounded-lg transition-colors"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-echo-orange hover:bg-echo-orange/10 rounded-lg transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             Add line
@@ -487,10 +486,10 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
 
         {/* Column headers */}
         <div className="hidden sm:grid grid-cols-[1fr_90px_120px_110px_36px] gap-2 px-1 mb-1.5">
-          <span className="text-[10px] uppercase tracking-wider text-[#4b5563]">Product</span>
-          <span className="text-[10px] uppercase tracking-wider text-[#4b5563]">Qty</span>
-          <span className="text-[10px] uppercase tracking-wider text-[#4b5563]">HS code</span>
-          <span className="text-[10px] uppercase tracking-wider text-[#4b5563]">Unit price</span>
+          <span className="text-[10px] uppercase tracking-wider text-gray-400">Product</span>
+          <span className="text-[10px] uppercase tracking-wider text-gray-400">Qty</span>
+          <span className="text-[10px] uppercase tracking-wider text-gray-400">HS code</span>
+          <span className="text-[10px] uppercase tracking-wider text-gray-400">Unit price</span>
           <span />
         </div>
 
@@ -548,13 +547,13 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
                   aria-label="Unit price"
                 />
               ) : (
-                <div className={inputCls + " tabular-nums text-[#4b5563] flex items-center"} aria-hidden="true">—</div>
+                <div className={inputCls + " tabular-nums text-gray-400 flex items-center"} aria-hidden="true">—</div>
               )}
               <button
                 type="button"
                 onClick={() => removeLine(i)}
                 disabled={lines.length === 1}
-                className="flex items-center justify-center text-[#6b7280] hover:text-red-400 disabled:opacity-30 disabled:hover:text-[#6b7280] transition-colors"
+                className="flex items-center justify-center text-gray-500 hover:text-red-700 disabled:opacity-30 disabled:hover:text-gray-500 transition-colors"
                 aria-label="Remove line"
               >
                 <Trash2 className="w-4 h-4" />
@@ -563,28 +562,28 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
               {fieldErrors.lines[i] && (
                 <div className="mt-1 pl-1 space-y-0.5">
                   {fieldErrors.lines[i].sku && (
-                    <p className="text-[10px] text-red-400">{fieldErrors.lines[i].sku}</p>
+                    <p className="text-[10px] text-red-700">{fieldErrors.lines[i].sku}</p>
                   )}
                   {fieldErrors.lines[i].quantity && (
-                    <p className="text-[10px] text-red-400">{fieldErrors.lines[i].quantity}</p>
+                    <p className="text-[10px] text-red-700">{fieldErrors.lines[i].quantity}</p>
                   )}
                   {fieldErrors.lines[i].unit_price && (
-                    <p className="text-[10px] text-red-400">{fieldErrors.lines[i].unit_price}</p>
+                    <p className="text-[10px] text-red-700">{fieldErrors.lines[i].unit_price}</p>
                   )}
                 </div>
               )}
               {line.sku && codeCol && (
-                <p className="text-[10px] text-[#4b5563] mt-1 pl-1">
+                <p className="text-[10px] text-gray-400 mt-1 pl-1">
                   {fromEntity} Xero code:{" "}
                   {depotCode(line.sku) ? (
-                    <span className="font-mono text-[#9ca3af]">{depotCode(line.sku)}</span>
+                    <span className="font-mono text-gray-600">{depotCode(line.sku)}</span>
                   ) : (
-                    <span className="text-yellow-600/80">none mapped for {fromEntity}</span>
+                    <span className="text-amber-700">none mapped for {fromEntity}</span>
                   )}
                 </p>
               )}
               {isLineShort({ sku: line.sku, quantity: Number(line.quantity) || 0 }, stockBySku) && (
-                <p className="text-[10px] text-yellow-500/90 mt-1 pl-1">
+                <p className="text-[10px] text-amber-700 mt-1 pl-1">
                   ⚠ Stock short — ordered {Number(line.quantity) || 0}, {stockBySku[line.sku] ?? 0} on hand (does not block).
                 </p>
               )}
@@ -602,20 +601,20 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
       </div>
 
       {error && (
-        <p className="text-red-400 text-sm bg-red-900/20 border border-red-800/30 rounded-lg px-3 py-2">{error}</p>
+        <p className="text-red-700 text-sm bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
       )}
 
       <div className="flex items-center justify-end gap-2">
         <Link
           href="/purchase-orders"
-          className="px-4 py-3 sm:py-2 text-sm text-[#9ca3af] hover:text-white transition-colors rounded-lg hover:bg-[#2a2a2a]"
+          className="px-4 py-3 sm:py-2 text-sm text-gray-700 hover:text-gray-900 transition-colors rounded-lg hover:bg-gray-100"
         >
           Cancel
         </Link>
         <button
           type="submit"
           disabled={pending}
-          className="inline-flex items-center gap-2 px-5 py-3 sm:py-2 bg-[#FF7026] hover:bg-[#f2641b] disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
+          className="inline-flex items-center gap-2 px-5 py-3 sm:py-2 bg-echo-orange hover:bg-echo-orange-hover disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
         >
           {pending && <Loader2 className="w-4 h-4 animate-spin" />}
           Raise PO for approval

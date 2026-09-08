@@ -68,8 +68,8 @@ export default function ManufacturingCard({
   }
 
   return (
-    <div className="rounded-xl border border-[#2a2a2a] bg-[#141414] p-5">
-      <h2 className="text-base font-semibold text-white" style={{ fontFamily: 'Varela Round, sans-serif' }}>
+    <div className="rounded-xl border border-gray-200 bg-white p-5">
+      <h2 className="text-base font-semibold text-gray-900" style={{ fontFamily: 'Varela Round, sans-serif' }}>
         Manufacturing
       </h2>
 
@@ -79,13 +79,13 @@ export default function ManufacturingCard({
           label="Sent to Bamida"
           value={
             !sent ? (
-              <span className="text-[#6b7280]">not yet</span>
+              <span className="text-gray-500">not yet</span>
             ) : manufacturing.sentWasTest ? (
-              <span className="text-amber-400">
+              <span className="text-amber-700">
                 {date(manufacturing.sentAt)} to the test address ({manufacturing.sentTo.join(', ')}), not Bamida
               </span>
             ) : (
-              <span className="text-[#e5e5e5]">
+              <span className="text-gray-900">
                 {date(manufacturing.sentAt)} to {manufacturing.sentTo.join(', ')}
               </span>
             )
@@ -96,12 +96,12 @@ export default function ManufacturingCard({
           label="Bamida's dates"
           value={
             manufacturing.estStart || manufacturing.estFinish ? (
-              <span className="text-[#e5e5e5]">
+              <span className="text-gray-900">
                 {date(manufacturing.estStart) ?? 'start not given'} to{' '}
                 {date(manufacturing.estFinish) ?? 'finish not given'}
               </span>
             ) : (
-              <span className="text-[#6b7280]">not given yet</span>
+              <span className="text-gray-500">not given yet</span>
             )
           }
         />
@@ -110,9 +110,9 @@ export default function ManufacturingCard({
           label="Finished"
           value={
             finished ? (
-              <span className="text-emerald-400">{date(manufacturing.finishedAt)}</span>
+              <span className="text-emerald-700">{date(manufacturing.finishedAt)}</span>
             ) : (
-              <span className="text-[#6b7280]">not yet</span>
+              <span className="text-gray-500">not yet</span>
             )
           }
         />
@@ -124,7 +124,7 @@ export default function ManufacturingCard({
             <button
               onClick={send}
               disabled={pending}
-              className="px-5 py-2 bg-[#FF7026] hover:bg-[#f2641b] text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
+              className="px-5 py-2 bg-echo-orange hover:bg-echo-orange-hover text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
             >
               {pending ? 'Sending...' : 'Send to Bamida'}
             </button>
@@ -134,15 +134,15 @@ export default function ManufacturingCard({
             <button
               onClick={() => setConfirmingResend(true)}
               disabled={pending}
-              className="px-4 py-2 text-sm rounded-lg border border-[#2a2a2a] text-[#9ca3af] hover:text-white hover:bg-[#222] disabled:opacity-50 transition-colors"
+              className="px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:text-gray-900 hover:bg-gray-100 disabled:opacity-50 transition-colors"
             >
               Send it again
             </button>
           )}
 
           {sent && confirmingResend && (
-            <div className="w-full rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] p-4">
-              <p className="text-sm text-[#e5e5e5]">
+            <div className="w-full rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <p className="text-sm text-gray-900">
                 Bamida already have this order. Sending it again puts a second copy of the same
                 purchase order in front of the factory.
               </p>
@@ -150,13 +150,13 @@ export default function ManufacturingCard({
                 <button
                   onClick={resend}
                   disabled={pending}
-                  className="px-4 py-2 bg-[#FF7026] hover:bg-[#f2641b] text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
+                  className="px-4 py-2 bg-echo-orange hover:bg-echo-orange-hover text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
                 >
                   Reopen it for sending
                 </button>
                 <button
                   onClick={() => setConfirmingResend(false)}
-                  className="px-4 py-2 text-sm text-[#9ca3af] hover:text-white rounded-lg hover:bg-[#222] transition-colors"
+                  className="px-4 py-2 text-sm text-gray-700 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors"
                 >
                   Leave it
                 </button>
@@ -167,13 +167,13 @@ export default function ManufacturingCard({
       )}
 
       {finished && (
-        <p className="mt-5 text-xs text-[#4b5563]">
+        <p className="mt-5 text-xs text-gray-400">
           Bamida have finished this order, so it can no longer be sent or reopened.
         </p>
       )}
 
       {!canAct && (
-        <p className="mt-5 text-xs text-[#4b5563]">Read only. You need po.create to send this order.</p>
+        <p className="mt-5 text-xs text-gray-400">Read only. You need po.create to send this order.</p>
       )}
     </div>
   )
@@ -182,8 +182,8 @@ export default function ManufacturingCard({
 function Row({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-start gap-3">
-      <span className="text-[#4b5563] mt-0.5">{icon}</span>
-      <span className="text-[#6b7280] w-32 shrink-0">{label}</span>
+      <span className="text-gray-400 mt-0.5">{icon}</span>
+      <span className="text-gray-500 w-32 shrink-0">{label}</span>
       <span className="flex-1">{value}</span>
     </div>
   )

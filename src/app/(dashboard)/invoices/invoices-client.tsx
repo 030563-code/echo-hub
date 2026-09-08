@@ -15,9 +15,9 @@ import { usePersistedView } from "@/hooks/use-page-state";
 import { parseSearchView, type SearchView } from "@/lib/page-drafts";
 
 const STATUS_STYLE: Record<string, string> = {
-  draft: "bg-[#2a2a2a] text-[#9ca3af]",
-  issued: "bg-green-900/30 text-green-400",
-  void: "bg-red-900/25 text-red-400 line-through",
+  draft: "bg-gray-100 text-gray-600",
+  issued: "bg-green-50 text-green-800 border border-green-200",
+  void: "bg-red-50 text-red-700 border border-red-200 line-through",
 };
 
 export default function InvoicesClient({
@@ -92,10 +92,10 @@ export default function InvoicesClient({
     <div className="p-6">
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white" style={{ fontFamily: "Varela Round, sans-serif" }}>
+          <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: "Varela Round, sans-serif" }}>
             Commercial Invoices
           </h1>
-          <p className="text-[#6b7280] text-sm mt-1">
+          <p className="text-gray-500 text-sm mt-1">
             Intercompany invoices issued per container — SRO→Group (EUR) · Group→USA (USD)
           </p>
         </div>
@@ -104,7 +104,6 @@ export default function InvoicesClient({
             value={q}
             onChange={setQ}
             placeholder="Search invoice, route, container…"
-            dark
             className="w-64 shrink-0"
           />
         )}
@@ -112,20 +111,19 @@ export default function InvoicesClient({
 
       {createSlot}
 
-      {err && <p className="text-xs text-red-400 mb-3">{err}</p>}
+      {err && <p className="text-xs text-red-700 mb-3">{err}</p>}
 
       {invoices.length === 0 ? (
         <EmptyState
-          dark
           icon={<Receipt className="w-8 h-8" />}
           title="No commercial invoices issued yet"
           description="Pick a container above and choose the EUR (SRO→Group) or USD (Group→USA) leg to generate one."
         />
       ) : (
-        <div className="rounded-xl border border-[#2a2a2a] overflow-hidden">
+        <div className="rounded-xl bg-white border border-gray-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-[#1a1a1a] text-[10px] uppercase tracking-wider text-[#4b5563]">
+              <tr className="bg-gray-50 text-[10px] uppercase tracking-wider text-gray-500">
                 <th className="text-left font-medium px-4 py-2.5">Invoice #</th>
                 <th className="text-left font-medium px-4 py-2.5">Date</th>
                 <th className="text-left font-medium px-4 py-2.5">Route</th>
@@ -138,7 +136,7 @@ export default function InvoicesClient({
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-[#6b7280]">
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500">
                     No invoices match “{q}”.
                   </td>
                 </tr>
@@ -146,24 +144,24 @@ export default function InvoicesClient({
               {filtered.map((r) => (
                 <tr
                   key={r.id}
-                  className="border-t border-[#222] hover:bg-[#1a1a1a] transition-colors cursor-pointer"
+                  className="border-t border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer"
                   onClick={() => setOpen(r.doc)}
                 >
-                  <td className="px-4 py-2.5 font-mono text-[#FF7026]">{r.doc.invoice_number}</td>
-                  <td className="px-4 py-2.5 text-[#9ca3af]">{r.doc.date}</td>
-                  <td className="px-4 py-2.5 text-[#9ca3af]">{r.doc.seller.code} → {r.doc.buyer.code}</td>
-                  <td className="px-4 py-2.5 font-mono text-[#9ca3af]">{r.doc.container_ref ?? "—"}</td>
+                  <td className="px-4 py-2.5 font-mono text-echo-orange">{r.doc.invoice_number}</td>
+                  <td className="px-4 py-2.5 text-gray-600">{r.doc.date}</td>
+                  <td className="px-4 py-2.5 text-gray-600">{r.doc.seller.code} → {r.doc.buyer.code}</td>
+                  <td className="px-4 py-2.5 font-mono text-gray-600">{r.doc.container_ref ?? "—"}</td>
                   <td className="px-4 py-2.5">
                     <span className={`inline-block px-2 py-0.5 rounded text-[10px] uppercase tracking-wide ${STATUS_STYLE[r.status] ?? STATUS_STYLE.draft}`}>{r.status}</span>
                   </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-[#e5e5e5]">{money(r.doc)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-gray-900">{money(r.doc)}</td>
                   <td className="px-4 py-2.5 text-right">
                     <div className="inline-flex items-center justify-end gap-1.5">
                       {canManage && r.status === "draft" && (
                         <button
                           onClick={(e) => { e.stopPropagation(); transition(r.id, "issue"); }}
                           disabled={pending}
-                          className="px-2.5 py-1.5 text-xs text-green-400 hover:text-green-300 border border-[#2a2a2a] hover:border-green-800/50 rounded-lg transition-colors disabled:opacity-50"
+                          className="px-2.5 py-1.5 text-xs text-green-700 hover:text-green-800 border border-gray-300 hover:border-green-200 rounded-lg transition-colors disabled:opacity-50"
                         >
                           {pending && busyId === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Issue"}
                         </button>
@@ -171,7 +169,7 @@ export default function InvoicesClient({
                       {canManage && canViewCost && r.status === "draft" && (
                         <button
                           onClick={(e) => { e.stopPropagation(); setEditing(r); }}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-[#9ca3af] hover:text-white border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-lg transition-colors"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400 hover:bg-gray-50 rounded-lg transition-colors"
                           title="Edit the draft lines before issuing (bundle, split, set HS codes, correct a price)"
                         >
                           <Pencil className="w-3.5 h-3.5" /> Edit
@@ -181,14 +179,14 @@ export default function InvoicesClient({
                         <button
                           onClick={(e) => { e.stopPropagation(); transition(r.id, "void"); }}
                           disabled={pending}
-                          className="px-2.5 py-1.5 text-xs text-red-400 hover:text-red-300 border border-[#2a2a2a] hover:border-red-800/50 rounded-lg transition-colors disabled:opacity-50"
+                          className="px-2.5 py-1.5 text-xs text-red-700 hover:text-red-800 border border-gray-300 hover:border-red-200 rounded-lg transition-colors disabled:opacity-50"
                         >
                           Void
                         </button>
                       )}
                       <button
                         onClick={(e) => { e.stopPropagation(); setOpen(r.doc); }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#9ca3af] hover:text-white border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-lg transition-colors"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400 hover:bg-gray-50 rounded-lg transition-colors"
                       >
                         <FileText className="w-3.5 h-3.5" /> View
                       </button>
@@ -202,7 +200,7 @@ export default function InvoicesClient({
       )}
 
       {!canViewCost && invoices.length > 0 && (
-        <p className="text-[10px] text-[#4b5563] mt-2">Values hidden — you don&apos;t have cost visibility (cost.view).</p>
+        <p className="text-[10px] text-gray-400 mt-2">Values hidden — you don&apos;t have cost visibility (cost.view).</p>
       )}
 
       {open && <CommercialInvoiceModal doc={open} onClose={() => setOpen(null)} />}

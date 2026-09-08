@@ -37,7 +37,6 @@ export function DraftStrip({
   startAgainLabel = 'Start again',
   saveStatus = 'idle',
   what = 'where you left off',
-  dark = false,
 }: {
   /** When the draft on screen was saved. */
   savedAt: string | null
@@ -50,23 +49,15 @@ export function DraftStrip({
   saveStatus?: SaveStatus
   /** Completes "Picked up ...". */
   what?: string
-  /** The operations screens are dark; a light strip on them reads as a bug. */
-  dark?: boolean
 }) {
   const when = savedTime(savedAt)
   const shell = stale
-    ? dark
-      ? 'border-amber-700/50 bg-amber-900/20'
-      : 'border-amber-300 bg-amber-50'
-    : dark
-      ? 'border-[#2a2a2a] bg-[#1a1a1a]'
-      : 'border-gray-200 bg-gray-50'
-  const bodyText = dark ? 'text-[#9ca3af]' : 'text-gray-700'
-  const strongText = dark ? 'text-white' : 'text-gray-900'
-  const linkText = dark
-    ? 'text-[#e5e5e5] hover:text-white'
-    : 'text-gray-900 hover:text-black'
-  const mutedText = dark ? 'text-[#6b7280]' : 'text-gray-500'
+    ? 'border-amber-300 bg-amber-50'
+    : 'border-gray-200 bg-gray-50'
+  const bodyText = 'text-gray-700'
+  const strongText = 'text-gray-900'
+  const linkText = 'text-gray-900 hover:text-black'
+  const mutedText = 'text-gray-500'
 
   return (
     <div className={`rounded-md border px-4 py-2.5 ${shell}`}>
@@ -103,7 +94,7 @@ export function DraftStrip({
       </div>
 
       {stale && staleNote && (
-        <p className={`mt-1 text-xs ${dark ? 'text-amber-300' : 'text-amber-800'}`}>{staleNote}</p>
+        <p className="mt-1 text-xs text-amber-800">{staleNote}</p>
       )}
     </div>
   )

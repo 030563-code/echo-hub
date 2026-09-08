@@ -8,7 +8,7 @@ import type { MRPRow } from "@/lib/erp-types";
 import type { ColumnDef } from "@tanstack/react-table";
 
 function NumCell({ value, highlight }: { value: number; highlight?: "red" | "orange" }) {
-  const color = highlight === "red" ? "text-red-300" : highlight === "orange" ? "text-[#FF7026]" : "text-[#e5e5e5]";
+  const color = highlight === "red" ? "text-red-700" : highlight === "orange" ? "text-echo-orange" : "text-gray-900";
   return <span className={`text-sm font-bold tabular-nums ${color}`}>{value}</span>;
 }
 
@@ -23,14 +23,14 @@ const COLUMNS: ColumnDef<MRPRow, unknown>[] = [
     accessorKey: "sku",
     header: "SKU",
     cell: ({ getValue }) => (
-      <span className="font-mono text-xs text-[#FF7026] font-medium">{getValue() as string}</span>
+      <span className="font-mono text-xs text-echo-orange font-medium">{getValue() as string}</span>
     ),
   },
   {
     accessorKey: "product_name",
     header: "Product",
     cell: ({ getValue }) => (
-      <span className="text-sm text-[#9ca3af] max-w-[200px] truncate block">{(getValue() as string | null) ?? "—"}</span>
+      <span className="text-sm text-gray-600 max-w-[200px] truncate block">{(getValue() as string | null) ?? "—"}</span>
     ),
   },
   {
@@ -71,20 +71,20 @@ const COLUMNS: ColumnDef<MRPRow, unknown>[] = [
   {
     accessorKey: "safety_stock",
     header: "Safety Stock",
-    cell: ({ getValue }) => <span className="text-xs text-[#6b7280] tabular-nums">{getValue() as number}</span>,
+    cell: ({ getValue }) => <span className="text-xs text-gray-500 tabular-nums">{getValue() as number}</span>,
   },
   {
     accessorKey: "trigger_threshold",
     header: "Trigger",
     cell: ({ getValue }) => (
-      <span className="text-sm font-bold text-[#FF7026] tabular-nums">{getValue() as number}</span>
+      <span className="text-sm font-bold text-echo-orange tabular-nums">{getValue() as number}</span>
     ),
   },
   {
     accessorKey: "daily_run_rate",
     header: "Run Rate/day",
     cell: ({ getValue }) => (
-      <span className="text-xs text-[#4b5563] tabular-nums">{(getValue() as number).toFixed(2)}</span>
+      <span className="text-xs text-gray-400 tabular-nums">{(getValue() as number).toFixed(2)}</span>
     ),
   },
 ];
@@ -93,7 +93,6 @@ export default function MRPClient({ rows }: { rows: MRPRow[] }) {
   if (rows.length === 0) {
     return (
       <EmptyState
-        dark
         icon={<PackageSearch className="w-7 h-7" />}
         title="No SKUs to reorder"
         description="No SKUs found in warehouse_stock_levels."

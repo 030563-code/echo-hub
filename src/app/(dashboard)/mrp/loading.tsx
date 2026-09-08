@@ -1,8 +1,8 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
-// MRPClient always renders a real BoardTable (dark theme), so this mirrors
-// page.tsx's header + traffic-light summary + formula reference, plus a dark
-// table skeleton matching its columns.
+// MRPClient always renders a real BoardTable, so this mirrors page.tsx's
+// header + traffic-light summary + formula reference, plus a table skeleton
+// matching its columns.
 const HEADINGS = [
   "Status",
   "SKU",
@@ -20,11 +20,7 @@ const HEADINGS = [
 
 export default function MRPLoading() {
   return (
-    <div
-      className="p-6"
-      role="status"
-      style={{ '--skeleton-bg': 'rgba(255,255,255,0.10)' } as React.CSSProperties}
-    >
+    <div className="p-6" role="status">
       <span className="sr-only">Loading…</span>
 
       {/* Header */}
@@ -35,25 +31,25 @@ export default function MRPLoading() {
 
       {/* Traffic light summary */}
       <div className="grid grid-cols-3 gap-3 mb-6">
-        <div className="bg-red-950/30 border border-red-900/40 rounded-xl px-5 py-4">
+        <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-4">
           <div className="flex items-center gap-2 mb-1">
-            <div className="w-3 h-3 rounded-full bg-red-400" />
+            <div className="w-3 h-3 rounded-full bg-red-500" />
             <Skeleton className="h-3 w-24" />
           </div>
           <Skeleton className="h-9 w-10 mt-1" />
           <Skeleton className="h-3 w-28 mt-1.5" />
         </div>
-        <div className="bg-yellow-950/20 border border-yellow-900/40 rounded-xl px-5 py-4">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4">
           <div className="flex items-center gap-2 mb-1">
-            <div className="w-3 h-3 rounded-full bg-yellow-400" />
+            <div className="w-3 h-3 rounded-full bg-amber-500" />
             <Skeleton className="h-3 w-24" />
           </div>
           <Skeleton className="h-9 w-10 mt-1" />
           <Skeleton className="h-3 w-28 mt-1.5" />
         </div>
-        <div className="bg-emerald-950/20 border border-emerald-900/40 rounded-xl px-5 py-4">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-4">
           <div className="flex items-center gap-2 mb-1">
-            <div className="w-3 h-3 rounded-full bg-emerald-400" />
+            <div className="w-3 h-3 rounded-full bg-emerald-500" />
             <Skeleton className="h-3 w-24" />
           </div>
           <Skeleton className="h-9 w-10 mt-1" />
@@ -62,7 +58,7 @@ export default function MRPLoading() {
       </div>
 
       {/* Formula reference */}
-      <div className="bg-[#1a1a2e] border border-blue-900/30 rounded-xl px-5 py-4 mb-6 space-y-2">
+      <div className="bg-blue-50 border border-blue-200 rounded-xl px-5 py-4 mb-6 space-y-2">
         <Skeleton className="h-3 w-32" />
         <Skeleton className="h-3 w-64" />
         <Skeleton className="h-3 w-72" />
@@ -72,12 +68,12 @@ export default function MRPLoading() {
 
       {/* Table */}
       <Skeleton className="h-9 w-full rounded-lg mb-3" />
-      <div className="overflow-auto rounded-lg border border-[#2a2a2a]">
+      <div className="overflow-auto rounded-lg border border-gray-200">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-[#2a2a2a] bg-[#161616]">
+            <tr className="border-b border-gray-200 bg-gray-50">
               {HEADINGS.map((h) => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-medium text-[#6b7280] uppercase tracking-wider whitespace-nowrap">
+                <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                   {h}
                 </th>
               ))}
@@ -85,7 +81,7 @@ export default function MRPLoading() {
           </thead>
           <tbody>
             {Array.from({ length: 5 }).map((_, r) => (
-              <tr key={r} className="border-b border-[#1e1e1e] last:border-0">
+              <tr key={r} className="border-b border-gray-100 last:border-0">
                 {HEADINGS.map((h, c) => (
                   <td key={c} className="px-4 py-3">
                     <Skeleton className="h-3 w-full max-w-[90px]" />

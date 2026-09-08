@@ -29,17 +29,17 @@ export default async function ApprovalsPage() {
     <div className="p-6 max-w-4xl mx-auto">
       <Link
         href="/purchase-orders"
-        className="inline-flex items-center gap-1.5 text-xs text-[#6b7280] hover:text-[#e5e5e5] transition-colors mb-4"
+        className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-900 transition-colors mb-4"
       >
         <ArrowLeft className="w-3.5 h-3.5" />
         Back to Purchase Orders
       </Link>
 
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white" style={{ fontFamily: "Varela Round, sans-serif" }}>
+        <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: "Varela Round, sans-serif" }}>
           PO Approvals
         </h1>
-        <p className="text-[#6b7280] text-sm mt-1">
+        <p className="text-gray-500 text-sm mt-1">
           Three-tier approval — Depot → Group → SRO. Each approval authorises that tier&apos;s Xero PO and raises the next.
         </p>
       </div>

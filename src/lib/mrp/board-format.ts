@@ -14,14 +14,14 @@ export type BufferZone = "red" | "yellow" | "green";
 // Zone chip palette — mirrors the legacy traffic-light summary cards so red on
 // the v2 board reads as the same red operators already know.
 const ZONE_CHIP: Record<BufferZone, string> = {
-  red: "bg-red-950/40 text-red-300 border-red-900/50",
-  yellow: "bg-yellow-950/30 text-yellow-300 border-yellow-900/50",
-  green: "bg-emerald-950/30 text-emerald-300 border-emerald-900/50",
+  red: "bg-red-50 text-red-700 border-red-200",
+  yellow: "bg-amber-50 text-amber-700 border-amber-200",
+  green: "bg-emerald-50 text-emerald-700 border-emerald-200",
 };
 
 // The zone column is nullable in mrp_buffer_status_daily; anything that isn't
 // one of the three zones gets the neutral chip rather than crashing the row.
-const ZONE_CHIP_FALLBACK = "bg-[#1e1e1e] text-[#9ca3af] border-[#2a2a2a]";
+const ZONE_CHIP_FALLBACK = "bg-gray-100 text-gray-600 border-gray-300";
 
 /** Tailwind classes for a zone chip; unknown/null zones degrade to neutral. */
 export function zoneChipClasses(zone: string): string {

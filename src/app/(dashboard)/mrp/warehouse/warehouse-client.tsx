@@ -56,21 +56,20 @@ export default function WarehouseClient({ initialStock }: { initialStock: Wareho
   }
 
   function stockColor(qty: number) {
-    if (qty === 0) return "text-red-300";
-    if (qty < 10) return "text-yellow-300";
-    return "text-emerald-300";
+    if (qty === 0) return "text-red-700";
+    if (qty < 10) return "text-amber-700";
+    return "text-emerald-700";
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-xs text-[#4b5563]">{stock.length} SKU{stock.length !== 1 ? "s" : ""} on hand</span>
-        <SearchBox value={q} onChange={setQ} placeholder="Search SKU or product…" dark />
+        <span className="text-xs text-gray-400">{stock.length} SKU{stock.length !== 1 ? "s" : ""} on hand</span>
+        <SearchBox value={q} onChange={setQ} placeholder="Search SKU or product…" />
       </div>
 
       {Object.keys(grouped).length === 0 ? (
         <EmptyState
-          dark
           icon={<Warehouse className="w-7 h-7" />}
           title={needle ? "No matching stock" : "No stock records"}
           description={needle ? `Nothing matches “${q}”.` : "No warehouse stock levels to show yet."}
@@ -79,18 +78,18 @@ export default function WarehouseClient({ initialStock }: { initialStock: Wareho
         Object.entries(grouped).map(([warehouse, items]) => (
         <div key={warehouse}>
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-sm font-medium text-white px-2 py-1 bg-[#1e2a3a] border border-blue-900/40 rounded-lg font-mono">
+            <span className="text-sm font-medium text-gray-900 px-2 py-1 bg-blue-50 border border-blue-200 rounded-lg font-mono">
               {warehouse}
             </span>
-            <span className="text-xs text-[#4b5563]">{items.length} SKUs</span>
+            <span className="text-xs text-gray-400">{items.length} SKUs</span>
           </div>
 
-          <div className="overflow-auto rounded-lg border border-[#2a2a2a]">
+          <div className="overflow-auto rounded-lg border border-gray-200">
             <table className="w-full min-w-[480px] text-sm">
               <thead>
-                <tr className="border-b border-[#2a2a2a] bg-[#161616]">
+                <tr className="border-b border-gray-200 bg-gray-50">
                   {["SKU", "Product Name", "In Stock", ""].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-medium text-[#6b7280] uppercase tracking-wider whitespace-nowrap">
+                    <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                       {h}
                     </th>
                   ))}
@@ -98,12 +97,12 @@ export default function WarehouseClient({ initialStock }: { initialStock: Wareho
               </thead>
               <tbody>
                 {items.map((item) => (
-                  <tr key={item.id} className="border-b border-[#1e1e1e] last:border-0 hover:bg-[#1a1a1a] transition-colors">
+                  <tr key={item.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3">
-                      <span className="font-mono text-xs text-[#FF7026]">{item.sku}</span>
+                      <span className="font-mono text-xs text-echo-orange">{item.sku}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-sm text-[#9ca3af]">{item.product_name ?? "—"}</span>
+                      <span className="text-sm text-gray-600">{item.product_name ?? "—"}</span>
                     </td>
                     <td className="px-4 py-3">
                       {editingId === item.id ? (
@@ -117,7 +116,7 @@ export default function WarehouseClient({ initialStock }: { initialStock: Wareho
                             if (e.key === "Enter") saveEdit(item);
                             if (e.key === "Escape") setEditingId(null);
                           }}
-                          className="w-20 px-2 py-1 bg-[#2a2a2a] border border-[#FF7026]/50 rounded text-base sm:text-sm text-white focus:outline-none"
+                          className="w-20 px-2 py-1 bg-white border border-echo-orange/50 rounded text-base sm:text-sm text-gray-900 focus:outline-none"
                         />
                       ) : (
                         <span className={cn("text-sm font-bold tabular-nums", stockColor(item.quantity_on_hand))}>
@@ -128,17 +127,17 @@ export default function WarehouseClient({ initialStock }: { initialStock: Wareho
                     <td className="px-4 py-3">
                       {editingId === item.id ? (
                         <div className="flex items-center gap-1">
-                          <button onClick={() => saveEdit(item)} className="p-3 sm:p-1 text-emerald-400 hover:text-emerald-300 transition-colors">
+                          <button onClick={() => saveEdit(item)} className="p-3 sm:p-1 text-emerald-600 hover:text-emerald-700 transition-colors">
                             <Check className="w-3.5 h-3.5" />
                           </button>
-                          <button onClick={() => setEditingId(null)} className="p-3 sm:p-1 text-[#6b7280] hover:text-white transition-colors">
+                          <button onClick={() => setEditingId(null)} className="p-3 sm:p-1 text-gray-500 hover:text-gray-900 transition-colors">
                             <X className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       ) : (
                         <button
                           onClick={() => { setEditingId(item.id); setEditValue(String(item.quantity_on_hand)); }}
-                          className="p-3 sm:p-1 text-[#4b5563] hover:text-[#FF7026] transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
+                          className="p-3 sm:p-1 text-gray-400 hover:text-echo-orange transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>

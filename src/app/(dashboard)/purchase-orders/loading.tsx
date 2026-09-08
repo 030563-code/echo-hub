@@ -7,11 +7,7 @@ const KANBAN_COLUMNS = 7;
 
 export default function PurchaseOrdersLoading() {
   return (
-    <div
-      className="p-6"
-      role="status"
-      style={{ '--skeleton-bg': 'rgba(255,255,255,0.10)' } as React.CSSProperties}
-    >
+    <div className="p-6" role="status">
       <span className="sr-only">Loading…</span>
 
       {/* Header */}
@@ -23,7 +19,7 @@ export default function PurchaseOrdersLoading() {
       {/* Stats strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="bg-[#1e1e1e] border border-[#2a2a2a] rounded-lg px-4 py-3">
+          <div key={i} className="bg-white border border-gray-200 rounded-lg px-4 py-3">
             <Skeleton className="h-3 w-20 mb-2" />
             <Skeleton className="h-6 w-10" />
           </div>
@@ -46,7 +42,7 @@ export default function PurchaseOrdersLoading() {
             </div>
             <div className="space-y-2">
               {Array.from({ length: 2 }).map((_, card) => (
-                <div key={card} className="bg-[#1e1e1e] border border-[#2a2a2a] rounded-lg p-3">
+                <div key={card} className="bg-white border border-gray-200 rounded-lg p-3">
                   <Skeleton className="h-3 w-24 mb-2" />
                   <Skeleton className="h-3 w-16" />
                 </div>

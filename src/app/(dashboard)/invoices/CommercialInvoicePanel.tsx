@@ -78,34 +78,34 @@ export default function CommercialInvoicePanel({
   return (
     <div className="mb-8">
       <div className="flex items-center gap-2 mb-3">
-        <h2 className="text-sm font-semibold text-white" style={{ fontFamily: "Varela Round, sans-serif" }}>
+        <h2 className="text-sm font-semibold text-gray-900" style={{ fontFamily: "Varela Round, sans-serif" }}>
           New invoice — from a container
         </h2>
-        <span className="text-[10px] text-[#4b5563]">per container — EUR (SRO → Group) &amp; USD (Group → USA)</span>
+        <span className="text-[10px] text-gray-400">per container — EUR (SRO → Group) &amp; USD (Group → USA)</span>
         {canCreate && (
-          <span className="ml-auto flex items-center gap-1.5 text-[10px] text-[#6b7280]">
+          <span className="ml-auto flex items-center gap-1.5 text-[10px] text-gray-500">
             Destination
             <input
               value={destCountry}
               onChange={(e) => setDestCountry(e.target.value.toUpperCase())}
               placeholder="e.g. BR"
               maxLength={3}
-              className="w-16 bg-[#1a1a1a] border border-[#2a2a2a] rounded px-2 py-1 text-xs font-mono uppercase text-[#e5e5e5] focus:border-[#FF7026] focus:outline-none"
+              className="w-16 bg-white border border-gray-300 rounded px-2 py-1 text-xs font-mono uppercase text-gray-900 focus:border-echo-orange focus:outline-none"
               title="Destination country code — drives country-specific invoice rules (e.g. Brazil folds packing + shipping into the product line)."
             />
           </span>
         )}
       </div>
 
-      {error && <p className="text-xs text-yellow-400 mb-2">{error}</p>}
+      {error && <p className="text-xs text-amber-700 mb-2">{error}</p>}
 
       {containers.length === 0 ? (
-        <p className="text-xs text-[#4b5563]">No containers in transit to invoice.</p>
+        <p className="text-xs text-gray-400">No containers in transit to invoice.</p>
       ) : (
-        <div className="rounded-xl border border-[#2a2a2a] overflow-hidden">
+        <div className="rounded-xl bg-white border border-gray-200 overflow-hidden">
           <table className="w-full text-xs">
             <thead>
-              <tr className="bg-[#1a1a1a] text-[10px] uppercase tracking-wider text-[#4b5563]">
+              <tr className="bg-gray-50 text-[10px] uppercase tracking-wider text-gray-500">
                 <th className="text-left font-medium px-3 py-2">Container</th>
                 <th className="text-left font-medium px-3 py-2">PO ref</th>
                 <th className="text-right font-medium px-3 py-2">SKUs</th>
@@ -115,11 +115,11 @@ export default function CommercialInvoicePanel({
             </thead>
             <tbody>
               {containers.map((c) => (
-                <tr key={c.container_ref} className="border-t border-[#222]">
-                  <td className="px-3 py-2 font-mono text-[#e5e5e5]">{c.container_ref}</td>
-                  <td className="px-3 py-2 font-mono text-[#9ca3af]">
+                <tr key={c.container_ref} className="border-t border-gray-100">
+                  <td className="px-3 py-2 font-mono text-gray-900">{c.container_ref}</td>
+                  <td className="px-3 py-2 font-mono text-gray-600">
                     {c.po_references.length === 0 ? (
-                      <span className="text-yellow-500/80" title="No PO reference on this container — the invoice can't tie back to a purchase order.">— no ref</span>
+                      <span className="text-amber-600" title="No PO reference on this container — the invoice can't tie back to a purchase order.">— no ref</span>
                     ) : c.po_references.length === 1 ? (
                       c.po_references[0]
                     ) : (
@@ -128,8 +128,8 @@ export default function CommercialInvoicePanel({
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-[#9ca3af]">{c.skus}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-[#9ca3af]">{c.units}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-gray-600">{c.skus}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-gray-600">{c.units}</td>
                   <td className="px-3 py-2 text-right">
                     {canCreate ? (
                       <div className="flex items-center justify-end gap-1.5">
@@ -137,7 +137,7 @@ export default function CommercialInvoicePanel({
                           onClick={() => generate(c.container_ref, "SRO_TO_GROUP")}
                           disabled={pending}
                           title="SRO → Group (EUR)"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#9ca3af] hover:text-white border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-lg transition-colors disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50"
                         >
                           {pending && busyRef === `${c.container_ref}:SRO_TO_GROUP` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
                           EUR
@@ -146,14 +146,14 @@ export default function CommercialInvoicePanel({
                           onClick={() => generate(c.container_ref, "GROUP_TO_USA")}
                           disabled={pending}
                           title="Group → USA (USD)"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#9ca3af] hover:text-white border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-lg transition-colors disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50"
                         >
                           {pending && busyRef === `${c.container_ref}:GROUP_TO_USA` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
                           USD
                         </button>
                       </div>
                     ) : (
-                      <span className="text-[10px] text-[#4b5563]">view only</span>
+                      <span className="text-[10px] text-gray-400">view only</span>
                     )}
                   </td>
                 </tr>

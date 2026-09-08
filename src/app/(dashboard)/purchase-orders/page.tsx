@@ -102,10 +102,10 @@ export default async function PurchasingPage() {
       {/* Header */}
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white" style={{ fontFamily: "Varela Round, sans-serif" }}>
+          <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: "Varela Round, sans-serif" }}>
             Supplier & PO Tracker
           </h1>
-          <p className="text-[#6b7280] text-sm mt-1">
+          <p className="text-gray-500 text-sm mt-1">
             Intercompany purchase orders — Depots → EB Group → EB SRO
           </p>
         </div>
@@ -113,12 +113,12 @@ export default async function PurchasingPage() {
           {canApprove && (
             <Link
               href="/purchase-orders/approvals"
-              className="relative inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-[#e5e5e5] bg-[#1e1e1e] hover:bg-[#2a2a2a] border border-[#2a2a2a] rounded-lg transition-colors"
+              className="relative inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-900 bg-white hover:bg-gray-100 border border-gray-300 rounded-lg transition-colors"
             >
               <ClipboardCheck className="w-3.5 h-3.5" />
               Approvals
               {pendingApproval > 0 && (
-                <span className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold text-white bg-[#FF7026] rounded-full">
+                <span className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold text-white bg-echo-orange rounded-full">
                   {pendingApproval}
                 </span>
               )}
@@ -127,7 +127,7 @@ export default async function PurchasingPage() {
           {canCreate && (
             <Link
               href="/purchase-orders/create"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#FF7026] hover:bg-[#f2641b] text-white text-sm font-medium rounded-lg transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-echo-orange hover:bg-echo-orange-hover text-white text-sm font-medium rounded-lg transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
               Raise PO
@@ -139,13 +139,13 @@ export default async function PurchasingPage() {
       {/* Stats strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
-          { label: "Total Active", value: all.length, color: "text-white" },
-          { label: "Awaiting Approval", value: pendingApproval, color: "text-blue-300" },
-          { label: "In Manufacturing", value: all.filter((o) => effectiveStage(o) === "manufacturing").length, color: "text-purple-300" },
-          { label: "Shipping", value: all.filter((o) => effectiveStage(o) === "shipping").length, color: "text-indigo-300" },
+          { label: "Total Active", value: all.length, color: "text-gray-900" },
+          { label: "Awaiting Approval", value: pendingApproval, color: "text-blue-800" },
+          { label: "In Manufacturing", value: all.filter((o) => effectiveStage(o) === "manufacturing").length, color: "text-purple-800" },
+          { label: "Shipping", value: all.filter((o) => effectiveStage(o) === "shipping").length, color: "text-indigo-800" },
         ].map(({ label, value, color }) => (
-          <div key={label} className="bg-[#1e1e1e] border border-[#2a2a2a] rounded-lg px-4 py-3">
-            <p className="text-[#6b7280] text-xs mb-0.5">{label}</p>
+          <div key={label} className="bg-white border border-gray-200 rounded-lg px-4 py-3">
+            <p className="text-gray-500 text-xs mb-0.5">{label}</p>
             <p className={`text-2xl font-bold ${color}`}>{value}</p>
           </div>
         ))}

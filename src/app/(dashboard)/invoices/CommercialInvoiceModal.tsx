@@ -100,29 +100,29 @@ export default function CommercialInvoiceModal({
   return (
     <Dialog.Root open onOpenChange={(o) => !o && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-[#141414] border border-[#2a2a2a] rounded-2xl p-6 shadow-2xl">
+        <Dialog.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-white border border-gray-200 rounded-2xl p-6 shadow-2xl">
           <div className="flex items-center justify-between mb-1">
-            <Dialog.Title className="text-lg font-semibold text-white" style={{ fontFamily: "Varela Round, sans-serif" }}>
-              Commercial Invoice — <span className="font-mono text-[#FF7026]">{doc.invoice_number}</span>
+            <Dialog.Title className="text-lg font-semibold text-gray-900" style={{ fontFamily: "Varela Round, sans-serif" }}>
+              Commercial Invoice — <span className="font-mono text-echo-orange">{doc.invoice_number}</span>
             </Dialog.Title>
-            <Dialog.Close className="p-1.5 text-[#4b5563] hover:text-white transition-colors rounded-lg hover:bg-[#2a2a2a]">
+            <Dialog.Close className="p-1.5 text-gray-400 hover:text-gray-900 transition-colors rounded-lg hover:bg-gray-100">
               <X className="w-4 h-4" />
             </Dialog.Close>
           </div>
-          <p className="text-xs text-[#6b7280] mb-3">
+          <p className="text-xs text-gray-500 mb-3">
             {doc.seller.legal_name} → {doc.buyer.legal_name} · container{" "}
-            <span className="font-mono text-[#9ca3af]">{doc.container_ref ?? "—"}</span> · {doc.currency}
+            <span className="font-mono text-gray-600">{doc.container_ref ?? "—"}</span> · {doc.currency}
           </p>
 
           {warnings.map((w, i) => (
-            <p key={i} className="text-[11px] text-yellow-400 mb-2">⚠ {w}</p>
+            <p key={i} className="text-[11px] text-amber-700 mb-2">⚠ {w}</p>
           ))}
 
-          <div className="rounded-xl border border-[#2a2a2a] overflow-hidden">
+          <div className="rounded-xl border border-gray-200 overflow-hidden">
             <table className="w-full text-xs">
               <thead>
-                <tr className="bg-[#1a1a1a] text-[10px] uppercase tracking-wider text-[#4b5563]">
+                <tr className="bg-gray-50 text-[10px] uppercase tracking-wider text-gray-500">
                   <th className="text-left font-medium px-3 py-2">SKU</th>
                   <th className="text-left font-medium px-3 py-2">Description</th>
                   <th className="text-right font-medium px-3 py-2">Qty</th>
@@ -132,17 +132,17 @@ export default function CommercialInvoiceModal({
               </thead>
               <tbody>
                 {doc.lines.map((l, i) => (
-                  <tr key={i} className="border-t border-[#222]">
-                    <td className="px-3 py-2 font-mono text-[#e5e5e5]">{l.sku}</td>
-                    <td className="px-3 py-2 text-[#9ca3af]">{l.product_name}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-[#9ca3af]">{l.qty}</td>
-                    {priced && <td className="px-3 py-2 text-right tabular-nums text-[#6b7280]">{money(l.unit_value)}</td>}
-                    {priced && <td className="px-3 py-2 text-right tabular-nums text-[#e5e5e5]">{money(l.line_total)}</td>}
+                  <tr key={i} className="border-t border-gray-100">
+                    <td className="px-3 py-2 font-mono text-gray-900">{l.sku}</td>
+                    <td className="px-3 py-2 text-gray-600">{l.product_name}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-600">{l.qty}</td>
+                    {priced && <td className="px-3 py-2 text-right tabular-nums text-gray-500">{money(l.unit_value)}</td>}
+                    {priced && <td className="px-3 py-2 text-right tabular-nums text-gray-900">{money(l.line_total)}</td>}
                   </tr>
                 ))}
                 {doc.lines.length === 0 && (
                   <tr>
-                    <td colSpan={priced ? 5 : 3} className="px-3 py-6 text-center text-[#4b5563]">No lines.</td>
+                    <td colSpan={priced ? 5 : 3} className="px-3 py-6 text-center text-gray-400">No lines.</td>
                   </tr>
                 )}
               </tbody>
@@ -151,24 +151,24 @@ export default function CommercialInvoiceModal({
 
           {priced ? (
             <div className="flex flex-col items-end gap-1 mt-3 text-sm">
-              <span className="text-[#9ca3af]">Subtotal <span className="tabular-nums text-[#e5e5e5]">{money(doc.subtotal)}</span></span>
-              <span className="text-[#9ca3af]">Tax <span className="tabular-nums text-[#e5e5e5]">{money(doc.tax_total)}</span></span>
-              <span className="text-[#FF7026] font-bold">Total ({doc.currency}) <span className="tabular-nums">{money(doc.total)}</span></span>
+              <span className="text-gray-600">Subtotal <span className="tabular-nums text-gray-900">{money(doc.subtotal)}</span></span>
+              <span className="text-gray-600">Tax <span className="tabular-nums text-gray-900">{money(doc.tax_total)}</span></span>
+              <span className="text-echo-orange font-bold">Total ({doc.currency}) <span className="tabular-nums">{money(doc.total)}</span></span>
               {doc.fx && (
-                <span className="text-[10px] text-[#6b7280]">FX {doc.fx.pair} @ {doc.fx.rate} ({doc.fx.method})</span>
+                <span className="text-[10px] text-gray-500">FX {doc.fx.pair} @ {doc.fx.rate} ({doc.fx.method})</span>
               )}
             </div>
           ) : (
-            <p className="text-[10px] text-[#4b5563] mt-3">Values hidden — you don&apos;t have cost visibility (cost.view).</p>
+            <p className="text-[10px] text-gray-400 mt-3">Values hidden — you don&apos;t have cost visibility (cost.view).</p>
           )}
 
           <div className="flex justify-end gap-2 mt-5">
-            <Dialog.Close className="px-4 py-2 text-sm text-[#9ca3af] hover:text-white transition-colors rounded-lg hover:bg-[#2a2a2a]">
+            <Dialog.Close className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors rounded-lg hover:bg-gray-100">
               Close
             </Dialog.Close>
             <button
               onClick={downloadPdf}
-              className="inline-flex items-center gap-2 px-5 py-2 bg-[#FF7026] hover:bg-[#f2641b] disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
+              className="inline-flex items-center gap-2 px-5 py-2 bg-echo-orange hover:bg-echo-orange-hover disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
             >
               <FileDown className="w-4 h-4" /> Download PDF
             </button>

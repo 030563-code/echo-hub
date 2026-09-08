@@ -64,15 +64,15 @@ export default function KanbanBoard({ orders, onCardClick, canMove = false, onMo
           >
             {/* Column header */}
             <div className="flex items-center justify-between px-3 py-2 mb-2">
-              <span className="text-xs font-medium text-[#9ca3af] uppercase tracking-wider">{col.label}</span>
-              <span className="text-xs text-[#4b5563] bg-[#1e1e1e] px-1.5 py-0.5 rounded-full">{colOrders.length}</span>
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">{col.label}</span>
+              <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full">{colOrders.length}</span>
             </div>
 
             {/* Cards / drop zone */}
             <div
               className={cn(
                 "space-y-2 rounded-lg min-h-[80px] transition-colors",
-                isOver && "outline-2 outline-dashed outline-[#025945] bg-[#025945]/10 p-1"
+                isOver && "outline-2 outline-dashed outline-emerald-600 bg-emerald-50 p-1"
               )}
             >
               {colOrders.map((order) => (
@@ -94,7 +94,7 @@ export default function KanbanBoard({ orders, onCardClick, canMove = false, onMo
                 />
               ))}
               {colOrders.length === 0 && (
-                <div className="border border-dashed border-[#2a2a2a] rounded-lg px-3 py-6 text-center text-[#4b5563] text-xs">
+                <div className="border border-dashed border-gray-200 rounded-lg px-3 py-6 text-center text-gray-400 text-xs">
                   {isOver ? "Drop here" : "No orders"}
                 </div>
               )}
@@ -130,7 +130,7 @@ function POCard({
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       className={cn(
-        "group bg-[#1e1e1e] border border-[#2a2a2a] rounded-lg p-3 hover:border-[#3a3a3a] transition-colors",
+        "group bg-white border border-gray-200 rounded-lg p-3 hover:border-gray-300 shadow-sm transition-colors",
         draggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
         isDragging && "opacity-40"
       )}
@@ -140,22 +140,22 @@ function POCard({
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-start gap-1.5 min-w-0">
           {draggable && (
-            <GripVertical className="w-3.5 h-3.5 text-[#3a3a3a] group-hover:text-[#6b7280] flex-shrink-0 mt-0.5 transition-colors" />
+            <GripVertical className="w-3.5 h-3.5 text-gray-300 group-hover:text-gray-500 flex-shrink-0 mt-0.5 transition-colors" />
           )}
           <div className="min-w-0">
-            <p className="text-xs font-mono text-[#FF7026] font-medium truncate">{displayPoNumber(order.po_number)}</p>
+            <p className="text-xs font-mono text-echo-orange font-medium truncate">{displayPoNumber(order.po_number)}</p>
             {order.reference_po_number && (
-              <p className="text-[10px] text-[#4b5563] font-mono truncate">Ref: {displayPoNumber(order.reference_po_number)}</p>
+              <p className="text-[10px] text-gray-400 font-mono truncate">Ref: {displayPoNumber(order.reference_po_number)}</p>
             )}
           </div>
         </div>
-        <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#2a2a2a] text-[#6b7280] whitespace-nowrap flex-shrink-0">
+        <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 whitespace-nowrap flex-shrink-0">
           {legLabel(order.leg)}
         </span>
       </div>
 
       {/* Route */}
-      <p className="text-xs text-[#9ca3af] mb-2 truncate">
+      <p className="text-xs text-gray-600 mb-2 truncate">
         {order.from_entity} → {order.to_entity}
       </p>
 
@@ -174,19 +174,19 @@ function POCard({
             className={cn(
               "text-[10px] px-1.5 py-0.5 rounded",
               order.manufacturing.sent_was_test
-                ? "bg-amber-950 text-amber-300"
-                : "bg-[#2a2a2a] text-[#9ca3af]",
+                ? "bg-amber-50 text-amber-800 border border-amber-200"
+                : "bg-gray-100 text-gray-600",
             )}
           >
             {order.manufacturing.sent_was_test ? "Sent to test address" : "Sent to Bamida"}
           </span>
           {order.manufacturing.est_finish && !order.manufacturing.finished_at && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#2a2a2a] text-[#9ca3af]">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
               Due {order.manufacturing.est_finish}
             </span>
           )}
           {order.manufacturing.finished_at && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
               Manufacturing finished
             </span>
           )}
@@ -195,13 +195,13 @@ function POCard({
 
       {/* Line items summary */}
       {lines.length > 0 && (
-        <div className="border-t border-[#2a2a2a] pt-2 mt-2">
+        <div className="border-t border-gray-100 pt-2 mt-2">
           <button
             onClick={(e) => {
               e.stopPropagation();
               setExpanded(!expanded);
             }}
-            className="flex items-center gap-1 text-[10px] text-[#6b7280] hover:text-[#9ca3af] transition-colors"
+            className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-700 transition-colors"
           >
             <Package className="w-3 h-3" />
             {lines.length} SKU{lines.length > 1 ? "s" : ""}
@@ -211,11 +211,11 @@ function POCard({
             <div className="mt-1.5 space-y-1">
               {lines.map((line) => (
                 <div key={line.id} className="flex items-center justify-between text-[10px]">
-                  <span className="font-mono text-[#9ca3af]">
+                  <span className="font-mono text-gray-600">
                     {line.sku}
                     {line.sku_suffix ? `-${line.sku_suffix}` : ""}
                   </span>
-                  <span className="text-[#6b7280]">×{line.quantity}</span>
+                  <span className="text-gray-500">×{line.quantity}</span>
                 </div>
               ))}
             </div>
@@ -224,7 +224,7 @@ function POCard({
       )}
 
       {/* Timestamp */}
-      <div className="flex items-center gap-1 mt-2 text-[10px] text-[#4b5563]">
+      <div className="flex items-center gap-1 mt-2 text-[10px] text-gray-400">
         <Clock className="w-3 h-3" />
         {formatRelative(order.created_at)}
       </div>

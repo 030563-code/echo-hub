@@ -27,31 +27,31 @@ import { usePersistedView } from "@/hooks/use-page-state";
 import { parsePoBoardView, type PoBoardView } from "@/lib/page-drafts";
 
 const inputCls =
-  "w-full px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-sm text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026] transition-colors";
+  "w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-echo-orange transition-colors";
 
 const TABLE_COLUMNS: ColumnDef<PurchaseOrder, unknown>[] = [
   {
     accessorKey: "po_number",
     header: "PO Number",
     cell: ({ getValue }) => (
-      <span className="font-mono text-[#FF7026] text-xs font-medium">{displayPoNumber(getValue() as string)}</span>
+      <span className="font-mono text-echo-orange text-xs font-medium">{displayPoNumber(getValue() as string)}</span>
     ),
   },
   {
     accessorKey: "from_entity",
     header: "From",
-    cell: ({ getValue }) => <span className="text-[#9ca3af] text-xs">{getValue() as string}</span>,
+    cell: ({ getValue }) => <span className="text-gray-600 text-xs">{getValue() as string}</span>,
   },
   {
     accessorKey: "to_entity",
     header: "To",
-    cell: ({ getValue }) => <span className="text-[#9ca3af] text-xs">{getValue() as string}</span>,
+    cell: ({ getValue }) => <span className="text-gray-600 text-xs">{getValue() as string}</span>,
   },
   {
     accessorKey: "leg",
     header: "Leg",
     cell: ({ getValue }) => (
-      <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#2a2a2a] text-[#6b7280]">
+      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
         {legLabel(getValue() as string)}
       </span>
     ),
@@ -71,7 +71,7 @@ const TABLE_COLUMNS: ColumnDef<PurchaseOrder, unknown>[] = [
     header: "SKUs",
     accessorFn: (row) => row.lines?.map((l) => l.sku).join(", ") ?? "",
     cell: ({ getValue }) => (
-      <span className="text-xs text-[#6b7280] font-mono max-w-[200px] truncate block">
+      <span className="text-xs text-gray-500 font-mono max-w-[200px] truncate block">
         {(getValue() as string) || "—"}
       </span>
     ),
@@ -80,7 +80,7 @@ const TABLE_COLUMNS: ColumnDef<PurchaseOrder, unknown>[] = [
     accessorKey: "created_at",
     header: "Created",
     cell: ({ getValue }) => (
-      <span className="text-xs text-[#6b7280]">{formatRelative(getValue() as string)}</span>
+      <span className="text-xs text-gray-500">{formatRelative(getValue() as string)}</span>
     ),
   },
 ];
@@ -189,14 +189,14 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
     <div className="relative">
       {/* View toggle */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        <div className="flex items-center bg-[#1e1e1e] border border-[#2a2a2a] rounded-lg p-0.5">
+        <div className="flex items-center bg-gray-100 border border-gray-200 rounded-lg p-0.5">
           {(["kanban", "table"] as const).map((v) => (
             <button
               key={v}
               onClick={() => setView(v)}
               className={cn(
                 "flex items-center gap-1.5 px-3 py-2.5 sm:py-1.5 rounded-md text-xs font-medium transition-colors",
-                view === v ? "bg-[#2a2a2a] text-[#e5e5e5]" : "text-[#6b7280] hover:text-[#9ca3af]"
+                view === v ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
               )}
             >
               {v === "kanban" ? <LayoutGrid className="w-3.5 h-3.5" /> : <List className="w-3.5 h-3.5" />}
@@ -204,11 +204,10 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
             </button>
           ))}
         </div>
-        <span className="text-xs text-[#4b5563]">{visibleOrders.length} orders</span>
+        <span className="text-xs text-gray-400">{visibleOrders.length} orders</span>
         <SearchBox
           value={q}
           onChange={setQ}
-          dark
           placeholder="Search PO, entity, status…"
           className="ml-auto"
         />
@@ -216,28 +215,27 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
           <button
             onClick={syncShipments}
             disabled={syncing}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#9ca3af] hover:text-white border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-lg transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50"
             title="Auto-detect each PO's Cargo Partner SPOT ID + shipment from its PO number"
           >
             {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ship className="w-3.5 h-3.5" />}
             Sync shipments
           </button>
         )}
-        {syncMsg && <span className="text-xs text-[#6b7280]">{syncMsg}</span>}
+        {syncMsg && <span className="text-xs text-gray-500">{syncMsg}</span>}
       </div>
 
       {/* Board */}
       {visibleOrders.length === 0 ? (
         orders.length === 0 ? (
           <EmptyState
-            dark
             icon={<Inbox className="w-8 h-8" />}
             title="No purchase orders yet"
             description="Raise a PO to start the Depot → Group → SRO approval chain. It'll appear here once created."
             action={
               <Link
                 href="/purchase-orders/create"
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#FF7026] hover:bg-[#f2641b] text-white text-sm font-medium rounded-lg transition-colors"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-echo-orange hover:bg-echo-orange-hover text-white text-sm font-medium rounded-lg transition-colors"
               >
                 Raise a PO
               </Link>
@@ -245,7 +243,6 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
           />
         ) : (
           <EmptyState
-            dark
             icon={<Inbox className="w-8 h-8" />}
             title="No matching purchase orders"
             description="Nothing matches your search. Try a different PO number, entity, status or SKU."
@@ -271,17 +268,17 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
 
       {/* Side panel */}
       {selected && (
-        <div className="fixed inset-y-0 right-0 w-full max-w-md sm:w-96 bg-[#161616] border-l border-[#2a2a2a] z-50 flex flex-col shadow-2xl">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[#2a2a2a]">
+        <div className="fixed inset-y-0 right-0 w-full max-w-md sm:w-96 bg-white border-l border-gray-200 z-50 flex flex-col shadow-2xl">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
             <div>
-              <p className="font-mono text-[#FF7026] font-medium">{displayPoNumber(selected.po_number)}</p>
+              <p className="font-mono text-echo-orange font-medium">{displayPoNumber(selected.po_number)}</p>
               {selected.reference_po_number && (
-                <p className="text-xs text-[#4b5563]">Ref: {displayPoNumber(selected.reference_po_number)}</p>
+                <p className="text-xs text-gray-400">Ref: {displayPoNumber(selected.reference_po_number)}</p>
               )}
             </div>
             <button
               onClick={() => setSelectedId(null)}
-              className="p-2.5 sm:p-1.5 hover:bg-[#2a2a2a] rounded-lg transition-colors text-[#6b7280] hover:text-white"
+              className="p-2.5 sm:p-1.5 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 hover:text-gray-900"
             >
               <X className="w-4 h-4" />
             </button>
@@ -300,26 +297,26 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
             {(selected.leg === "EB_GROUP_TO_SRO" || selected.leg === "SRO_TO_SUPPLIER") && (
               <Link
                 href={`/purchase-orders/${selected.id}`}
-                className="flex items-center justify-between gap-2 w-full px-4 py-2.5 text-sm text-[#e5e5e5] bg-[#1e1e1e] hover:bg-[#2a2a2a] border border-[#2a2a2a] rounded-lg transition-colors"
+                className="flex items-center justify-between gap-2 w-full px-4 py-2.5 text-sm text-gray-900 bg-white hover:bg-gray-100 border border-gray-300 rounded-lg transition-colors"
               >
                 {selected.leg === "EB_GROUP_TO_SRO" && selected.status === "approved"
                   ? "Choose how this is fulfilled"
                   : selected.leg === "SRO_TO_SUPPLIER"
                     ? "Manufacturing"
                     : "Open this order"}
-                <ArrowRight className="w-3.5 h-3.5 text-[#6b7280]" />
+                <ArrowRight className="w-3.5 h-3.5 text-gray-500" />
               </Link>
             )}
 
             <DetailSection label="Route">
-              <p className="text-sm text-[#e5e5e5]">{selected.from_entity}</p>
-              <p className="text-xs text-[#4b5563]">↓ {legLabel(selected.leg)}</p>
-              <p className="text-sm text-[#e5e5e5]">{selected.to_entity}</p>
+              <p className="text-sm text-gray-900">{selected.from_entity}</p>
+              <p className="text-xs text-gray-400">↓ {legLabel(selected.leg)}</p>
+              <p className="text-sm text-gray-900">{selected.to_entity}</p>
             </DetailSection>
 
             {selected.reference_po_number && (
               <DetailSection label="Reference PO">
-                <p className="text-sm font-mono text-[#9ca3af]">{selected.reference_po_number}</p>
+                <p className="text-sm font-mono text-gray-600">{selected.reference_po_number}</p>
               </DetailSection>
             )}
 
@@ -336,19 +333,19 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
                     const received = line.qty_received ?? 0;
                     const complete = received >= line.quantity;
                     return (
-                      <div key={line.id} className="flex items-center justify-between bg-[#1e1e1e] rounded-lg px-3 py-2">
+                      <div key={line.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
                         <div>
-                          <p className="text-xs font-mono text-[#e5e5e5]">
+                          <p className="text-xs font-mono text-gray-900">
                             {line.sku}{line.sku_suffix ? `-${line.sku_suffix}` : ""}
                           </p>
                           {line.product_name && (
-                            <p className="text-[10px] text-[#4b5563]">{line.product_name}</p>
+                            <p className="text-[10px] text-gray-400">{line.product_name}</p>
                           )}
                         </div>
                         <div className="text-right">
-                          <p className="text-xs text-[#e5e5e5] font-medium">×{line.quantity}</p>
+                          <p className="text-xs text-gray-900 font-medium">×{line.quantity}</p>
                           {received > 0 && (
-                            <p className={"text-[10px] " + (complete ? "text-green-300" : "text-yellow-300")}>
+                            <p className={"text-[10px] " + (complete ? "text-green-700" : "text-amber-700")}>
                               {received}/{line.quantity} received
                             </p>
                           )}
@@ -363,16 +360,16 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
                 {canReceive && selected.source === "hub" && selected.status === "approved" && selected.leg === "DEPOT_TO_EB_GROUP" && !isFullyReceived(selected.lines ?? []) && (
                   <button
                     onClick={() => setReceiveTarget(selected)}
-                    className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-[#FF7026] hover:bg-[#f2641b] rounded-lg transition-colors"
+                    className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-echo-orange hover:bg-echo-orange-hover rounded-lg transition-colors"
                   >
                     <PackageCheck className="w-3.5 h-3.5" /> Log delivery
                   </button>
                 )}
                 {selected.source === "hub" && selected.status === "approved" && selected.leg !== "DEPOT_TO_EB_GROUP" && (
-                  <p className="mt-2 text-[10px] text-[#4b5563]">Intercompany leg — goods are received against the depot order.</p>
+                  <p className="mt-2 text-[10px] text-gray-400">Intercompany leg — goods are received against the depot order.</p>
                 )}
                 {selected.status === "delivered" && (
-                  <p className="mt-2 inline-flex items-center gap-1 text-[10px] text-green-300">
+                  <p className="mt-2 inline-flex items-center gap-1 text-[10px] text-green-700">
                     <Check className="w-3 h-3" /> Fully received
                   </p>
                 )}
@@ -393,7 +390,7 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
 
             {selected.notes && (
               <DetailSection label="Notes">
-                <p className="text-sm text-[#9ca3af]">{selected.notes}</p>
+                <p className="text-sm text-gray-600">{selected.notes}</p>
               </DetailSection>
             )}
 
@@ -465,18 +462,18 @@ function CargoPoButton({ po }: { po: PurchaseOrder }) {
   }
 
   return (
-    <div className="border-t border-[#222] pt-4">
-      <p className="text-[10px] uppercase tracking-wider text-[#4b5563] mb-2">Cargo / Transport PO</p>
+    <div className="border-t border-gray-100 pt-4">
+      <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">Cargo / Transport PO</p>
       <button
         onClick={raise}
         disabled={pending}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#9ca3af] hover:text-white border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-lg transition-colors disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50"
       >
         {pending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ship className="w-3.5 h-3.5" />}
         Raise cargo PO ({chainNumber(po)}-2)
       </button>
-      {msg && <p className="text-[10px] text-green-400 mt-2">{msg}</p>}
-      {err && <p className="text-[10px] text-yellow-400 mt-2">{err}</p>}
+      {msg && <p className="text-[10px] text-green-700 mt-2">{msg}</p>}
+      {err && <p className="text-[10px] text-amber-700 mt-2">{err}</p>}
     </div>
   );
 }
@@ -536,24 +533,24 @@ function ReceiveModal({ po, onClose }: { po: PurchaseOrder; onClose: () => void 
   return (
     <Dialog.Root open onOpenChange={(o) => !o && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60]" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[70] w-full max-w-lg max-h-[90vh] overflow-y-auto bg-[#141414] border border-[#2a2a2a] rounded-2xl p-6 shadow-2xl">
+        <Dialog.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60]" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[70] w-full max-w-lg max-h-[90vh] overflow-y-auto bg-white border border-gray-200 rounded-2xl p-6 shadow-2xl">
           <div className="flex items-center justify-between mb-1">
-            <Dialog.Title className="text-lg font-semibold text-white" style={{ fontFamily: "Varela Round, sans-serif" }}>
-              Log delivery — <span className="font-mono text-[#FF7026]">{chainNumber(po)}</span>
+            <Dialog.Title className="text-lg font-semibold text-gray-900" style={{ fontFamily: "Varela Round, sans-serif" }}>
+              Log delivery — <span className="font-mono text-echo-orange">{chainNumber(po)}</span>
             </Dialog.Title>
-            <Dialog.Close className="p-1.5 text-[#4b5563] hover:text-white transition-colors rounded-lg hover:bg-[#2a2a2a]">
+            <Dialog.Close className="p-1.5 text-gray-400 hover:text-gray-900 transition-colors rounded-lg hover:bg-gray-100">
               <X className="w-4 h-4" />
             </Dialog.Close>
           </div>
-          <p className="text-xs text-[#6b7280] mb-4">Enter quantities received in this batch. The PO closes once every line is fully received.</p>
+          <p className="text-xs text-gray-500 mb-4">Enter quantities received in this batch. The PO closes once every line is fully received.</p>
 
           <div className="space-y-2">
             {lines.map((l) => (
-              <div key={l.id} className="flex items-center justify-between gap-3 bg-[#1e1e1e] rounded-lg px-3 py-2">
+              <div key={l.id} className="flex items-center justify-between gap-3 bg-gray-50 rounded-lg px-3 py-2">
                 <div className="min-w-0">
-                  <p className="text-xs font-mono text-[#e5e5e5]">{l.sku}</p>
-                  <p className="text-[10px] text-[#4b5563]">{l.received}/{l.ordered} received · {l.remaining} outstanding</p>
+                  <p className="text-xs font-mono text-gray-900">{l.sku}</p>
+                  <p className="text-[10px] text-gray-400">{l.received}/{l.ordered} received · {l.remaining} outstanding</p>
                 </div>
                 <input
                   value={qty[l.id] ?? ""}
@@ -562,7 +559,7 @@ function ReceiveModal({ po, onClose }: { po: PurchaseOrder; onClose: () => void 
                   placeholder="0"
                   aria-label={`receive-${l.sku}`}
                   disabled={l.remaining <= 0}
-                  className="w-24 px-3 py-1.5 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-sm text-right tabular-nums text-[#e5e5e5] placeholder-[#4b5563] focus:outline-none focus:border-[#FF7026] disabled:opacity-40"
+                  className="w-24 px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm text-right tabular-nums text-gray-900 placeholder-gray-400 focus:outline-none focus:border-echo-orange disabled:opacity-40"
                 />
               </div>
             ))}
@@ -574,17 +571,17 @@ function ReceiveModal({ po, onClose }: { po: PurchaseOrder; onClose: () => void 
           </div>
 
           {error && (
-            <p className="text-red-400 text-sm bg-red-900/20 border border-red-800/30 rounded-lg px-3 py-2 mt-3">{error}</p>
+            <p className="text-red-700 text-sm bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-3">{error}</p>
           )}
 
           <div className="flex justify-end gap-2 mt-5">
-            <Dialog.Close className="px-4 py-2 text-sm text-[#9ca3af] hover:text-white transition-colors rounded-lg hover:bg-[#2a2a2a]">
+            <Dialog.Close className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors rounded-lg hover:bg-gray-100">
               Cancel
             </Dialog.Close>
             <button
               onClick={submit}
               disabled={pending}
-              className="inline-flex items-center gap-2 px-5 py-2 bg-[#FF7026] hover:bg-[#f2641b] disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
+              className="inline-flex items-center gap-2 px-5 py-2 bg-echo-orange hover:bg-echo-orange-hover disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
             >
               {pending && <Loader2 className="w-4 h-4 animate-spin" />}
               Log delivery
@@ -623,34 +620,34 @@ function ShipmentSection({ po, canDetect }: { po: PurchaseOrder; canDetect: bool
       {s ? (
         <div className="space-y-0.5">
           <p className="text-xs">
-            <span className="text-[#4b5563]">SPOT ID</span> <span className="font-mono text-[#FF7026]">{s.spot_id}</span>
+            <span className="text-gray-400">SPOT ID</span> <span className="font-mono text-echo-orange">{s.spot_id}</span>
           </p>
           {s.container_ref && (
-            <p className="text-xs text-[#9ca3af]">Container <span className="font-mono">{s.container_ref}</span></p>
+            <p className="text-xs text-gray-600">Container <span className="font-mono">{s.container_ref}</span></p>
           )}
-          {s.vessel && <p className="text-xs text-[#9ca3af]">Vessel {s.vessel}{s.carrier ? ` · ${s.carrier}` : ""}</p>}
-          {s.eta && <p className="text-xs text-[#9ca3af]">ETA {s.eta}</p>}
+          {s.vessel && <p className="text-xs text-gray-600">Vessel {s.vessel}{s.carrier ? ` · ${s.carrier}` : ""}</p>}
+          {s.eta && <p className="text-xs text-gray-600">ETA {s.eta}</p>}
           {s.last_event && (
-            <p className="text-[10px] text-[#6b7280]">Last: {s.last_event}{s.last_event_at ? ` · ${s.last_event_at}` : ""}</p>
+            <p className="text-[10px] text-gray-500">Last: {s.last_event}{s.last_event_at ? ` · ${s.last_event_at}` : ""}</p>
           )}
           {(s.match_count ?? 1) > 1 && (
-            <p className="text-[10px] text-yellow-400">{s.match_count} shipments matched this PO — first shown.</p>
+            <p className="text-[10px] text-amber-700">{s.match_count} shipments matched this PO — first shown.</p>
           )}
         </div>
       ) : (
-        <p className="text-[10px] text-[#4b5563]">No shipment linked yet.</p>
+        <p className="text-[10px] text-gray-400">No shipment linked yet.</p>
       )}
       {canDetect && (
         <button
           onClick={detect}
           disabled={pending}
-          className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#9ca3af] hover:text-white border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-lg transition-colors disabled:opacity-50"
+          className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50"
         >
           {pending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ship className="w-3.5 h-3.5" />}
           {s ? "Refresh shipment" : "Detect shipment"}
         </button>
       )}
-      {msg && <p className="text-[10px] text-yellow-400 mt-1">{msg}</p>}
+      {msg && <p className="text-[10px] text-amber-700 mt-1">{msg}</p>}
     </DetailSection>
   );
 }
@@ -711,24 +708,24 @@ function AttachmentsSection({ po, canManage }: { po: PurchaseOrder; canManage: b
     <DetailSection label="Attachments">
       <div className="space-y-1.5">
         {atts.map((a) => (
-          <div key={a.id} className="flex items-center justify-between gap-2 bg-[#1e1e1e] rounded-lg px-3 py-2">
+          <div key={a.id} className="flex items-center justify-between gap-2 bg-gray-50 rounded-lg px-3 py-2">
             <button onClick={() => download(a.id)} className="flex items-center gap-2 min-w-0 text-left hover:opacity-80">
-              <Paperclip className="w-3.5 h-3.5 text-[#6b7280] flex-shrink-0" />
-              <span className="text-xs text-[#e5e5e5] truncate">{a.filename}</span>
+              <Paperclip className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+              <span className="text-xs text-gray-900 truncate">{a.filename}</span>
             </button>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <button onClick={() => download(a.id)} className="text-[#6b7280] hover:text-[#FF7026] transition-colors" title="Download">
+              <button onClick={() => download(a.id)} className="text-gray-500 hover:text-echo-orange transition-colors" title="Download">
                 <Download className="w-3.5 h-3.5" />
               </button>
               {canManage && (
-                <button onClick={() => remove(a.id)} className="text-[#6b7280] hover:text-red-400 transition-colors" title="Delete">
+                <button onClick={() => remove(a.id)} className="text-gray-500 hover:text-red-700 transition-colors" title="Delete">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
           </div>
         ))}
-        {atts.length === 0 && <p className="text-[10px] text-[#4b5563]">No files attached.</p>}
+        {atts.length === 0 && <p className="text-[10px] text-gray-400">No files attached.</p>}
       </div>
       {canManage && (
         <>
@@ -742,13 +739,13 @@ function AttachmentsSection({ po, canManage }: { po: PurchaseOrder; canManage: b
           <button
             onClick={() => fileRef.current?.click()}
             disabled={pending}
-            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#9ca3af] hover:text-white border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-lg transition-colors disabled:opacity-50"
+            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50"
           >
             {pending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />} Attach file
           </button>
         </>
       )}
-      {err && <p className="text-red-400 text-xs mt-2">{err}</p>}
+      {err && <p className="text-red-700 text-xs mt-2">{err}</p>}
     </DetailSection>
   );
 }
@@ -756,7 +753,7 @@ function AttachmentsSection({ po, canManage }: { po: PurchaseOrder; canManage: b
 function DetailSection({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="text-[10px] uppercase tracking-wider text-[#4b5563] font-medium mb-1.5">{label}</p>
+      <p className="text-[10px] uppercase tracking-wider text-gray-400 font-medium mb-1.5">{label}</p>
       <div className="space-y-1">{children}</div>
     </div>
   );
@@ -765,11 +762,11 @@ function DetailSection({ label, children }: { label: string; children: React.Rea
 function TimelineItem({ label, date, by }: { label: string; date: string; by?: string | null }) {
   return (
     <div className="flex items-start gap-2 text-xs">
-      <div className="w-1.5 h-1.5 rounded-full bg-[#FF7026] mt-1 flex-shrink-0" />
+      <div className="w-1.5 h-1.5 rounded-full bg-echo-orange mt-1 flex-shrink-0" />
       <div>
-        <span className="text-[#9ca3af]">{label}</span>
-        <span className="text-[#4b5563] ml-1">{formatRelative(date)}</span>
-        {by && <span className="text-[#4b5563] ml-1">by {by}</span>}
+        <span className="text-gray-600">{label}</span>
+        <span className="text-gray-400 ml-1">{formatRelative(date)}</span>
+        {by && <span className="text-gray-400 ml-1">by {by}</span>}
       </div>
     </div>
   );
