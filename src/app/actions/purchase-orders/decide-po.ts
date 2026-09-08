@@ -6,6 +6,7 @@ import { createServerClient } from "@/lib/supabase/server";
 import { getAuthorizedUser } from "@/lib/authz";
 import { externalCallsDisabled } from "@/lib/env";
 import { snapshotSroPoCost } from "@/lib/bom";
+import { notifySroPoReady } from "./notify-sro";
 import type { PurchaseOrderLine } from "@/lib/erp-types";
 
 // ---------------------------------------------------------------------------
@@ -158,6 +159,7 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
     ok?: boolean;
     reason?: string;
     next_leg?: string | null;
+    child_id?: string | null;
     child_po_number?: string | null;
   };
   if (!result.ok) {
@@ -225,6 +227,28 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
     }
   }
   // No webhook configured yet = expected (n8n not wired); not a warning.
+
+  // The order has just landed at SRO: tell Juraj it is waiting for him. Best
+  // effort and AFTER the Hub record is saved, so a mail failure can never undo
+  // an approval that happened. Addresses are resolved through the Hub-wide test
+  // switch, so during end-to-end testing this reaches Dean and nobody else.
+  if (result.next_leg === "EB_GROUP_TO_SRO" && result.child_id) {
+    const notified = await notifySroPoReady({
+      poId: result.child_id,
+      poNumber: result.child_po_number ?? null,
+      masterRef: po.master_ref,
+      fromDepot: po.from_entity,
+      approvedBy: label,
+      lines: (po.lines ?? []).map((l) => ({
+        sku: l.sku,
+        product_name: l.product_name,
+        quantity: l.quantity,
+      })),
+    });
+    if (!notified.sent && notified.reason === "failed") {
+      warning = warning ?? "Approved + saved, but the email telling SRO the order is waiting did not send.";
+    }
+  }
 
   revalidatePath("/purchase-orders");
   revalidatePath("/purchase-orders/approvals");

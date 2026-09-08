@@ -30,3 +30,16 @@ export function externalCallsDisabled(): boolean {
 /** Uniform message returned when an external hand-off is skipped in staging. */
 export const STAGING_SKIP_NOTE =
   'Sandbox (staging): the live hand-off was skipped — nothing was sent to Xero, HubSpot or Cargo Partner.'
+
+/**
+ * Where this Hub lives, for links that leave the building.
+ *
+ * An email has no request to take an origin from, so the address has to be
+ * configured. The default is the live site, because a link that is wrong in
+ * production is worse than one that is wrong on a laptop. Set
+ * NEXT_PUBLIC_HUB_BASE_URL locally (http://localhost:3000) when testing a send.
+ */
+export function hubBaseUrl(): string {
+  const configured = String(process.env.NEXT_PUBLIC_HUB_BASE_URL ?? '').trim()
+  return (configured || 'https://hub.echobarrier.com').replace(/\/+$/, '')
+}
