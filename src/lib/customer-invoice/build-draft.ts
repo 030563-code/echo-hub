@@ -27,6 +27,9 @@ export interface RawDealLine {
   hs_line_item_id?: string
   description?: string
   xero_item_code?: string
+  /** The Xero item's own description, which the sync DOES carry. Second best
+   *  after HubSpot's own line description, and better than a blank line. */
+  xero_item_description?: string
   /** Stamped by Supabase's split_fitting_kit_lines() on a kit component: the
    *  identity of the kit line it came out of. Its presence is what marks the
    *  line as already split. */
@@ -187,7 +190,7 @@ export function buildDraftLines(rawLines: readonly RawDealLine[] | null | undefi
       xero_item_code: String(raw.xero_item_code ?? '').trim() || null,
       account_code: null,
       name: String(raw.name ?? '').trim() || sku || 'Line item',
-      description: String(raw.description ?? '').trim() || null,
+      description: String(raw.description ?? '').trim() || String(raw.xero_item_description ?? '').trim() || null,
       quantity,
       unit_price: unitPrice,
       discount_percentage: discount,

@@ -11,6 +11,7 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildDraftLines, type RawDealLine } from '@/lib/customer-invoice/build-draft'
+import { fetchHubSpotLineDescriptions } from '@/lib/customer-invoice/line-descriptions'
 import { isUSDepot } from '@/lib/customer-invoice/constants'
 import { linesHash } from '@/lib/customer-invoice/hash'
 import { xeroItemAccounts } from '@/lib/xero-hub'
@@ -127,6 +128,24 @@ export async function openInvoiceForDeal(input: {
 
   const rawLines = (Array.isArray(deal.line_items_raw) ? deal.line_items_raw : []) as RawDealLine[]
   const lines = buildDraftLines(rawLines, depot)
+
+  // The description the customer read on the quote. The sync that writes
+  // line_items_raw never asked HubSpot for it, so every invoice line arrived
+  // blank even though HubSpot had the text all along. Read here rather than
+  // waiting on a change to the sync, so the deals already in the registry are
+  // fixed too. buildDraftLines has already fallen back to the Xero item
+  // description where the raw line carried one, and HubSpot wins over that
+  // because it is what the customer was actually sent.
+  const descriptions = await fetchHubSpotLineDescriptions(
+    lines.map((l) => l.hs_line_item_id ?? '').filter((id) => id !== ''),
+  )
+  for (const line of lines) {
+    // A kit split writes its own description ("Fitting kit x 3 ..."), which
+    // explains a line the customer's quote does not have. Never overwrite it.
+    if (line.origin === 'kit_split') continue
+    const found = line.hs_line_item_id ? descriptions.get(line.hs_line_item_id) : undefined
+    if (found) line.description = found
+  }
 
   // Resolve Xero item codes for each line's own ship-from depot.
   const codes = await lookupXeroItemCodes(lines.map((l) => ({ sku: l.sku, depot: l.ship_from_depot })))
