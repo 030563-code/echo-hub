@@ -7,6 +7,10 @@
  * ids back itself), so a retry after a timeout can never double-create.
  * After authorization the order is recorded into TaxJar for filing,
  * best-effort (stubbed in sandbox).
+ *
+ * // email-recipients: none (this posts to the invoice webhook but sends
+ * `email_to_customer: false`. Xero is the books only and must never email a
+ * customer; the PDF already went out from the Hub at the previous step.)
  */
 
 import { z } from 'zod'

@@ -22,6 +22,10 @@ import type { PurchaseOrderLine } from "@/lib/erp-types";
 //
 // The Hub owns the legs + progression so the chain is testable without n8n; the
 // real Xero numbers replace the Hub placeholders once n8n runs.
+//
+// email-recipients: none (the po-hub-approved webhook creates the Xero PO in
+// that tier's account. It sends no mail. Any email raised from this file has
+// to resolve its addresses through @/lib/email-recipients.)
 // ---------------------------------------------------------------------------
 
 const DecideSchema = z.object({

@@ -12,6 +12,10 @@
  * redirected there and the row records that it was a test. Without that flag a
  * test send and a real one are indistinguishable afterwards, and somebody
  * eventually concludes a customer was invoiced when they were not.
+ *
+ * // email-recipients: legacy (INVOICE_EMAIL_TEST_RECIPIENT is this path's own
+ * override and predates the Hub-wide HUB_EMAIL_TEST_RECIPIENT switch. Live
+ * invoicing, left alone deliberately; folding the two together is its own job.)
  */
 
 import { z } from 'zod'
