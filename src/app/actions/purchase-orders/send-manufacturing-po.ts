@@ -5,13 +5,14 @@ import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
-import { externalCallsDisabled, hubBaseUrl } from "@/lib/env";
+import { externalCallsDisabled } from "@/lib/env";
 import { resolveRecipients, sendDescription } from "@/lib/email-recipients";
 import { loadSroPoBom } from "@/lib/bom";
 import { buildBamidaPo, type BamidaSupplier } from "@/lib/bamida-po";
 import { buildBamidaPoPdf, bamidaPoPdfFilename } from "@/lib/bamida-po-pdf";
 import { getSupplierByCode } from "@/lib/suppliers";
 import { assessOrderCapability } from "@/lib/manufacturing-capability";
+import { mintManufacturingLink } from "@/lib/manufacturing-token";
 
 // Email the manufacturing order to Bamida.
 //
@@ -166,6 +167,16 @@ export async function sendManufacturingPoToBamida(
   }
 
   // --- Send ---------------------------------------------------------------
+  // The link Bamida come back to. Minted after the claim, so a losing caller
+  // never revokes the link the winning one just put in an email. Minting
+  // revokes any earlier live link for this order, which is what makes a
+  // deliberate resend leave exactly one working link behind.
+  const link = await mintManufacturingLink(poId, auth.user.id);
+  if (!link) {
+    await admin.from("po_manufacturing").update({ sent_at: null }).eq("po_id", poId);
+    return { ok: false, error: "The link for Bamida could not be created, so nothing was sent." };
+  }
+
   const doc = await buildBamidaPoPdf(bamida);
   const bytes = Buffer.from(doc.output("arraybuffer") as ArrayBuffer);
 
@@ -194,8 +205,9 @@ export async function sendManufacturingPoToBamida(
         po_number: po.po_number,
         master_ref: po.master_ref,
         reference_po_number: po.reference_po_number,
-        /** Where Bamida record their dates and press finished. Filled by A5. */
-        link: `${hubBaseUrl()}/manufacturing`,
+        /** Where Bamida record their dates and press finished. */
+        link: link.url,
+        link_expires_at: link.expiresAt,
         pallets: bamida.pallets,
         lines: (po.lines ?? []).map((l) => ({
           sku: l.sku,

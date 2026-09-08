@@ -6,7 +6,12 @@ import type { NextRequest } from 'next/server'
 // matcher requires a session. This is the SESSION gate only — capability
 // (module-level) enforcement happens in each (dashboard) page via
 // requireCapability(), and RLS enforces row access server-side.
-const PUBLIC_PATHS = ['/login', '/onboarding', '/auth/callback']
+// /manufacturing/<token> is the supplier's link. Bamida have no Hub account,
+// so a session gate here would show a factory a login page it can never pass.
+// The token IS the authorisation: it is resolved server-side on every request
+// and on every action, it names exactly one purchase order, and the page's
+// query selects no cost column at all. See lib/manufacturing-token.ts.
+const PUBLIC_PATHS = ['/login', '/onboarding', '/auth/callback', '/manufacturing']
 
 // Machine endpoints that carry their OWN authentication and must never be
 // session-gated: a cookieless caller (n8n cron) would otherwise be 307'd to
