@@ -107,10 +107,23 @@ describe("the supplier actions trust the token and nothing the caller sends", ()
   })
 
   it('makes finished a one-shot conditional update', () => {
+    // The timestamp is taken once into a variable and reused, because the Cargo
+    // Partner email has to carry the same moment the row was stamped with. What
+    // matters is unchanged: finished_at moves off null in ONE update guarded by
+    // `.is('finished_at', null)`, so a double press cannot stamp it twice.
     expect(source).toMatch(
-      /update\(\{ finished_at: new Date\(\)\.toISOString\(\) \}\)[\s\S]{0,160}\.is\('finished_at', null\)/,
+      /update\(\{ finished_at: (finishedAtIso|new Date\(\)\.toISOString\(\)) \}\)[\s\S]{0,160}\.is\('finished_at', null\)/,
     )
     expect(source).toContain('already marked finished')
+  })
+
+  it('stamps the row before it tells anyone, and never lets a mail failure undo it', () => {
+    // Bamida have finished the order whatever the forwarder's mail server does.
+    const stamp = source.indexOf("update({ finished_at:")
+    const notify = source.indexOf('notifyCargoPartnerReady(')
+    expect(stamp).toBeGreaterThan(-1)
+    expect(notify).toBeGreaterThan(stamp)
+    expect(source).not.toMatch(/notifyCargoPartnerReady[\s\S]{0,400}return \{ ok: false/)
   })
 
   it('stops the dates changing once the order is finished', () => {

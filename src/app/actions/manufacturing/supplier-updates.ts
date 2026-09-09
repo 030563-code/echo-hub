@@ -15,6 +15,7 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveManufacturingToken } from '@/lib/manufacturing-token'
+import { notifyCargoPartnerReady, type CargoLine } from '@/app/actions/purchase-orders/notify-cargo-partner'
 
 const DateInput = z
   .string()
@@ -93,9 +94,10 @@ export async function markManufacturingFinished(input: { token: string }): Promi
   if (!resolved.ok) return { ok: false, error: REFUSED[resolved.reason] }
 
   const admin = createAdminClient()
+  const finishedAtIso = new Date().toISOString()
   const { data: finished, error } = await admin
     .from('po_manufacturing')
-    .update({ finished_at: new Date().toISOString() })
+    .update({ finished_at: finishedAtIso })
     .eq('po_id', resolved.poId)
     .is('finished_at', null)
     .select('po_id')
@@ -114,6 +116,30 @@ export async function markManufacturingFinished(input: { token: string }): Promi
     .update({ lifecycle_stage: 'shipping' })
     .eq('id', resolved.poId)
   if (stageErr) console.error('markManufacturingFinished stage failed', stageErr.message)
+
+  // Barriers ready to collect, so tell the forwarder. Best effort and after the
+  // timestamp is safely written: Bamida have finished the order either way, and
+  // a mail failure must never leave them pressing a button that says it did not
+  // work. It emails; it never books anything with Cargo Partner.
+  const { data: po } = await admin
+    .from('purchase_orders')
+    .select('po_number, master_ref, lines:purchase_order_lines(sku, product_name, product_family, quantity)')
+    .eq('id', resolved.poId)
+    .maybeSingle<{
+      po_number: string | null
+      master_ref: string | null
+      lines: CargoLine[] | null
+    }>()
+  const notified = await notifyCargoPartnerReady({
+    poId: resolved.poId,
+    poNumber: po?.po_number ?? null,
+    masterRef: po?.master_ref ?? null,
+    finishedAt: finishedAtIso,
+    lines: po?.lines ?? [],
+  })
+  if (!notified.sent && notified.reason === 'failed') {
+    console.error('markManufacturingFinished cargo notify failed', resolved.poId)
+  }
 
   revalidatePath(`/purchase-orders/${resolved.poId}`)
   revalidatePath('/purchase-orders')
