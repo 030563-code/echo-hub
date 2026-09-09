@@ -16,7 +16,8 @@ import ReceiveModal from "@/components/po/receive-modal";
 import ShipmentSection from "@/components/po/shipment-section";
 import TimelineItem from "@/components/po/timeline-item";
 import { EmptyState } from "@/components/ui/empty-state";
-import { SearchBox } from "@/components/ui/search-box";
+import PoFilterBar from "@/components/po/po-filter-bar";
+import { applyPoFilters, type PoFilters } from "@/lib/po-filters";
 import { cn, formatRelative } from "@/lib/utils";
 import { syncAllPoShipments } from "@/app/actions/purchase-orders/po-shipments";
 import { chainNumber, isFullyReceived, legLabel, displayPoNumber } from "@/lib/po-number";
@@ -107,7 +108,7 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
   // none.
   const [boardView, setBoardView] = usePersistedView<PoBoardView>(
     "po-board",
-    { v: 1, view: "kanban", q: "" },
+    { v: 1, view: "kanban", q: "", statuses: [], stages: [], legs: [], entities: [], fulfilment: [], from: "", to: "" },
     parsePoBoardView,
   );
   const view = boardView.view;
@@ -116,8 +117,20 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
   const [receiveTarget, setReceiveTarget] = useState<PurchaseOrder | null>(null);
   const [syncing, startSync] = useTransition();
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
-  const q = boardView.q;
-  const setQ = (next: string) => setBoardView({ ...boardView, q: next });
+  // The filters and the remembered view are one object, so a filtered board
+  // survives a refresh and a walk away from the desk exactly as the search box
+  // already did.
+  const filters: PoFilters = {
+    q: boardView.q,
+    statuses: boardView.statuses,
+    stages: boardView.stages as PoFilters["stages"],
+    legs: boardView.legs,
+    entities: boardView.entities,
+    fulfilment: boardView.fulfilment,
+    from: boardView.from,
+    to: boardView.to,
+  };
+  const setFilters = (next: PoFilters) => setBoardView({ ...boardView, ...next });
 
   // Optimistic lifecycle-stage moves — the dragged card jumps columns instantly,
   // then the server persists + router.refresh() reconciles (useOptimistic reverts
@@ -139,25 +152,22 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
     });
   }
 
-  const visibleOrders = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return optimisticOrders;
-    return optimisticOrders.filter((o) =>
-      [
-        o.po_number,
-        chainNumber(o),
-        o.from_entity,
-        o.to_entity,
-        o.status,
-        o.fulfilment_type,
-        o.reference_po_number,
-        legLabel(o.leg),
-        (o.lines ?? []).map((l) => l.sku).join(" "),
-      ]
-        .filter(Boolean)
-        .some((v) => String(v).toLowerCase().includes(s))
-    );
-  }, [optimisticOrders, q]);
+  const visibleOrders = useMemo(
+    () => applyPoFilters(optimisticOrders, filters),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [optimisticOrders, boardView.q, boardView.statuses, boardView.stages, boardView.legs, boardView.entities, boardView.fulfilment, boardView.from, boardView.to],
+  );
+
+  // Only the entities actually on the board, so the chip list is what exists
+  // rather than every code the mapping happens to know about.
+  const entityCodes = useMemo(() => {
+    const seen = new Set<string>();
+    for (const o of optimisticOrders) {
+      if (o.from_entity) seen.add(o.from_entity);
+      if (o.to_entity) seen.add(o.to_entity);
+    }
+    return Array.from(seen).sort();
+  }, [optimisticOrders]);
 
   function syncShipments() {
     setSyncMsg(null);
@@ -205,13 +215,12 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
             </button>
           ))}
         </div>
-        <span className="text-xs text-gray-400">{visibleOrders.length} orders</span>
-        <SearchBox
-          value={q}
-          onChange={setQ}
-          placeholder="Search PO, entity, status…"
-          className="ml-auto"
-        />
+        <span className="text-xs text-gray-400">
+          {visibleOrders.length === optimisticOrders.length
+            ? `${visibleOrders.length} orders`
+            : `${visibleOrders.length} of ${optimisticOrders.length} orders`}
+        </span>
+        <span className="ml-auto" />
         {canDetectShipment && (
           <button
             onClick={syncShipments}
@@ -225,6 +234,14 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
         )}
         {syncMsg && <span className="text-xs text-gray-500">{syncMsg}</span>}
       </div>
+
+      <PoFilterBar
+        filters={filters}
+        onChange={setFilters}
+        entities={entityCodes}
+        showing={visibleOrders.length}
+        total={optimisticOrders.length}
+      />
 
       {/* Board */}
       {visibleOrders.length === 0 ? (
@@ -246,7 +263,7 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
           <EmptyState
             icon={<Inbox className="w-8 h-8" />}
             title="No matching purchase orders"
-            description="Nothing matches your search. Try a different PO number, entity, status or SKU."
+            description="Every order is filtered out. Widen the filters above, or clear them all."
           />
         )
       ) : view === "kanban" ? (

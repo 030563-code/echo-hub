@@ -18,8 +18,25 @@ const s = sroState();
 // that column's div also satisfies the `has` filter. Columns render in a fixed
 // order (LIFECYCLE_STAGES), so .first() deterministically resolves to the real
 // column, not a column merely hosting a same-labelled card.
+/**
+ * A board column, by its STAGE KEY rather than by its label text.
+ *
+ * The labels are also the labels on the PO filter chips, so matching loose text
+ * resolved to a hidden chip inside the collapsed advanced-filters panel and
+ * every column assertion started failing at once. `data-column` is on the
+ * column itself and cannot collide.
+ */
+const STAGE_KEY: Record<string, string> = {
+  "Depot → Group": "depot_group",
+  "Group → S.R.O": "group_sro",
+  "S.R.O": "sro",
+  "Sent to manufacturing": "sent_manufacturing",
+  "Manufacturing in progress": "manufacturing",
+  "Ready for shipment": "ready_for_shipment",
+  "Shipping": "shipping",
+};
 const col = (page: Page, label: string) =>
-  page.locator("div.w-64").filter({ has: page.getByText(label, { exact: true }) }).first();
+  page.locator(`[data-kanban="board"] [data-column="${STAGE_KEY[label] ?? label}"]`);
 
 // Drag `card` onto `target` and wait until the card RENDERS inside it. Retries
 // the whole gesture: dispatching drag events straight after navigation can race
@@ -50,16 +67,23 @@ test("PO lifecycle kanban drags + persists; invoices create panel moved", async 
   test.skip(!s, "Run `node tests/e2e/_setup.mjs` first");
   await login(page, c!);
 
-  // ---- /purchase-orders: the 6 leg-based columns render ----
+  // ---- /purchase-orders: the 7 leg-based columns render ----
+  //
+  // Scoped to the board. These labels are also the labels on the PO filter
+  // chips, so an unscoped getByText resolves to a hidden chip inside the
+  // collapsed advanced-filters panel and reports every column as missing.
   await page.goto("/purchase-orders");
   for (const label of [
     "Depot → Group",
     "Group → S.R.O",
+    "S.R.O",
     "Sent to manufacturing",
     "Manufacturing in progress",
+    "Ready for shipment",
     "Shipping",
   ]) {
-    await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
+    await expect(col(page, label)).toBeVisible();
+    await expect(col(page, label).getByText(label, { exact: true }).first()).toBeVisible();
   }
 
   // The DEPOT_TO_EB_GROUP fixture — its number is a real, displayable E2E number
@@ -71,6 +95,16 @@ test("PO lifecycle kanban drags + persists; invoices create panel moved", async 
   // Normalise: put the card in its home column first (no-op when already there;
   // self-heals leftover state if a previous run died between drag and drag-back).
   await dragTo(page, card, col(page, "Depot → Group"), poNumber);
+
+  // ---- drag → "Ready for shipment" ----
+  //
+  // The new column, dragged FIRST and on purpose. This is the only test that
+  // drives setPoStage end to end, and the RPC hardcodes its own copy of the
+  // stage list and RAISEs on anything it does not know. Without this, adding a
+  // stage to TypeScript and forgetting the migration passes every unit test and
+  // fails only in front of a person.
+  await dragTo(page, card, col(page, "Ready for shipment"), poNumber);
+  await expect(page.getByText('Moved to “Ready for shipment”')).toBeVisible({ timeout: 15_000 });
 
   // ---- drag → "Sent to manufacturing", then prove it PERSISTED ----
   await dragTo(page, card, col(page, "Sent to manufacturing"), poNumber);

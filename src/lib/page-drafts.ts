@@ -111,11 +111,25 @@ export function parseSearchView(raw: unknown): SearchView | null {
   return parsed.success ? parsed.data : null
 }
 
-/** The purchase-order board: which view, the search box, and the open card. */
+/**
+ * The purchase-order board: which view, and the filters.
+ *
+ * Every filter field is OPTIONAL with a default, deliberately. A stored row
+ * written before filters existed still parses, so nobody loses their remembered
+ * view and search the day this ships. Bumping `v` would have thrown those rows
+ * away for no gain.
+ */
 export const poBoardViewSchema = z.object({
   v: z.literal(1),
   view: z.enum(['kanban', 'table']),
   q: z.string().max(200),
+  statuses: z.array(z.string().max(40)).max(20).default([]),
+  stages: z.array(z.string().max(40)).max(20).default([]),
+  legs: z.array(z.string().max(40)).max(10).default([]),
+  entities: z.array(z.string().max(40)).max(40).default([]),
+  fulfilment: z.array(z.string().max(20)).max(5).default([]),
+  from: z.string().max(10).default(''),
+  to: z.string().max(10).default(''),
 })
 export type PoBoardView = z.infer<typeof poBoardViewSchema>
 export function parsePoBoardView(raw: unknown): PoBoardView | null {

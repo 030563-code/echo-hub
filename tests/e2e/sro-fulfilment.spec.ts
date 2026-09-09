@@ -77,14 +77,31 @@ async function makePo(
 
 // The kanban column whose header reads `label`. .first() for the same reason as
 // po-lifecycle-kanban.spec.ts: a card's leg badge can share a column's label.
+/**
+ * A board column, by its STAGE KEY rather than by its label text.
+ *
+ * The labels are also the labels on the PO filter chips, so matching loose text
+ * resolved to a hidden chip inside the collapsed advanced-filters panel and
+ * every column assertion started failing at once. `data-column` is on the
+ * column itself and cannot collide.
+ */
+const STAGE_KEY: Record<string, string> = {
+  "Depot → Group": "depot_group",
+  "Group → S.R.O": "group_sro",
+  "S.R.O": "sro",
+  "Sent to manufacturing": "sent_manufacturing",
+  "Manufacturing in progress": "manufacturing",
+  "Ready for shipment": "ready_for_shipment",
+  "Shipping": "shipping",
+};
 const column = (page: Page, label: string) =>
-  page.locator("div.w-64").filter({ has: page.getByText(label, { exact: true }) }).first();
+  page.locator(`[data-kanban="board"] [data-column="${STAGE_KEY[label] ?? label}"]`);
 
 // The board remembers kanban-or-table per user, so ask for the kanban explicitly.
 async function openKanban(page: Page) {
   await page.goto("/purchase-orders");
   await page.getByRole("button", { name: "Kanban" }).click();
-  await expect(page.getByText("S.R.O", { exact: true }).first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('[data-kanban="board"]')).toBeVisible({ timeout: 30_000 });
 }
 
 const sb = serviceClient();

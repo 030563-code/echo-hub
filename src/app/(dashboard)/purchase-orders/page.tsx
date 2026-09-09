@@ -137,11 +137,17 @@ export default async function PurchasingPage() {
       </div>
 
       {/* Stats strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      {/* Five tiles since Ready for Shipment joined, so the row needs a fifth
+          column at desktop width rather than wrapping one tile onto its own line. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
         {[
           { label: "Total Active", value: all.length, color: "text-gray-900" },
           { label: "Awaiting Approval", value: pendingApproval, color: "text-blue-800" },
           { label: "In Manufacturing", value: all.filter((o) => effectiveStage(o) === "manufacturing").length, color: "text-purple-800" },
+          // Added 9 Sep with the stage itself. Without a tile of its own, every
+          // order waiting on freight vanished from this strip: it had stopped
+          // being counted as manufacturing and was not yet shipping.
+          { label: "Ready for Shipment", value: all.filter((o) => effectiveStage(o) === "ready_for_shipment").length, color: "text-orange-800" },
           { label: "Shipping", value: all.filter((o) => effectiveStage(o) === "shipping").length, color: "text-indigo-800" },
         ].map(({ label, value, color }) => (
           <div key={label} className="bg-white border border-gray-200 rounded-lg px-4 py-3">

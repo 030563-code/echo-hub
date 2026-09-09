@@ -35,13 +35,18 @@ export default function KanbanBoard({ orders, onCardClick, canMove = false, onMo
   }
 
   return (
-    <div className="flex gap-3 overflow-x-auto pb-4">
+    // data-kanban is a test hook, and it earns its keep: the board's column
+    // labels are also the labels on the PO filter chips, so a locator that
+    // matched loose text picked a hidden chip out of a collapsed panel instead
+    // of a column. Scoping to the board makes that impossible.
+    <div data-kanban="board" className="flex gap-3 overflow-x-auto pb-4">
       {LIFECYCLE_STAGES.map((col) => {
         const colOrders = orders.filter((o) => effectiveStage(o) === col.key);
         const isOver = overStage === col.key;
         return (
           <div
             key={col.key}
+            data-column={col.key}
             className="flex-shrink-0 w-64"
             onDragOver={
               canMove

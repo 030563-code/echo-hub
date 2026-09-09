@@ -16,7 +16,9 @@ const s = sroState()
 // box filters the underlying orders on the RAW po_number even though the label
 // shown is masked, so it narrows the board to just this fixture before we click.
 async function openCargoFixture(page: import('@playwright/test').Page) {
-  await page.getByPlaceholder('Search PO, entity, status…').fill(s!.cargoPo.po_number)
+  // Addressed by its label, not its placeholder. The placeholder is copy and
+  // changed the day the advanced filters arrived; the accessible name did not.
+  await page.getByLabel('Search purchase orders').fill(s!.cargoPo.po_number)
   await page.getByText('Awaiting Xero PO number', { exact: true }).first().click()
 }
 
