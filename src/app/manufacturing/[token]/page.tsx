@@ -1,3 +1,4 @@
+import Image from 'next/image'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveManufacturingToken } from '@/lib/manufacturing-token'
 import { displayPoNumber } from '@/lib/po-number'
@@ -64,8 +65,7 @@ export default async function ManufacturingPage({ params }: { params: Promise<{ 
 
   return (
     <Shell>
-      <p className="text-xs uppercase tracking-wider text-gray-500">Echo Barrier</p>
-      <h1 className="mt-1 text-2xl font-bold text-gray-900">
+      <h1 className="text-2xl font-bold text-gray-900">
         Purchase order {displayPoNumber(po.po_number)}
       </h1>
       <p className="mt-1 text-sm text-gray-600">
@@ -111,11 +111,40 @@ export default async function ManufacturingPage({ params }: { params: Promise<{ 
   )
 }
 
+/**
+ * The frame Bamida see, on every state including a dead link.
+ *
+ * The logo is in the shell rather than beside the heading so an expired or
+ * withdrawn link still says plainly who it came from. A supplier who cannot tell
+ * whose page they are on has no reason to trust the dates they type into it.
+ *
+ * Typeface and colour come from the root layout and globals.css, the same
+ * Varela Round headings, Roboto body and #FF7026 the rest of the Hub uses. The
+ * logo artwork is black on white, so it sits on the card unaltered; the login
+ * page inverts it only because that one is on black.
+ */
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <main className="min-h-screen bg-gray-50 px-4 py-10">
-      <div className="mx-auto max-w-2xl rounded-xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
-        {children}
+      <div className="mx-auto max-w-2xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="h-1.5 bg-echo-orange" />
+        <div className="p-6 sm:p-8">
+          <Image
+            src="/logo.jpg"
+            alt="Echo Barrier"
+            width={1119}
+            height={215}
+            className="mb-6 h-11 w-auto"
+            priority
+          />
+          {children}
+        </div>
+        <div className="border-t border-gray-100 px-6 py-4 sm:px-8">
+          <p className="text-xs text-gray-400">
+            Sent to you by Echo Barrier. These pages are only ever about one order, and never show
+            prices. If anything looks wrong, reply to the email that brought you here.
+          </p>
+        </div>
       </div>
     </main>
   )

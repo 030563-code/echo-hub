@@ -90,7 +90,7 @@ export default function SupplierPanel({
               type="date"
               value={start}
               onChange={(e) => setStart(e.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none"
+              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 transition-colors focus:border-echo-orange focus:outline-none focus:ring-1 focus:ring-echo-orange"
             />
           </label>
           <label className="block">
@@ -99,7 +99,7 @@ export default function SupplierPanel({
               type="date"
               value={finish}
               onChange={(e) => setFinish(e.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none"
+              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 transition-colors focus:border-echo-orange focus:outline-none focus:ring-1 focus:ring-echo-orange"
             />
           </label>
         </div>
@@ -107,7 +107,7 @@ export default function SupplierPanel({
         <button
           onClick={saveDates}
           disabled={pending}
-          className="mt-4 rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 disabled:opacity-50"
+          className="mt-4 rounded-lg bg-echo-orange px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-echo-orange-hover disabled:opacity-50"
         >
           {pending ? 'Saving...' : 'Save dates'}
         </button>
