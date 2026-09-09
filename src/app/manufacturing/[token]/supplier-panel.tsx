@@ -78,14 +78,16 @@ export default function SupplierPanel({
   return (
     <div className="mt-6 space-y-6">
       <div className="rounded-lg border border-gray-200 p-4">
-        <h2 className="text-sm font-semibold text-gray-900">When do you expect to build it?</h2>
+        <h2 className="text-sm font-semibold text-gray-900">
+          When do you expect to start and finish this purchase order?
+        </h2>
         <p className="mt-1 text-sm text-gray-600">
           You can change these as often as you need to, right up until you mark the order finished.
         </p>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="block">
-            <span className="text-xs font-medium uppercase tracking-wider text-gray-500">Start</span>
+            <span className="text-xs font-medium uppercase tracking-wider text-gray-500">Estimated start</span>
             <input
               type="date"
               value={start}
@@ -94,7 +96,7 @@ export default function SupplierPanel({
             />
           </label>
           <label className="block">
-            <span className="text-xs font-medium uppercase tracking-wider text-gray-500">Finish</span>
+            <span className="text-xs font-medium uppercase tracking-wider text-gray-500">Estimated finish</span>
             <input
               type="date"
               value={finish}
@@ -114,10 +116,11 @@ export default function SupplierPanel({
       </div>
 
       <div className="rounded-lg border border-gray-200 p-4">
-        <h2 className="text-sm font-semibold text-gray-900">Is it made?</h2>
+        <h2 className="text-sm font-semibold text-gray-900">
+          Has the above order been manufactured and completed?
+        </h2>
         <p className="mt-1 text-sm text-gray-600">
-          Press this once the barriers are finished and ready to collect. Echo Barrier arrange
-          transport from here, so it can only be pressed once.
+          Press this once the barriers are finished and ready to collect.
         </p>
 
         {!confirming ? (

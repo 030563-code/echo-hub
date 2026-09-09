@@ -139,12 +139,6 @@ function Shell({ children }: { children: React.ReactNode }) {
           />
           {children}
         </div>
-        <div className="border-t border-gray-100 px-6 py-4 sm:px-8">
-          <p className="text-xs text-gray-400">
-            Sent to you by Echo Barrier. These pages are only ever about one order, and never show
-            prices. If anything looks wrong, reply to the email that brought you here.
-          </p>
-        </div>
       </div>
     </main>
   )
