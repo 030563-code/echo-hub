@@ -7,8 +7,10 @@ import { getCapabilities } from '@/lib/authz'
 import { chainNumber, displayPoNumber, legLabel } from '@/lib/po-number'
 import { assessOrderCapability } from '@/lib/manufacturing-capability'
 import type { PurchaseOrder } from '@/lib/erp-types'
+import { loadCargoRequest, type CargoRequestRow } from '@/lib/cargo-request-store'
 import FulfilmentCard from './fulfilment-card'
 import ManufacturingCard from './manufacturing-card'
+import CargoRequestCard from './cargo-request-card'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,6 +25,9 @@ export const dynamic = 'force-dynamic'
  *  - an approved EB_GROUP_TO_SRO leg is waiting for SRO to choose stock or
  *    manufacture,
  *  - a SRO_TO_SUPPLIER order is waiting to be sent to Bamida.
+ *
+ * Once Bamida finish it, a third thing appears: the shipment request waiting to
+ * be read and released to Cargo Partner.
  */
 export default async function PurchaseOrderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -94,6 +99,11 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
     }
   }
 
+  // The shipment request, drafted the moment Bamida pressed finished. It exists
+  // only after that, which is exactly when somebody has to read it.
+  let cargo: CargoRequestRow | null = null
+  if (isManufacturingOrder) cargo = await loadCargoRequest(po.id)
+
   const chain = chainNumber(po)
 
   return (
@@ -164,6 +174,17 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
 
       {isManufacturingOrder && manufacturing && (
         <ManufacturingCard poId={po.id} canAct={canAct} manufacturing={manufacturing} />
+      )}
+
+      {cargo && (
+        <CargoRequestCard
+          poId={po.id}
+          canAct={canAct}
+          draft={cargo.draft}
+          sentAt={cargo.sentAt}
+          sentTo={cargo.sentTo}
+          sentWasTest={cargo.sentWasTest}
+        />
       )}
 
       {!awaitingFulfilment && !isManufacturingOrder && (

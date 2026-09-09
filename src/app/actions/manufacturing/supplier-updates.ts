@@ -15,7 +15,8 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveManufacturingToken } from '@/lib/manufacturing-token'
-import { notifyCargoPartnerReady, type CargoLine } from '@/app/actions/purchase-orders/notify-cargo-partner'
+import { createCargoRequestDraft } from '@/lib/cargo-request-store'
+import type { CargoLine } from '@/lib/cargo-request'
 
 const DateInput = z
   .string()
@@ -82,9 +83,9 @@ export async function saveManufacturingDates(input: {
  *
  * ONE SHOT. finished_at moves off null in a single conditional update, so a
  * double press, a retry or a refresh cannot stamp it twice. This timestamp is
- * what the Cargo Partner transport order will later be hung on, and a transport
- * order is a real booking with a freight forwarder, which is exactly why this
- * may only ever happen once.
+ * what the Cargo Partner shipment request is hung on, and that request is what
+ * asks a freight forwarder to move a container, which is exactly why this may
+ * only ever happen once.
  */
 export async function markManufacturingFinished(input: { token: string }): Promise<SupplierUpdateResult> {
   const parsed = FinishSchema.safeParse(input)
@@ -117,29 +118,26 @@ export async function markManufacturingFinished(input: { token: string }): Promi
     .eq('id', resolved.poId)
   if (stageErr) console.error('markManufacturingFinished stage failed', stageErr.message)
 
-  // Barriers ready to collect, so tell the forwarder. Best effort and after the
-  // timestamp is safely written: Bamida have finished the order either way, and
-  // a mail failure must never leave them pressing a button that says it did not
-  // work. It emails; it never books anything with Cargo Partner.
+  // Barriers ready to collect, so DRAFT the shipment request. It is not sent
+  // here and Bamida never see it: they are a factory telling us the barriers
+  // exist, which is not the same as a decision to book freight. Somebody at
+  // Echo Barrier reads the request, fixes what is wrong (the Incoterm, above
+  // all) and releases it from the purchase order screen.
+  //
+  // Best effort, and after the timestamp is safely written: Bamida have
+  // finished the order either way, and a failure here must never leave them
+  // pressing a button that says it did not work.
   const { data: po } = await admin
     .from('purchase_orders')
-    .select('po_number, master_ref, lines:purchase_order_lines(sku, product_name, product_family, quantity)')
+    .select('po_number, lines:purchase_order_lines(sku, product_name, product_family, quantity)')
     .eq('id', resolved.poId)
-    .maybeSingle<{
-      po_number: string | null
-      master_ref: string | null
-      lines: CargoLine[] | null
-    }>()
-  const notified = await notifyCargoPartnerReady({
+    .maybeSingle<{ po_number: string | null; lines: CargoLine[] | null }>()
+  await createCargoRequestDraft({
     poId: resolved.poId,
     poNumber: po?.po_number ?? null,
-    masterRef: po?.master_ref ?? null,
     finishedAt: finishedAtIso,
     lines: po?.lines ?? [],
   })
-  if (!notified.sent && notified.reason === 'failed') {
-    console.error('markManufacturingFinished cargo notify failed', resolved.poId)
-  }
 
   revalidatePath(`/purchase-orders/${resolved.poId}`)
   revalidatePath('/purchase-orders')

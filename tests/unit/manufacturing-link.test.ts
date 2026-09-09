@@ -117,13 +117,19 @@ describe("the supplier actions trust the token and nothing the caller sends", ()
     expect(source).toContain('already marked finished')
   })
 
-  it('stamps the row before it tells anyone, and never lets a mail failure undo it', () => {
-    // Bamida have finished the order whatever the forwarder's mail server does.
+  it('stamps the row before it drafts anything, and never lets that undo the finish', () => {
+    // Bamida have finished the order whatever happens next.
     const stamp = source.indexOf("update({ finished_at:")
-    const notify = source.indexOf('notifyCargoPartnerReady(')
+    const drafted = source.indexOf('createCargoRequestDraft(')
     expect(stamp).toBeGreaterThan(-1)
-    expect(notify).toBeGreaterThan(stamp)
-    expect(source).not.toMatch(/notifyCargoPartnerReady[\s\S]{0,400}return \{ ok: false/)
+    expect(drafted).toBeGreaterThan(stamp)
+    expect(source).not.toMatch(/createCargoRequestDraft[\s\S]{0,400}return \{ ok: false/)
+  })
+
+  it('never sends to the forwarder from the supplier page', () => {
+    // Bamida are a factory. Pressing finished says the barriers exist; it is
+    // not a decision to ask a freight forwarder to move a container.
+    expect(source).not.toContain('notifyCargoPartnerReady')
   })
 
   it('stops the dates changing once the order is finished', () => {

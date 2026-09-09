@@ -11,95 +11,51 @@ import 'server-only'
  * is the EMAIL half only. It makes no API call to Cargo Partner, by standing
  * instruction: no transport order, document or event is ever written to their
  * system, on production or test, without Dean saying yes to that specific call.
- * An email a person reads and acts on is a different thing from a booking the
- * Hub creates behind their back, and it is the half that takes Juraj out of the
- * loop today.
  *
- * The body carries the shipping details a forwarder actually needs to open an
- * order: the reference they will index it under, where it is collected from,
- * where it is going, when it is ready, and how many pallets of what.
+ * Dean, 9 Sep 2026: nothing goes to the forwarder unreviewed. Bamida finishing
+ * an order DRAFTS the request (see cargo-request.ts); a person at Echo Barrier
+ * reads it, corrects it and releases it. So this module no longer decides what
+ * a request says. It takes an approved draft and posts it.
  *
- * The Hub decides who receives it and n8n owns the wording, the same split as
- * the SRO and Bamida emails. A workflow holding its own copy of an address list
- * would mail a forwarder while the Hub believed everything was going to Dean.
+ * The Hub still decides who receives it and n8n owns the wording, the same split
+ * as the SRO and Bamida emails. A workflow holding its own copy of an address
+ * list would mail a forwarder while the Hub believed everything was going to the
+ * test address. That is also why the draft's addresses go through
+ * resolveRecipients here rather than being trusted as stored.
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { externalCallsDisabled, hubBaseUrl } from '@/lib/env'
 import { resolveRecipients, type ResolvedRecipients } from '@/lib/email-recipients'
+import { SHIPPER, PICKUP, OFFICE_IN_CHARGE, type CargoDraft } from '@/lib/cargo-request'
 
 const TIMEOUT_MS = 15_000
-
-/** Barriers per pallet. Same figure the Bamida purchase order is built on. */
-const PALLET_SIZE = 70
-
-/**
- * The parties, as they are recorded against real shipments in
- * `shipments.shipment_details -> participants`. Account numbers are what Cargo
- * Partner index on, so they matter more than the addresses.
- *
- * Deliberately constants rather than a lookup: they are three fixed commercial
- * relationships, and a query here would be a query that can fail on the one
- * path that must not fail, the finished button.
- */
-const SHIPPER = {
-  name: 'Echo Barrier s.r.o.',
-  account: '446813',
-  address: ['Sturova 3/6', '040 01 Kosice', 'Slovakia'],
-} as const
-
-const PICKUP = {
-  name: 'BAMIDA, s.r.o.',
-  account: '604070',
-  address: ['Kosicka 28', '080 01 Presov', 'Slovakia'],
-} as const
-
-const OFFICE_IN_CHARGE = {
-  name: 'cargo-partner SR, Kosice',
-  account: '139461',
-  role: 'CONTROLLING_AGENT',
-} as const
 
 /** Juraj sees every one of these, by Dean's instruction. */
 const DEFAULT_CC = 'juraj@echobarrier.eu'
 
-export type CargoLine = {
-  sku: string | null
-  product_name: string | null
-  product_family: string | null
-  quantity: number | null
-}
-
-export type NotifyCargoInput = {
-  /** The SRO to Bamida order. Its number is the reference Cargo Partner index on. */
+/** Which purchase order this request belongs to. Not editable. */
+export type CargoRequestMeta = {
   poId: string
   poNumber: string | null
   masterRef: string | null
-  /** When Bamida said the barriers were ready. This is the cargo readiness date. */
-  finishedAt: string
-  lines: CargoLine[]
 }
 
 export type NotifyCargoResult =
   | { sent: true; recipients: ResolvedRecipients }
   | { sent: false; reason: 'not_configured' | 'staging' | 'failed' }
 
-/** Pallets, rounded up per product family. A part pallet still takes a pallet. */
-export function palletsFor(lines: CargoLine[]): number {
-  let pallets = 0
-  for (const l of lines) {
-    const qty = Number(l.quantity ?? 0)
-    if (qty > 0) pallets += Math.ceil(qty / PALLET_SIZE)
+/**
+ * Where a new draft starts from. No default `to` on purpose: Cargo Partner's
+ * booking address is not recorded anywhere in the Hub, and guessing a
+ * forwarder's inbox is not a thing to do. An empty one shows on the review
+ * screen as a field somebody has to fill before the request can be released.
+ */
+export function defaultCargoRecipients(): { to: string; cc: string } {
+  return {
+    to: String(process.env.CARGO_NOTIFY_TO ?? '').trim(),
+    cc: String(process.env.CARGO_NOTIFY_CC ?? '').trim() || DEFAULT_CC,
   }
-  return pallets
-}
-
-/** "Acoustic Barriers H9, H10", or just "Acoustic Barriers" when nothing is named. */
-export function cargoDescription(lines: CargoLine[]): string {
-  const models = Array.from(
-    new Set(lines.map((l) => (l.product_family ?? '').trim()).filter(Boolean)),
-  ).sort()
-  return models.length ? `Acoustic Barriers ${models.join(', ')}` : 'Acoustic Barriers'
 }
 
 /**
@@ -107,10 +63,10 @@ export function cargoDescription(lines: CargoLine[]): string {
  *
  * The Bamida order's parent is the SRO leg and its parent is the depot leg, so
  * the destination is two steps up. Returns nulls rather than throwing, because
- * an unknown consignee is worth an email that says so; it is not worth losing
- * the notification that a container is ready.
+ * an unknown consignee is a field for a person to fill in on the review screen;
+ * it is not worth losing the draft that a container is ready.
  */
-async function resolveConsignee(poId: string): Promise<{ depot: string | null; address: string | null }> {
+export async function resolveConsignee(poId: string): Promise<{ depot: string | null; address: string | null }> {
   const admin = createAdminClient()
   const { data: bamidaPo } = await admin
     .from('purchase_orders')
@@ -154,29 +110,22 @@ async function resolveConsignee(poId: string): Promise<{ depot: string | null; a
 }
 
 /**
- * Best effort. The finished timestamp is already written when this runs, so a
- * mail failure is something to report, never a reason to un-finish an order
- * Bamida have finished.
+ * Best effort. The finished timestamp and the approval are both already written
+ * when this runs, so a mail failure is something to report and retry, never a
+ * reason to un-finish an order Bamida have finished.
  */
-export async function notifyCargoPartnerReady(input: NotifyCargoInput): Promise<NotifyCargoResult> {
+export async function notifyCargoPartnerReady(
+  meta: CargoRequestMeta,
+  draft: CargoDraft,
+): Promise<NotifyCargoResult> {
   if (externalCallsDisabled()) return { sent: false, reason: 'staging' }
 
   const webhookUrl = String(process.env.N8N_CARGO_NOTIFY_WEBHOOK_URL ?? '').trim()
   if (!webhookUrl) return { sent: false, reason: 'not_configured' }
+  if (!String(draft.to ?? '').trim()) return { sent: false, reason: 'not_configured' }
 
-  // No default recipient on purpose. Cargo Partner's booking address is not
-  // recorded anywhere in the Hub, and guessing a forwarder's inbox is not a
-  // thing to do. Until it is configured this stays silent.
-  const to = String(process.env.CARGO_NOTIFY_TO ?? '').trim()
-  if (!to) return { sent: false, reason: 'not_configured' }
-
-  const recipients = resolveRecipients({
-    to,
-    cc: String(process.env.CARGO_NOTIFY_CC ?? '').trim() || DEFAULT_CC,
-  })
-
-  const consignee = await resolveConsignee(input.poId)
-  const payload = buildCargoNotifyPayload(input, recipients, consignee)
+  const recipients = resolveRecipients({ to: draft.to, cc: draft.cc })
+  const payload = buildCargoNotifyPayload(meta, draft, recipients)
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
@@ -203,16 +152,14 @@ export async function notifyCargoPartnerReady(input: NotifyCargoInput): Promise<
 }
 
 /**
- * Split out so the payload can be asserted in a unit test without a network.
- * Exported for the tests; nothing else should call it.
+ * The webhook body, assembled from the approved draft. Split out so it can be
+ * asserted in a unit test without a network.
  */
 export function buildCargoNotifyPayload(
-  input: NotifyCargoInput,
+  meta: CargoRequestMeta,
+  draft: CargoDraft,
   recipients: ResolvedRecipients,
-  consignee: { depot: string | null; address: string | null },
 ) {
-  const pallets = palletsFor(input.lines)
-  const readiness = input.finishedAt.slice(0, 10)
   return {
     action: 'cargo_collection_ready',
     to: recipients.to,
@@ -222,26 +169,26 @@ export function buildCargoNotifyPayload(
     /** Who it would have reached. n8n prints this in the body of a test send. */
     intended: recipients.intended,
 
-    po_id: input.poId,
-    po_number: input.poNumber,
-    master_ref: input.masterRef,
+    po_id: meta.poId,
+    po_number: meta.poNumber,
+    master_ref: meta.masterRef,
 
     shipment: {
       /** The key Cargo Partner index on, and the one the SPOT lookup searches. */
-      general_reference: input.poNumber,
-      main_modality: 'SEA',
-      main_category: 'FCL',
-      business_direction: 'EXPORT',
+      general_reference: draft.general_reference || meta.poNumber,
+      main_modality: draft.main_modality,
+      main_category: draft.main_category,
+      business_direction: draft.business_direction,
       /**
-       * The Incoterm on the SRO to depot leg is recorded nowhere in the Hub and
-       * is Juraj's to give. Null, and the email asks for it, rather than an
-       * invented term that quietly decides who pays for freight.
+       * Null until somebody sets it. The email then asks for it rather than
+       * carrying an invented term that decides who pays for freight.
        */
-      delivery_term: null,
-      cargo_readiness_date: readiness,
-      pieces: pallets,
-      package_type_code: 'PAL',
-      description: cargoDescription(input.lines),
+      delivery_term: draft.delivery_term,
+      cargo_readiness_date: draft.cargo_readiness_date,
+      pieces: draft.pieces,
+      package_type_code: draft.package_type_code,
+      description: draft.description,
+      notes: draft.notes || null,
     },
 
     participants: {
@@ -250,20 +197,14 @@ export function buildCargoNotifyPayload(
       main_invoice_to: SHIPPER,
       pickup: PICKUP,
       consignee: {
-        depot: consignee.depot,
-        address: consignee.address,
+        depot: draft.consignee_name || null,
+        address: draft.consignee_address || null,
       },
       office_in_charge: OFFICE_IN_CHARGE,
     },
 
-    lines: input.lines.map((line) => ({
-      sku: line.sku,
-      product_name: line.product_name,
-      product_family: line.product_family,
-      quantity: line.quantity,
-      pallets: line.quantity ? Math.ceil(Number(line.quantity) / PALLET_SIZE) : 0,
-    })),
+    lines: draft.lines,
 
-    link: `${hubBaseUrl()}/purchase-orders/${input.poId}`,
+    link: `${hubBaseUrl()}/purchase-orders/${meta.poId}`,
   }
 }
