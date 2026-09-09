@@ -237,16 +237,40 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
   }
   // No webhook configured yet = expected (n8n not wired); not a warning.
 
-  // The order has just landed at SRO: tell Juraj it is waiting for him. Best
-  // effort and AFTER the Hub record is saved, so a mail failure can never undo
-  // an approval that happened. Addresses are resolved through the Hub-wide test
-  // switch, so during end-to-end testing this reaches Dean and nobody else.
-  if (result.next_leg === "EB_GROUP_TO_SRO" && result.child_id) {
+  // The order has just landed at SRO: tell whoever the Hub names that a decision
+  // is waiting on them.
+  //
+  // THIS FIRES ON THE APPROVAL OF THE SRO LEG, not on the depot approval that
+  // creates it. Dean, 9 Sep 2026: the email arrived while the order was still in
+  // the Group approval queue. It did, because it used to fire the moment the SRO
+  // leg was CREATED, which is one tier too early. A just-created leg is
+  // 'requested': it sits under Group → S.R.O on the board, the fulfilment card
+  // refuses to render, and the link in the email lands on a page that says
+  // nothing is waiting. `awaiting_fulfilment` is the RPC saying this leg is
+  // approved and now waiting on the stock-or-manufacture decision, which is
+  // exactly the decision the email asks somebody to make.
+  //
+  // Best effort and AFTER the Hub record is saved, so a mail failure can never
+  // undo an approval that happened. Addresses are resolved through the Hub-wide
+  // test switch, so during end-to-end testing this reaches nobody else.
+  if (result.awaiting_fulfilment === true) {
+    // from_entity on this leg is EB-GROUP, because Group are the ones ordering.
+    // The depot that started the chain is the parent's.
+    let fromDepot = po.from_entity;
+    if (po.parent_po_id) {
+      const { data: parent } = await supabase
+        .from("purchase_orders")
+        .select("from_entity")
+        .eq("id", po.parent_po_id)
+        .maybeSingle<{ from_entity: string | null }>();
+      if (parent?.from_entity) fromDepot = parent.from_entity;
+    }
+
     const notified = await notifySroPoReady({
-      poId: result.child_id,
-      poNumber: result.child_po_number ?? null,
+      poId: po.id,
+      poNumber: po.po_number,
       masterRef: po.master_ref,
-      fromDepot: po.from_entity,
+      fromDepot,
       approvedBy: label,
       lines: (po.lines ?? []).map((l) => ({
         sku: l.sku,

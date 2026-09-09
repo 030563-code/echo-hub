@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { notifySroPoReady, buildSroNotifyPayload } from '@/app/actions/purchase-orders/notify-sro'
 import { resolveRecipients } from '@/lib/email-recipients'
 
@@ -152,5 +154,52 @@ describe('buildSroNotifyPayload', () => {
     expect(payload.link).toBe(
       'http://localhost:3000/purchase-orders/11111111-2222-3333-4444-555555555555',
     )
+  })
+})
+
+describe('it fires when the order REACHES SRO, not when the leg is created', () => {
+  const source = readFileSync(join(process.cwd(), 'src/app/actions/purchase-orders/decide-po.ts'), 'utf8')
+
+  /**
+   * Dean, 9 Sep 2026: "It sent me the PO has reached EB SRO email when it is
+   * still in the Group approval stage."
+   *
+   * It did. The send was hung off `next_leg === 'EB_GROUP_TO_SRO'`, which is
+   * true when the DEPOT leg is approved and the SRO leg is CREATED. That leg is
+   * `requested` at that moment: it sits under Group → S.R.O on the board, the
+   * fulfilment card refuses to render, and the link in the email lands on a page
+   * that says nothing is waiting.
+   *
+   * The right moment is one tier later, when that leg is itself approved. The
+   * approval RPC says so with `awaiting_fulfilment`, which the deployed function
+   * sets true exactly once and only in its EB_GROUP_TO_SRO branch.
+   */
+  it('is gated on awaiting_fulfilment, the RPC saying a decision is now waiting', () => {
+    expect(source).toMatch(/if \(result\.awaiting_fulfilment === true\)[\s\S]{0,1400}notifySroPoReady\(/)
+  })
+
+  it('never fires on the leg being created', () => {
+    // The exact shape of the bug. `child_id` is the leg that was just made and
+    // has not been approved by anybody.
+    expect(source).not.toMatch(/next_leg === "EB_GROUP_TO_SRO"[\s\S]{0,600}notifySroPoReady\(/)
+    expect(source).not.toMatch(/notifySroPoReady\(\{[\s\S]{0,300}result\.child_id/)
+    expect(source).not.toMatch(/notifySroPoReady\(\{[\s\S]{0,300}result\.child_po_number/)
+  })
+
+  it('sends the approved leg itself, so the link opens the decision', () => {
+    expect(source).toMatch(/notifySroPoReady\(\{[\s\S]{0,200}poId: po\.id/)
+    expect(source).toMatch(/notifySroPoReady\(\{[\s\S]{0,200}poNumber: po\.po_number/)
+  })
+
+  it('names the depot that started the chain, not EB-GROUP', () => {
+    // from_entity on the SRO leg is EB-GROUP, because Group are the ones
+    // ordering. The depot is the parent's.
+    expect(source).toMatch(/parent\?\.from_entity\) fromDepot = parent\.from_entity/)
+    expect(source).toMatch(/fromDepot,/)
+  })
+
+  it('lets a mail failure warn, never fail the approval', () => {
+    expect(source).toMatch(/if \(!notified\.sent && notified\.reason === "failed"\)[\s\S]{0,200}warning =/)
+    expect(source).not.toMatch(/notifySroPoReady[\s\S]{0,500}return \{ success: false/)
   })
 })
