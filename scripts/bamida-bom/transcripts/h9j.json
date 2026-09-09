@@ -1,0 +1,140 @@
+{
+  "doc_number": "DLE26020004",
+  "issue_date": "2026-02-11",
+  "external_po": "PO-00001293",
+  "items": [
+    {
+      "item_no": 1,
+      "code": "311",
+      "description": "Uv potlač Echobarrier H9J",
+      "qty": 1.0,
+      "unit": "ks",
+      "children": [
+        {
+          "code": "2926",
+          "description": "SQP, UV - Ink 5L ( Farby Nyala )",
+          "qty": 0.01,
+          "unit": "l",
+          "kind": "material"
+        },
+        {
+          "code": "000340",
+          "description": "UV tlač + manipulácia",
+          "qty": 15.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000457",
+          "description": "Grafika - súbory pre tlač",
+          "qty": 30.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000651",
+          "description": "Cutter- rez",
+          "qty": 2.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000657",
+          "description": "EuroLaser - rez",
+          "qty": 2.0,
+          "unit": "min",
+          "kind": "operation"
+        }
+      ]
+    },
+    {
+      "item_no": 2,
+      "code": "000967",
+      "description": "Výroba Echo Barrier H9J (1270x1030 mm)",
+      "qty": 1.0,
+      "unit": "ks",
+      "children": [
+        {
+          "code": "827",
+          "description": "Mehler 8540 - 543 polymar sidecurtain CL II lesklá",
+          "qty": 1.42,
+          "unit": "m2",
+          "kind": "material"
+        },
+        {
+          "code": "606",
+          "description": "Lemovka Popruh PP 31S900 10/1/40",
+          "qty": 4.8,
+          "unit": "m",
+          "kind": "material"
+        },
+        {
+          "code": "7",
+          "description": "Mosadzné krúžky 25mm - automatické",
+          "qty": 15.0,
+          "unit": "ks",
+          "kind": "material"
+        },
+        {
+          "code": "2204",
+          "description": "Reflexná páska heat transfer silver PU 25mm",
+          "qty": 0.75,
+          "unit": "m",
+          "kind": "material"
+        },
+        {
+          "code": "3076",
+          "description": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+          "qty": 3.85,
+          "unit": "m",
+          "kind": "material"
+        },
+        {
+          "code": "1621",
+          "description": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm",
+          "qty": 15.0,
+          "unit": "m",
+          "kind": "material"
+        },
+        {
+          "code": "000326",
+          "description": "Rezanie reflexnej pásky",
+          "qty": 0.25,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000308",
+          "description": "Šitie",
+          "qty": 5.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000713",
+          "description": "Lepenie bavlny",
+          "qty": 2.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000328",
+          "description": "Práca- Vybitie krúžkov",
+          "qty": 3.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000664",
+          "description": "Zváranie VF-ZEMAT",
+          "qty": 1.0,
+          "unit": "min",
+          "kind": "operation"
+        }
+      ]
+    }
+  ],
+  "total_data_lines": 18,
+  "confidence": "high",
+  "notes": "Single-page note (Strana 1/1), DLE26020004, unrelated to the H9 mini / H9w split pair; item numbering starts at 1 and is complete. All 18 data lines are legible. Codes 000340, 000457, 000651, 000657, 000326, 000308, 000713, 000328 and 000664 have no leading '- ' in the description, so they are operations (all in min). Descriptions containing internal hyphens were split on the last whitespace run before the quantity: 'Grafika - súbory pre tlač', 'Cutter- rez', 'EuroLaser - rez', 'Mehler 8540 - 543 polymar sidecurtain CL II lesklá', 'Mosadzné krúžky 25mm - automatické', 'LOHMANN - Duplocoll 3702 ...', 'Práca- Vybitie krúžkov'. No repeated codes under any parent."
+}

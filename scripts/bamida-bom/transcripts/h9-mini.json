@@ -1,0 +1,155 @@
+{
+ "doc_number": "DLE25020008",
+ "issue_date": "2025-02-25",
+ "external_po": "PO-00001089",
+ "items": [
+  {
+   "item_no": 5,
+   "code": "311",
+   "description": "Uv potlač Echobarrier H9mini",
+   "qty": 180.0,
+   "unit": "ks",
+   "children": [
+    {
+     "code": "2919",
+     "description": "AGFA ANUVIA 5L ( Farby Tauro )",
+     "qty": 0.29,
+     "unit": "l",
+     "kind": "material"
+    },
+    {
+     "code": "000340",
+     "description": "UV tlač + manipulácia",
+     "qty": 135.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000457",
+     "description": "Grafika - súbory pre tlač",
+     "qty": 15.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000651",
+     "description": "Cutter- rez",
+     "qty": 180.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000657",
+     "description": "EuroLaser - rez",
+     "qty": 180.0,
+     "unit": "min",
+     "kind": "operation"
+    }
+   ]
+  },
+  {
+   "item_no": 6,
+   "code": "000751",
+   "description": "Výroba Echo Barrier H9 mini (1010 x 658 mm)",
+   "qty": 180.0,
+   "unit": "ks",
+   "children": [
+    {
+     "code": "903",
+     "description": "H5673 - 6026-1 (zelená)",
+     "qty": 153.0,
+     "unit": "m2",
+     "kind": "material"
+    },
+    {
+     "code": "606",
+     "description": "Lemovka Popruh PP 31S900 10/1/40",
+     "qty": 630.0,
+     "unit": "m",
+     "kind": "material"
+    },
+    {
+     "code": "264",
+     "description": "Pozinkované krúžky 12mm",
+     "qty": 3420.0,
+     "unit": "ks",
+     "kind": "material"
+    },
+    {
+     "code": "2204",
+     "description": "Reflexná páska heat transfer silver PU 25mm",
+     "qty": 180.0,
+     "unit": "m",
+     "kind": "material"
+    },
+    {
+     "code": "3076",
+     "description": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+     "qty": 360.0,
+     "unit": "m",
+     "kind": "material"
+    },
+    {
+     "code": "2189",
+     "description": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm",
+     "qty": 1710.0,
+     "unit": "m",
+     "kind": "material"
+    },
+    {
+     "code": "000326",
+     "description": "Rezanie reflexnej pásky",
+     "qty": 27.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000308",
+     "description": "Šitie",
+     "qty": 1260.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000713",
+     "description": "Lepenie bavlny",
+     "qty": 360.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000328",
+     "description": "Práca- Vybitie krúžkov",
+     "qty": 1440.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000309",
+     "description": "Balenie",
+     "qty": 360.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000664",
+     "description": "Zváranie VF-ZEMAT",
+     "qty": 360.0,
+     "unit": "min",
+     "kind": "operation"
+    }
+   ]
+  },
+  {
+   "item_no": 7,
+   "code": "30040",
+   "description": "Vak na balenie",
+   "qty": 8.0,
+   "unit": "ks",
+   "children": []
+  }
+ ],
+ "total_data_lines": 21,
+ "confidence": "medium",
+ "notes": "Recovered by hand: pdftotext -layout collapsed item 7, which -raw shows as '7. 30040 Vak na balenie 8,00 ks'. PARTIAL EXTRACT of DLE25020008: the note runs to item 10 and items 1, 2, 8 and 9 appear in neither supplied file, so the 8 packing bags cover products we cannot see. This file is a partial page-extract of delivery note DLE25020008, shared with the \"H9w\" file. Item numbering starts at 5, not 1, and jumps from 7 to 10; items 1-4, 8 and 9 are not present in this extract and were not invented. Items 5 and 6 are clean. The last two items were recovered from a sheared block at lines 70-74 of the text file, where pdftotext emitted each table column one line lower than the previous one: item numbers on lines 70-71 (\"7.\", \"10.\"), codes on lines 71-72 (\"30040\", \"000852\"), descriptions on lines 72-73 (\"Vak na balenie\", \"Zváranie Echobarrier H9W\"), quantities on lines 73-74 (\"8,00 ks\", \"70,00\"). Column x-offsets confirm the assignment: item numbers at col 0, codes at col 8, descriptions at col 43, and the numeric part of every quantity right-aligned to end at col 140. Pairing each column's first entry with the next column's first entry gives item 7 = 30040 / Vak na balenie / 8,00 ks and item 10 = 000852 / Zváranie Echobarrier H9W / 70,00. The unit for item 10 is genuinely absent from the extract (\"70,00\" ends at the number column with nothing after it), so unit is left as an empty string rather than guessed; \"min\" or \"ks\" are both plausible and it should be confirmed against the source PDF. Items 7 and 10 have no children in this extract. Codes are kept as printed, including leading zeros. Item 5's child 2919 is the only fractional quantity (0,29 l)."
+}

@@ -1,0 +1,156 @@
+{
+ "doc_number": "DLE26030004",
+ "issue_date": "2026-03-04",
+ "external_po": "PO-00001298",
+ "items": [
+  {
+   "item_no": 1,
+   "code": "311",
+   "description": "Uv potlač Echobarrier V1",
+   "qty": 12.0,
+   "unit": "ks",
+   "children": [
+    {
+     "code": "2919",
+     "description": "AGFA ANUVIA 5L ( Farby Tauro )",
+     "qty": 0.16,
+     "unit": "l",
+     "kind": "material"
+    },
+    {
+     "code": "000340",
+     "description": "UV tlač + manipulácia",
+     "qty": 75.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000457",
+     "description": "Grafika - súbory pre tlač",
+     "qty": 30.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000651",
+     "description": "Cutter- rez",
+     "qty": 144.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000657",
+     "description": "EuroLaser - rez",
+     "qty": 42.0,
+     "unit": "min",
+     "kind": "operation"
+    }
+   ]
+  },
+  {
+   "item_no": 2,
+   "code": "000782",
+   "description": "Výroba Echo Barrier V1 (2450 x 1950mm)",
+   "qty": 12.0,
+   "unit": "ks",
+   "children": [
+    {
+     "code": "606",
+     "description": "Lemovka Popruh PP 31S900 10/1/40",
+     "qty": 204.0,
+     "unit": "m",
+     "kind": "material"
+    },
+    {
+     "code": "3076",
+     "description": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+     "qty": 43.2,
+     "unit": "m",
+     "kind": "material"
+    },
+    {
+     "code": "5097",
+     "description": "Mehler 8540 VS 900 FR RAL 6026,zelená matná, šírka 267cm",
+     "qty": 66.0,
+     "unit": "m2",
+     "kind": "material"
+    },
+    {
+     "code": "2189",
+     "description": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm",
+     "qty": 1920.0,
+     "unit": "m",
+     "kind": "material"
+    },
+    {
+     "code": "2204",
+     "description": "Reflexná páska heat transfer silver PU 25mm",
+     "qty": 48.0,
+     "unit": "m",
+     "kind": "material"
+    },
+    {
+     "code": "000308",
+     "description": "Šitie",
+     "qty": 1380.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000406",
+     "description": "Zváranie VF-SPIDER XYZ",
+     "qty": 240.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "3097",
+     "description": "Nctech nitka 20 farba čierna 3713-4000",
+     "qty": 1320.0,
+     "unit": "m",
+     "kind": "material"
+    },
+    {
+     "code": "1567",
+     "description": "Suchý zips 10 cm čierny vlas 102",
+     "qty": 66.0,
+     "unit": "m",
+     "kind": "material",
+     "code_source": "resolved by exact description match; the PDF cell is blank"
+    },
+    {
+     "code": "1566",
+     "description": "Suchý zips 10 cm čierny háčik 102",
+     "qty": 66.0,
+     "unit": "m",
+     "kind": "material"
+    },
+    {
+     "code": "610",
+     "description": "Suchý zips 50 mm, čierny- vlas",
+     "qty": 6.0,
+     "unit": "m",
+     "kind": "material"
+    },
+    {
+     "code": "611",
+     "description": "Suchý zips 50 mm, čierny- háčik",
+     "qty": 6.0,
+     "unit": "m",
+     "kind": "material",
+     "code_source": "resolved by exact description match; the PDF cell is blank"
+    },
+    {
+     "code": "2931",
+     "description": "Achilles PVC 1,37x50 bm, 0,5 mm B1- nehorľavá",
+     "qty": 4.8,
+     "unit": "m2",
+     "kind": "material"
+    }
+   ]
+  }
+ ],
+ "total_data_lines": 20,
+ "confidence": "high",
+ "notes": "Two child lines under item 2 have a genuinely empty code column in the pdftotext extract: \"- Suchý zips 10 cm čierny vlas 102\" (66,00 m) and \"- Suchý zips 50 mm, čierny- háčik\" (6,00 m). Verified with a whitespace dump: the description column starts at the same offset as every other child line and nothing precedes it, so the code is blank on the source document rather than lost in extraction. Both are emitted with code \"\". Each sits immediately above or below its matching hook/loop partner (1566 háčik and 610 vlas), so they are almost certainly the counterpart SKUs of those pairs. This file is DLE26030004 (PO-00001298), a standalone single delivery note, not one of the two H9 mini / H9w page-extracts of DLE25020008, so item numbering starts correctly at 1. Page 2 of the PDF carries only the footer and the Vyhotovil / Prevzal signature block, no further data lines. Codes 000340, 000457, 000651, 000657, 000308 and 000406 are operations (no leading \"- \", unit min); every other child carries the \"- \" prefix and is a material.  No repeated codes appear under either parent."
+}

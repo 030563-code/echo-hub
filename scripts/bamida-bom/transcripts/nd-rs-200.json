@@ -1,0 +1,99 @@
+{
+  "doc_number": "DLE25000006",
+  "issue_date": "2025-01-14",
+  "external_po": "PO-00001102",
+  "items": [
+    {
+      "item_no": 1,
+      "code": "311",
+      "description": "Uv potlač Echobarrier RS-200",
+      "qty": 140.0,
+      "unit": "ks",
+      "children": [
+        { "code": "2756", "description": "AGFA ANUVIA 1550 RTR 2x1L CYAN", "qty": 0.06, "unit": "l", "kind": "material" },
+        { "code": "4099", "description": "AGFA ANUVIA 1550 M 1x5L", "qty": 0.02, "unit": "l", "kind": "material" },
+        { "code": "4098", "description": "AGFA ANUVIA 1550 Y 1x5L", "qty": 0.0, "unit": "l", "kind": "material" },
+        { "code": "2759", "description": "AGFA ANUVIA 1550 RTR 2x1L BLACK", "qty": 0.03, "unit": "l", "kind": "material" },
+        { "code": "3977", "description": "AGFA Anuvia 1051 RTR 4,5 L WHITE", "qty": 0.13, "unit": "l", "kind": "material" },
+        { "code": "000340", "description": "UV tlač + manipulácia", "qty": 360.0, "unit": "min", "kind": "operation" },
+        { "code": "000457", "description": "Grafika - súbory pre tlač", "qty": 15.0, "unit": "min", "kind": "operation" }
+      ]
+    },
+    {
+      "item_no": 2,
+      "code": "000800",
+      "description": "Výroba Echo Barrier Noise Defender (1250 x 2050 mm)",
+      "qty": 140.0,
+      "unit": "ks",
+      "children": [
+        { "code": "827", "description": "Mehler 8540 - 543 polymar sidecurtain CL II lesklá", "qty": 434.0, "unit": "m2", "kind": "material" },
+        { "code": "3076", "description": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m", "qty": 700.0, "unit": "m", "kind": "material" },
+        { "code": "266", "description": "Pozinkované krúžky 25mm", "qty": 1680.0, "unit": "ks", "kind": "material" },
+        { "code": "000326", "description": "Rezanie reflexnej pásky", "qty": 35.0, "unit": "min", "kind": "operation" },
+        { "code": "000328", "description": "Práca- Vybitie krúžkov", "qty": 560.0, "unit": "min", "kind": "operation" },
+        { "code": "000309", "description": "Balenie", "qty": 560.0, "unit": "min", "kind": "operation" },
+        { "code": "3097", "description": "Nctech nitka 20 farba čierna 3713-4000", "qty": 8120.0, "unit": "m", "kind": "material" },
+        { "code": "2205", "description": "Reflexná páska heat transfer silver PU 50mm", "qty": 140.0, "unit": "m", "kind": "material" },
+        { "code": "000308", "description": "Šitie", "qty": 1400.0, "unit": "min", "kind": "operation" }
+      ]
+    },
+    {
+      "item_no": 3,
+      "code": "311",
+      "description": "Uv potlač Echobarrier RT-100",
+      "qty": 210.0,
+      "unit": "ks",
+      "children": [
+        { "code": "2756", "description": "AGFA ANUVIA 1550 RTR 2x1L CYAN", "qty": 0.07, "unit": "l", "kind": "material" },
+        { "code": "4099", "description": "AGFA ANUVIA 1550 M 1x5L", "qty": 0.05, "unit": "l", "kind": "material" },
+        { "code": "4098", "description": "AGFA ANUVIA 1550 Y 1x5L", "qty": 0.03, "unit": "l", "kind": "material" },
+        { "code": "2759", "description": "AGFA ANUVIA 1550 RTR 2x1L BLACK", "qty": 0.08, "unit": "l", "kind": "material" },
+        { "code": "000340", "description": "UV tlač + manipulácia", "qty": 1020.0, "unit": "min", "kind": "operation" },
+        { "code": "000457", "description": "Grafika - súbory pre tlač", "qty": 15.0, "unit": "min", "kind": "operation" }
+      ]
+    },
+    {
+      "item_no": 4,
+      "code": "000760",
+      "description": "Výroba Echo Barrier Noise Defender (3650 x 2050 mm)",
+      "qty": 210.0,
+      "unit": "ks",
+      "children": [
+        { "code": "984", "description": "Mehler Plastel TE 62 8800-705", "qty": 1953.0, "unit": "m2", "kind": "material" },
+        { "code": "3076", "description": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m", "qty": 1050.0, "unit": "m", "kind": "material" },
+        { "code": "266", "description": "Pozinkované krúžky 25mm", "qty": 3780.0, "unit": "ks", "kind": "material" },
+        { "code": "000326", "description": "Rezanie reflexnej pásky", "qty": 52.5, "unit": "min", "kind": "operation" },
+        { "code": "000328", "description": "Práca- Vybitie krúžkov", "qty": 840.0, "unit": "min", "kind": "operation" },
+        { "code": "000309", "description": "Balenie", "qty": 840.0, "unit": "min", "kind": "operation" },
+        { "code": "000406", "description": "Zváranie VF-SPIDER XYZ", "qty": 6720.0, "unit": "min", "kind": "operation" },
+        { "code": "2205", "description": "Reflexná páska heat transfer silver PU 50mm", "qty": 210.0, "unit": "m", "kind": "material" }
+      ]
+    },
+    {
+      "item_no": 5,
+      "code": "30040",
+      "description": "Vak na balenie",
+      "qty": 9.0,
+      "unit": "ks",
+      "children": [
+        { "code": "4898", "description": "TK.PE 753 modrý kašír", "qty": 180.0, "unit": "m2", "kind": "material" }
+      ]
+    },
+    {
+      "item_no": 6,
+      "code": "30045",
+      "description": "Kovové zaistenie",
+      "qty": 9.0,
+      "unit": "ks",
+      "children": [
+        { "code": "1781", "description": "Kovové istenie", "qty": 9.0, "unit": "ks", "kind": "material" },
+        { "code": "371", "description": "SKR. do dreva žlta 5 X 50", "qty": 144.0, "unit": "ks", "kind": "material" },
+        { "code": "378", "description": "KAROS. PODLOŽKA ZI 5X30", "qty": 90.0, "unit": "ks", "kind": "material" },
+        { "code": "361", "description": "Texa do železa 4,8X25", "qty": 54.0, "unit": "ks", "kind": "material" }
+      ]
+    }
+  ],
+  "total_data_lines": 41,
+  "confidence": "high",
+  "notes": "Complete two-page delivery note DLE25000006 (pages 1/2 and 2/2 both present), items 1 through 6, no numbering gap. The H9 mini / H9w split-extract caveat does not apply to this file. Item 3 straddles the page break: its last two children (000340 UV tlac + manipulacia 1 020,00 min and 000457 Grafika 15,00 min) appear at the top of page 2 above item 4. Code 311 is used for two different top-level items (1 and 3), and codes 2756/4099/4098/2759 repeat as children under both; codes 3076, 266, 000326, 000328, 000309 and 2205 repeat under items 2 and 4 with different quantities. All repeats kept as separate lines. Two child descriptions contain their own hyphens after the leading material marker (827 'Mehler 8540 - 543 ...' and 3076 'LOHMANN - Duplocoll ...'); the leading '- ' marker was stripped only once. Child 4098 under item 1 is genuinely 0,00 l, emitted as 0. Operation 000406 'Zvaranie VF-SPIDER XYZ' under item 4 carries no leading '- ' so it is classified as an operation, consistent with its min unit. Item 4 has no sewing (000308) line, unlike item 2."
+}

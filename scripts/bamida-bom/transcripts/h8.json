@@ -1,0 +1,78 @@
+{
+  "doc_number": "DLE26080012",
+  "issue_date": "2026-08-31",
+  "external_po": "PO-00001414",
+  "items": [
+    {
+      "item_no": 1,
+      "code": "311",
+      "description": "Uv potlač Echobarrier H8",
+      "qty": 270.0,
+      "unit": "ks",
+      "children": [
+        { "code": "2919", "description": "AGFA ANUVIA 5L ( Farby Tauro )", "qty": 4.8, "unit": "l", "kind": "material" },
+        { "code": "000340", "description": "UV tlač + manipulácia", "qty": 1512.0, "unit": "min", "kind": "operation" },
+        { "code": "000457", "description": "Grafika - súbory pre tlač", "qty": 15.0, "unit": "min", "kind": "operation" },
+        { "code": "000651", "description": "Cutter- rez", "qty": 675.0, "unit": "min", "kind": "operation" },
+        { "code": "000657", "description": "EuroLaser - rez", "qty": 675.0, "unit": "min", "kind": "operation" }
+      ]
+    },
+    {
+      "item_no": 2,
+      "code": "000717",
+      "description": "Výroba Echo Barrier H8 (3650 x 2050 mm)",
+      "qty": 270.0,
+      "unit": "ks",
+      "children": [
+        { "code": "1424", "description": "Mehler 8509-636 zelena", "qty": 2462.4, "unit": "m2", "kind": "material" },
+        { "code": "606", "description": "Lemovka Popruh PP 31S900 10/1/40", "qty": 3240.0, "unit": "m", "kind": "material" },
+        { "code": "7", "description": "Mosadzné krúžky 25mm - automatické", "qty": 8370.0, "unit": "ks", "kind": "material" },
+        { "code": "2204", "description": "Reflexná páska heat transfer silver PU 25mm", "qty": 1485.0, "unit": "m", "kind": "material" },
+        { "code": "3076", "description": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m", "qty": 2430.0, "unit": "m", "kind": "material" },
+        { "code": "2189", "description": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm", "qty": 8640.0, "unit": "m", "kind": "material" },
+        { "code": "000326", "description": "Rezanie reflexnej pásky", "qty": 67.5, "unit": "min", "kind": "operation" },
+        { "code": "000308", "description": "Šitie", "qty": 4050.0, "unit": "min", "kind": "operation" },
+        { "code": "000328", "description": "Práca- Vybitie krúžkov", "qty": 2160.0, "unit": "min", "kind": "operation" },
+        { "code": "000309", "description": "Balenie", "qty": 1620.0, "unit": "min", "kind": "operation" },
+        { "code": "269", "description": "Mosadzné krúžky 25mm", "qty": 1080.0, "unit": "ks", "kind": "material" }
+      ]
+    },
+    {
+      "item_no": 3,
+      "code": "000852",
+      "description": "Zváranie Echobarrier VF H8",
+      "qty": 270.0,
+      "unit": "ks",
+      "children": [
+        { "code": "000582", "description": "Zváranie vysoko frekvenciou SPIDER XYZ", "qty": 8100.0, "unit": "min", "kind": "operation" }
+      ]
+    },
+    {
+      "item_no": 4,
+      "code": "30045",
+      "description": "Kovové zaistenie",
+      "qty": 9.0,
+      "unit": "ks",
+      "children": [
+        { "code": "1781", "description": "Kovové istenie", "qty": 9.0, "unit": "ks", "kind": "material" },
+        { "code": "371", "description": "SKR. do dreva žlta 5 X 50", "qty": 144.0, "unit": "ks", "kind": "material" },
+        { "code": "382", "description": "KAROS. PODLOŽKA ZI 6X30", "qty": 90.0, "unit": "ks", "kind": "material" },
+        { "code": "361", "description": "Texa do železa 4,8X25", "qty": 54.0, "unit": "ks", "kind": "material" }
+      ]
+    },
+    {
+      "item_no": 5,
+      "code": "30040",
+      "description": "Vak na balenie",
+      "qty": 9.0,
+      "unit": "ks",
+      "children": [
+        { "code": "4898", "description": "TK.PE 753 modrý kašír", "qty": 180.0, "unit": "m2", "kind": "material" },
+        { "code": "2192", "description": "Nctech nitka 34 farba čierna 4000, 1500bm", "qty": 450.0, "unit": "m", "kind": "material" }
+      ]
+    }
+  ],
+  "total_data_lines": 28,
+  "confidence": "high",
+  "notes": "Two-page document (Strana 1/2 and 2/2); item 4's children continue across the page break, with codes 382 and 361 appearing on page 2 under the repeated column header. Footers, the address block, the Suvisiace doklady line and the signature block were skipped. Item 2 carries two separate brass-ring materials with different codes: 7 (Mosadzne kruzky 25mm - automaticke, 8370 ks) and 269 (Mosadzne kruzky 25mm, 1080 ks); these are distinct codes, not a duplicate. Item 4's parent 30045 reads 'Kovove zaistenie' while its child 1781 reads 'Kovove istenie' - both transcribed as printed. Child 361 'Texa do zeleza 4,8X25' has a comma inside the description (a size, not the quantity); the quantity is 54,00 ks. No prices on the document, as expected."
+}

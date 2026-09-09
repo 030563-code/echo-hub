@@ -1,0 +1,157 @@
+{
+ "method": "Each note was transcribed by one pass and independently re-read and diffed by a second that was told to assume the first was wrong. Critical means a missing, extra, mis-parented or mis-typed line, or a wrong code or quantity.",
+ "clean": 17,
+ "total": 18,
+ "notes": [
+  {
+   "note": "cs-compact",
+   "agrees": true,
+   "raw_data_lines": 31,
+   "json_data_lines": 31,
+   "critical": [],
+   "minor_count": 0
+  },
+  {
+   "note": "cs-r10",
+   "agrees": true,
+   "raw_data_lines": 31,
+   "json_data_lines": 31,
+   "critical": [],
+   "minor_count": 0
+  },
+  {
+   "note": "gen-extension",
+   "agrees": true,
+   "raw_data_lines": 15,
+   "json_data_lines": 15,
+   "critical": [],
+   "minor_count": 0
+  },
+  {
+   "note": "gen-set-m1",
+   "agrees": true,
+   "raw_data_lines": 25,
+   "json_data_lines": 25,
+   "critical": [],
+   "minor_count": 0
+  },
+  {
+   "note": "h10-pracka",
+   "agrees": true,
+   "raw_data_lines": 38,
+   "json_data_lines": 38,
+   "critical": [],
+   "minor_count": 0
+  },
+  {
+   "note": "h10",
+   "agrees": true,
+   "raw_data_lines": 29,
+   "json_data_lines": 29,
+   "critical": [],
+   "minor_count": 0
+  },
+  {
+   "note": "h2",
+   "agrees": true,
+   "raw_data_lines": 18,
+   "json_data_lines": 18,
+   "critical": [],
+   "minor_count": 0
+  },
+  {
+   "note": "h8",
+   "agrees": true,
+   "raw_data_lines": 28,
+   "json_data_lines": 28,
+   "critical": [],
+   "minor_count": 0
+  },
+  {
+   "note": "h9-mini",
+   "agrees": false,
+   "raw_data_lines": 21,
+   "json_data_lines": 20,
+   "critical": [
+    {
+     "where": "item 10, code 000852",
+     "claimed": "absent from the items array entirely (JSON has only item_no 5, 6, 7)",
+     "actual": "L70 '7.' at col0 | L71 '10.' at col0, '30040' at col8 | L72 '000852' at col8, 'Vak na balenie' at col43 | L73 'Zvaranie Echobarrier H9W' at col43, '8,00 ks' right-aligned | L74 '70,00' right-aligned. "
+    }
+   ],
+   "minor_count": 1
+  },
+  {
+   "note": "h9",
+   "agrees": true,
+   "raw_data_lines": 28,
+   "json_data_lines": 28,
+   "critical": [],
+   "minor_count": 0
+  },
+  {
+   "note": "h9j",
+   "agrees": true,
+   "raw_data_lines": 18,
+   "json_data_lines": 18,
+   "critical": [],
+   "minor_count": 0
+  },
+  {
+   "note": "h9w",
+   "agrees": true,
+   "raw_data_lines": 21,
+   "json_data_lines": 21,
+   "critical": [],
+   "minor_count": 2
+  },
+  {
+   "note": "h9x",
+   "agrees": true,
+   "raw_data_lines": 30,
+   "json_data_lines": 30,
+   "critical": [],
+   "minor_count": 0
+  },
+  {
+   "note": "ht-3-5",
+   "agrees": true,
+   "raw_data_lines": 26,
+   "json_data_lines": 26,
+   "critical": [],
+   "minor_count": 0
+  },
+  {
+   "note": "nd-rs-200",
+   "agrees": true,
+   "raw_data_lines": 41,
+   "json_data_lines": 41,
+   "critical": [],
+   "minor_count": 0
+  },
+  {
+   "note": "nd-rt-100",
+   "agrees": true,
+   "raw_data_lines": 25,
+   "json_data_lines": 25,
+   "critical": [],
+   "minor_count": 0
+  },
+  {
+   "note": "pb3x",
+   "agrees": true,
+   "raw_data_lines": 17,
+   "json_data_lines": 17,
+   "critical": [],
+   "minor_count": 0
+  },
+  {
+   "note": "v1",
+   "agrees": true,
+   "raw_data_lines": 20,
+   "json_data_lines": 20,
+   "critical": [],
+   "minor_count": 0
+  }
+ ]
+}

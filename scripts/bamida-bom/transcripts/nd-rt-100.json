@@ -1,0 +1,195 @@
+{
+  "doc_number": "DLE26080003",
+  "issue_date": "2026-08-06",
+  "external_po": "PO-00001377",
+  "items": [
+    {
+      "item_no": 1,
+      "code": "311",
+      "description": "Uv potlač Echobarrier ND RT 100",
+      "qty": 60.0,
+      "unit": "ks",
+      "children": [
+        {
+          "code": "2919",
+          "description": "AGFA ANUVIA 5L ( Farby Tauro )",
+          "qty": 0.07,
+          "unit": "l",
+          "kind": "material"
+        },
+        {
+          "code": "000340",
+          "description": "UV tlač + manipulácia",
+          "qty": 240.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000457",
+          "description": "Grafika - súbory pre tlač",
+          "qty": 15.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000651",
+          "description": "Cutter- rez",
+          "qty": 150.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000657",
+          "description": "EuroLaser - rez",
+          "qty": 150.0,
+          "unit": "min",
+          "kind": "operation"
+        }
+      ]
+    },
+    {
+      "item_no": 2,
+      "code": "000760",
+      "description": "Výroba Echo Barrier Noise Defender (3650 x 2050 mm)",
+      "qty": 60.0,
+      "unit": "ks",
+      "children": [
+        {
+          "code": "4973",
+          "description": "Mehler 8954 - 729, sivá",
+          "qty": 570.0,
+          "unit": "m2",
+          "kind": "material"
+        },
+        {
+          "code": "3076",
+          "description": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+          "qty": 300.0,
+          "unit": "m",
+          "kind": "material"
+        },
+        {
+          "code": "266",
+          "description": "Pozinkované krúžky 25mm",
+          "qty": 120.0,
+          "unit": "ks",
+          "kind": "material"
+        },
+        {
+          "code": "000326",
+          "description": "Rezanie reflexnej pásky",
+          "qty": 15.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000328",
+          "description": "Práca- Vybitie krúžkov",
+          "qty": 240.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000309",
+          "description": "Balenie",
+          "qty": 300.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "5",
+          "description": "Pozinkované krúžky 25mm automatické",
+          "qty": 960.0,
+          "unit": "ks",
+          "kind": "material"
+        },
+        {
+          "code": "2205",
+          "description": "Reflexná páska heat transfer silver PU 50mm",
+          "qty": 60.0,
+          "unit": "m",
+          "kind": "material"
+        }
+      ]
+    },
+    {
+      "item_no": 3,
+      "code": "000852",
+      "description": "Zváranie Echobarrier VF ND RT100",
+      "qty": 60.0,
+      "unit": "ks",
+      "children": [
+        {
+          "code": "000582",
+          "description": "Zváranie vysoko frekvenciou SPIDER XYZ",
+          "qty": 1680.0,
+          "unit": "min",
+          "kind": "operation"
+        }
+      ]
+    },
+    {
+      "item_no": 4,
+      "code": "30045",
+      "description": "Kovové zaistenie",
+      "qty": 2.0,
+      "unit": "ks",
+      "children": [
+        {
+          "code": "1781",
+          "description": "Kovové istenie",
+          "qty": 2.0,
+          "unit": "ks",
+          "kind": "material"
+        },
+        {
+          "code": "371",
+          "description": "SKR. do dreva žlta 5 X 50",
+          "qty": 32.0,
+          "unit": "ks",
+          "kind": "material"
+        },
+        {
+          "code": "382",
+          "description": "KAROS. PODLOŽKA ZI 6X30",
+          "qty": 20.0,
+          "unit": "ks",
+          "kind": "material"
+        },
+        {
+          "code": "361",
+          "description": "Texa do železa 4,8X25",
+          "qty": 12.0,
+          "unit": "ks",
+          "kind": "material"
+        }
+      ]
+    },
+    {
+      "item_no": 5,
+      "code": "30040",
+      "description": "Vak na balenie",
+      "qty": 2.0,
+      "unit": "ks",
+      "children": [
+        {
+          "code": "4898",
+          "description": "TK.PE 753 modrý kašír",
+          "qty": 40.0,
+          "unit": "m2",
+          "kind": "material"
+        },
+        {
+          "code": "2192",
+          "description": "Nctech nitka 34 farba čierna 4000, 1500bm",
+          "qty": 100.0,
+          "unit": "m",
+          "kind": "material"
+        }
+      ]
+    }
+  ],
+  "total_data_lines": 25,
+  "confidence": "high",
+  "notes": "Two pages, both transcribed. Item 5 (30040 Vak na balenie) has no children on page 1; its two material children (4898, 2192) appear after the page break on page 2 under the repeated column header, and are attached to item 5 here. Item numbering runs 1 to 5 with no gaps, so this is a complete standalone delivery note, not one of the overlapping H9 mini / H9w page-extracts. Two operation children carry plain numeric-looking codes but are still operations by the '- ' rule: none of the min-unit lines have a leading hyphen. Code 266 (- Pozinkované krúžky 25mm, 120,00 ks) and code 5 (- Pozinkované krúžky 25mm automatické, 960,00 ks) are different codes for similarly named ringed hardware under item 2, both kept as separate lines. Descriptions containing internal hyphens or commas (Cutter- rez, Grafika - súbory pre tlač, Práca- Vybitie krúžkov, Mehler 8954 - 729 sivá, Texa do železa 4,8X25) were split on the last whitespace run before the quantity, so 4,8 stays inside the description and the quantity is 12,00 ks. The only thousands-separated number is 1 680,00 min (code 000582), emitted as 1680.0. Everything is legible; no ambiguous characters."
+}

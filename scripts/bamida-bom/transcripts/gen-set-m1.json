@@ -1,0 +1,196 @@
+{
+ "doc_number": "DLE26030003",
+ "issue_date": "2026-03-04",
+ "external_po": "PO-00001290",
+ "items": [
+  {
+   "item_no": 1,
+   "code": "311",
+   "description": "Uv potlač Echobarrier Gen set M1",
+   "qty": 10.0,
+   "unit": "ks",
+   "children": [
+    {
+     "code": "2919",
+     "description": "AGFA ANUVIA 5L ( Farby Tauro )",
+     "qty": 0.07,
+     "unit": "l",
+     "kind": "material"
+    },
+    {
+     "code": "000340",
+     "description": "UV tlač + manipulácia",
+     "qty": 30.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000457",
+     "description": "Grafika - súbory pre tlač",
+     "qty": 30.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000651",
+     "description": "Cutter- rez",
+     "qty": 20.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000657",
+     "description": "EuroLaser - rez",
+     "qty": 20.0,
+     "unit": "min",
+     "kind": "operation"
+    }
+   ]
+  },
+  {
+   "item_no": 2,
+   "code": "30049",
+   "description": "Výroba Echo Barrier Gen set M1",
+   "qty": 10.0,
+   "unit": "ks",
+   "children": [
+    {
+     "code": "5097",
+     "description": "Mehler 8540 VS 900 FR RAL 6026,zelená matná, šírka 267cm",
+     "qty": 150.0,
+     "unit": "m2",
+     "kind": "material"
+    },
+    {
+     "code": "606",
+     "description": "Lemovka Popruh PP 31S900 10/1/40",
+     "qty": 400.0,
+     "unit": "m",
+     "kind": "material"
+    },
+    {
+     "code": "2189",
+     "description": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm",
+     "qty": 2270.0,
+     "unit": "m",
+     "kind": "material"
+    },
+    {
+     "code": "900",
+     "description": "Serge Ferrari meshes 362- 50201 zelená",
+     "qty": 150.0,
+     "unit": "m2",
+     "kind": "material"
+    },
+    {
+     "code": "1566",
+     "description": "Suchý zips 10 cm čierny háčik 102",
+     "qty": 200.0,
+     "unit": "m",
+     "kind": "material"
+    },
+    {
+     "code": "1567",
+     "description": "Suchý zips 10 cm čierny vlas 102",
+     "qty": 120.0,
+     "unit": "m",
+     "kind": "material",
+     "code_source": "resolved by exact description match; the PDF cell is blank"
+    },
+    {
+     "code": "000289",
+     "description": "Práca - šitie",
+     "qty": 2600.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "3097",
+     "description": "Nctech nitka 20 farba čierna 3713-4000",
+     "qty": 1870.0,
+     "unit": "m",
+     "kind": "material"
+    },
+    {
+     "code": "2204",
+     "description": "Reflexná páska heat transfer silver PU 25mm",
+     "qty": 30.0,
+     "unit": "m",
+     "kind": "material"
+    }
+   ]
+  },
+  {
+   "item_no": 3,
+   "code": "000852",
+   "description": "Zváranie Echobarrier VF GEN set M1",
+   "qty": 10.0,
+   "unit": "ks",
+   "children": [
+    {
+     "code": "000582",
+     "description": "Zváranie vysoko frekvenciou SPIDER XYZ",
+     "qty": 200.0,
+     "unit": "min",
+     "kind": "operation"
+    }
+   ]
+  },
+  {
+   "item_no": 4,
+   "code": "30040",
+   "description": "Vak na balenie",
+   "qty": 1.0,
+   "unit": "ks",
+   "children": [
+    {
+     "code": "4898",
+     "description": "TK.PE 753 modrý kašír",
+     "qty": 20.0,
+     "unit": "m2",
+     "kind": "material"
+    }
+   ]
+  },
+  {
+   "item_no": 5,
+   "code": "30045",
+   "description": "Kovové zaistenie",
+   "qty": 1.0,
+   "unit": "ks",
+   "children": [
+    {
+     "code": "1781",
+     "description": "Kovové istenie",
+     "qty": 1.0,
+     "unit": "ks",
+     "kind": "material"
+    },
+    {
+     "code": "371",
+     "description": "SKR. do dreva žlta 5 X 50",
+     "qty": 16.0,
+     "unit": "ks",
+     "kind": "material"
+    },
+    {
+     "code": "376",
+     "description": "KAROS. PODLOŽKA ZI 5X20",
+     "qty": 10.5,
+     "unit": "ks",
+     "kind": "material"
+    },
+    {
+     "code": "361",
+     "description": "Texa do železa 4,8X25",
+     "qty": 6.0,
+     "unit": "ks",
+     "kind": "material"
+    }
+   ]
+  }
+ ],
+ "total_data_lines": 25,
+ "confidence": "high",
+ "notes": "Complete two-page delivery note, items 1 to 5, page break falls inside item 5 (its last two children, codes 376 and 361, are on page 2 and were carried under item 5). One child line has an EMPTY code column: \"- Suchý zips 10 cm čierny vlas 102\" 120,00 m under item 2, emitted with code \"\". It is the loop half of the Velcro pair whose hook half above it carries code 1566. Item 2 interleaves an operation (000289 Práca - šitie, 2 600,00 min) between material lines; order preserved as printed. Operations were classified only by the absence of the leading \"- \" marker, so 000651 Cutter- rez and 000457 Grafika - súbory pre tlač are operations despite hyphens inside their descriptions. No repeated codes under any single parent in this document. This file is a standalone note and is unrelated to the DLE25020008 pair."
+}

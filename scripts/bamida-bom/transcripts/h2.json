@@ -1,0 +1,140 @@
+{
+  "doc_number": "DLE26070011",
+  "issue_date": "2026-07-30",
+  "external_po": "PO-00001411",
+  "items": [
+    {
+      "item_no": 1,
+      "code": "311",
+      "description": "Uv potlač Echobarrier H2",
+      "qty": 2.0,
+      "unit": "ks",
+      "children": [
+        {
+          "code": "2919",
+          "description": "AGFA ANUVIA 5L ( Farby Tauro )",
+          "qty": 0.02,
+          "unit": "l",
+          "kind": "material"
+        },
+        {
+          "code": "000340",
+          "description": "UV tlač + manipulácia",
+          "qty": 0.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000457",
+          "description": "Grafika - súbory pre tlač",
+          "qty": 10.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000651",
+          "description": "Cutter- rez",
+          "qty": 4.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000657",
+          "description": "EuroLaser - rez",
+          "qty": 4.0,
+          "unit": "min",
+          "kind": "operation"
+        }
+      ]
+    },
+    {
+      "item_no": 2,
+      "code": "000957",
+      "description": "Výroba Echo Barrier H2 (1335 x 2050 mm)",
+      "qty": 2.0,
+      "unit": "ks",
+      "children": [
+        {
+          "code": "5097",
+          "description": "Mehler 8540 VS 900 FR RAL 6026,zelená matná, šírka 267cm",
+          "qty": 5.7,
+          "unit": "m2",
+          "kind": "material"
+        },
+        {
+          "code": "606",
+          "description": "Lemovka Popruh PP 31S900 10/1/40",
+          "qty": 14.0,
+          "unit": "m",
+          "kind": "material"
+        },
+        {
+          "code": "7",
+          "description": "Mosadzné krúžky 25mm - automatické",
+          "qty": 38.0,
+          "unit": "ks",
+          "kind": "material"
+        },
+        {
+          "code": "2204",
+          "description": "Reflexná páska heat transfer silver PU 25mm",
+          "qty": 3.42,
+          "unit": "m",
+          "kind": "material"
+        },
+        {
+          "code": "3076",
+          "description": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+          "qty": 10.0,
+          "unit": "m",
+          "kind": "material"
+        },
+        {
+          "code": "2189",
+          "description": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm",
+          "qty": 78.0,
+          "unit": "m",
+          "kind": "material"
+        },
+        {
+          "code": "000326",
+          "description": "Rezanie reflexnej pásky",
+          "qty": 0.5,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000308",
+          "description": "Šitie",
+          "qty": 20.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000713",
+          "description": "Lepenie bavlny",
+          "qty": 8.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000664",
+          "description": "Zváranie VF-ZEMAT",
+          "qty": 4.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "900",
+          "description": "Serge Ferrari meshes 362- 50201 zelená",
+          "qty": 5.7,
+          "unit": "m2",
+          "kind": "material"
+        }
+      ]
+    }
+  ],
+  "total_data_lines": 18,
+  "confidence": "high",
+  "notes": "Single-page document (Strana 1/1), 2 top-level items and 16 children, all lines legible. Item 1 child 000340 'UV tlač + manipulácia' carries a quantity of 0,00 min; that is what the document states, not a transcription error. Materials under item 2 are not contiguous: the operations 000326/000308/000713/000664 sit between material 2189 and material 900 'Serge Ferrari meshes', which is emitted last in document order. Note that two of the operation lines contain hyphens inside the description ('Cutter- rez', 'EuroLaser - rez', 'Grafika - súbory pre tlač') but have no leading '- ' marker, so they are operations, and material 3076 contains an internal hyphen after the leading marker. This file is not one of the H9 split extracts; item numbering starts at 1 and is complete."
+}

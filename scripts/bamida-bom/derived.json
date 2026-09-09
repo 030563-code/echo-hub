@@ -1,0 +1,4411 @@
+{
+ "cs-compact": {
+  "slug": "cs-compact",
+  "doc": "DLE26070002",
+  "date": "2026-07-02",
+  "po": "PO-00001380",
+  "products": [
+   {
+    "fg_code": "000722",
+    "fg_label": "Výroba Echo Barrier CSC (komplet stan)",
+    "batch": 2.0,
+    "lines": [
+     {
+      "code": "5097",
+      "desc": "Mehler 8540 VS 900 FR RAL 6026,zelená matná, šírka 267cm",
+      "qty": 40.0,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 80.0
+     },
+     {
+      "code": "606",
+      "desc": "Lemovka Popruh PP 31S900 10/1/40",
+      "qty": 73.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 146.0
+     },
+     {
+      "code": "2189",
+      "desc": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm",
+      "qty": 270.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 540.0
+     },
+     {
+      "code": "3097",
+      "desc": "Nctech nitka 20 farba čierna 3713-4000",
+      "qty": 395.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 790.0,
+      "folded_from": 2
+     },
+     {
+      "code": "1567",
+      "desc": "Suchý zips 10 cm čierny vlas 102",
+      "qty": 35.5,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 71.0
+     },
+     {
+      "code": "1973",
+      "desc": "PVC mäkčené pásy Standart 3/300mm",
+      "qty": 16.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 32.0
+     },
+     {
+      "code": "1566",
+      "desc": "Suchý zips 10 cm čierny háčik 102",
+      "qty": 11.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 22.0
+     },
+     {
+      "code": "1972",
+      "desc": "PVC mäkčené pásy Standart 2/200mm",
+      "qty": 9.6,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 19.2
+     },
+     {
+      "code": "611",
+      "desc": "Suchý zips 50 mm, čierny- háčik",
+      "qty": 12.5,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 25.0,
+      "folded_from": 2
+     },
+     {
+      "code": "2204",
+      "desc": "Reflexná páska heat transfer silver PU 25mm",
+      "qty": 6.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 12.0
+     },
+     {
+      "code": "548",
+      "desc": "Pás PVC navarovaci šírky 48mm čierny",
+      "qty": 4.5,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 9.0
+     },
+     {
+      "code": "3076",
+      "desc": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+      "qty": 4.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 8.0
+     },
+     {
+      "code": "605",
+      "desc": "Lemovka- Popruh PP 31S900 10/1/25",
+      "qty": 2.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 4.0
+     },
+     {
+      "code": "478",
+      "desc": "Západkový uzáver",
+      "qty": 2.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 4.0
+     },
+     {
+      "code": "2931",
+      "desc": "Achilles PVC 1,37x50 bm, 0,5 mm B1- nehorľavá",
+      "qty": 1.2,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 2.4
+     },
+     {
+      "code": "000406",
+      "desc": "Zváranie VF-SPIDER XYZ",
+      "qty": 0.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 0.0
+     },
+     {
+      "code": "356",
+      "desc": "zváranie strechy + lamepy",
+      "qty": 90.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 180.0
+     },
+     {
+      "code": "311",
+      "desc": "Uv potlač Echobarrier CSC s logom CIVILS",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "intermediate",
+      "raw": 2.0
+     },
+     {
+      "code": "2919",
+      "desc": "AGFA ANUVIA 5L ( Farby Tauro )",
+      "qty": 0.4,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.8
+     },
+     {
+      "code": "000340",
+      "desc": "UV tlač + manipulácia",
+      "qty": 15.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 30.0
+     },
+     {
+      "code": "000457",
+      "desc": "Grafika - súbory pre tlač",
+      "qty": 45.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 90.0
+     },
+     {
+      "code": "000651",
+      "desc": "Cutter- rez",
+      "qty": 20.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 40.0
+     },
+     {
+      "code": "000657",
+      "desc": "EuroLaser - rez",
+      "qty": 20.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 40.0
+     },
+     {
+      "code": "000852",
+      "desc": "Zváranie Echobarrier VF",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 2.0
+     },
+     {
+      "code": "000582",
+      "desc": "Zváranie vysoko frekvenciou SPIDER XYZ",
+      "qty": 210.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 420.0
+     },
+     {
+      "code": "30040",
+      "desc": "Vak na balenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 1.0
+     },
+     {
+      "code": "4898",
+      "desc": "TK.PE 753 modrý kašír",
+      "qty": 20.0,
+      "unit": "m2",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 20.0
+     },
+     {
+      "code": "2192",
+      "desc": "Nctech nitka 34 farba čierna 4000, 1500bm",
+      "qty": 50.0,
+      "unit": "m",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 50.0
+     }
+    ],
+    "warnings": [
+     "batch of 2 filled one pallet, so pallet size is only known to be >= 2",
+     "code 3097 appeared 2x on the same basis and was summed",
+     "code 611 appeared 2x on the same basis and was summed"
+    ],
+    "pallet_count": 1.0,
+    "pallet_size_min": 2,
+    "pallet_size_max": null,
+    "pallet_size": null
+   }
+  ],
+  "warnings": []
+ },
+ "cs-r10": {
+  "slug": "cs-r10",
+  "doc": "DLE26070001",
+  "date": "2026-07-02",
+  "po": "PO-00001376",
+  "products": [
+   {
+    "fg_code": "000723",
+    "fg_label": "Výroba Echo Barrier CS R10 (komplet stan)",
+    "batch": 10.0,
+    "lines": [
+     {
+      "code": "5097",
+      "desc": "Mehler 8540 VS 900 FR RAL 6026,zelená matná, šírka 267cm",
+      "qty": 52.5,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 525.0
+     },
+     {
+      "code": "606",
+      "desc": "Lemovka Popruh PP 31S900 10/1/40",
+      "qty": 107.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 1070.0
+     },
+     {
+      "code": "2189",
+      "desc": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm",
+      "qty": 410.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 4100.0
+     },
+     {
+      "code": "3097",
+      "desc": "Nctech nitka 20 farba čierna 3713-4000",
+      "qty": 517.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 5170.0,
+      "folded_from": 2
+     },
+     {
+      "code": "1567",
+      "desc": "Suchý zips 10 cm čierny vlas 102",
+      "qty": 45.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 450.0
+     },
+     {
+      "code": "1973",
+      "desc": "PVC mäkčené pásy Standart 3/300mm",
+      "qty": 16.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 160.0
+     },
+     {
+      "code": "1566",
+      "desc": "Suchý zips 10 cm čierny háčik 102",
+      "qty": 25.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 250.0
+     },
+     {
+      "code": "1972",
+      "desc": "PVC mäkčené pásy Standart 2/200mm",
+      "qty": 9.6,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 96.0
+     },
+     {
+      "code": "611",
+      "desc": "Suchý zips 50 mm, čierny- háčik",
+      "qty": 20.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 200.0,
+      "folded_from": 2
+     },
+     {
+      "code": "2204",
+      "desc": "Reflexná páska heat transfer silver PU 25mm",
+      "qty": 6.5,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 65.0
+     },
+     {
+      "code": "263",
+      "desc": "Pozinkované krúžky 10mm",
+      "qty": 4.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 40.0
+     },
+     {
+      "code": "3076",
+      "desc": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+      "qty": 17.5,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 175.0
+     },
+     {
+      "code": "605",
+      "desc": "Lemovka- Popruh PP 31S900 10/1/25",
+      "qty": 2.6,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 26.0
+     },
+     {
+      "code": "478",
+      "desc": "Západkový uzáver",
+      "qty": 2.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 20.0
+     },
+     {
+      "code": "2931",
+      "desc": "Achilles PVC 1,37x50 bm, 0,5 mm B1- nehorľavá",
+      "qty": 0.9,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 9.0
+     },
+     {
+      "code": "356",
+      "desc": "zváranie lamiel + strecha",
+      "qty": 120.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 1200.0
+     },
+     {
+      "code": "548",
+      "desc": "Pás PVC navarovaci šírky 48mm čierny",
+      "qty": 4.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 40.0
+     },
+     {
+      "code": "311",
+      "desc": "Uv potlač Echobarrier R10",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "intermediate",
+      "raw": 10.0
+     },
+     {
+      "code": "2919",
+      "desc": "AGFA ANUVIA 5L ( Farby Tauro )",
+      "qty": 0.05,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.5
+     },
+     {
+      "code": "000340",
+      "desc": "UV tlač + manipulácia",
+      "qty": 16.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 160.0
+     },
+     {
+      "code": "000457",
+      "desc": "Grafika - súbory pre tlač",
+      "qty": 3.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 30.0
+     },
+     {
+      "code": "000651",
+      "desc": "Cutter- rez",
+      "qty": 20.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 200.0
+     },
+     {
+      "code": "000657",
+      "desc": "EuroLaser - rez",
+      "qty": 20.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 200.0
+     },
+     {
+      "code": "000852",
+      "desc": "Zváranie Echobarrier VF R10",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 10.0
+     },
+     {
+      "code": "000582",
+      "desc": "Zváranie vysoko frekvenciou SPIDER XYZ",
+      "qty": 210.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 2100.0
+     },
+     {
+      "code": "30040",
+      "desc": "Vak na balenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 2.0
+     },
+     {
+      "code": "4898",
+      "desc": "TK.PE 753 modrý kašír",
+      "qty": 20.0,
+      "unit": "m2",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 40.0
+     },
+     {
+      "code": "2192",
+      "desc": "Nctech nitka 34 farba čierna 4000, 1500bm",
+      "qty": 50.0,
+      "unit": "m",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 100.0
+     }
+    ],
+    "warnings": [
+     "pallet size is only pinned to 5..9 by this note",
+     "code 3097 appeared 2x on the same basis and was summed",
+     "code 611 appeared 2x on the same basis and was summed"
+    ],
+    "pallet_count": 2.0,
+    "pallet_size_min": 5,
+    "pallet_size_max": 9,
+    "pallet_size": null
+   }
+  ],
+  "warnings": []
+ },
+ "gen-extension": {
+  "slug": "gen-extension",
+  "doc": "DLE26050003",
+  "date": "2026-05-12",
+  "po": "PO-00001327",
+  "products": [
+   {
+    "fg_code": "000975",
+    "fg_label": "Výroba Echo Barrier Gen set extension (752 x 3983,7 mm)",
+    "batch": 100.0,
+    "lines": [
+     {
+      "code": "5097",
+      "desc": "Mehler 8540 VS 900 FR RAL 6026,zelená matná, šírka 267cm",
+      "qty": 3.65,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 365.0
+     },
+     {
+      "code": "606",
+      "desc": "Lemovka Popruh PP 31S900 10/1/40",
+      "qty": 10.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 1000.0
+     },
+     {
+      "code": "2189",
+      "desc": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm",
+      "qty": 50.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 5000.0
+     },
+     {
+      "code": "3076",
+      "desc": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+      "qty": 6.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 600.0
+     },
+     {
+      "code": "7",
+      "desc": "Mosadzné krúžky 25mm - automatické",
+      "qty": 31.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 3100.0
+     },
+     {
+      "code": "000289",
+      "desc": "Práca - šitie",
+      "qty": 30.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 3000.0
+     },
+     {
+      "code": "000328",
+      "desc": "Práca- Vybitie krúžkov",
+      "qty": 12.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 1200.0
+     },
+     {
+      "code": "000309",
+      "desc": "Balenie",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 200.0
+     },
+     {
+      "code": "311",
+      "desc": "Uv potlač Echobarrier Gen set extension",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "intermediate",
+      "raw": 100.0
+     },
+     {
+      "code": "2919",
+      "desc": "AGFA ANUVIA 5L ( Farby Tauro )",
+      "qty": 0.0072,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.72
+     },
+     {
+      "code": "000340",
+      "desc": "UV tlač + manipulácia",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 200.0
+     },
+     {
+      "code": "000457",
+      "desc": "Grafika - súbory pre tlač",
+      "qty": 0.3,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 30.0
+     },
+     {
+      "code": "000651",
+      "desc": "Cutter- rez",
+      "qty": 3.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 300.0
+     },
+     {
+      "code": "000657",
+      "desc": "EuroLaser - rez",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 400.0
+     }
+    ],
+    "warnings": [
+     "no packing-bag line, so no pallet count and no per-pallet rates"
+    ],
+    "pallet_size": null
+   }
+  ],
+  "warnings": []
+ },
+ "gen-set-m1": {
+  "slug": "gen-set-m1",
+  "doc": "DLE26030003",
+  "date": "2026-03-04",
+  "po": "PO-00001290",
+  "products": [
+   {
+    "fg_code": "30049",
+    "fg_label": "Výroba Echo Barrier Gen set M1",
+    "batch": 10.0,
+    "lines": [
+     {
+      "code": "5097",
+      "desc": "Mehler 8540 VS 900 FR RAL 6026,zelená matná, šírka 267cm",
+      "qty": 15.0,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 150.0
+     },
+     {
+      "code": "606",
+      "desc": "Lemovka Popruh PP 31S900 10/1/40",
+      "qty": 40.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 400.0
+     },
+     {
+      "code": "2189",
+      "desc": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm",
+      "qty": 227.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 2270.0
+     },
+     {
+      "code": "900",
+      "desc": "Serge Ferrari meshes 362- 50201 zelená",
+      "qty": 15.0,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 150.0
+     },
+     {
+      "code": "1566",
+      "desc": "Suchý zips 10 cm čierny háčik 102",
+      "qty": 20.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 200.0
+     },
+     {
+      "code": "1567",
+      "desc": "Suchý zips 10 cm čierny vlas 102",
+      "qty": 12.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 120.0
+     },
+     {
+      "code": "000289",
+      "desc": "Práca - šitie",
+      "qty": 260.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 2600.0
+     },
+     {
+      "code": "3097",
+      "desc": "Nctech nitka 20 farba čierna 3713-4000",
+      "qty": 187.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 1870.0
+     },
+     {
+      "code": "2204",
+      "desc": "Reflexná páska heat transfer silver PU 25mm",
+      "qty": 3.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 30.0
+     },
+     {
+      "code": "311",
+      "desc": "Uv potlač Echobarrier Gen set M1",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "intermediate",
+      "raw": 10.0
+     },
+     {
+      "code": "2919",
+      "desc": "AGFA ANUVIA 5L ( Farby Tauro )",
+      "qty": 0.007000000000000001,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.07
+     },
+     {
+      "code": "000340",
+      "desc": "UV tlač + manipulácia",
+      "qty": 3.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 30.0
+     },
+     {
+      "code": "000457",
+      "desc": "Grafika - súbory pre tlač",
+      "qty": 3.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 30.0
+     },
+     {
+      "code": "000651",
+      "desc": "Cutter- rez",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 20.0
+     },
+     {
+      "code": "000657",
+      "desc": "EuroLaser - rez",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 20.0
+     },
+     {
+      "code": "000852",
+      "desc": "Zváranie Echobarrier VF GEN set M1",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 10.0
+     },
+     {
+      "code": "000582",
+      "desc": "Zváranie vysoko frekvenciou SPIDER XYZ",
+      "qty": 20.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 200.0
+     },
+     {
+      "code": "30040",
+      "desc": "Vak na balenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 1.0
+     },
+     {
+      "code": "4898",
+      "desc": "TK.PE 753 modrý kašír",
+      "qty": 20.0,
+      "unit": "m2",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 20.0
+     },
+     {
+      "code": "30045",
+      "desc": "Kovové zaistenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 1.0
+     },
+     {
+      "code": "1781",
+      "desc": "Kovové istenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 1.0
+     },
+     {
+      "code": "371",
+      "desc": "SKR. do dreva žlta 5 X 50",
+      "qty": 16.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 16.0
+     },
+     {
+      "code": "376",
+      "desc": "KAROS. PODLOŽKA ZI 5X20",
+      "qty": 10.5,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 10.5
+     },
+     {
+      "code": "361",
+      "desc": "Texa do železa 4,8X25",
+      "qty": 6.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 6.0
+     }
+    ],
+    "warnings": [
+     "batch of 10 filled one pallet, so pallet size is only known to be >= 10"
+    ],
+    "pallet_count": 1.0,
+    "pallet_size_min": 10,
+    "pallet_size_max": null,
+    "pallet_size": null
+   }
+  ],
+  "warnings": []
+ },
+ "h10-pracka": {
+  "slug": "h10-pracka",
+  "doc": "DLE26080007",
+  "date": "2026-08-18",
+  "po": "PO-00001397",
+  "products": [
+   {
+    "fg_code": "000762",
+    "fg_label": "Výroba Echo Barrier H10 s prackou+ navarovacia reflexná páska (1335 x 2050 mm)",
+    "batch": 520.0,
+    "lines": [
+     {
+      "code": "5097",
+      "desc": "Mehler 8540 VS 900 FR RAL 6026,zelená matná, šírka 267cm",
+      "qty": 2.85,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 1482.0
+     },
+     {
+      "code": "897",
+      "desc": "Sieťka 362- zelená (2050x1335 mm)",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 520.0
+     },
+     {
+      "code": "606",
+      "desc": "Lemovka Popruh PP 31S900 10/1/40",
+      "qty": 7.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 3640.0
+     },
+     {
+      "code": "605",
+      "desc": "Lemovka- Popruh PP 31S900 10/1/25",
+      "qty": 0.7,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 364.0
+     },
+     {
+      "code": "7",
+      "desc": "Mosadzné krúžky 25mm - automatické",
+      "qty": 19.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 9880.0
+     },
+     {
+      "code": "2204",
+      "desc": "Reflexná páska heat transfer silver PU 25mm",
+      "qty": 1.7100000000000002,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 889.2
+     },
+     {
+      "code": "3076",
+      "desc": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+      "qty": 5.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 2600.0
+     },
+     {
+      "code": "303",
+      "desc": "Nit zaklepavaci",
+      "qty": 4.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 2080.0
+     },
+     {
+      "code": "621",
+      "desc": "FS 25 NY Pracka čierna 25 mm",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 520.0
+     },
+     {
+      "code": "2189",
+      "desc": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm",
+      "qty": 39.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 20280.0
+     },
+     {
+      "code": "3097",
+      "desc": "Nctech nitka 20 farba čierna 3713-4000",
+      "qty": 0.22,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 114.4
+     },
+     {
+      "code": "301",
+      "desc": "Plastová podložka pod nity 35.51",
+      "qty": 2.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 1040.0
+     },
+     {
+      "code": "300",
+      "desc": "Plastová podložka pod nity A-25/35.25",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 520.0
+     },
+     {
+      "code": "000326",
+      "desc": "Rezanie reflexnej pásky",
+      "qty": 0.25,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 130.0
+     },
+     {
+      "code": "000308",
+      "desc": "Šitie",
+      "qty": 10.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 5200.0
+     },
+     {
+      "code": "000713",
+      "desc": "Lepenie bavlny",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 2080.0
+     },
+     {
+      "code": "000328",
+      "desc": "Práca- Vybitie krúžkov",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 2080.0
+     },
+     {
+      "code": "000309",
+      "desc": "Balenie",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 2080.0
+     },
+     {
+      "code": "000714",
+      "desc": "Vybitie pracky",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 1040.0
+     },
+     {
+      "code": "311",
+      "desc": "Uv potlač Echobarrier H 10",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "intermediate",
+      "raw": 520.0
+     },
+     {
+      "code": "2919",
+      "desc": "AGFA ANUVIA 5L ( Farby Tauro )",
+      "qty": 0.0075,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 3.9
+     },
+     {
+      "code": "2926",
+      "desc": "SQP, UV - Ink 5L ( Farby Nyala )",
+      "qty": 0.0007692307692307692,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.4
+     },
+     {
+      "code": "000340",
+      "desc": "UV tlač + manipulácia",
+      "qty": 1.8461538461538463,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 960.0
+     },
+     {
+      "code": "000457",
+      "desc": "Grafika - súbory pre tlač",
+      "qty": 0.028846153846153848,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 15.0
+     },
+     {
+      "code": "000651",
+      "desc": "Cutter- rez",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 1040.0
+     },
+     {
+      "code": "000657",
+      "desc": "EuroLaser - rez",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 1040.0
+     },
+     {
+      "code": "4376",
+      "desc": "SQA, Primer 1 liter",
+      "qty": 0.0001923076923076923,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.1
+     },
+     {
+      "code": "30045",
+      "desc": "Kovové zaistenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 8.0
+     },
+     {
+      "code": "1781",
+      "desc": "Kovové istenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 8.0
+     },
+     {
+      "code": "371",
+      "desc": "SKR. do dreva žlta 5 X 50",
+      "qty": 16.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 128.0
+     },
+     {
+      "code": "378",
+      "desc": "KAROS. PODLOŽKA ZI 5X30",
+      "qty": 10.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 80.0
+     },
+     {
+      "code": "361",
+      "desc": "Texa do železa 4,8X25",
+      "qty": 6.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 48.0
+     },
+     {
+      "code": "30040",
+      "desc": "Vak na balenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 8.0
+     },
+     {
+      "code": "4898",
+      "desc": "TK.PE 753 modrý kašír",
+      "qty": 20.0,
+      "unit": "m2",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 160.0
+     },
+     {
+      "code": "2192",
+      "desc": "Nctech nitka 34 farba čierna 4000, 1500bm",
+      "qty": 50.0,
+      "unit": "m",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 400.0
+     },
+     {
+      "code": "000856",
+      "desc": "Račňa textilná Echobarrier",
+      "qty": 10.0,
+      "unit": "ks",
+      "basis": "per_order",
+      "line_type": "material",
+      "raw": 10.0
+     },
+     {
+      "code": "662",
+      "desc": "Račna s pásom 50mm + račnový pás komplet",
+      "qty": 10.0,
+      "unit": "ks",
+      "basis": "per_order",
+      "line_type": "material",
+      "raw": 10.0
+     }
+    ],
+    "warnings": [
+     "pallet size is only pinned to 65..74 by this note"
+    ],
+    "pallet_count": 8.0,
+    "pallet_size_min": 65,
+    "pallet_size_max": 74,
+    "pallet_size": null
+   }
+  ],
+  "warnings": []
+ },
+ "h10": {
+  "slug": "h10",
+  "doc": "DLE26080011",
+  "date": "2026-08-28",
+  "po": "PO-00001409",
+  "products": [
+   {
+    "fg_code": "000728",
+    "fg_label": "Výroba Echo Barrier H10 (1335 x 2050 mm)",
+    "batch": 350.0,
+    "lines": [
+     {
+      "code": "5097",
+      "desc": "Mehler 8540 VS 900 FR RAL 6026,zelená matná, šírka 267cm",
+      "qty": 2.85,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 997.5
+     },
+     {
+      "code": "897",
+      "desc": "Sieťka 362- zelená (2050x1335 mm)",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 350.0
+     },
+     {
+      "code": "606",
+      "desc": "Lemovka Popruh PP 31S900 10/1/40",
+      "qty": 7.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 2450.0
+     },
+     {
+      "code": "7",
+      "desc": "Mosadzné krúžky 25mm - automatické",
+      "qty": 19.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 6650.0
+     },
+     {
+      "code": "2204",
+      "desc": "Reflexná páska heat transfer silver PU 25mm",
+      "qty": 1.71,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 598.5
+     },
+     {
+      "code": "3076",
+      "desc": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+      "qty": 5.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 1750.0
+     },
+     {
+      "code": "2189",
+      "desc": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm",
+      "qty": 39.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 13650.0
+     },
+     {
+      "code": "000326",
+      "desc": "Rezanie reflexnej pásky",
+      "qty": 0.25,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 87.5
+     },
+     {
+      "code": "000308",
+      "desc": "Šitie",
+      "qty": 10.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 3500.0
+     },
+     {
+      "code": "000713",
+      "desc": "Lepenie bavlny",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 1400.0
+     },
+     {
+      "code": "000328",
+      "desc": "Práca- Vybitie krúžkov",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 1400.0
+     },
+     {
+      "code": "000309",
+      "desc": "Balenie",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 1400.0
+     },
+     {
+      "code": "311",
+      "desc": "Uv potlač Echobarrier H10",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "intermediate",
+      "raw": 350.0
+     },
+     {
+      "code": "2919",
+      "desc": "AGFA ANUVIA 5L ( Farby Tauro )",
+      "qty": 0.007142857142857143,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 2.5
+     },
+     {
+      "code": "2926",
+      "desc": "SQP, UV - Ink 5L ( Farby Nyala )",
+      "qty": 0.0017142857142857142,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.6
+     },
+     {
+      "code": "000340",
+      "desc": "UV tlač + manipulácia",
+      "qty": 2.1,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 735.0
+     },
+     {
+      "code": "000457",
+      "desc": "Grafika - súbory pre tlač",
+      "qty": 0.04285714285714286,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 15.0
+     },
+     {
+      "code": "000651",
+      "desc": "Cutter- rez",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 700.0
+     },
+     {
+      "code": "000657",
+      "desc": "EuroLaser - rez",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 700.0
+     },
+     {
+      "code": "4376",
+      "desc": "SQA, Primer 1 liter",
+      "qty": 0.0005714285714285715,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.2
+     },
+     {
+      "code": "30045",
+      "desc": "Kovové zaistenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 5.0
+     },
+     {
+      "code": "1781",
+      "desc": "Kovové istenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 5.0
+     },
+     {
+      "code": "371",
+      "desc": "SKR. do dreva žlta 5 X 50",
+      "qty": 16.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 80.0
+     },
+     {
+      "code": "378",
+      "desc": "KAROS. PODLOŽKA ZI 5X30",
+      "qty": 10.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 50.0
+     },
+     {
+      "code": "361",
+      "desc": "Texa do železa 4,8X25",
+      "qty": 6.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 30.0
+     },
+     {
+      "code": "30040",
+      "desc": "Vak na balenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 5.0
+     },
+     {
+      "code": "4898",
+      "desc": "TK.PE 753 modrý kašír",
+      "qty": 20.0,
+      "unit": "m2",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 100.0
+     },
+     {
+      "code": "2192",
+      "desc": "Nctech nitka 34 farba čierna 4000, 1500bm",
+      "qty": 50.0,
+      "unit": "m",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 250.0
+     }
+    ],
+    "warnings": [
+     "pallet size is only pinned to 70..87 by this note"
+    ],
+    "pallet_count": 5.0,
+    "pallet_size_min": 70,
+    "pallet_size_max": 87,
+    "pallet_size": null
+   }
+  ],
+  "warnings": []
+ },
+ "h2": {
+  "slug": "h2",
+  "doc": "DLE26070011",
+  "date": "2026-07-30",
+  "po": "PO-00001411",
+  "products": [
+   {
+    "fg_code": "000957",
+    "fg_label": "Výroba Echo Barrier H2 (1335 x 2050 mm)",
+    "batch": 2.0,
+    "lines": [
+     {
+      "code": "5097",
+      "desc": "Mehler 8540 VS 900 FR RAL 6026,zelená matná, šírka 267cm",
+      "qty": 2.85,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 5.7
+     },
+     {
+      "code": "606",
+      "desc": "Lemovka Popruh PP 31S900 10/1/40",
+      "qty": 7.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 14.0
+     },
+     {
+      "code": "7",
+      "desc": "Mosadzné krúžky 25mm - automatické",
+      "qty": 19.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 38.0
+     },
+     {
+      "code": "2204",
+      "desc": "Reflexná páska heat transfer silver PU 25mm",
+      "qty": 1.71,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 3.42
+     },
+     {
+      "code": "3076",
+      "desc": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+      "qty": 5.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 10.0
+     },
+     {
+      "code": "2189",
+      "desc": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm",
+      "qty": 39.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 78.0
+     },
+     {
+      "code": "000326",
+      "desc": "Rezanie reflexnej pásky",
+      "qty": 0.25,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 0.5
+     },
+     {
+      "code": "000308",
+      "desc": "Šitie",
+      "qty": 10.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 20.0
+     },
+     {
+      "code": "000713",
+      "desc": "Lepenie bavlny",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 8.0
+     },
+     {
+      "code": "000664",
+      "desc": "Zváranie VF-ZEMAT",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 4.0
+     },
+     {
+      "code": "900",
+      "desc": "Serge Ferrari meshes 362- 50201 zelená",
+      "qty": 2.85,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 5.7
+     },
+     {
+      "code": "311",
+      "desc": "Uv potlač Echobarrier H2",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "intermediate",
+      "raw": 2.0
+     },
+     {
+      "code": "2919",
+      "desc": "AGFA ANUVIA 5L ( Farby Tauro )",
+      "qty": 0.01,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.02
+     },
+     {
+      "code": "000340",
+      "desc": "UV tlač + manipulácia",
+      "qty": 0.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 0.0
+     },
+     {
+      "code": "000457",
+      "desc": "Grafika - súbory pre tlač",
+      "qty": 5.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 10.0
+     },
+     {
+      "code": "000651",
+      "desc": "Cutter- rez",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 4.0
+     },
+     {
+      "code": "000657",
+      "desc": "EuroLaser - rez",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 4.0
+     }
+    ],
+    "warnings": [
+     "no packing-bag line, so no pallet count and no per-pallet rates"
+    ],
+    "pallet_size": null
+   }
+  ],
+  "warnings": []
+ },
+ "h8": {
+  "slug": "h8",
+  "doc": "DLE26080012",
+  "date": "2026-08-31",
+  "po": "PO-00001414",
+  "products": [
+   {
+    "fg_code": "000717",
+    "fg_label": "Výroba Echo Barrier H8 (3650 x 2050 mm)",
+    "batch": 270.0,
+    "lines": [
+     {
+      "code": "1424",
+      "desc": "Mehler 8509-636 zelena",
+      "qty": 9.120000000000001,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 2462.4
+     },
+     {
+      "code": "606",
+      "desc": "Lemovka Popruh PP 31S900 10/1/40",
+      "qty": 12.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 3240.0
+     },
+     {
+      "code": "7",
+      "desc": "Mosadzné krúžky 25mm - automatické",
+      "qty": 31.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 8370.0
+     },
+     {
+      "code": "2204",
+      "desc": "Reflexná páska heat transfer silver PU 25mm",
+      "qty": 5.5,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 1485.0
+     },
+     {
+      "code": "3076",
+      "desc": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+      "qty": 9.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 2430.0
+     },
+     {
+      "code": "2189",
+      "desc": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm",
+      "qty": 32.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 8640.0
+     },
+     {
+      "code": "000326",
+      "desc": "Rezanie reflexnej pásky",
+      "qty": 0.25,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 67.5
+     },
+     {
+      "code": "000308",
+      "desc": "Šitie",
+      "qty": 15.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 4050.0
+     },
+     {
+      "code": "000328",
+      "desc": "Práca- Vybitie krúžkov",
+      "qty": 8.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 2160.0
+     },
+     {
+      "code": "000309",
+      "desc": "Balenie",
+      "qty": 6.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 1620.0
+     },
+     {
+      "code": "269",
+      "desc": "Mosadzné krúžky 25mm",
+      "qty": 4.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 1080.0
+     },
+     {
+      "code": "311",
+      "desc": "Uv potlač Echobarrier H8",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "intermediate",
+      "raw": 270.0
+     },
+     {
+      "code": "2919",
+      "desc": "AGFA ANUVIA 5L ( Farby Tauro )",
+      "qty": 0.017777777777777778,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 4.8
+     },
+     {
+      "code": "000340",
+      "desc": "UV tlač + manipulácia",
+      "qty": 5.6,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 1512.0
+     },
+     {
+      "code": "000457",
+      "desc": "Grafika - súbory pre tlač",
+      "qty": 0.05555555555555555,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 15.0
+     },
+     {
+      "code": "000651",
+      "desc": "Cutter- rez",
+      "qty": 2.5,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 675.0
+     },
+     {
+      "code": "000657",
+      "desc": "EuroLaser - rez",
+      "qty": 2.5,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 675.0
+     },
+     {
+      "code": "000852",
+      "desc": "Zváranie Echobarrier VF H8",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 270.0
+     },
+     {
+      "code": "000582",
+      "desc": "Zváranie vysoko frekvenciou SPIDER XYZ",
+      "qty": 30.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 8100.0
+     },
+     {
+      "code": "30045",
+      "desc": "Kovové zaistenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 9.0
+     },
+     {
+      "code": "1781",
+      "desc": "Kovové istenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 9.0
+     },
+     {
+      "code": "371",
+      "desc": "SKR. do dreva žlta 5 X 50",
+      "qty": 16.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 144.0
+     },
+     {
+      "code": "382",
+      "desc": "KAROS. PODLOŽKA ZI 6X30",
+      "qty": 10.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 90.0
+     },
+     {
+      "code": "361",
+      "desc": "Texa do železa 4,8X25",
+      "qty": 6.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 54.0
+     },
+     {
+      "code": "30040",
+      "desc": "Vak na balenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 9.0
+     },
+     {
+      "code": "4898",
+      "desc": "TK.PE 753 modrý kašír",
+      "qty": 20.0,
+      "unit": "m2",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 180.0
+     },
+     {
+      "code": "2192",
+      "desc": "Nctech nitka 34 farba čierna 4000, 1500bm",
+      "qty": 50.0,
+      "unit": "m",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 450.0
+     }
+    ],
+    "warnings": [
+     "pallet size is only pinned to 30..33 by this note"
+    ],
+    "pallet_count": 9.0,
+    "pallet_size_min": 30,
+    "pallet_size_max": 33,
+    "pallet_size": null
+   }
+  ],
+  "warnings": []
+ },
+ "h9-mini": {
+  "slug": "h9-mini",
+  "doc": "DLE25020008",
+  "date": "2025-02-25",
+  "po": "PO-00001089",
+  "products": [
+   {
+    "fg_code": "000751",
+    "fg_label": "Výroba Echo Barrier H9 mini (1010 x 658 mm)",
+    "batch": 180.0,
+    "lines": [
+     {
+      "code": "903",
+      "desc": "H5673 - 6026-1 (zelená)",
+      "qty": 0.85,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 153.0
+     },
+     {
+      "code": "606",
+      "desc": "Lemovka Popruh PP 31S900 10/1/40",
+      "qty": 3.5,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 630.0
+     },
+     {
+      "code": "264",
+      "desc": "Pozinkované krúžky 12mm",
+      "qty": 19.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 3420.0
+     },
+     {
+      "code": "2204",
+      "desc": "Reflexná páska heat transfer silver PU 25mm",
+      "qty": 1.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 180.0
+     },
+     {
+      "code": "3076",
+      "desc": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+      "qty": 2.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 360.0
+     },
+     {
+      "code": "2189",
+      "desc": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm",
+      "qty": 9.5,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 1710.0
+     },
+     {
+      "code": "000326",
+      "desc": "Rezanie reflexnej pásky",
+      "qty": 0.15,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 27.0
+     },
+     {
+      "code": "000308",
+      "desc": "Šitie",
+      "qty": 7.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 1260.0
+     },
+     {
+      "code": "000713",
+      "desc": "Lepenie bavlny",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 360.0
+     },
+     {
+      "code": "000328",
+      "desc": "Práca- Vybitie krúžkov",
+      "qty": 8.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 1440.0
+     },
+     {
+      "code": "000309",
+      "desc": "Balenie",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 360.0
+     },
+     {
+      "code": "000664",
+      "desc": "Zváranie VF-ZEMAT",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 360.0
+     },
+     {
+      "code": "311",
+      "desc": "Uv potlač Echobarrier H9mini",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "intermediate",
+      "raw": 180.0
+     },
+     {
+      "code": "2919",
+      "desc": "AGFA ANUVIA 5L ( Farby Tauro )",
+      "qty": 0.001611111111111111,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.29
+     },
+     {
+      "code": "000340",
+      "desc": "UV tlač + manipulácia",
+      "qty": 0.75,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 135.0
+     },
+     {
+      "code": "000457",
+      "desc": "Grafika - súbory pre tlač",
+      "qty": 0.08333333333333333,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 15.0
+     },
+     {
+      "code": "000651",
+      "desc": "Cutter- rez",
+      "qty": 1.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 180.0
+     },
+     {
+      "code": "000657",
+      "desc": "EuroLaser - rez",
+      "qty": 1.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 180.0
+     }
+    ],
+    "warnings": [
+     "note supplied as a PARTIAL extract; its packaging covers products not in any file we hold, so no per-pallet rate is derived"
+    ],
+    "pallet_size": null
+   }
+  ],
+  "warnings": []
+ },
+ "h9": {
+  "slug": "h9",
+  "doc": "DLE26090002",
+  "date": "2026-09-02",
+  "po": "PO-00001405",
+  "products": [
+   {
+    "fg_code": "000716",
+    "fg_label": "Výroba Echo Barrier H9 (1335 x 2050 mm)",
+    "batch": 560.0,
+    "lines": [
+     {
+      "code": "5097",
+      "desc": "Mehler 8540 VS 900 FR RAL 6026,zelená matná, šírka 267cm",
+      "qty": 2.85,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 1596.0
+     },
+     {
+      "code": "606",
+      "desc": "Lemovka Popruh PP 31S900 10/1/40",
+      "qty": 7.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 3920.0
+     },
+     {
+      "code": "7",
+      "desc": "Mosadzné krúžky 25mm - automatické",
+      "qty": 19.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 10640.0
+     },
+     {
+      "code": "2204",
+      "desc": "Reflexná páska heat transfer silver PU 25mm",
+      "qty": 1.71,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 957.6
+     },
+     {
+      "code": "3076",
+      "desc": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+      "qty": 5.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 2800.0
+     },
+     {
+      "code": "2189",
+      "desc": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm",
+      "qty": 39.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 21840.0
+     },
+     {
+      "code": "000326",
+      "desc": "Rezanie reflexnej pásky",
+      "qty": 0.25,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 140.0
+     },
+     {
+      "code": "000308",
+      "desc": "Šitie",
+      "qty": 10.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 5600.0
+     },
+     {
+      "code": "000713",
+      "desc": "Lepenie bavlny",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 2240.0
+     },
+     {
+      "code": "000328",
+      "desc": "Práca- Vybitie krúžkov",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 2240.0
+     },
+     {
+      "code": "000664",
+      "desc": "Zváranie VF-ZEMAT",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 1120.0
+     },
+     {
+      "code": "311",
+      "desc": "Uv potlač Echobarrier H9",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "intermediate",
+      "raw": 560.0
+     },
+     {
+      "code": "2919",
+      "desc": "AGFA ANUVIA 5L ( Farby Tauro )",
+      "qty": 0.007500000000000001,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 4.2
+     },
+     {
+      "code": "000340",
+      "desc": "UV tlač + manipulácia",
+      "qty": 1.5357142857142858,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 860.0
+     },
+     {
+      "code": "000457",
+      "desc": "Grafika - súbory pre tlač",
+      "qty": 0.026785714285714284,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 15.0
+     },
+     {
+      "code": "000651",
+      "desc": "Cutter- rez",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 1120.0
+     },
+     {
+      "code": "000657",
+      "desc": "EuroLaser - rez",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 1120.0
+     },
+     {
+      "code": "30045",
+      "desc": "Kovové zaistenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 8.0
+     },
+     {
+      "code": "1781",
+      "desc": "Kovové istenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 8.0
+     },
+     {
+      "code": "371",
+      "desc": "SKR. do dreva žlta 5 X 50",
+      "qty": 16.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 128.0
+     },
+     {
+      "code": "378",
+      "desc": "KAROS. PODLOŽKA ZI 5X30",
+      "qty": 10.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 80.0
+     },
+     {
+      "code": "361",
+      "desc": "Texa do železa 4,8X25",
+      "qty": 6.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 48.0
+     },
+     {
+      "code": "30040",
+      "desc": "Vak na balenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 8.0
+     },
+     {
+      "code": "4898",
+      "desc": "TK.PE 753 modrý kašír",
+      "qty": 20.0,
+      "unit": "m2",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 160.0
+     },
+     {
+      "code": "2192",
+      "desc": "Nctech nitka 34 farba čierna 4000, 1500bm",
+      "qty": 50.0,
+      "unit": "m",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 400.0
+     },
+     {
+      "code": "000856",
+      "desc": "Račňa textilná Echobarrier",
+      "qty": 10.0,
+      "unit": "ks",
+      "basis": "per_order",
+      "line_type": "material",
+      "raw": 10.0
+     },
+     {
+      "code": "662",
+      "desc": "Račna s pásom 50mm + račnový pás komplet",
+      "qty": 10.0,
+      "unit": "ks",
+      "basis": "per_order",
+      "line_type": "material",
+      "raw": 10.0
+     }
+    ],
+    "warnings": [
+     "pallet size is only pinned to 70..79 by this note"
+    ],
+    "pallet_count": 8.0,
+    "pallet_size_min": 70,
+    "pallet_size_max": 79,
+    "pallet_size": null
+   }
+  ],
+  "warnings": []
+ },
+ "h9j": {
+  "slug": "h9j",
+  "doc": "DLE26020004",
+  "date": "2026-02-11",
+  "po": "PO-00001293",
+  "products": [
+   {
+    "fg_code": "000967",
+    "fg_label": "Výroba Echo Barrier H9J (1270x1030 mm)",
+    "batch": 1.0,
+    "lines": [
+     {
+      "code": "827",
+      "desc": "Mehler 8540 - 543 polymar sidecurtain CL II lesklá",
+      "qty": 1.42,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 1.42
+     },
+     {
+      "code": "606",
+      "desc": "Lemovka Popruh PP 31S900 10/1/40",
+      "qty": 4.8,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 4.8
+     },
+     {
+      "code": "7",
+      "desc": "Mosadzné krúžky 25mm - automatické",
+      "qty": 15.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 15.0
+     },
+     {
+      "code": "2204",
+      "desc": "Reflexná páska heat transfer silver PU 25mm",
+      "qty": 0.75,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.75
+     },
+     {
+      "code": "3076",
+      "desc": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+      "qty": 3.85,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 3.85
+     },
+     {
+      "code": "1621",
+      "desc": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm",
+      "qty": 15.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 15.0
+     },
+     {
+      "code": "000326",
+      "desc": "Rezanie reflexnej pásky",
+      "qty": 0.25,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 0.25
+     },
+     {
+      "code": "000308",
+      "desc": "Šitie",
+      "qty": 5.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 5.0
+     },
+     {
+      "code": "000713",
+      "desc": "Lepenie bavlny",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 2.0
+     },
+     {
+      "code": "000328",
+      "desc": "Práca- Vybitie krúžkov",
+      "qty": 3.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 3.0
+     },
+     {
+      "code": "000664",
+      "desc": "Zváranie VF-ZEMAT",
+      "qty": 1.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 1.0
+     },
+     {
+      "code": "311",
+      "desc": "Uv potlač Echobarrier H9J",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "intermediate",
+      "raw": 1.0
+     },
+     {
+      "code": "2926",
+      "desc": "SQP, UV - Ink 5L ( Farby Nyala )",
+      "qty": 0.01,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.01
+     },
+     {
+      "code": "000340",
+      "desc": "UV tlač + manipulácia",
+      "qty": 15.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 15.0
+     },
+     {
+      "code": "000457",
+      "desc": "Grafika - súbory pre tlač",
+      "qty": 30.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 30.0
+     },
+     {
+      "code": "000651",
+      "desc": "Cutter- rez",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 2.0
+     },
+     {
+      "code": "000657",
+      "desc": "EuroLaser - rez",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 2.0
+     }
+    ],
+    "warnings": [
+     "no packing-bag line, so no pallet count and no per-pallet rates"
+    ],
+    "pallet_size": null
+   }
+  ],
+  "warnings": []
+ },
+ "h9w": {
+  "slug": "h9w",
+  "doc": "DLE25020008",
+  "date": "2025-02-25",
+  "po": "PO-00001089",
+  "products": [
+   {
+    "fg_code": "30050",
+    "fg_label": "Výroba Echo Barrier H9W",
+    "batch": 70.0,
+    "lines": [
+     {
+      "code": "903",
+      "desc": "H5673 - 6026-1 (zelená)",
+      "qty": 3.0,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 210.0
+     },
+     {
+      "code": "606",
+      "desc": "Lemovka Popruh PP 31S900 10/1/40",
+      "qty": 7.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 490.0
+     },
+     {
+      "code": "7",
+      "desc": "Mosadzné krúžky 25mm - automatické",
+      "qty": 19.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 1330.0
+     },
+     {
+      "code": "2204",
+      "desc": "Reflexná páska heat transfer silver PU 25mm",
+      "qty": 1.71,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 119.7
+     },
+     {
+      "code": "3076",
+      "desc": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+      "qty": 3.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 210.0
+     },
+     {
+      "code": "2189",
+      "desc": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm",
+      "qty": 40.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 2800.0
+     },
+     {
+      "code": "000326",
+      "desc": "Rezanie reflexnej pásky",
+      "qty": 0.25,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 17.5
+     },
+     {
+      "code": "000308",
+      "desc": "Šitie",
+      "qty": 10.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 700.0
+     },
+     {
+      "code": "000713",
+      "desc": "Lepenie bavlny",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 280.0
+     },
+     {
+      "code": "000328",
+      "desc": "Práca- Vybitie krúžkov",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 280.0
+     },
+     {
+      "code": "000309",
+      "desc": "Balenie",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 280.0
+     },
+     {
+      "code": "000664",
+      "desc": "Zváranie VF-ZEMAT",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 140.0
+     },
+     {
+      "code": "2931",
+      "desc": "Achilles PVC 1,37x50 bm, 0,5 mm B1- nehorľavá",
+      "qty": 0.5,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 35.0
+     },
+     {
+      "code": "311",
+      "desc": "Uv potlač Echobarrier H9W",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "intermediate",
+      "raw": 70.0
+     },
+     {
+      "code": "2919",
+      "desc": "AGFA ANUVIA 5L ( Farby Tauro )",
+      "qty": 0.0074285714285714285,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.52
+     },
+     {
+      "code": "000340",
+      "desc": "UV tlač + manipulácia",
+      "qty": 2.5714285714285716,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 180.0
+     },
+     {
+      "code": "000457",
+      "desc": "Grafika - súbory pre tlač",
+      "qty": 0.21428571428571427,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 15.0
+     },
+     {
+      "code": "000651",
+      "desc": "Cutter- rez",
+      "qty": 2.5,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 175.0
+     },
+     {
+      "code": "000657",
+      "desc": "EuroLaser - rez",
+      "qty": 2.5,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 175.0
+     },
+     {
+      "code": "000852",
+      "desc": "Zváranie Echobarrier H9W",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 70.0
+     }
+    ],
+    "warnings": [
+     "note supplied as a PARTIAL extract; its packaging covers products not in any file we hold, so no per-pallet rate is derived"
+    ],
+    "pallet_size": null
+   }
+  ],
+  "warnings": []
+ },
+ "h9x": {
+  "slug": "h9x",
+  "doc": "DLE26020003",
+  "date": "2026-02-10",
+  "po": "PO-00001280",
+  "products": [
+   {
+    "fg_code": "000726",
+    "fg_label": "Výroba Echo Barrier H9X (1335 x 2550 mm)",
+    "batch": 400.0,
+    "lines": [
+     {
+      "code": "50",
+      "desc": "Sioline B6148- 6444 (zelená) 900g 2,67 x 54 m",
+      "qty": 0.9,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 360.0
+     },
+     {
+      "code": "606",
+      "desc": "Lemovka Popruh PP 31S900 10/1/40",
+      "qty": 8.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 3200.0
+     },
+     {
+      "code": "7",
+      "desc": "Mosadzné krúžky 25mm - automatické",
+      "qty": 23.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 9200.0
+     },
+     {
+      "code": "2204",
+      "desc": "Reflexná páska heat transfer silver PU 25mm",
+      "qty": 2.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 800.0
+     },
+     {
+      "code": "3076",
+      "desc": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+      "qty": 7.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 2800.0
+     },
+     {
+      "code": "2189",
+      "desc": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm",
+      "qty": 14.8175,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 5927.0
+     },
+     {
+      "code": "000326",
+      "desc": "Rezanie reflexnej pásky",
+      "qty": 0.25,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 100.0
+     },
+     {
+      "code": "000308",
+      "desc": "Šitie",
+      "qty": 30.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 12000.0
+     },
+     {
+      "code": "000328",
+      "desc": "Práca- Vybitie krúžkov",
+      "qty": 5.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 2000.0
+     },
+     {
+      "code": "000309",
+      "desc": "Balenie",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 1600.0
+     },
+     {
+      "code": "662",
+      "desc": "Račna s pásom 50mm + račnový pás komplet",
+      "qty": 0.025,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 10.0
+     },
+     {
+      "code": "4713",
+      "desc": "Magnet KV-30-20-05-N",
+      "qty": 2.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 800.0
+     },
+     {
+      "code": "5097",
+      "desc": "Mehler 8540 VS 900 FR RAL 6026,zelená matná, šírka 267cm",
+      "qty": 3.6,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 1440.0
+     },
+     {
+      "code": "311",
+      "desc": "Uv potlač Echobarrier H9x",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "intermediate",
+      "raw": 400.0
+     },
+     {
+      "code": "2919",
+      "desc": "AGFA ANUVIA 5L ( Farby Tauro )",
+      "qty": 0.0075,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 3.0
+     },
+     {
+      "code": "000340",
+      "desc": "UV tlač + manipulácia",
+      "qty": 2.375,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 950.0
+     },
+     {
+      "code": "000457",
+      "desc": "Grafika - súbory pre tlač",
+      "qty": 0.075,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 30.0
+     },
+     {
+      "code": "000651",
+      "desc": "Cutter- rez",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 800.0
+     },
+     {
+      "code": "000657",
+      "desc": "EuroLaser - rez",
+      "qty": 2.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 800.0
+     },
+     {
+      "code": "356",
+      "desc": "rez bavlna",
+      "qty": 1.5,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 600.0
+     },
+     {
+      "code": "30040",
+      "desc": "Vak na balenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 8.0
+     },
+     {
+      "code": "4898",
+      "desc": "TK.PE 753 modrý kašír",
+      "qty": 20.0,
+      "unit": "m2",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 160.0
+     },
+     {
+      "code": "3097",
+      "desc": "Nctech nitka 20 farba čierna 3713-4000",
+      "qty": 50.0,
+      "unit": "m",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 400.0
+     },
+     {
+      "code": "30045",
+      "desc": "Kovové zaistenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 8.0
+     },
+     {
+      "code": "1781",
+      "desc": "Kovové istenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 8.0
+     },
+     {
+      "code": "371",
+      "desc": "SKR. do dreva žlta 5 X 50",
+      "qty": 16.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 128.0
+     },
+     {
+      "code": "378",
+      "desc": "KAROS. PODLOŽKA ZI 5X30",
+      "qty": 10.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 80.0
+     },
+     {
+      "code": "361",
+      "desc": "Texa do železa 4,8X25",
+      "qty": 6.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 48.0
+     },
+     {
+      "code": "1838",
+      "desc": "Textilné račne",
+      "qty": 10.0,
+      "unit": "ks",
+      "basis": "per_order",
+      "line_type": "material",
+      "raw": 10.0
+     }
+    ],
+    "warnings": [
+     "pallet size is only pinned to 50..57 by this note"
+    ],
+    "pallet_count": 8.0,
+    "pallet_size_min": 50,
+    "pallet_size_max": 57,
+    "pallet_size": null
+   }
+  ],
+  "warnings": []
+ },
+ "ht-3-5": {
+  "slug": "ht-3-5",
+  "doc": "DLE26080008",
+  "date": "2026-08-19",
+  "po": "PO-00001369",
+  "products": [
+   {
+    "fg_code": "000750",
+    "fg_label": "Výroba Echo Barrier HT 3,5 (3650 x 2050mm)",
+    "batch": 120.0,
+    "lines": [
+     {
+      "code": "3601",
+      "desc": "Mehler Plastel TE 8800-606",
+      "qty": 9.5,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 1140.0
+     },
+     {
+      "code": "269",
+      "desc": "Mosadzné krúžky 25mm",
+      "qty": 2.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 240.0
+     },
+     {
+      "code": "2204",
+      "desc": "Reflexná páska heat transfer silver PU 25mm",
+      "qty": 2.55,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 306.0
+     },
+     {
+      "code": "3076",
+      "desc": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+      "qty": 9.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 1080.0
+     },
+     {
+      "code": "000713",
+      "desc": "Lepenie bavlny",
+      "qty": 1.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 120.0
+     },
+     {
+      "code": "000692",
+      "desc": "Zváranie Leister Sematec",
+      "qty": 10.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 1200.0
+     },
+     {
+      "code": "000306",
+      "desc": "Nabitie krúžkov",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 480.0
+     },
+     {
+      "code": "000309",
+      "desc": "Balenie",
+      "qty": 5.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 600.0
+     },
+     {
+      "code": "7",
+      "desc": "Mosadzné krúžky 25mm - automatické",
+      "qty": 16.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 1920.0
+     },
+     {
+      "code": "311",
+      "desc": "Uv potlač Echobarrier HT 3,5",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "intermediate",
+      "raw": 120.0
+     },
+     {
+      "code": "2919",
+      "desc": "AGFA ANUVIA 5L ( Farby Tauro )",
+      "qty": 0.008166666666666666,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.98
+     },
+     {
+      "code": "000340",
+      "desc": "UV tlač + manipulácia",
+      "qty": 6.333333333333333,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 760.0
+     },
+     {
+      "code": "000457",
+      "desc": "Grafika - súbory pre tlač",
+      "qty": 0.125,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 15.0
+     },
+     {
+      "code": "000651",
+      "desc": "Cutter- rez",
+      "qty": 2.5,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 300.0
+     },
+     {
+      "code": "000657",
+      "desc": "EuroLaser - rez",
+      "qty": 2.5,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 300.0
+     },
+     {
+      "code": "000852",
+      "desc": "Zváranie Echobarrier VF HT 3,5",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 120.0
+     },
+     {
+      "code": "000582",
+      "desc": "Zváranie vysoko frekvenciou SPIDER XYZ",
+      "qty": 30.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 3600.0
+     },
+     {
+      "code": "30040",
+      "desc": "Vak na balenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 4.0
+     },
+     {
+      "code": "4898",
+      "desc": "TK.PE 753 modrý kašír",
+      "qty": 20.0,
+      "unit": "m2",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 80.0
+     },
+     {
+      "code": "2192",
+      "desc": "Nctech nitka 34 farba čierna 4000, 1500bm",
+      "qty": 50.0,
+      "unit": "m",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 200.0
+     },
+     {
+      "code": "30045",
+      "desc": "Kovové zaistenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 4.0
+     },
+     {
+      "code": "1781",
+      "desc": "Kovové istenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 4.0
+     },
+     {
+      "code": "371",
+      "desc": "SKR. do dreva žlta 5 X 50",
+      "qty": 16.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 64.0
+     },
+     {
+      "code": "378",
+      "desc": "KAROS. PODLOŽKA ZI 5X30",
+      "qty": 10.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 40.0
+     },
+     {
+      "code": "361",
+      "desc": "Texa do železa 4,8X25",
+      "qty": 6.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 24.0
+     }
+    ],
+    "warnings": [
+     "pallet size is only pinned to 30..39 by this note"
+    ],
+    "pallet_count": 4.0,
+    "pallet_size_min": 30,
+    "pallet_size_max": 39,
+    "pallet_size": null
+   }
+  ],
+  "warnings": []
+ },
+ "nd-rs-200": {
+  "slug": "nd-rs-200",
+  "doc": "DLE25000006",
+  "date": "2025-01-14",
+  "po": "PO-00001102",
+  "products": [
+   {
+    "fg_code": "000800",
+    "fg_label": "Výroba Echo Barrier Noise Defender (1250 x 2050 mm)",
+    "batch": 140.0,
+    "lines": [
+     {
+      "code": "827",
+      "desc": "Mehler 8540 - 543 polymar sidecurtain CL II lesklá",
+      "qty": 3.1,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 434.0
+     },
+     {
+      "code": "3076",
+      "desc": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+      "qty": 5.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 700.0
+     },
+     {
+      "code": "266",
+      "desc": "Pozinkované krúžky 25mm",
+      "qty": 12.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 1680.0
+     },
+     {
+      "code": "000326",
+      "desc": "Rezanie reflexnej pásky",
+      "qty": 0.25,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 35.0
+     },
+     {
+      "code": "000328",
+      "desc": "Práca- Vybitie krúžkov",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 560.0
+     },
+     {
+      "code": "000309",
+      "desc": "Balenie",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 560.0
+     },
+     {
+      "code": "3097",
+      "desc": "Nctech nitka 20 farba čierna 3713-4000",
+      "qty": 58.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 8120.0
+     },
+     {
+      "code": "2205",
+      "desc": "Reflexná páska heat transfer silver PU 50mm",
+      "qty": 1.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 140.0
+     },
+     {
+      "code": "000308",
+      "desc": "Šitie",
+      "qty": 10.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 1400.0
+     },
+     {
+      "code": "311",
+      "desc": "Uv potlač Echobarrier RS-200",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "intermediate",
+      "raw": 140.0
+     },
+     {
+      "code": "2756",
+      "desc": "AGFA ANUVIA 1550 RTR 2x1L CYAN",
+      "qty": 0.00042857142857142855,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.06
+     },
+     {
+      "code": "4099",
+      "desc": "AGFA ANUVIA 1550 M 1x5L",
+      "qty": 0.00014285714285714287,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.02
+     },
+     {
+      "code": "4098",
+      "desc": "AGFA ANUVIA 1550 Y 1x5L",
+      "qty": 0.0,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.0
+     },
+     {
+      "code": "2759",
+      "desc": "AGFA ANUVIA 1550 RTR 2x1L BLACK",
+      "qty": 0.00021428571428571427,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.03
+     },
+     {
+      "code": "3977",
+      "desc": "AGFA Anuvia 1051 RTR 4,5 L WHITE",
+      "qty": 0.0009285714285714286,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.13
+     },
+     {
+      "code": "000340",
+      "desc": "UV tlač + manipulácia",
+      "qty": 2.5714285714285716,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 360.0
+     },
+     {
+      "code": "000457",
+      "desc": "Grafika - súbory pre tlač",
+      "qty": 0.10714285714285714,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 15.0
+     },
+     {
+      "code": "30040",
+      "desc": "Vak na balenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 9.0
+     },
+     {
+      "code": "4898",
+      "desc": "TK.PE 753 modrý kašír",
+      "qty": 20.0,
+      "unit": "m2",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 180.0
+     },
+     {
+      "code": "30045",
+      "desc": "Kovové zaistenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 9.0
+     },
+     {
+      "code": "1781",
+      "desc": "Kovové istenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 9.0
+     },
+     {
+      "code": "371",
+      "desc": "SKR. do dreva žlta 5 X 50",
+      "qty": 16.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 144.0
+     },
+     {
+      "code": "378",
+      "desc": "KAROS. PODLOŽKA ZI 5X30",
+      "qty": 10.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 90.0
+     },
+     {
+      "code": "361",
+      "desc": "Texa do železa 4,8X25",
+      "qty": 6.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 54.0
+     }
+    ],
+    "warnings": [
+     "this note carries 2 products and one set of packaging lines; per-pallet rates are apportioned by batch share (0.400) and are ESTIMATES",
+     "pallet size not derivable: packaging shared between products"
+    ],
+    "pallet_count": 9.0,
+    "pallet_size": null
+   },
+   {
+    "fg_code": "000760",
+    "fg_label": "Výroba Echo Barrier Noise Defender (3650 x 2050 mm)",
+    "batch": 210.0,
+    "lines": [
+     {
+      "code": "984",
+      "desc": "Mehler Plastel TE 62 8800-705",
+      "qty": 9.3,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 1953.0
+     },
+     {
+      "code": "3076",
+      "desc": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+      "qty": 5.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 1050.0
+     },
+     {
+      "code": "266",
+      "desc": "Pozinkované krúžky 25mm",
+      "qty": 18.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 3780.0
+     },
+     {
+      "code": "000326",
+      "desc": "Rezanie reflexnej pásky",
+      "qty": 0.25,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 52.5
+     },
+     {
+      "code": "000328",
+      "desc": "Práca- Vybitie krúžkov",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 840.0
+     },
+     {
+      "code": "000309",
+      "desc": "Balenie",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 840.0
+     },
+     {
+      "code": "000406",
+      "desc": "Zváranie VF-SPIDER XYZ",
+      "qty": 32.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 6720.0
+     },
+     {
+      "code": "2205",
+      "desc": "Reflexná páska heat transfer silver PU 50mm",
+      "qty": 1.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 210.0
+     },
+     {
+      "code": "311",
+      "desc": "Uv potlač Echobarrier RT-100",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "intermediate",
+      "raw": 210.0
+     },
+     {
+      "code": "2756",
+      "desc": "AGFA ANUVIA 1550 RTR 2x1L CYAN",
+      "qty": 0.0003333333333333334,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.07
+     },
+     {
+      "code": "4099",
+      "desc": "AGFA ANUVIA 1550 M 1x5L",
+      "qty": 0.0002380952380952381,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.05
+     },
+     {
+      "code": "4098",
+      "desc": "AGFA ANUVIA 1550 Y 1x5L",
+      "qty": 0.00014285714285714284,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.03
+     },
+     {
+      "code": "2759",
+      "desc": "AGFA ANUVIA 1550 RTR 2x1L BLACK",
+      "qty": 0.00038095238095238096,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.08
+     },
+     {
+      "code": "000340",
+      "desc": "UV tlač + manipulácia",
+      "qty": 4.857142857142857,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 1020.0
+     },
+     {
+      "code": "000457",
+      "desc": "Grafika - súbory pre tlač",
+      "qty": 0.07142857142857142,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 15.0
+     },
+     {
+      "code": "30040",
+      "desc": "Vak na balenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 9.0
+     },
+     {
+      "code": "4898",
+      "desc": "TK.PE 753 modrý kašír",
+      "qty": 20.0,
+      "unit": "m2",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 180.0
+     },
+     {
+      "code": "30045",
+      "desc": "Kovové zaistenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 9.0
+     },
+     {
+      "code": "1781",
+      "desc": "Kovové istenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 9.0
+     },
+     {
+      "code": "371",
+      "desc": "SKR. do dreva žlta 5 X 50",
+      "qty": 16.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 144.0
+     },
+     {
+      "code": "378",
+      "desc": "KAROS. PODLOŽKA ZI 5X30",
+      "qty": 10.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 90.0
+     },
+     {
+      "code": "361",
+      "desc": "Texa do železa 4,8X25",
+      "qty": 6.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 54.0
+     }
+    ],
+    "warnings": [
+     "this note carries 2 products and one set of packaging lines; per-pallet rates are apportioned by batch share (0.600) and are ESTIMATES",
+     "pallet size not derivable: packaging shared between products"
+    ],
+    "pallet_count": 9.0,
+    "pallet_size": null
+   }
+  ],
+  "warnings": []
+ },
+ "nd-rt-100": {
+  "slug": "nd-rt-100",
+  "doc": "DLE26080003",
+  "date": "2026-08-06",
+  "po": "PO-00001377",
+  "products": [
+   {
+    "fg_code": "000760",
+    "fg_label": "Výroba Echo Barrier Noise Defender (3650 x 2050 mm)",
+    "batch": 60.0,
+    "lines": [
+     {
+      "code": "4973",
+      "desc": "Mehler 8954 - 729, sivá",
+      "qty": 9.5,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 570.0
+     },
+     {
+      "code": "3076",
+      "desc": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+      "qty": 5.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 300.0
+     },
+     {
+      "code": "266",
+      "desc": "Pozinkované krúžky 25mm",
+      "qty": 2.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 120.0
+     },
+     {
+      "code": "000326",
+      "desc": "Rezanie reflexnej pásky",
+      "qty": 0.25,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 15.0
+     },
+     {
+      "code": "000328",
+      "desc": "Práca- Vybitie krúžkov",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 240.0
+     },
+     {
+      "code": "000309",
+      "desc": "Balenie",
+      "qty": 5.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 300.0
+     },
+     {
+      "code": "5",
+      "desc": "Pozinkované krúžky 25mm automatické",
+      "qty": 16.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 960.0
+     },
+     {
+      "code": "2205",
+      "desc": "Reflexná páska heat transfer silver PU 50mm",
+      "qty": 1.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 60.0
+     },
+     {
+      "code": "311",
+      "desc": "Uv potlač Echobarrier ND RT 100",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "intermediate",
+      "raw": 60.0
+     },
+     {
+      "code": "2919",
+      "desc": "AGFA ANUVIA 5L ( Farby Tauro )",
+      "qty": 0.0011666666666666668,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.07
+     },
+     {
+      "code": "000340",
+      "desc": "UV tlač + manipulácia",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 240.0
+     },
+     {
+      "code": "000457",
+      "desc": "Grafika - súbory pre tlač",
+      "qty": 0.25,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 15.0
+     },
+     {
+      "code": "000651",
+      "desc": "Cutter- rez",
+      "qty": 2.5,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 150.0
+     },
+     {
+      "code": "000657",
+      "desc": "EuroLaser - rez",
+      "qty": 2.5,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 150.0
+     },
+     {
+      "code": "000852",
+      "desc": "Zváranie Echobarrier VF ND RT100",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 60.0
+     },
+     {
+      "code": "000582",
+      "desc": "Zváranie vysoko frekvenciou SPIDER XYZ",
+      "qty": 28.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 1680.0
+     },
+     {
+      "code": "30045",
+      "desc": "Kovové zaistenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 2.0
+     },
+     {
+      "code": "1781",
+      "desc": "Kovové istenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 2.0
+     },
+     {
+      "code": "371",
+      "desc": "SKR. do dreva žlta 5 X 50",
+      "qty": 16.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 32.0
+     },
+     {
+      "code": "382",
+      "desc": "KAROS. PODLOŽKA ZI 6X30",
+      "qty": 10.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 20.0
+     },
+     {
+      "code": "361",
+      "desc": "Texa do železa 4,8X25",
+      "qty": 6.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 12.0
+     },
+     {
+      "code": "30040",
+      "desc": "Vak na balenie",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 2.0
+     },
+     {
+      "code": "4898",
+      "desc": "TK.PE 753 modrý kašír",
+      "qty": 20.0,
+      "unit": "m2",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 40.0
+     },
+     {
+      "code": "2192",
+      "desc": "Nctech nitka 34 farba čierna 4000, 1500bm",
+      "qty": 50.0,
+      "unit": "m",
+      "basis": "per_pallet",
+      "line_type": "material",
+      "raw": 100.0
+     }
+    ],
+    "warnings": [
+     "pallet size is only pinned to 30..59 by this note"
+    ],
+    "pallet_count": 2.0,
+    "pallet_size_min": 30,
+    "pallet_size_max": 59,
+    "pallet_size": null
+   }
+  ],
+  "warnings": []
+ },
+ "pb3x": {
+  "slug": "pb3x",
+  "doc": "DLE25060001",
+  "date": "2025-06-04",
+  "po": "PO-00001164",
+  "products": [
+   {
+    "fg_code": "000805",
+    "fg_label": "Výroba Echo Barrier PB3 X (3150 x 1400 mm)",
+    "batch": 3.0,
+    "lines": [
+     {
+      "code": "77",
+      "desc": "Mehler 8205- 244 oranžová",
+      "qty": 16.0,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 48.0
+     },
+     {
+      "code": "606",
+      "desc": "Lemovka Popruh PP 31S900 10/1/40",
+      "qty": 10.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 30.0
+     },
+     {
+      "code": "7",
+      "desc": "Mosadzné krúžky 25mm - automatické",
+      "qty": 11.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 33.0
+     },
+     {
+      "code": "2205",
+      "desc": "Reflexná páska heat transfer silver PU 50mm",
+      "qty": 2.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 6.0
+     },
+     {
+      "code": "3076",
+      "desc": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+      "qty": 12.5,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 37.5
+     },
+     {
+      "code": "2189",
+      "desc": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm",
+      "qty": 30.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 90.0
+     },
+     {
+      "code": "000308",
+      "desc": "Šitie",
+      "qty": 15.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 45.0
+     },
+     {
+      "code": "000328",
+      "desc": "Práca- Vybitie krúžkov",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 12.0
+     },
+     {
+      "code": "000309",
+      "desc": "Balenie",
+      "qty": 4.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 12.0
+     },
+     {
+      "code": "311",
+      "desc": "Uv potlač Echobarrier PB3X",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "intermediate",
+      "raw": 3.0
+     },
+     {
+      "code": "2919",
+      "desc": "AGFA ANUVIA 5L ( Farby Tauro )",
+      "qty": 0.01,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.03
+     },
+     {
+      "code": "000340",
+      "desc": "UV tlač + manipulácia",
+      "qty": 10.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 30.0
+     },
+     {
+      "code": "000651",
+      "desc": "Cutter- rez",
+      "qty": 2.5,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 7.5
+     },
+     {
+      "code": "000657",
+      "desc": "EuroLaser - rez",
+      "qty": 2.5,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 7.5
+     },
+     {
+      "code": "000852",
+      "desc": "Zváranie Echobarrier VF PB3X",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 3.0
+     },
+     {
+      "code": "000582",
+      "desc": "Zváranie vysoko frekvenciou SPIDER XYZ",
+      "qty": 27.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 81.0
+     }
+    ],
+    "warnings": [
+     "no packing-bag line, so no pallet count and no per-pallet rates"
+    ],
+    "pallet_size": null
+   }
+  ],
+  "warnings": []
+ },
+ "v1": {
+  "slug": "v1",
+  "doc": "DLE26030004",
+  "date": "2026-03-04",
+  "po": "PO-00001298",
+  "products": [
+   {
+    "fg_code": "000782",
+    "fg_label": "Výroba Echo Barrier V1 (2450 x 1950mm)",
+    "batch": 12.0,
+    "lines": [
+     {
+      "code": "606",
+      "desc": "Lemovka Popruh PP 31S900 10/1/40",
+      "qty": 17.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 204.0
+     },
+     {
+      "code": "3076",
+      "desc": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+      "qty": 3.6,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 43.2
+     },
+     {
+      "code": "5097",
+      "desc": "Mehler 8540 VS 900 FR RAL 6026,zelená matná, šírka 267cm",
+      "qty": 5.5,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 66.0
+     },
+     {
+      "code": "2189",
+      "desc": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm",
+      "qty": 160.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 1920.0
+     },
+     {
+      "code": "2204",
+      "desc": "Reflexná páska heat transfer silver PU 25mm",
+      "qty": 4.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 48.0
+     },
+     {
+      "code": "000308",
+      "desc": "Šitie",
+      "qty": 115.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 1380.0
+     },
+     {
+      "code": "000406",
+      "desc": "Zváranie VF-SPIDER XYZ",
+      "qty": 20.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 240.0
+     },
+     {
+      "code": "3097",
+      "desc": "Nctech nitka 20 farba čierna 3713-4000",
+      "qty": 110.0,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 1320.0
+     },
+     {
+      "code": "1567",
+      "desc": "Suchý zips 10 cm čierny vlas 102",
+      "qty": 5.5,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 66.0
+     },
+     {
+      "code": "1566",
+      "desc": "Suchý zips 10 cm čierny háčik 102",
+      "qty": 5.5,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 66.0
+     },
+     {
+      "code": "610",
+      "desc": "Suchý zips 50 mm, čierny- vlas",
+      "qty": 0.5,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 6.0
+     },
+     {
+      "code": "611",
+      "desc": "Suchý zips 50 mm, čierny- háčik",
+      "qty": 0.5,
+      "unit": "m",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 6.0
+     },
+     {
+      "code": "2931",
+      "desc": "Achilles PVC 1,37x50 bm, 0,5 mm B1- nehorľavá",
+      "qty": 0.39999999999999997,
+      "unit": "m2",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 4.8
+     },
+     {
+      "code": "311",
+      "desc": "Uv potlač Echobarrier V1",
+      "qty": 1.0,
+      "unit": "ks",
+      "basis": "per_unit",
+      "line_type": "intermediate",
+      "raw": 12.0
+     },
+     {
+      "code": "2919",
+      "desc": "AGFA ANUVIA 5L ( Farby Tauro )",
+      "qty": 0.013333333333333334,
+      "unit": "l",
+      "basis": "per_unit",
+      "line_type": "material",
+      "raw": 0.16
+     },
+     {
+      "code": "000340",
+      "desc": "UV tlač + manipulácia",
+      "qty": 6.25,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 75.0
+     },
+     {
+      "code": "000457",
+      "desc": "Grafika - súbory pre tlač",
+      "qty": 2.5,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 30.0
+     },
+     {
+      "code": "000651",
+      "desc": "Cutter- rez",
+      "qty": 12.0,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 144.0
+     },
+     {
+      "code": "000657",
+      "desc": "EuroLaser - rez",
+      "qty": 3.5,
+      "unit": "min",
+      "basis": "per_unit",
+      "line_type": "operation",
+      "raw": 42.0
+     }
+    ],
+    "warnings": [
+     "no packing-bag line, so no pallet count and no per-pallet rates"
+    ],
+    "pallet_size": null
+   }
+  ],
+  "warnings": []
+ }
+}

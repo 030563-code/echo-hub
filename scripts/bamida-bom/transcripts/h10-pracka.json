@@ -1,0 +1,88 @@
+{
+  "doc_number": "DLE26080007",
+  "issue_date": "2026-08-18",
+  "external_po": "PO-00001397",
+  "items": [
+    {
+      "item_no": 1,
+      "code": "311",
+      "description": "Uv potlač Echobarrier H 10",
+      "qty": 520.0,
+      "unit": "ks",
+      "children": [
+        { "code": "2919", "description": "AGFA ANUVIA 5L ( Farby Tauro )", "qty": 3.9, "unit": "l", "kind": "material" },
+        { "code": "2926", "description": "SQP, UV - Ink 5L ( Farby Nyala )", "qty": 0.4, "unit": "l", "kind": "material" },
+        { "code": "000340", "description": "UV tlač + manipulácia", "qty": 960.0, "unit": "min", "kind": "operation" },
+        { "code": "000457", "description": "Grafika - súbory pre tlač", "qty": 15.0, "unit": "min", "kind": "operation" },
+        { "code": "000651", "description": "Cutter- rez", "qty": 1040.0, "unit": "min", "kind": "operation" },
+        { "code": "000657", "description": "EuroLaser - rez", "qty": 1040.0, "unit": "min", "kind": "operation" },
+        { "code": "4376", "description": "SQA, Primer 1 liter", "qty": 0.1, "unit": "l", "kind": "material" }
+      ]
+    },
+    {
+      "item_no": 2,
+      "code": "000762",
+      "description": "Výroba Echo Barrier H10 s prackou+ navarovacia reflexná páska (1335 x 2050 mm)",
+      "qty": 520.0,
+      "unit": "ks",
+      "children": [
+        { "code": "5097", "description": "Mehler 8540 VS 900 FR RAL 6026,zelená matná, šírka 267cm", "qty": 1482.0, "unit": "m2", "kind": "material" },
+        { "code": "897", "description": "Sieťka 362- zelená (2050x1335 mm)", "qty": 520.0, "unit": "ks", "kind": "material" },
+        { "code": "606", "description": "Lemovka Popruh PP 31S900 10/1/40", "qty": 3640.0, "unit": "m", "kind": "material" },
+        { "code": "605", "description": "Lemovka- Popruh PP 31S900 10/1/25", "qty": 364.0, "unit": "m", "kind": "material" },
+        { "code": "7", "description": "Mosadzné krúžky 25mm - automatické", "qty": 9880.0, "unit": "ks", "kind": "material" },
+        { "code": "2204", "description": "Reflexná páska heat transfer silver PU 25mm", "qty": 889.2, "unit": "m", "kind": "material" },
+        { "code": "3076", "description": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m", "qty": 2600.0, "unit": "m", "kind": "material" },
+        { "code": "303", "description": "Nit zaklepavaci", "qty": 2080.0, "unit": "ks", "kind": "material" },
+        { "code": "621", "description": "FS 25 NY Pracka čierna 25 mm", "qty": 520.0, "unit": "ks", "kind": "material" },
+        { "code": "2189", "description": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm", "qty": 20280.0, "unit": "m", "kind": "material" },
+        { "code": "3097", "description": "Nctech nitka 20 farba čierna 3713-4000", "qty": 114.4, "unit": "m", "kind": "material" },
+        { "code": "301", "description": "Plastová podložka pod nity 35.51", "qty": 1040.0, "unit": "ks", "kind": "material" },
+        { "code": "300", "description": "Plastová podložka pod nity A-25/35.25", "qty": 520.0, "unit": "ks", "kind": "material" },
+        { "code": "000326", "description": "Rezanie reflexnej pásky", "qty": 130.0, "unit": "min", "kind": "operation" },
+        { "code": "000308", "description": "Šitie", "qty": 5200.0, "unit": "min", "kind": "operation" },
+        { "code": "000713", "description": "Lepenie bavlny", "qty": 2080.0, "unit": "min", "kind": "operation" },
+        { "code": "000328", "description": "Práca- Vybitie krúžkov", "qty": 2080.0, "unit": "min", "kind": "operation" },
+        { "code": "000309", "description": "Balenie", "qty": 2080.0, "unit": "min", "kind": "operation" },
+        { "code": "000714", "description": "Vybitie pracky", "qty": 1040.0, "unit": "min", "kind": "operation" }
+      ]
+    },
+    {
+      "item_no": 3,
+      "code": "30045",
+      "description": "Kovové zaistenie",
+      "qty": 8.0,
+      "unit": "ks",
+      "children": [
+        { "code": "1781", "description": "Kovové istenie", "qty": 8.0, "unit": "ks", "kind": "material" },
+        { "code": "371", "description": "SKR. do dreva žlta 5 X 50", "qty": 128.0, "unit": "ks", "kind": "material" },
+        { "code": "378", "description": "KAROS. PODLOŽKA ZI 5X30", "qty": 80.0, "unit": "ks", "kind": "material" },
+        { "code": "361", "description": "Texa do železa 4,8X25", "qty": 48.0, "unit": "ks", "kind": "material" }
+      ]
+    },
+    {
+      "item_no": 4,
+      "code": "30040",
+      "description": "Vak na balenie",
+      "qty": 8.0,
+      "unit": "ks",
+      "children": [
+        { "code": "4898", "description": "TK.PE 753 modrý kašír", "qty": 160.0, "unit": "m2", "kind": "material" },
+        { "code": "2192", "description": "Nctech nitka 34 farba čierna 4000, 1500bm", "qty": 400.0, "unit": "m", "kind": "material" }
+      ]
+    },
+    {
+      "item_no": 5,
+      "code": "000856",
+      "description": "Račňa textilná Echobarrier",
+      "qty": 10.0,
+      "unit": "ks",
+      "children": [
+        { "code": "662", "description": "Račna s pásom 50mm + račnový pás komplet", "qty": 10.0, "unit": "ks", "kind": "material" }
+      ]
+    }
+  ],
+  "total_data_lines": 38,
+  "confidence": "high",
+  "notes": "Two-page note (Strana 1/2 and 2/2); item 2 continues across the page break, its first five children on page 2 (000308 Šitie, 000713 Lepenie bavlny, 000328 Práca- Vybitie krúžkov, 000309 Balenie, 000714 Vybitie pracky) all belong to item 2 because no new numbered item appears until 3. Item 2's description wraps onto a second line in the source ('...(1335 x' / '2050 mm)') and has been joined. Item 3 pairs code 30045 'Kovové zaistenie' with a child 1781 'Kovové istenie' (zaistenie vs istenie), which reads as intentional in the source, not an OCR error. Child 361 'Texa do železa 4,8X25' contains a comma inside the description; its quantity is 48,00 ks. Every child under items 3, 4 and 5 carries the '- ' prefix, so all are materials and those items record no labour. Item numbering runs 1 to 5 with no gaps, so this file is a complete note, not a partial extract. No prices anywhere, as expected."
+}

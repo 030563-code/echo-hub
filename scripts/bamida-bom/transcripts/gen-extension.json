@@ -1,0 +1,119 @@
+{
+  "doc_number": "DLE26050003",
+  "issue_date": "2026-05-12",
+  "external_po": "PO-00001327",
+  "items": [
+    {
+      "item_no": 1,
+      "code": "311",
+      "description": "Uv potlač Echobarrier Gen set extension",
+      "qty": 100.0,
+      "unit": "ks",
+      "children": [
+        {
+          "code": "2919",
+          "description": "AGFA ANUVIA 5L ( Farby Tauro )",
+          "qty": 0.72,
+          "unit": "l",
+          "kind": "material"
+        },
+        {
+          "code": "000340",
+          "description": "UV tlač + manipulácia",
+          "qty": 200.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000457",
+          "description": "Grafika - súbory pre tlač",
+          "qty": 30.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000651",
+          "description": "Cutter- rez",
+          "qty": 300.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000657",
+          "description": "EuroLaser - rez",
+          "qty": 400.0,
+          "unit": "min",
+          "kind": "operation"
+        }
+      ]
+    },
+    {
+      "item_no": 2,
+      "code": "000975",
+      "description": "Výroba Echo Barrier Gen set extension (752 x 3983,7 mm)",
+      "qty": 100.0,
+      "unit": "ks",
+      "children": [
+        {
+          "code": "5097",
+          "description": "Mehler 8540 VS 900 FR RAL 6026,zelená matná, šírka 267cm",
+          "qty": 365.0,
+          "unit": "m2",
+          "kind": "material"
+        },
+        {
+          "code": "606",
+          "description": "Lemovka Popruh PP 31S900 10/1/40",
+          "qty": 1000.0,
+          "unit": "m",
+          "kind": "material"
+        },
+        {
+          "code": "2189",
+          "description": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm",
+          "qty": 5000.0,
+          "unit": "m",
+          "kind": "material"
+        },
+        {
+          "code": "3076",
+          "description": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+          "qty": 600.0,
+          "unit": "m",
+          "kind": "material"
+        },
+        {
+          "code": "7",
+          "description": "Mosadzné krúžky 25mm - automatické",
+          "qty": 3100.0,
+          "unit": "ks",
+          "kind": "material"
+        },
+        {
+          "code": "000289",
+          "description": "Práca - šitie",
+          "qty": 3000.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000328",
+          "description": "Práca- Vybitie krúžkov",
+          "qty": 1200.0,
+          "unit": "min",
+          "kind": "operation"
+        },
+        {
+          "code": "000309",
+          "description": "Balenie",
+          "qty": 200.0,
+          "unit": "min",
+          "kind": "operation"
+        }
+      ]
+    }
+  ],
+  "total_data_lines": 15,
+  "confidence": "high",
+  "notes": "Single-page note (Strana 1/1), fully legible, items 1 and 2 with 5 and 8 children respectively. Doc number is DLE26050003, not one of the DLE25020008 H9 mini / H9w page-extracts, so no cross-file overlap applies here. Item 2's description contains a Slovak decimal comma inside the dimensions '(752 x 3983,7 mm)'; that is part of the description, not the quantity column. Codes '000340', '000457', '000651', '000657', '000289', '000328' and '000309' are operations (no leading '- ' in the description, unit min); code '2919' is a material despite its short code, and code '7' is a material despite its single-digit code. Related documents line (VPFECH26050003, 2630058) and the address, signature and footer blocks were skipped as non-data."
+}

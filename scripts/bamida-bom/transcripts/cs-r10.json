@@ -1,0 +1,73 @@
+{
+  "doc_number": "DLE26070001",
+  "issue_date": "2026-07-02",
+  "external_po": "PO-00001376",
+  "items": [
+    {
+      "item_no": 1,
+      "code": "311",
+      "description": "Uv potlač Echobarrier R10",
+      "qty": 10.0,
+      "unit": "ks",
+      "children": [
+        { "code": "2919", "description": "AGFA ANUVIA 5L ( Farby Tauro )", "qty": 0.5, "unit": "l", "kind": "material" },
+        { "code": "000340", "description": "UV tlač + manipulácia", "qty": 160.0, "unit": "min", "kind": "operation" },
+        { "code": "000457", "description": "Grafika - súbory pre tlač", "qty": 30.0, "unit": "min", "kind": "operation" },
+        { "code": "000651", "description": "Cutter- rez", "qty": 200.0, "unit": "min", "kind": "operation" },
+        { "code": "000657", "description": "EuroLaser - rez", "qty": 200.0, "unit": "min", "kind": "operation" }
+      ]
+    },
+    {
+      "item_no": 2,
+      "code": "000723",
+      "description": "Výroba Echo Barrier CS R10 (komplet stan)",
+      "qty": 10.0,
+      "unit": "ks",
+      "children": [
+        { "code": "5097", "description": "Mehler 8540 VS 900 FR RAL 6026,zelená matná, šírka 267cm", "qty": 525.0, "unit": "m2", "kind": "material" },
+        { "code": "606", "description": "Lemovka Popruh PP 31S900 10/1/40", "qty": 1070.0, "unit": "m", "kind": "material" },
+        { "code": "2189", "description": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm", "qty": 4100.0, "unit": "m", "kind": "material" },
+        { "code": "3097", "description": "Nctech nitka 20 farba čierna 3713-4000", "qty": 370.0, "unit": "m", "kind": "material" },
+        { "code": "1567", "description": "Suchý zips 10 cm čierny vlas 102", "qty": 450.0, "unit": "m", "kind": "material" },
+        { "code": "3097", "description": "Nctech nitka 20 farba čierna 3713-4000", "qty": 4800.0, "unit": "m", "kind": "material" },
+        { "code": "1973", "description": "PVC mäkčené pásy Standart 3/300mm", "qty": 160.0, "unit": "m", "kind": "material" },
+        { "code": "1566", "description": "Suchý zips 10 cm čierny háčik 102", "qty": 250.0, "unit": "m", "kind": "material" },
+        { "code": "1972", "description": "PVC mäkčené pásy Standart 2/200mm", "qty": 96.0, "unit": "m", "kind": "material" },
+        { "code": "611", "description": "Suchý zips 50 mm, čierny- háčik", "qty": 120.0, "unit": "m", "kind": "material" },
+        { "code": "2204", "description": "Reflexná páska heat transfer silver PU 25mm", "qty": 65.0, "unit": "m", "kind": "material" },
+        { "code": "263", "description": "Pozinkované krúžky 10mm", "qty": 40.0, "unit": "ks", "kind": "material" },
+        { "code": "3076", "description": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m", "qty": 175.0, "unit": "m", "kind": "material" },
+        { "code": "605", "description": "Lemovka- Popruh PP 31S900 10/1/25", "qty": 26.0, "unit": "m", "kind": "material" },
+        { "code": "478", "description": "Západkový uzáver", "qty": 20.0, "unit": "ks", "kind": "material" },
+        { "code": "2931", "description": "Achilles PVC 1,37x50 bm, 0,5 mm B1- nehorľavá", "qty": 9.0, "unit": "m2", "kind": "material" },
+        { "code": "356", "description": "zváranie lamiel + strecha", "qty": 1200.0, "unit": "min", "kind": "operation" },
+        { "code": "548", "description": "Pás PVC navarovaci šírky 48mm čierny", "qty": 40.0, "unit": "m", "kind": "material" },
+        { "code": "611", "description": "Suchý zips 50 mm, čierny- háčik", "qty": 80.0, "unit": "m", "kind": "material" }
+      ]
+    },
+    {
+      "item_no": 3,
+      "code": "000852",
+      "description": "Zváranie Echobarrier VF R10",
+      "qty": 10.0,
+      "unit": "ks",
+      "children": [
+        { "code": "000582", "description": "Zváranie vysoko frekvenciou SPIDER XYZ", "qty": 2100.0, "unit": "min", "kind": "operation" }
+      ]
+    },
+    {
+      "item_no": 4,
+      "code": "30040",
+      "description": "Vak na balenie",
+      "qty": 2.0,
+      "unit": "ks",
+      "children": [
+        { "code": "4898", "description": "TK.PE 753 modrý kašír", "qty": 40.0, "unit": "m2", "kind": "material" },
+        { "code": "2192", "description": "Nctech nitka 34 farba čierna 4000, 1500bm", "qty": 100.0, "unit": "m", "kind": "material" }
+      ]
+    }
+  ],
+  "total_data_lines": 31,
+  "confidence": "high",
+  "notes": "Single self-contained delivery note DLE26070001 (2 pages), not one of the split H9 extracts; item numbering runs 1-4 with no gap. Item 2 continues across the page break: the first three lines on page 2 (356 zváranie lamiel + strecha 1 200,00 min; 548 Pás PVC navarovaci 40,00 m; 611 Suchý zips 50 mm 80,00 m) carry no item number and belong to item 2, before item 3 starts. Two codes repeat under item 2 with different quantities and are emitted twice as they appear: 3097 (370,00 m and 4 800,00 m) and 611 (120,00 m on page 1, 80,00 m on page 2). Code 356 is an operation despite its plain numeric code, per the missing '- ' prefix and the min unit; 2919 is a material despite sitting among operations. Every quantity re-checked against the raw line; Slovak thousands spaces resolved as 1 070,00 = 1070, 4 100,00 = 4100, 4 800,00 = 4800, 1 200,00 = 1200, 2 100,00 = 2100."
+}

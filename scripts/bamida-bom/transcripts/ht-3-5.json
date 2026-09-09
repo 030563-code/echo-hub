@@ -1,0 +1,76 @@
+{
+  "doc_number": "DLE26080008",
+  "issue_date": "2026-08-19",
+  "external_po": "PO-00001369",
+  "items": [
+    {
+      "item_no": 1,
+      "code": "311",
+      "description": "Uv potlač Echobarrier HT 3,5",
+      "qty": 120.0,
+      "unit": "ks",
+      "children": [
+        { "code": "2919", "description": "AGFA ANUVIA 5L ( Farby Tauro )", "qty": 0.98, "unit": "l", "kind": "material" },
+        { "code": "000340", "description": "UV tlač + manipulácia", "qty": 760.0, "unit": "min", "kind": "operation" },
+        { "code": "000457", "description": "Grafika - súbory pre tlač", "qty": 15.0, "unit": "min", "kind": "operation" },
+        { "code": "000651", "description": "Cutter- rez", "qty": 300.0, "unit": "min", "kind": "operation" },
+        { "code": "000657", "description": "EuroLaser - rez", "qty": 300.0, "unit": "min", "kind": "operation" }
+      ]
+    },
+    {
+      "item_no": 2,
+      "code": "000750",
+      "description": "Výroba Echo Barrier HT 3,5 (3650 x 2050mm)",
+      "qty": 120.0,
+      "unit": "ks",
+      "children": [
+        { "code": "3601", "description": "Mehler Plastel TE 8800-606", "qty": 1140.0, "unit": "m2", "kind": "material" },
+        { "code": "269", "description": "Mosadzné krúžky 25mm", "qty": 240.0, "unit": "ks", "kind": "material" },
+        { "code": "2204", "description": "Reflexná páska heat transfer silver PU 25mm", "qty": 306.0, "unit": "m", "kind": "material" },
+        { "code": "3076", "description": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m", "qty": 1080.0, "unit": "m", "kind": "material" },
+        { "code": "000713", "description": "Lepenie bavlny", "qty": 120.0, "unit": "min", "kind": "operation" },
+        { "code": "000692", "description": "Zváranie Leister Sematec", "qty": 1200.0, "unit": "min", "kind": "operation" },
+        { "code": "000306", "description": "Nabitie krúžkov", "qty": 480.0, "unit": "min", "kind": "operation" },
+        { "code": "000309", "description": "Balenie", "qty": 600.0, "unit": "min", "kind": "operation" },
+        { "code": "7", "description": "Mosadzné krúžky 25mm - automatické", "qty": 1920.0, "unit": "ks", "kind": "material" }
+      ]
+    },
+    {
+      "item_no": 3,
+      "code": "000852",
+      "description": "Zváranie Echobarrier VF HT 3,5",
+      "qty": 120.0,
+      "unit": "ks",
+      "children": [
+        { "code": "000582", "description": "Zváranie vysoko frekvenciou SPIDER XYZ", "qty": 3600.0, "unit": "min", "kind": "operation" }
+      ]
+    },
+    {
+      "item_no": 4,
+      "code": "30040",
+      "description": "Vak na balenie",
+      "qty": 4.0,
+      "unit": "ks",
+      "children": [
+        { "code": "4898", "description": "TK.PE 753 modrý kašír", "qty": 80.0, "unit": "m2", "kind": "material" },
+        { "code": "2192", "description": "Nctech nitka 34 farba čierna 4000, 1500bm", "qty": 200.0, "unit": "m", "kind": "material" }
+      ]
+    },
+    {
+      "item_no": 5,
+      "code": "30045",
+      "description": "Kovové zaistenie",
+      "qty": 4.0,
+      "unit": "ks",
+      "children": [
+        { "code": "1781", "description": "Kovové istenie", "qty": 4.0, "unit": "ks", "kind": "material" },
+        { "code": "371", "description": "SKR. do dreva žlta 5 X 50", "qty": 64.0, "unit": "ks", "kind": "material" },
+        { "code": "378", "description": "KAROS. PODLOŽKA ZI 5X30", "qty": 40.0, "unit": "ks", "kind": "material" },
+        { "code": "361", "description": "Texa do železa 4,8X25", "qty": 24.0, "unit": "ks", "kind": "material" }
+      ]
+    }
+  ],
+  "total_data_lines": 26,
+  "confidence": "high",
+  "notes": "Two pages. Page 2 carries no numbered item of its own: its three lines (371, 378, 361) all begin with \"- \" and continue the children of item 5 (Kovové zaistenie), which started on page 1. Item numbering runs 1-5 with no break. Four child lines carry operation-style zero-padded codes but were classified by the \"- \" prefix rule as instructed: 000340, 000457, 000651, 000657, 000713, 000692, 000306, 000309 and 000582 have no \"- \" prefix and are operations; code 7 (Mosadzné krúžky 25mm - automatické) and code 269 (Mosadzné krúžky 25mm) are two distinct materials with similar descriptions, not a duplicate. No repeated code appears twice under the same parent. Thousands separators resolved: 1 140,00 m2 = 1140, 1 080,00 m = 1080, 1 200,00 min = 1200, 1 920,00 ks = 1920, 3 600,00 min = 3600."
+}

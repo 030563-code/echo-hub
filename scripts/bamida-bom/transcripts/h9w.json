@@ -1,0 +1,162 @@
+{
+ "doc_number": "DLE25020008",
+ "issue_date": "2025-02-25",
+ "external_po": "PO-00001089",
+ "items": [
+  {
+   "item_no": 3,
+   "code": "311",
+   "description": "Uv potlač Echobarrier H9W",
+   "qty": 70.0,
+   "unit": "ks",
+   "children": [
+    {
+     "code": "2919",
+     "description": "AGFA ANUVIA 5L ( Farby Tauro )",
+     "qty": 0.52,
+     "unit": "l",
+     "kind": "material"
+    },
+    {
+     "code": "000340",
+     "description": "UV tlač + manipulácia",
+     "qty": 180.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000457",
+     "description": "Grafika - súbory pre tlač",
+     "qty": 15.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000651",
+     "description": "Cutter- rez",
+     "qty": 175.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000657",
+     "description": "EuroLaser - rez",
+     "qty": 175.0,
+     "unit": "min",
+     "kind": "operation"
+    }
+   ]
+  },
+  {
+   "item_no": 4,
+   "code": "30050",
+   "description": "Výroba Echo Barrier H9W",
+   "qty": 70.0,
+   "unit": "ks",
+   "children": [
+    {
+     "code": "903",
+     "description": "H5673 - 6026-1 (zelená)",
+     "qty": 210.0,
+     "unit": "m2",
+     "kind": "material"
+    },
+    {
+     "code": "606",
+     "description": "Lemovka Popruh PP 31S900 10/1/40",
+     "qty": 490.0,
+     "unit": "m",
+     "kind": "material"
+    },
+    {
+     "code": "7",
+     "description": "Mosadzné krúžky 25mm - automatické",
+     "qty": 1330.0,
+     "unit": "ks",
+     "kind": "material"
+    },
+    {
+     "code": "2204",
+     "description": "Reflexná páska heat transfer silver PU 25mm",
+     "qty": 119.7,
+     "unit": "m",
+     "kind": "material"
+    },
+    {
+     "code": "3076",
+     "description": "LOHMANN - Duplocoll 3702 obojstranná lepiaca páska 50mm x 50m",
+     "qty": 210.0,
+     "unit": "m",
+     "kind": "material"
+    },
+    {
+     "code": "2189",
+     "description": "Nctech nitka 20 farba ORANŽOVÁ 3516, 1000bm",
+     "qty": 2800.0,
+     "unit": "m",
+     "kind": "material"
+    },
+    {
+     "code": "000326",
+     "description": "Rezanie reflexnej pásky",
+     "qty": 17.5,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000308",
+     "description": "Šitie",
+     "qty": 700.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000713",
+     "description": "Lepenie bavlny",
+     "qty": 280.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000328",
+     "description": "Práca- Vybitie krúžkov",
+     "qty": 280.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000309",
+     "description": "Balenie",
+     "qty": 280.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "000664",
+     "description": "Zváranie VF-ZEMAT",
+     "qty": 140.0,
+     "unit": "min",
+     "kind": "operation"
+    },
+    {
+     "code": "2931",
+     "description": "Achilles PVC 1,37x50 bm, 0,5 mm B1- nehorľavá",
+     "qty": 35.0,
+     "unit": "m2",
+     "kind": "material"
+    }
+   ]
+  },
+  {
+   "item_no": 10,
+   "code": "000852",
+   "description": "Zváranie Echobarrier H9W",
+   "qty": 70.0,
+   "unit": "ks",
+   "children": []
+  }
+ ],
+ "total_data_lines": 21,
+ "confidence": "high",
+ "notes": "PARTIAL EXTRACT of DLE25020008 (items 3, 4 and the H9W welding line 10). Item 5 belongs to H9 mini and was moved there. Items 1, 2, 8 and 9 are in neither supplied file. No packing-bag line is attributable to H9W alone. Page extract of delivery note DLE25020008; numbering starts at item 3 because items 1-2 fall in the other extract (H9 mini) of the same note. Only what appears in H9w.txt is transcribed. Item 5 (311, Uv potlač Echobarrier H9mini, 180,00 ks) appears as the last line with no children in this extract; its children presumably continue in the other extract. The footer reads \"Strana: 1/1\" even though this is a partial extract. Code 311 appears as a top-level code twice (items 3 and 5) with different descriptions and quantities; both kept. Child 2931 (Achilles PVC) is listed after the operation lines under item 4, which is out of the usual materials-then-operations order but is transcribed in document order. All text preserved with Slovak diacritics."
+}
