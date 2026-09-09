@@ -39,7 +39,21 @@ import { mintManufacturingLink } from "@/lib/manufacturing-token";
 // Bamida's address would email a factory while the Hub believed everything was
 // going to the test address.
 
-const Schema = z.object({ manufacturing_po_id: z.string().uuid("Invalid PO id") });
+// Dean, 9 Sep 2026: "The send to Bamida button should have the option to fill
+// in which email address to send to, same as the Cargo Partner email, as Juraj
+// told me it could send to multiple addresses and multiple points of contact."
+//
+// So the addresses come from the screen when somebody types them, and fall back
+// to the server's configured ones when they do not. Same split as the shipment
+// request: the HUB decides recipients, and a person at the Hub choosing one IS
+// the Hub. Whatever is chosen still goes through resolveRecipients, so the test
+// override keeps winning and a real factory cannot be reached during testing.
+const Schema = z.object({
+  manufacturing_po_id: z.string().uuid("Invalid PO id"),
+  /** Comma separated. Blank means "use what the server is configured with". */
+  to: z.string().trim().max(400).optional(),
+  cc: z.string().trim().max(400).optional(),
+});
 
 const TIMEOUT_MS = 30_000;
 
@@ -87,13 +101,14 @@ export async function sendManufacturingPoToBamida(
     return { ok: false, error: "Sandbox (staging): nothing is sent to Bamida from here." };
   }
 
-  const bamidaTo = String(process.env.BAMIDA_PO_TO ?? "").trim();
+  const bamidaTo = String(parsed.data.to ?? "").trim() || String(process.env.BAMIDA_PO_TO ?? "").trim();
   if (!bamidaTo) {
     return {
       ok: false,
-      error: "Bamida's email address is not configured on the server (BAMIDA_PO_TO).",
+      error: "Nobody to send it to. Type an address, or set BAMIDA_PO_TO on the server.",
     };
   }
+  const bamidaCc = String(parsed.data.cc ?? "").trim() || process.env.BAMIDA_PO_CC;
 
   // --- The document -------------------------------------------------------
   // The BOM hangs off the PARENT SRO order, which is what carries the frozen
@@ -130,7 +145,7 @@ export async function sendManufacturingPoToBamida(
   const admin = createAdminClient();
   const recipients = resolveRecipients({
     to: bamidaTo,
-    cc: process.env.BAMIDA_PO_CC,
+    cc: bamidaCc,
     bcc: process.env.BAMIDA_PO_BCC,
   });
 

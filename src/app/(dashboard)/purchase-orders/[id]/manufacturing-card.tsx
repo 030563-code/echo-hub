@@ -35,21 +35,31 @@ export default function ManufacturingCard({
   poId,
   canAct,
   manufacturing,
+  defaultTo,
+  defaultCc,
 }: {
   poId: string
   canAct: boolean
   manufacturing: Manufacturing
+  /** What the server would use if nobody types anything. */
+  defaultTo: string
+  defaultCc: string
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [confirmingResend, setConfirmingResend] = useState(false)
+  // Dean, 9 Sep 2026: Juraj says Bamida have several points of contact, so the
+  // send needs the same editable address boxes the shipment request has. Blank
+  // falls back to the server's configured list rather than sending to nobody.
+  const [to, setTo] = useState(defaultTo)
+  const [cc, setCc] = useState(defaultCc)
 
   const sent = manufacturing.sentAt !== null
   const finished = manufacturing.finishedAt !== null
 
   function send() {
     startTransition(async () => {
-      const res = await sendManufacturingPoToBamida({ manufacturing_po_id: poId })
+      const res = await sendManufacturingPoToBamida({ manufacturing_po_id: poId, to, cc })
       if (!res.ok) toast.error(res.error)
       else if (res.short) toast.warning(`${res.description}. They were told which materials are short.`)
       else toast.success(res.description)
@@ -117,6 +127,47 @@ export default function ManufacturingCard({
           }
         />
       </div>
+
+      {canAct && !finished && !sent && (
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <div>
+            <label
+              htmlFor="bamida-to"
+              className="block text-xs font-medium uppercase tracking-wider text-gray-500 mb-1.5"
+            >
+              Send to
+            </label>
+            <input
+              id="bamida-to"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-echo-orange focus:outline-none focus:ring-1 focus:ring-echo-orange"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              disabled={pending}
+              placeholder="name@bamida.sk"
+            />
+            <p className="mt-1 text-xs text-gray-400">
+              Bamida&apos;s address. Separate several with commas.
+            </p>
+          </div>
+          <div>
+            <label
+              htmlFor="bamida-cc"
+              className="block text-xs font-medium uppercase tracking-wider text-gray-500 mb-1.5"
+            >
+              Copy to
+            </label>
+            <input
+              id="bamida-cc"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-echo-orange focus:outline-none focus:ring-1 focus:ring-echo-orange"
+              value={cc}
+              onChange={(e) => setCc(e.target.value)}
+              disabled={pending}
+              placeholder="Optional"
+            />
+            <p className="mt-1 text-xs text-gray-400">Their other points of contact, and ours.</p>
+          </div>
+        </div>
+      )}
 
       {canAct && !finished && (
         <div className="mt-5 flex flex-wrap gap-2">

@@ -65,6 +65,23 @@ export const PICKUP = {
   address: ['Kosicka 28', '080 01 Presov', 'Slovakia'],
 } as const
 
+/**
+ * Who the barriers are collected FROM, which is not always Bamida.
+ *
+ * Dean, 9 Sep 2026: an SRO order fulfilled from stock needs the same shipment
+ * request as a manufactured one. Those barriers are already on Echo Barrier's
+ * own shelf in Kosice, so the freight is collected from us, not from the
+ * factory in Presov. Everything else about the request is identical.
+ */
+export const PICKUP_PARTIES = {
+  BAMIDA: PICKUP,
+  EB_SRO: SHIPPER,
+} as const
+
+/** The narrow list, so the validator and the draft cannot drift apart. */
+export const PICKUP_FROM = ['BAMIDA', 'EB_SRO'] as const
+export type PickupFrom = (typeof PICKUP_FROM)[number]
+
 export const OFFICE_IN_CHARGE = {
   name: 'cargo-partner SR, Kosice',
   account: '139461',
@@ -86,6 +103,8 @@ export type CargoDraftLine = CargoLine & { pallets: number }
 /** Everything a person may change before the request leaves the building. */
 export type CargoDraft = {
   general_reference: string
+  /** Which door the truck goes to. Bamida for a made order, EB SRO for stock. */
+  pickup_from: PickupFrom
   cargo_readiness_date: string
   main_modality: Modality
   main_category: Category
@@ -136,9 +155,12 @@ export function buildCargoDraft(input: {
   consignee: { depot: string | null; address: string | null }
   to: string
   cc: string
+  /** Defaults to the factory, because that is where most orders come from. */
+  pickupFrom?: PickupFrom
 }): CargoDraft {
   return {
     general_reference: input.poNumber ?? '',
+    pickup_from: input.pickupFrom ?? 'BAMIDA',
     cargo_readiness_date: input.finishedAt.slice(0, 10),
     main_modality: 'SEA',
     main_category: 'FCL',

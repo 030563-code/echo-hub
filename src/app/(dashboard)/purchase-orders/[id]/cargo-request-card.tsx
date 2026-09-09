@@ -18,7 +18,7 @@ import {
   CATEGORIES,
   DIRECTIONS,
   PACKAGE_TYPES,
-  PICKUP,
+  PICKUP_PARTIES,
   SHIPPER,
   OFFICE_IN_CHARGE,
   type CargoDraft,
@@ -116,16 +116,27 @@ export default function CargoRequestCard({ poId, canAct, draft, sentAt, sentTo, 
       ) : (
         <>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            <Field label="General reference" hint="What Cargo Partner will index it under">
-              <input
-                className={INPUT}
-                value={form.general_reference}
-                onChange={(e) => set('general_reference', e.target.value)}
-                disabled={!canAct}
-              />
+            {/*
+              Fixed, by Dean's instruction on 9 Sep 2026. This is the key Cargo
+              Partner index the shipment under and the key the SPOT lookup
+              searches on, so a typo here loses the shipment rather than
+              renaming it. The server pins it to the purchase order number on
+              every save and send, so this is a matching display, not the guard.
+            */}
+            <Field label="General reference" hint="The purchase order number. Fixed.">
+              <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-mono text-gray-900">
+                {form.general_reference || '—'}
+              </p>
             </Field>
 
-            <Field label="Cargo ready" hint="When it can be collected from Presov">
+            <Field
+              label="Cargo ready"
+              hint={
+                form.pickup_from === 'EB_SRO'
+                  ? 'When it can be collected from Kosice'
+                  : 'When it can be collected from Presov'
+              }
+            >
               <input
                 type="date"
                 className={INPUT}
@@ -288,7 +299,11 @@ export default function CargoRequestCard({ poId, canAct, draft, sentAt, sentTo, 
           <div className="mt-5 rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm">
             <p className="text-xs uppercase tracking-wider text-gray-500 mb-2">Fixed on every request</p>
             <dl className="grid grid-cols-1 gap-y-1.5 sm:grid-cols-3 sm:gap-x-6">
-              <Fact label="Collect from" value={`${PICKUP.name}, account ${PICKUP.account}`} />
+              {/* Bamida for a made order, our own Kosice shelf for stock. */}
+              <Fact
+                label="Collect from"
+                value={`${PICKUP_PARTIES[form.pickup_from].name}, account ${PICKUP_PARTIES[form.pickup_from].account}`}
+              />
               <Fact label="Shipper" value={`${SHIPPER.name}, account ${SHIPPER.account}`} />
               <Fact
                 label="Office in charge"

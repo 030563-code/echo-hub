@@ -11,14 +11,23 @@ import type { PoManufacturing, PurchaseOrder } from "@/lib/erp-types";
 
 type Leg = PurchaseOrder["leg"];
 type Status = PurchaseOrder["status"];
-type Input = Pick<PurchaseOrder, "leg" | "status" | "lifecycle_stage" | "manufacturing">;
+type Input = Pick<PurchaseOrder, "leg" | "status" | "lifecycle_stage" | "manufacturing"> & {
+  shipment?: PurchaseOrder["shipment"];
+};
 
 const po = (
   leg: Leg,
   status: Status,
   lifecycle_stage: PurchaseOrder["lifecycle_stage"] = null,
   manufacturing: PoManufacturing | null = null,
-): Input => ({ leg, status, lifecycle_stage, manufacturing });
+  shipment: PurchaseOrder["shipment"] = null,
+): Input => ({ leg, status, lifecycle_stage, manufacturing, shipment });
+
+/** A po_shipments row. Only spot_id decides anything here. */
+const booked = (spot_id: string | null) =>
+  ({ po_id: "x", po_number: null, spot_id, container_ref: null, eta: null, shipped_at: null,
+     vessel: null, carrier: null, last_event: null, last_event_at: null, match_count: 1,
+     resolved_at: "2026-09-09T00:00:00Z" }) as unknown as PurchaseOrder["shipment"];
 
 /** A po_manufacturing row as the board sees it, with only the given facts set. */
 const mfg = (over: Partial<PoManufacturing>): PoManufacturing => ({
@@ -31,13 +40,16 @@ const mfg = (over: Partial<PoManufacturing>): PoManufacturing => ({
 });
 
 describe("LIFECYCLE_STAGES", () => {
-  it("is the 6-column demo scheme in leg order", () => {
+  it("is the 7-column demo scheme in leg order", () => {
+    // Ready for shipment sits between the two it separates: the goods exist,
+    // and nobody has booked freight for them yet.
     expect(LIFECYCLE_STAGE_KEYS).toEqual([
       "depot_group",
       "group_sro",
       "sro",
       "sent_manufacturing",
       "manufacturing",
+      "ready_for_shipment",
       "shipping",
     ]);
     expect(LIFECYCLE_STAGES.map((s) => s.label)).toEqual([
@@ -46,12 +58,14 @@ describe("LIFECYCLE_STAGES", () => {
       "S.R.O",
       "Sent to manufacturing",
       "Manufacturing in progress",
+      "Ready for shipment",
       "Shipping",
     ]);
   });
 
   it("stageLabel resolves each key", () => {
     expect(stageLabel("sent_manufacturing")).toBe("Sent to manufacturing");
+    expect(stageLabel("ready_for_shipment")).toBe("Ready for shipment");
     expect(stageLabel("shipping")).toBe("Shipping");
   });
 });
@@ -137,7 +151,8 @@ describe("deriveStage, the Bamida order moves on what Bamida do", () => {
     );
   });
 
-  it("finished: Shipping, even with dates still on the row", () => {
+  it("finished: Ready for shipment, not Shipping. Made is not booked", () => {
+    // Dean, 9 Sep: finished barriers on a pallet in Presov are not in transit.
     expect(
       deriveStage(
         po(
@@ -147,7 +162,7 @@ describe("deriveStage, the Bamida order moves on what Bamida do", () => {
           mfg({ sent_at: "2026-09-08T10:00:00Z", est_start: "2026-09-09", finished_at: "2026-09-20T09:00:00Z" }),
         ),
       ),
-    ).toBe("shipping");
+    ).toBe("ready_for_shipment");
   });
 });
 
@@ -172,5 +187,64 @@ describe("isLifecycleStage", () => {
     expect(isLifecycleStage("bogus")).toBe(false);
     expect(isLifecycleStage(null)).toBe(false);
     expect(isLifecycleStage(undefined)).toBe(false);
+  });
+});
+
+describe("Ready for shipment: made is not booked", () => {
+  const SENT = "2026-09-08T10:00:00Z";
+  const FINISHED = mfg({ sent_at: SENT, est_start: "2026-09-09", finished_at: "2026-09-20T09:00:00Z" });
+
+  it("an SRO order fulfilled from stock travels itself, because no Bamida order can", () => {
+    // The ONE exception to "the SRO order stays at S.R.O": on the stock branch
+    // there is no child order to carry the goods onward.
+    expect(deriveStage(po("EB_GROUP_TO_SRO", "ready_for_shipment"))).toBe("ready_for_shipment");
+  });
+
+  it("still keeps a manufacturing SRO order at S.R.O, where its Bamida order carries it", () => {
+    expect(deriveStage(po("EB_GROUP_TO_SRO", "in_manufacturing"))).toBe("sro");
+    expect(deriveStage(po("EB_GROUP_TO_SRO", "fulfilling_from_stock"))).toBe("sro");
+  });
+
+  it("a confirmed SPOT id is what makes it Shipping, and it beats every leg rule", () => {
+    expect(deriveStage(po("SRO_TO_SUPPLIER", "approved", null, FINISHED, booked("SPOT-9931")))).toBe("shipping");
+    expect(deriveStage(po("EB_GROUP_TO_SRO", "ready_for_shipment", null, null, booked("SPOT-9931")))).toBe("shipping");
+    // Mid-manufacture with freight already booked is odd, but booked is booked.
+    expect(
+      deriveStage(po("SRO_TO_SUPPLIER", "approved", null, mfg({ sent_at: SENT, est_start: "2026-09-01" }), booked("SPOT-1"))),
+    ).toBe("shipping");
+  });
+
+  it("a shipment row with no SPOT id is not a booking", () => {
+    // po_shipments gets a row from a lookup that found nothing, so the row
+    // existing must not be mistaken for a confirmed booking.
+    expect(deriveStage(po("SRO_TO_SUPPLIER", "approved", null, FINISHED, booked(null)))).toBe("ready_for_shipment");
+    expect(deriveStage(po("EB_GROUP_TO_SRO", "ready_for_shipment", null, null, booked(null)))).toBe("ready_for_shipment");
+  });
+
+  it("accepts the new stage as a persisted value, so a drag to that column sticks", () => {
+    expect(isLifecycleStage("ready_for_shipment")).toBe(true);
+    expect(effectiveStage(po("SRO_TO_SUPPLIER", "approved", "ready_for_shipment"))).toBe("ready_for_shipment");
+  });
+
+  it("shipped and delivered still mean Shipping, whatever else is true", () => {
+    expect(deriveStage(po("EB_GROUP_TO_SRO", "shipped"))).toBe("shipping");
+    expect(deriveStage(po("SRO_TO_SUPPLIER", "delivered", null, FINISHED))).toBe("shipping");
+  });
+});
+
+describe("finished outranks sent, because a stamp is not a typed date", () => {
+  it("places a finished order at Ready for shipment even with no sent_at on the row", () => {
+    // The finish action used to stamp lifecycle_stage, which outranks
+    // derivation, so this ordering never showed. Removing that write exposed
+    // it: finished_at is written by one one-shot button and nothing else.
+    expect(
+      deriveStage(po("SRO_TO_SUPPLIER", "approved", null, mfg({ finished_at: "2026-09-20T09:00:00Z" }))),
+    ).toBe("ready_for_shipment");
+  });
+
+  it("still ignores DATES on an order that was never sent", () => {
+    expect(
+      deriveStage(po("SRO_TO_SUPPLIER", "approved", null, mfg({ est_start: "2026-09-01", est_finish: "2026-09-30" })), "2026-10-05"),
+    ).toBe("sro");
   });
 });

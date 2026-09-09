@@ -23,6 +23,7 @@ export const LIFECYCLE_STAGES = [
   { key: "sro", label: "S.R.O" },
   { key: "sent_manufacturing", label: "Sent to manufacturing" },
   { key: "manufacturing", label: "Manufacturing in progress" },
+  { key: "ready_for_shipment", label: "Ready for shipment" },
   { key: "shipping", label: "Shipping" },
 ] as const;
 
@@ -46,8 +47,15 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** What the board knows about a PO when it places it. */
-type StageInput = Pick<PurchaseOrder, "leg" | "status"> & Partial<Pick<PurchaseOrder, "manufacturing">>;
+/**
+ * What the board knows about a PO when it places it.
+ *
+ * `shipment` is the Cargo Partner row (`po_shipments`, one per PO, resolved by
+ * the system and never typed). Both the board and the detail loader already
+ * hydrate it, so reading it here costs no extra query.
+ */
+type StageInput = Pick<PurchaseOrder, "leg" | "status"> &
+  Partial<Pick<PurchaseOrder, "manufacturing" | "shipment">>;
 
 /**
  * Initial column for a PO with no explicit `lifecycle_stage`.
@@ -60,29 +68,53 @@ type StageInput = Pick<PurchaseOrder, "leg" | "status"> & Partial<Pick<PurchaseO
  * onward, and it moves on the events Bamida themselves produce: the Hub sent it
  * to them, their start date arrived, they pressed finished.
  *
+ * Shipping is the LAST column and it means booked, not made. Dean, 9 Sep 2026:
+ * "it should really be Ready for shipment and then Shipping only once the spot
+ * id is confirmed and the shipment is booked." Finished barriers on a pallet in
+ * Presov are not in transit, so they get their own column and only a confirmed
+ * Cargo Partner SPOT id moves them out of it.
+ *
  * `today` is a YYYY-MM-DD date, the shape the estimated dates are stored in. It
  * is a parameter so the rule can be tested at a chosen date rather than only on
  * the day the test happens to run.
  */
 export function deriveStage(po: StageInput, today: string = todayIso()): LifecycleStage {
   if (po.status === "shipped" || po.status === "delivered") return "shipping";
+  // A confirmed SPOT id is the only evidence the Hub has that a forwarder has
+  // actually taken the job. It outranks every leg rule below, because once
+  // freight is booked that is the truest thing about the order.
+  if (po.shipment?.spot_id) return "shipping";
 
   switch (po.leg) {
     case "DEPOT_TO_EB_GROUP":
       return "depot_group";
     case "EB_GROUP_TO_SRO":
       // Requested, or refused: SRO have not taken it.
-      return po.status === "requested" || po.status === "rejected" ? "group_sro" : "sro";
+      if (po.status === "requested" || po.status === "rejected") return "group_sro";
+      // Fulfilled from stock, or its Bamida order finished: the barriers exist
+      // and the order is waiting on freight. This is the ONE case where the SRO
+      // order travels rather than staying put, because on the stock branch
+      // there is no Bamida order to carry it.
+      if (po.status === "ready_for_shipment") return "ready_for_shipment";
+      return "sro";
     case "SRO_TO_CARGO":
       // The transport leg represents the shipping arrangement.
       return "shipping";
     case "SRO_TO_SUPPLIER":
     default: {
-      // Nothing Bamida have said counts until the order has actually been sent
-      // to them; a date entered against an unsent order is a test artefact.
       const m = po.manufacturing;
+      // FINISHED IS FINISHED, whatever else the row says. It is a one-shot
+      // stamp only the supplier page can write, so unlike a typed date it
+      // cannot be a test artefact. This has to come before the sent_at gate:
+      // while the finish action stamped a lifecycle_stage the ordering never
+      // showed, because a persisted stage outranked this function entirely.
+      //
+      // Made, not moved. Nothing is written to lifecycle_stage on finish any
+      // more, exactly so the SPOT id above can still move the card onward.
+      if (m?.finished_at) return "ready_for_shipment";
+      // Nothing else Bamida have said counts until the order has actually been
+      // sent to them; a date entered against an unsent order is a test artefact.
       if (!m?.sent_at) return "sro";
-      if (m.finished_at) return "shipping";
       // Dean, 9 Sep: the order becomes Manufacturing in progress when the
       // estimated start date ARRIVES, not when Bamida enter it. A start date a
       // fortnight out is a plan, and until that day the order is still sitting

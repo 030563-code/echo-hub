@@ -164,7 +164,7 @@ export async function loadSroPoBoms(): Promise<{ pos: SroPoBom[]; week: string |
     // status. It does now: choosing to manufacture moves it to
     // in_manufacturing, and an order being built is exactly the one whose bill
     // of materials people need to look at.
-    .in('status', ['approved', 'in_manufacturing'])
+    .in('status', ['approved', 'in_manufacturing', 'ready_for_shipment'])
     .order('created_at', { ascending: false })
 
   if (!pos || pos.length === 0) return { pos: [], week: null }

@@ -111,13 +111,32 @@ export async function markManufacturingFinished(input: { token: string }): Promi
     return { ok: false, error: 'This order is already marked finished.' }
   }
 
-  // The board should show it as ready to ship. Presentation only: the status
-  // machine is untouched, exactly as the lifecycle_stage design intends.
-  const { error: stageErr } = await admin
+  // NO lifecycle_stage write. Dean, 9 Sep: a finished order is "Ready for
+  // shipment", and only a confirmed Cargo Partner SPOT id makes it "Shipping".
+  // `deriveStage` reads finished_at and says exactly that on its own, and a
+  // PERSISTED stage outranks derivation, so stamping one here would freeze the
+  // card and stop the SPOT id ever moving it on. The old code wrote 'shipping'
+  // straight past the ready state, which is the bug Dean saw.
+  //
+  // What DOES need writing is the parent. The SRO leg sat on `in_manufacturing`
+  // for ever after Bamida finished, so its badge said Manufacturing about
+  // barriers already on a pallet. That is the other half of what he reported.
+  //
+  // Compare-and-set on in_manufacturing: an SRO leg somebody has already moved
+  // on is left alone rather than dragged backwards.
+  const { data: bamidaPo } = await admin
     .from('purchase_orders')
-    .update({ lifecycle_stage: 'shipping' })
+    .select('parent_po_id')
     .eq('id', resolved.poId)
-  if (stageErr) console.error('markManufacturingFinished stage failed', stageErr.message)
+    .maybeSingle<{ parent_po_id: string | null }>()
+  if (bamidaPo?.parent_po_id) {
+    const { error: parentErr } = await admin
+      .from('purchase_orders')
+      .update({ status: 'ready_for_shipment' })
+      .eq('id', bamidaPo.parent_po_id)
+      .eq('status', 'in_manufacturing')
+    if (parentErr) console.error('markManufacturingFinished parent status failed', parentErr.message)
+  }
 
   // Barriers ready to collect, so DRAFT the shipment request. It is not sent
   // here and Bamida never see it: they are a factory telling us the barriers

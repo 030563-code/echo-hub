@@ -26,7 +26,7 @@ import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAuthorizedUser } from '@/lib/authz'
 import { sendDescription } from '@/lib/email-recipients'
-import { INCOTERMS, MODALITIES, CATEGORIES, DIRECTIONS, PACKAGE_TYPES } from '@/lib/cargo-request'
+import { INCOTERMS, MODALITIES, CATEGORIES, DIRECTIONS, PACKAGE_TYPES, PICKUP_FROM } from '@/lib/cargo-request'
 import { notifyCargoPartnerReady } from '@/app/actions/purchase-orders/notify-cargo-partner'
 
 /** No SKU: our database codes do not go to a forwarder. Zod drops a stored one. */
@@ -43,6 +43,12 @@ const Line = z.object({
  */
 const Draft = z.object({
   general_reference: z.string().trim().max(64),
+  /**
+   * Which door the truck goes to. Not a field on the screen: it follows from
+   * how the order was fulfilled, and letting somebody retype it is how a
+   * forwarder ends up at the wrong building.
+   */
+  pickup_from: z.enum(PICKUP_FROM).default('BAMIDA'),
   cargo_readiness_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-09-30'),
   main_modality: z.enum(MODALITIES),
   main_category: z.enum(CATEGORIES),
@@ -172,5 +178,29 @@ async function authorise(input: unknown): Promise<Gate> {
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' }
   }
-  return { ok: true, poId: parsed.data.po_id, draft: parsed.data.draft, userId: auth.user.id }
+  const poId = parsed.data.po_id
+
+  // Dean, 9 Sep 2026: the general reference is fixed and uneditable. It is the
+  // key Cargo Partner index the shipment under and the key the SPOT lookup
+  // searches on, so a typo here loses the shipment rather than renaming it.
+  //
+  // The screen shows it read-only, but this is where it is actually guaranteed:
+  // every export of a 'use server' file is a callable endpoint, and a disabled
+  // input stops nobody. Same for pickup_from, which follows from how the order
+  // was fulfilled and is not a thing to choose.
+  const { data: po } = await createAdminClient()
+    .from('purchase_orders')
+    .select('po_number, leg, fulfilment_type')
+    .eq('id', poId)
+    .maybeSingle<{ po_number: string | null; leg: string; fulfilment_type: string | null }>()
+  if (!po) return { ok: false, error: 'That purchase order no longer exists.' }
+
+  const draft = {
+    ...parsed.data.draft,
+    general_reference: po.po_number ?? parsed.data.draft.general_reference,
+    pickup_from:
+      po.leg === 'EB_GROUP_TO_SRO' && po.fulfilment_type === 'stock' ? ('EB_SRO' as const) : ('BAMIDA' as const),
+  }
+
+  return { ok: true, poId, draft, userId: auth.user.id }
 }

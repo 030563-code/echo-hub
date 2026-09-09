@@ -27,7 +27,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { externalCallsDisabled, hubBaseUrl } from '@/lib/env'
 import { resolveRecipients, type ResolvedRecipients } from '@/lib/email-recipients'
-import { SHIPPER, PICKUP, OFFICE_IN_CHARGE, type CargoDraft } from '@/lib/cargo-request'
+import { SHIPPER, PICKUP_PARTIES, OFFICE_IN_CHARGE, type CargoDraft } from '@/lib/cargo-request'
 import { entityLabel } from '@/lib/depot-constants'
 
 const TIMEOUT_MS = 15_000
@@ -69,45 +69,38 @@ export function defaultCargoRecipients(): { to: string; cc: string } {
  */
 export async function resolveConsignee(poId: string): Promise<{ depot: string | null; address: string | null }> {
   const admin = createAdminClient()
-  const { data: bamidaPo } = await admin
-    .from('purchase_orders')
-    .select('parent_po_id')
-    .eq('id', poId)
-    .maybeSingle<{ parent_po_id: string | null }>()
-  if (!bamidaPo?.parent_po_id) return { depot: null, address: null }
+  type Leg = { id: string; parent_po_id: string | null; from_entity: string | null; delivery_address: string | null }
 
-  const { data: sroLeg } = await admin
-    .from('purchase_orders')
-    .select('parent_po_id, delivery_address')
-    .eq('id', bamidaPo.parent_po_id)
-    .maybeSingle<{ parent_po_id: string | null; delivery_address: string | null }>()
-  if (!sroLeg?.parent_po_id) return { depot: null, address: sroLeg?.delivery_address ?? null }
+  let current: Leg | null = null
+  let address: string | null = null
+  let nextId: string | null = poId
 
-  const { data: groupLeg } = await admin
-    .from('purchase_orders')
-    .select('parent_po_id, from_entity, delivery_address')
-    .eq('id', sroLeg.parent_po_id)
-    .maybeSingle<{ parent_po_id: string | null; from_entity: string | null; delivery_address: string | null }>()
-  if (!groupLeg) return { depot: null, address: sroLeg.delivery_address ?? null }
-
-  // The depot leg is the root; its from_entity is the depot that ordered.
-  if (groupLeg.parent_po_id) {
-    const { data: depotLeg } = await admin
+  // Walk to the ROOT of the chain rather than counting hops upward. The old
+  // code did exactly three parents because it assumed it was always handed the
+  // Bamida order; handed an SRO leg instead it stopped one short and named
+  // Echo Barrier Group as the destination. The depot that started the chain is
+  // whichever leg has no parent, however many legs there happen to be.
+  //
+  // Bounded at 6 so a cycle in the data cannot spin here.
+  for (let hop = 0; hop < 6 && nextId; hop++) {
+    const { data }: { data: Leg | null } = await admin
       .from('purchase_orders')
-      .select('from_entity, delivery_address')
-      .eq('id', groupLeg.parent_po_id)
-      .maybeSingle<{ from_entity: string | null; delivery_address: string | null }>()
-    if (depotLeg) {
-      return {
-        // Named, not coded: this ends up on a document a freight forwarder reads.
-        depot: depotLeg.from_entity ? entityLabel(depotLeg.from_entity) : null,
-        address: depotLeg.delivery_address ?? groupLeg.delivery_address ?? sroLeg.delivery_address ?? null,
-      }
-    }
+      .select('id, parent_po_id, from_entity, delivery_address')
+      .eq('id', nextId)
+      .maybeSingle<Leg>()
+    if (!data) break
+    current = data
+    // The nearest delivery address on the way up wins, so a leg that carries
+    // one is preferred over a root that does not.
+    address = address ?? data.delivery_address ?? null
+    nextId = data.parent_po_id
   }
+
+  if (!current) return { depot: null, address: null }
   return {
-    depot: groupLeg.from_entity ? entityLabel(groupLeg.from_entity) : null,
-    address: groupLeg.delivery_address ?? sroLeg.delivery_address ?? null,
+    // Named, not coded: this ends up on a document a freight forwarder reads.
+    depot: current.from_entity ? entityLabel(current.from_entity) : null,
+    address: address ?? current.delivery_address ?? null,
   }
 }
 
@@ -197,7 +190,7 @@ export function buildCargoNotifyPayload(
       shipper: SHIPPER,
       principal: SHIPPER,
       main_invoice_to: SHIPPER,
-      pickup: PICKUP,
+      pickup: PICKUP_PARTIES[draft.pickup_from] ?? PICKUP_PARTIES.BAMIDA,
       consignee: {
         depot: draft.consignee_name || null,
         address: draft.consignee_address || null,

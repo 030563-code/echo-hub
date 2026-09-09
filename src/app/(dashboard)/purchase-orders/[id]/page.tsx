@@ -71,6 +71,10 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
   const awaitingApproval = po.source === 'hub' && po.status === 'requested'
   const awaitingFulfilment = po.leg === 'EB_GROUP_TO_SRO' && po.status === 'approved'
   const isManufacturingOrder = po.leg === 'SRO_TO_SUPPLIER'
+  // An SRO order taken off the shelf carries its own goods onward, because
+  // there is no Bamida order to carry them. So it gets a shipment request too.
+  const isStockShipment =
+    po.leg === 'EB_GROUP_TO_SRO' && po.fulfilment_type === 'stock' && po.status !== 'approved'
   const canLogDelivery =
     canReceive &&
     po.source === 'hub' &&
@@ -113,9 +117,16 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
       ? { sentAt: null, sentTo: [], sentWasTest: false, estStart: null, estFinish: null, finishedAt: null }
       : null)
 
-  // The shipment request, drafted the moment Bamida pressed finished.
+  // Who the Bamida send would go to if nobody changes it. Read here rather than
+  // in the client component, because process.env is a server thing and these are
+  // addresses rather than secrets.
+  const bamidaTo = String(process.env.BAMIDA_PO_TO ?? '').trim()
+  const bamidaCc = String(process.env.BAMIDA_PO_CC ?? '').trim()
+
+  // The shipment request, drafted the moment the barriers existed: Bamida
+  // pressing finished, or SRO taking them off the shelf.
   let cargo: CargoRequestRow | null = null
-  if (isManufacturingOrder) cargo = await loadCargoRequest(po.id)
+  if (isManufacturingOrder || isStockShipment) cargo = await loadCargoRequest(po.id)
 
   // The cost is entered on the root (depot) leg in that depot's currency and the
   // PDF converts into this leg's, so the rate comes from the root. Same rule the
@@ -286,7 +297,13 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
       )}
 
       {isManufacturingOrder && progress && (
-        <ManufacturingCard poId={po.id} canAct={canAct} manufacturing={progress} />
+        <ManufacturingCard
+          poId={po.id}
+          canAct={canAct}
+          manufacturing={progress}
+          defaultTo={bamidaTo}
+          defaultCc={bamidaCc}
+        />
       )}
 
       {cargo && (canDetectShipment || canAct) && (
@@ -421,6 +438,9 @@ function waitingOn(status: string, leg: string): string {
   }
   if (status === 'in_manufacturing') {
     return 'SRO chose to manufacture. The work is on the Bamida order above, which is where it can be sent and tracked.'
+  }
+  if (status === 'ready_for_shipment') {
+    return 'The barriers exist and are waiting on freight. Check the shipment request below and release it to Cargo Partner. It moves to Shipping once they confirm a SPOT reference.'
   }
   if (status === 'approved' && leg === 'DEPOT_TO_EB_GROUP') {
     return 'Approved and on its way. The next thing to happen here is logging the delivery when the goods land.'

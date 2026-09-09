@@ -13,10 +13,12 @@ import { deletePurchaseOrdersByNotes, serviceClient } from "./db-helpers";
 //     and a third, stale tab pressing Fulfil from stock is refused;
 //   - the Bamida order's own page shows Send to Bamida (never pressed here:
 //     pressing it calls n8n);
-//   - the board keeps the SRO order and the unsent Bamida order at S.R.O;
+//   - the board keeps the manufacturing SRO order and the unsent Bamida order
+//     at S.R.O, while the STOCK order travels itself;
 //   - the supplier link works with no login: dates save, Manufacturing finished
 //     is one-shot even when two browsers race it, a wrong link is refused, and
-//     the finished order shows on the board under Shipping;
+//     the finished order shows under Ready for shipment, NOT Shipping, because
+//     nothing has been booked;
 //   - finishing drafts the shipment request, and the review card offers it for
 //     approval with the Incoterm still blank.
 //
@@ -24,10 +26,11 @@ import { deletePurchaseOrdersByNotes, serviceClient } from "./db-helpers";
 // from .env.local and removed in afterAll (CASCADE takes lines, po_manufacturing,
 // po_cargo_request and the token).
 //
-// ONE BUTTON HERE REACHES n8n. Since 9 Sep, Manufacturing finished emails us to
-// say an order is ready for shipment, so a run sends one email. That is why the
-// spec refuses to run unless HUB_EMAIL_TEST_RECIPIENT is set: without it a
-// fixture order would tell Juraj that barriers he has never heard of are ready.
+// TWO BUTTONS HERE REACH n8n. Since 9 Sep, Manufacturing finished AND Fulfil
+// from stock each email us to say an order is ready for shipment, so a run
+// sends two. That is why the spec refuses to run unless HUB_EMAIL_TEST_RECIPIENT
+// is set: without it a fixture order would tell Juraj that barriers he has
+// never heard of are ready.
 // Send to Bamida and Approve and send are still only ever looked at, never
 // pressed: those two reach a factory and a freight forwarder.
 
@@ -147,11 +150,27 @@ test("Fulfil from stock records the decision and takes the card away", async ({ 
   await expect(page.getByText("Recorded: this order is being fulfilled from SRO stock.")).toBeVisible({
     timeout: 15_000,
   });
-  await expect(
-    page.getByText("SRO are fulfilling this from their own stock, so no manufacturing order was raised."),
-  ).toBeVisible({ timeout: 15_000 });
-  // The status shows as the board's own badge, not as a raw column value.
-  await expect(page.getByText("From Stock", { exact: true }).first()).toBeVisible();
+  // The goods exist, so the order is ready for shipment and says what is next.
+  await expect(page.getByText(/The barriers exist and are waiting on freight/)).toBeVisible({
+    timeout: 15_000,
+  });
+  // fulfilment_type still says WHICH branch was taken, now that the status cannot.
+  await expect(page.getByText("Stock", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Ready for shipment", { exact: true }).first()).toBeVisible();
+
+  // Dean, 9 Sep: taking barriers off the shelf drafts the same Cargo Partner
+  // request that finishing a manufactured order does. Drafted, never sent.
+  await expect(page.getByRole("heading", { name: "Shipment request" })).toBeVisible({ timeout: 15_000 });
+  const { data: drafted } = await sb!
+    .from("po_cargo_request")
+    .select("request, sent_at")
+    .eq("po_id", stockPo.id)
+    .maybeSingle();
+  expect(drafted).not.toBeNull();
+  expect(drafted!.sent_at).toBeNull();
+  // Collected from our own shelf in Kosice, not from the factory in Presov.
+  expect((drafted!.request as { pickup_from: string }).pickup_from).toBe("EB_SRO");
+  await expect(page.getByText(/collected from Kosice/)).toBeVisible();
 });
 
 test("Manufacture pressed in two tabs at once raises exactly one Bamida order", async ({ page, context }) => {
@@ -195,13 +214,17 @@ test("Manufacture pressed in two tabs at once raises exactly one Bamida order", 
   await expect(page.getByText("not yet").first()).toBeVisible();
 });
 
-test("the board keeps the SRO order and the unsent Bamida order at S.R.O", async ({ page }) => {
+test("the board keeps the manufacturing SRO order at S.R.O and lets the stock one travel", async ({ page }) => {
   test.setTimeout(90_000);
   await login(page, creds!);
   await openKanban(page);
   const sro = column(page, "S.R.O");
-  // Fulfilling from stock is SRO's own work.
-  await expect(sro.getByText(stockPo.po_number, { exact: true })).toBeVisible();
+  // The stock order carries its own goods onward, because it has no Bamida
+  // order to do it for them. That is the one exception to "SRO orders stay put".
+  await expect(
+    column(page, "Ready for shipment").getByText(stockPo.po_number, { exact: true }),
+  ).toBeVisible();
+  await expect(sro.getByText(stockPo.po_number, { exact: true })).toHaveCount(0);
   // Choosing to manufacture leaves the SRO order at SRO; the Bamida order travels.
   await expect(sro.getByText(manufacturePo.po_number, { exact: true })).toBeVisible();
   await expect(column(page, "Manufacturing in progress").getByText(manufacturePo.po_number, { exact: true })).toHaveCount(0);
@@ -302,7 +325,7 @@ test("the supplier link needs no login: dates save, finished is one-shot, a wron
   await secondBrowser.close();
 });
 
-test("after Bamida press finished the Hub says so, and the board moves it to Shipping", async ({ page }) => {
+test("after Bamida press finished the board says Ready for shipment, NOT Shipping", async ({ page }) => {
   test.setTimeout(90_000);
   await login(page, creds!);
   await page.goto(`/purchase-orders/${bamidaPo.id}`);
@@ -311,7 +334,30 @@ test("after Bamida press finished the Hub says so, and the board moves it to Shi
   ).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("button", { name: "Send to Bamida" })).toHaveCount(0);
   await openKanban(page);
+  // Dean, 9 Sep: made is not booked. Barriers on a pallet in Presov are not in
+  // transit, and only a confirmed Cargo Partner SPOT id moves them on.
+  await expect(
+    column(page, "Ready for shipment").getByText(bamidaPo.po_number, { exact: true }),
+  ).toBeVisible();
+  await expect(column(page, "Shipping").getByText(bamidaPo.po_number, { exact: true })).toHaveCount(0);
+});
+
+test("a confirmed SPOT id is what moves it to Shipping", async ({ page }) => {
+  test.setTimeout(90_000);
+  // Driven through po_shipments, the table the SPOT lookup writes, because
+  // nothing in the Hub can book freight and this is the row that says it was.
+  await login(page, creds!);
+  await sb!.from("po_shipments").upsert(
+    { po_id: bamidaPo.id, po_number: bamidaPo.po_number, spot_id: "E2E-SPOT-0001", match_count: 1,
+      resolved_at: new Date().toISOString() },
+    { onConflict: "po_id" },
+  );
+  await openKanban(page);
   await expect(column(page, "Shipping").getByText(bamidaPo.po_number, { exact: true })).toBeVisible();
+  await expect(
+    column(page, "Ready for shipment").getByText(bamidaPo.po_number, { exact: true }),
+  ).toHaveCount(0);
+  await sb!.from("po_shipments").delete().eq("po_id", bamidaPo.id);
 });
 
 // A label wraps its own control on the shipment request card, so filter on the

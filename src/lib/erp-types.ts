@@ -15,6 +15,8 @@ export interface PurchaseOrder {
     | "sro_evaluating"
     | "fulfilling_from_stock"
     | "in_manufacturing"
+    /** Made or off the shelf, waiting on freight. Not yet booked. */
+    | "ready_for_shipment"
     | "shipped"
     | "delivered"
     | "cancelled";
@@ -26,6 +28,7 @@ export interface PurchaseOrder {
     | "sro"
     | "sent_manufacturing"
     | "manufacturing"
+    | "ready_for_shipment"
     | "shipping"
     | null;
   notes: string | null;

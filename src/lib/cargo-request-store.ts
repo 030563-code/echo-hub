@@ -9,7 +9,7 @@ import 'server-only'
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { buildCargoDraft, type CargoDraft, type CargoLine } from '@/lib/cargo-request'
+import { buildCargoDraft, type CargoDraft, type CargoLine, type PickupFrom } from '@/lib/cargo-request'
 import { defaultCargoRecipients, resolveConsignee } from '@/app/actions/purchase-orders/notify-cargo-partner'
 
 export type CargoRequestRow = {
@@ -39,17 +39,22 @@ export async function loadCargoRequest(poId: string): Promise<CargoRequestRow | 
 }
 
 /**
- * Draft the request when Bamida finish an order.
+ * Draft the request when the barriers exist.
+ *
+ * Two callers, one shape: Bamida pressing "Manufacturing finished", and SRO
+ * choosing to fulfil an order from stock. The only thing that differs is which
+ * door the truck goes to, hence `pickupFrom`.
  *
  * Insert-if-absent, never an overwrite: a draft somebody has already corrected
- * must not be quietly reset by a second call. Finishing is one-shot anyway, so
- * this is a guard against a future caller rather than against today's one.
+ * must not be quietly reset by a second call. Both callers are one-shot anyway,
+ * so this is a guard against a future one rather than against today's.
  */
 export async function createCargoRequestDraft(input: {
   poId: string
   poNumber: string | null
   finishedAt: string
   lines: readonly CargoLine[]
+  pickupFrom?: PickupFrom
 }): Promise<CargoDraft> {
   const consignee = await resolveConsignee(input.poId)
   const { to, cc } = defaultCargoRecipients()
@@ -60,6 +65,7 @@ export async function createCargoRequestDraft(input: {
     consignee,
     to,
     cc,
+    pickupFrom: input.pickupFrom,
   })
 
   const { error } = await createAdminClient()

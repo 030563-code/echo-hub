@@ -28,6 +28,7 @@ const STATUS_CONFIG: Record<string, { label: string; hue: Hue }> = {
   sro_evaluating:        { label: "SRO Evaluating", hue: "yellow" },
   fulfilling_from_stock: { label: "From Stock",     hue: "teal" },
   in_manufacturing:      { label: "Manufacturing",  hue: "purple" },
+  ready_for_shipment:    { label: "Ready for shipment", hue: "orange" },
   shipped:               { label: "Shipped",        hue: "indigo" },
   delivered:             { label: "Delivered",      hue: "emerald" },
   cancelled:             { label: "Cancelled",      hue: "zinc" },

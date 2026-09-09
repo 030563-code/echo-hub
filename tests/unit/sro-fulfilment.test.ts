@@ -103,7 +103,12 @@ describe('the Hub decides who gets the email, not n8n', () => {
   it('resolves the Bamida recipients through the test switch', () => {
     const source = read(SEND)
     expect(source).toContain('resolveRecipients')
-    expect(source).toMatch(/to: bamidaTo,[\s\S]{0,120}cc: process\.env\.BAMIDA_PO_CC/)
+    // The address may now be typed on the screen, so the fallback moved one
+    // line up. What still matters is that WHATEVER is chosen goes through
+    // resolveRecipients, so the test override cannot be bypassed by typing.
+    expect(source).toMatch(/const bamidaTo = String\(parsed\.data\.to \?\? ""\)\.trim\(\) \|\| String\(process\.env\.BAMIDA_PO_TO/)
+    expect(source).toMatch(/const bamidaCc = String\(parsed\.data\.cc \?\? ""\)\.trim\(\) \|\| process\.env\.BAMIDA_PO_CC/)
+    expect(source).toMatch(/resolveRecipients\(\{[\s\S]{0,120}to: bamidaTo,[\s\S]{0,60}cc: bamidaCc,/)
     expect(source).toContain('intended: recipients.intended')
   })
 })
@@ -148,5 +153,108 @@ describe('the bill of materials survives the new status', () => {
     // the leg to in_manufacturing, which would have hidden the very order whose
     // BOM the Bamida document is built from.
     expect(read('src/lib/bom.ts')).toContain("'approved', 'in_manufacturing'")
+  })
+})
+
+describe('Ready for shipment reaches BOTH machines, and the migration is the half nothing else checks', () => {
+  const READY = 'supabase/migrations/20260909140000_ready_for_shipment.sql'
+
+  it('widens the status check, the stage check AND the RPC list', () => {
+    const sql = read(READY)
+    // Three places, and the third is the one that is easy to forget: the RPC
+    // hardcodes the stage list a second time and RAISEs on anything else, so
+    // without it a drag to the new column fails with "invalid stage".
+    expect(sql).toContain('purchase_orders_status_check')
+    expect(sql).toContain('purchase_orders_lifecycle_stage_chk')
+    expect(sql).toContain('CREATE OR REPLACE FUNCTION public.set_po_lifecycle_stage')
+    expect((sql.match(/ready_for_shipment/g) ?? []).length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('drops before adding, because the original constraint was guarded against being widened', () => {
+    const sql = read(READY)
+    // The 2026-07-13 migration wrapped its ADD CONSTRAINT in an IF NOT EXISTS
+    // on the constraint NAME, so re-running it would not widen anything.
+    expect(sql).toMatch(/DROP CONSTRAINT IF EXISTS purchase_orders_lifecycle_stage_chk/)
+    expect(sql).toMatch(/DROP CONSTRAINT IF EXISTS purchase_orders_status_check/)
+  })
+
+  it('keeps the RPC gated and never grants it to anon', () => {
+    const sql = read(READY)
+    expect(sql).toContain("has_capability('po.approve') OR public.has_capability('po.receive')")
+    expect(sql).toContain('REVOKE EXECUTE ON FUNCTION public.set_po_lifecycle_stage(uuid, text) FROM PUBLIC, anon')
+  })
+
+  it('stops the finish button stamping a stage, so the SPOT id can still move the card', () => {
+    const src = read('src/app/actions/manufacturing/supplier-updates.ts')
+    // A PERSISTED stage outranks derivation. Writing one here froze the card at
+    // Shipping and made "Shipping only once it is booked" unreachable.
+    expect(src).not.toMatch(/lifecycle_stage:\s*'shipping'/)
+    expect(src).not.toMatch(/lifecycle_stage:/)
+  })
+
+  it('clears the parent SRO leg, which is what said Manufacturing about finished barriers', () => {
+    const src = read('src/app/actions/manufacturing/supplier-updates.ts')
+    expect(src).toMatch(/update\(\{ status: 'ready_for_shipment' \}\)/)
+    // Compare-and-set, so a leg somebody already moved on is not dragged back.
+    expect(src).toMatch(/\.eq\('status', 'in_manufacturing'\)/)
+  })
+})
+
+describe('Fulfilling from stock does what finishing does, because nothing else carries those goods', () => {
+  it('records ready_for_shipment and keeps fulfilment_type saying which branch it was', () => {
+    const src = read(STOCK)
+    expect(src).toMatch(/status: "ready_for_shipment", fulfilment_type: "stock"/)
+    // Still one conditional update, so a double press changes nothing twice.
+    expect(src).toMatch(/fulfilment_type: "stock"[\s\S]{0,200}\.eq\("status", "approved"\)/)
+  })
+
+  it('reads which branch was already taken from fulfilment_type, not from status', () => {
+    const src = read(STOCK)
+    // The status moves on to ready_for_shipment on EITHER branch, so it can no
+    // longer say which one was chosen. Keying the message on it would lie.
+    expect(src).toMatch(/sro\.fulfilment_type === "manufacture"/)
+    expect(src).toMatch(/sro\.fulfilment_type === "stock"/)
+  })
+
+  it('drafts the request and sends the email AFTER the claim, never before', () => {
+    const src = read(STOCK)
+    const claim = src.indexOf('.eq("status", "approved")')
+    const drafted = src.indexOf('createCargoRequestDraft(')
+    const told = src.indexOf('notifyReadyForShipment(')
+    expect(claim).toBeGreaterThan(-1)
+    expect(drafted).toBeGreaterThan(claim)
+    expect(told).toBeGreaterThan(drafted)
+  })
+
+  it('collects from our own shelf, not from the factory', () => {
+    expect(read(STOCK)).toMatch(/pickupFrom: "EB_SRO"/)
+  })
+
+  it('lets a webhook failure log, never turn a recorded decision into an error', () => {
+    const src = read(STOCK)
+    const told = src.indexOf('notifyReadyForShipment(')
+    expect(src.slice(told)).not.toMatch(/return \{ ok: false/)
+  })
+})
+
+describe('The shipment request pins what a person must not retype', () => {
+  const CARGO = 'src/app/actions/purchase-orders/cargo-request.ts'
+
+  it('overwrites the general reference with the order number on the server', () => {
+    const src = read(CARGO)
+    // Every export of a 'use server' file is a callable endpoint, so a disabled
+    // input guarantees nothing. This is where it is actually fixed.
+    expect(src).toMatch(/general_reference: po\.po_number \?\? parsed\.data\.draft\.general_reference/)
+  })
+
+  it('decides the pickup party from the order, not from the form', () => {
+    const src = read(CARGO)
+    expect(src).toMatch(/po\.fulfilment_type === 'stock' \? \('EB_SRO' as const\) : \('BAMIDA' as const\)/)
+  })
+
+  it('shows the general reference read-only rather than as an input', () => {
+    const card = read('src/app/(dashboard)/purchase-orders/[id]/cargo-request-card.tsx')
+    expect(card).not.toMatch(/set\('general_reference'/)
+    expect(card).toContain('The purchase order number. Fixed.')
   })
 })

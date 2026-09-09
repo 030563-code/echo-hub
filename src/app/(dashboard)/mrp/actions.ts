@@ -140,7 +140,7 @@ export async function calculateMRP(): Promise<MRPRow[]> {
   const { data: poData, error: poErr } = await supabase
     .from("purchase_orders")
     .select("id, status, lines:purchase_order_lines(id, sku, quantity)")
-    .in("status", ["requested", "approved", "sro_evaluating", "fulfilling_from_stock", "in_manufacturing"]);
+    .in("status", ["requested", "approved", "sro_evaluating", "fulfilling_from_stock", "in_manufacturing", "ready_for_shipment"]);
   if (poErr) throw new Error("Failed to load purchase orders");
 
   // 3b. Receipts against those PO lines — recordReceipt increments warehouse
