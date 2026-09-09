@@ -5,6 +5,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { getCapabilities } from '@/lib/authz'
 import { chainNumber, displayPoNumber, isFullyReceived, legLabel } from '@/lib/po-number'
 import { entityPoCurrency } from '@/lib/po-currency'
+import { entityLabel } from '@/lib/depot-constants'
 import { deriveStage, effectiveStage, stageLabel } from '@/lib/po-lifecycle'
 import { assessOrderCapability } from '@/lib/manufacturing-capability'
 import { loadPurchaseOrderDetail } from '@/lib/po-detail'
@@ -142,7 +143,7 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
           </h1>
           <p className="text-sm text-gray-500 mt-1">
             {legLabel(po.leg)} · <span className="font-mono">{chainNumber(po)}</span> ·{' '}
-            <span className="font-mono">{po.from_entity}</span> to <span className="font-mono">{po.to_entity}</span>
+            {entityLabel(po.from_entity)} to {entityLabel(po.to_entity)}
             {po.reference_po_number ? (
               <> · reference <span className="font-mono">{displayPoNumber(po.reference_po_number)}</span></>
             ) : null}

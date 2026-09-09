@@ -22,6 +22,7 @@ import { syncAllPoShipments } from "@/app/actions/purchase-orders/po-shipments";
 import { chainNumber, isFullyReceived, legLabel, displayPoNumber } from "@/lib/po-number";
 import type { PdfParty } from "@/lib/po-pdf";
 import { entityPoCurrency, type FxRates } from "@/lib/po-currency";
+import { entityLabel } from "@/lib/depot-constants";
 import { stageLabel, type LifecycleStage } from "@/lib/po-lifecycle";
 import { setPoStage } from "@/app/actions/purchase-orders/set-po-stage";
 import type { PurchaseOrder } from "@/lib/erp-types";
@@ -40,12 +41,12 @@ const TABLE_COLUMNS: ColumnDef<PurchaseOrder, unknown>[] = [
   {
     accessorKey: "from_entity",
     header: "From",
-    cell: ({ getValue }) => <span className="text-gray-600 text-xs">{getValue() as string}</span>,
+    cell: ({ getValue }) => <span className="text-gray-600 text-xs">{entityLabel(getValue() as string)}</span>,
   },
   {
     accessorKey: "to_entity",
     header: "To",
-    cell: ({ getValue }) => <span className="text-gray-600 text-xs">{getValue() as string}</span>,
+    cell: ({ getValue }) => <span className="text-gray-600 text-xs">{entityLabel(getValue() as string)}</span>,
   },
   {
     accessorKey: "leg",
@@ -309,9 +310,9 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
             )}
 
             <DetailSection label="Route">
-              <p className="text-sm text-gray-900">{selected.from_entity}</p>
+              <p className="text-sm text-gray-900">{entityLabel(selected.from_entity)}</p>
               <p className="text-xs text-gray-400">↓ {legLabel(selected.leg)}</p>
-              <p className="text-sm text-gray-900">{selected.to_entity}</p>
+              <p className="text-sm text-gray-900">{entityLabel(selected.to_entity)}</p>
             </DetailSection>
 
             {selected.reference_po_number && (

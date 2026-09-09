@@ -45,7 +45,7 @@ function draft(overrides: Partial<CargoDraft> = {}): CargoDraft {
       poNumber: META.poNumber,
       finishedAt: '2026-09-30T14:05:00.000Z',
       lines: LINES,
-      consignee: { depot: 'US-BAL', address: '8125 Stayton Drive, Jessup, MD 20794' },
+      consignee: { depot: 'US Baltimore', address: '8125 Stayton Drive, Jessup, MD 20794' },
       to: 'bookings@forwarder.example',
       cc: 'juraj@echobarrier.eu',
     }),
@@ -100,7 +100,7 @@ describe('the draft a person is asked to approve', () => {
     expect(d.package_type_code).toBe('PAL')
     expect(d.description).toBe('Acoustic Barriers H10, H9')
     expect(d.delivery_term).toBeNull()
-    expect(d.consignee_name).toBe('US-BAL')
+    expect(d.consignee_name).toBe('US Baltimore')
     expect(d.lines.map((l) => l.pallets)).toEqual([2, 2])
   })
 
@@ -233,7 +233,7 @@ describe('buildCargoNotifyPayload', () => {
     const payload = buildCargoNotifyPayload(META, draft(), resolveRecipients({ to: 'a@x.com' }))
     const consignee = (payload.participants as { consignee: { depot: string | null; address: string | null } })
       .consignee
-    expect(consignee.depot).toBe('US-BAL')
+    expect(consignee.depot).toBe('US Baltimore')
     expect(consignee.address).toContain('Jessup')
   })
 

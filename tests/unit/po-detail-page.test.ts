@@ -110,3 +110,43 @@ describe('the loader does not leak', () => {
     expect(PAGE).toMatch(/chain\.find\(\(l\) => l\.parent_po_id === null\)/)
   })
 })
+
+describe('what leaves the company carries names, not our codes', () => {
+  const PDF = read('src/lib/po-pdf.ts')
+  const SUPPLIER_PAGE = read('src/app/manufacturing/[token]/page.tsx')
+
+  /**
+   * Dean, 9 Sep 2026: the SKU "has nothing to do with them, it is an internal
+   * database code", and the depot codes "should be the actual depot names".
+   * These are documents and screens outside Echo Barrier reads.
+   */
+  it('keeps the purchase order document free of our internal fields', () => {
+    expect(PDF).not.toContain('intercompany')
+    expect(PDF).not.toMatch(/Approved by:/)
+    expect(PDF).not.toMatch(/Status: \$\{po\.status\}/)
+    expect(PDF).not.toMatch(/Reference: \$\{/)
+    // The line table names the product; the SKU column is gone.
+    expect(PDF).not.toMatch(/\["Ln", "SKU"/)
+    expect(PDF).toMatch(/\["Ln", "Description", "Qty", "HS code"/)
+  })
+
+  it('leaves the money columns aligned after the SKU column went', () => {
+    // autoTable aligns by index, so dropping a column silently right-aligns the
+    // wrong ones unless these move too.
+    expect(PDF).toContain('columnStyles: priced ? { 4: { halign: "right" }, 5: { halign: "right" } } : {}')
+  })
+
+  it('shows Bamida the product, not our SKU', () => {
+    expect(SUPPLIER_PAGE).not.toMatch(/>Code</)
+    expect(SUPPLIER_PAGE).toContain('{line.product_name || line.sku}')
+  })
+
+  it('resolves every entity code to a name, in one place', () => {
+    const consts = read('src/lib/depot-constants.ts')
+    expect(consts).toContain("'EB-SRO': 'Echo Barrier s.r.o.'")
+    expect(consts).toContain("SUPPLIER: 'Bamida'")
+    // An unmapped code still passes through: a code somebody recognises beats
+    // a word that tells them nothing.
+    expect(consts).toMatch(/ENTITY_MAPPING\[trimmed\] \?\? DEPOT_MAPPING\[trimmed\] \?\? trimmed/)
+  })
+})

@@ -48,9 +48,10 @@ test("PO approve chain: raise → tier1 → tier2(ref) → SRO decides", async (
   // router.refresh.
   const markerCard = (route: string) =>
     page.locator("div.rounded-xl").filter({ hasText: MARKER }).filter({ hasText: route });
-  const t1 = markerCard("US-BAL → EB-GROUP");
-  const t2 = markerCard("EB-GROUP → EB-SRO");
-  const t3 = markerCard("EB-SRO → SUPPLIER");
+  // Names, not codes, since 9 Sep: the queue shows what entityLabel returns.
+  const t1 = markerCard("US Baltimore → Echo Barrier Group");
+  const t2 = markerCard("Echo Barrier Group → Echo Barrier s.r.o.");
+  const t3 = markerCard("Echo Barrier s.r.o. → Bamida");
 
   // ---- tier 1: Depot → approve ----
   await page.goto("/purchase-orders/approvals");

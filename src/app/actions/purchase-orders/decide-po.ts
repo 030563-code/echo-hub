@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase/server";
 import { getAuthorizedUser } from "@/lib/authz";
 import { externalCallsDisabled } from "@/lib/env";
+import { entityLabel } from "@/lib/depot-constants";
 import { snapshotSroPoCost } from "@/lib/bom";
 import { notifySroPoReady } from "./notify-sro";
 import type { PurchaseOrderLine } from "@/lib/erp-types";
@@ -270,7 +271,8 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
       poId: po.id,
       poNumber: po.po_number,
       masterRef: po.master_ref,
-      fromDepot,
+      // The name, not the code. Nobody outside this database knows US-BAL.
+      fromDepot: entityLabel(fromDepot),
       approvedBy: label,
       lines: (po.lines ?? []).map((l) => ({
         sku: l.sku,

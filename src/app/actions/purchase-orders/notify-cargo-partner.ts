@@ -28,6 +28,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { externalCallsDisabled, hubBaseUrl } from '@/lib/env'
 import { resolveRecipients, type ResolvedRecipients } from '@/lib/email-recipients'
 import { SHIPPER, PICKUP, OFFICE_IN_CHARGE, type CargoDraft } from '@/lib/cargo-request'
+import { entityLabel } from '@/lib/depot-constants'
 
 const TIMEOUT_MS = 15_000
 
@@ -98,13 +99,14 @@ export async function resolveConsignee(poId: string): Promise<{ depot: string | 
       .maybeSingle<{ from_entity: string | null; delivery_address: string | null }>()
     if (depotLeg) {
       return {
-        depot: depotLeg.from_entity ?? null,
+        // Named, not coded: this ends up on a document a freight forwarder reads.
+        depot: depotLeg.from_entity ? entityLabel(depotLeg.from_entity) : null,
         address: depotLeg.delivery_address ?? groupLeg.delivery_address ?? sroLeg.delivery_address ?? null,
       }
     }
   }
   return {
-    depot: groupLeg.from_entity ?? null,
+    depot: groupLeg.from_entity ? entityLabel(groupLeg.from_entity) : null,
     address: groupLeg.delivery_address ?? sroLeg.delivery_address ?? null,
   }
 }

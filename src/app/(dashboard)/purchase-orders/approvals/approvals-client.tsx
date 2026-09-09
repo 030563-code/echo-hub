@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Check, X, Loader2, Inbox, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { formatRelative } from "@/lib/utils";
 import { decidePurchaseOrder } from "@/app/actions/purchase-orders/decide-po";
+import { entityLabel } from "@/lib/depot-constants";
 import { chainNumber, displayPoNumber } from "@/lib/po-number";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SearchBox } from "@/components/ui/search-box";
@@ -173,8 +174,8 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
                     <div>
                       <p className="font-mono text-echo-orange font-medium">{displayPoNumber(po.po_number)}</p>
                       <p className="text-xs text-gray-500 mt-0.5">
-                        <span className="font-mono">{po.from_entity}</span> →{" "}
-                        <span className="font-mono">{po.to_entity}</span>
+                        <span>{entityLabel(po.from_entity)}</span> →{" "}
+                        <span>{entityLabel(po.to_entity)}</span>
                         <span className="text-gray-400"> · raised {formatRelative(po.created_at)}</span>
                         {po.requested_by && <span className="text-gray-400"> by {po.requested_by}</span>}
                       </p>

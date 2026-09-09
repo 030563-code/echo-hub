@@ -15,6 +15,11 @@ export const dynamic = 'force-dynamic'
  * cost_snapshot and sro_cost_snapshot_eur never reach this process, let alone
  * this page. Omitting them from the render would leave the money one careless
  * edit away from a supplier's screen.
+ *
+ * The SKU is still selected but no longer shown. Dean, 9 Sep 2026: it is our
+ * internal database code and means nothing to Bamida. It stays in the query as
+ * the fallback for a line with no product name, which would otherwise render an
+ * empty row.
  */
 export default async function ManufacturingPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
@@ -77,7 +82,6 @@ export default async function ManufacturingPage({ params }: { params: Promise<{ 
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 text-[11px] uppercase tracking-wider text-gray-500">
-              <th className="px-4 py-2.5 text-left font-medium">Code</th>
               <th className="px-4 py-2.5 text-left font-medium">Product</th>
               <th className="px-4 py-2.5 text-right font-medium">Quantity</th>
             </tr>
@@ -85,14 +89,13 @@ export default async function ManufacturingPage({ params }: { params: Promise<{ 
           <tbody>
             {lines.map((line, i) => (
               <tr key={i} className="border-t border-gray-100">
-                <td className="px-4 py-2.5 font-mono text-gray-900">{line.sku}</td>
-                <td className="px-4 py-2.5 text-gray-600">{line.product_name}</td>
+                <td className="px-4 py-2.5 text-gray-900">{line.product_name || line.sku}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums text-gray-900">{line.quantity}</td>
               </tr>
             ))}
             {lines.length === 0 && (
               <tr>
-                <td colSpan={3} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={2} className="px-4 py-8 text-center text-gray-400">
                   This order has no lines.
                 </td>
               </tr>

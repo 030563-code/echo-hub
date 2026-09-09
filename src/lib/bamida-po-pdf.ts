@@ -36,8 +36,9 @@ export async function buildBamidaPoPdf(bamida: BamidaPo): Promise<import('jspdf'
   doc.setFont('helvetica', 'normal')
   doc.text([bamida.supplier.name, ...bamida.supplier.address], 14, 39)
   doc.text([bamida.buyer.name, ...bamida.buyer.address, `Tax: ${bamida.buyer.taxNumber}`], W / 2 + 6, 39)
+  // No reference line: bamida.reference is the Hub's master_ref, an internal
+  // chain key that means nothing to a supplier.
   doc.text(`Date: ${bamida.date}`, 14, 64)
-  if (bamida.reference) doc.text(`Reference: ${bamida.reference}`, 14, 69)
 
   const head = priced
     ? [['Ln', 'Code', 'Description', 'Qty', 'Unit', 'Price', 'Amount', 'Tax']]

@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { SearchBox } from "@/components/ui/search-box";
 import { updateMaterialPrices } from "@/app/actions/bom/update-material-price";
 import BamidaPoModal from "./bamida-po-modal";
+import { entityLabel } from "@/lib/depot-constants";
 import type { BamidaPo } from "@/lib/bamida-po";
 import type { BomMasterRow, MaterialPrice, SroPoBom, SroPoBomLine } from "@/lib/erp-types";
 import { usePersistedView, usePageState } from "@/hooks/use-page-state";
@@ -132,7 +133,7 @@ function OrderCard({ po, canViewCost, bamida }: { po: SroPoBom; canViewCost: boo
           <div className="min-w-0">
             <p className="font-mono text-echo-orange font-medium">{po.po_number}</p>
             <p className="text-xs text-gray-500 truncate">
-              <span className="font-mono">{po.from_entity}</span> → <span className="font-mono">{po.to_entity}</span>
+              <span>{entityLabel(po.from_entity)}</span> → <span>{entityLabel(po.to_entity)}</span>
               {po.master_ref && <span className="text-gray-400"> · {po.master_ref}</span>}
             </p>
           </div>

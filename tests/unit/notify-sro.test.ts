@@ -191,11 +191,12 @@ describe('it fires when the order REACHES SRO, not when the leg is created', () 
     expect(source).toMatch(/notifySroPoReady\(\{[\s\S]{0,200}poNumber: po\.po_number/)
   })
 
-  it('names the depot that started the chain, not EB-GROUP', () => {
+  it('names the depot that started the chain, not EB-GROUP, and not as a code', () => {
     // from_entity on the SRO leg is EB-GROUP, because Group are the ones
-    // ordering. The depot is the parent's.
+    // ordering. The depot is the parent's. And it goes out as "US Baltimore",
+    // not "US-BAL": nobody reading the email knows the code.
     expect(source).toMatch(/parent\?\.from_entity\) fromDepot = parent\.from_entity/)
-    expect(source).toMatch(/fromDepot,/)
+    expect(source).toMatch(/fromDepot: entityLabel\(fromDepot\)/)
   })
 
   it('lets a mail failure warn, never fail the approval', () => {

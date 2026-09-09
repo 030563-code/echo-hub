@@ -48,13 +48,16 @@ export async function downloadPoPdf(po: PurchaseOrder, opts: PoPdfOptions): Prom
   const sym = CURRENCY_SYMBOL[legCcy];
   const conv = (v: number) => convertCurrency(v, opts.rootCurrency, legCcy, opts.fx);
 
-  // Header — PO Number first, then Reference, then Date (no internal chain number).
-  const refDisplay = po.reference_po_number ? displayPoNumber(po.reference_po_number) : "—";
+  // Header — the PO number and the date, and nothing else.
+  //
+  // Dean, 9 Sep 2026: this document goes outside the company, so it carries no
+  // internal chain reference, no approver, no status and no SKU. Everything a
+  // reader needs is the order itself; everything else was us talking to
+  // ourselves on a page somebody else reads.
   const partyY = await drawBrandHeader(d, W, {
     title: "PURCHASE ORDER",
     refs: [
       `PO Number: ${pdfText(displayPoNumber(po.po_number))}`,
-      `Reference: ${pdfText(refDisplay)}`,
       `Date: ${(po.created_at ?? "").slice(0, 10)}`,
     ],
   });
@@ -71,23 +74,18 @@ export async function downloadPoPdf(po: PurchaseOrder, opts: PoPdfOptions): Prom
   d.text([from.name, ...from.lines].map(pdfText), 14, partyY + 5);
   d.text([to.name, ...to.lines].map(pdfText), colR, partyY + 5);
 
-  // Meta — Approved by (not the leg), status, deliver-to.
+  // Meta — the delivery address, which is the only line here a recipient acts on.
   const metaY = partyY + 5 + Math.max(from.lines.length, to.lines.length) * 4 + 10;
-  const meta = [
-    `Approved by: ${po.approved_by ?? "—"}`,
-    `Status: ${po.status}`,
-    ...(po.delivery_address ? [`Deliver to: ${po.delivery_address}`] : []),
-  ];
-  d.text(meta.map(pdfText), 14, metaY);
+  const meta = po.delivery_address ? [`Deliver to: ${po.delivery_address}`] : [];
+  if (meta.length) d.text(meta.map(pdfText), 14, metaY);
 
   const lines = po.lines ?? [];
   let total = 0;
   const head = priced
-    ? [["Ln", "SKU", "Description", "Qty", "HS code", `Unit price (${legCcy})`, `Line total (${legCcy})`]]
-    : [["Ln", "SKU", "Description", "Qty", "HS code"]];
+    ? [["Ln", "Description", "Qty", "HS code", `Unit price (${legCcy})`, `Line total (${legCcy})`]]
+    : [["Ln", "Description", "Qty", "HS code"]];
   const body = lines.map((l, i) => {
-    const sku = `${l.sku}${l.sku_suffix ? `-${l.sku_suffix}` : ""}`;
-    const base = [String(i + 1), sku, pdfText(l.product_name ?? ""), String(l.quantity), l.hs_code ?? "—"];
+    const base = [String(i + 1), pdfText(l.product_name ?? l.sku), String(l.quantity), l.hs_code ?? "—"];
     if (!priced) return base;
     // Round the converted unit FIRST, then derive the line total, so unit×qty is
     // internally consistent (and everything shows exactly 2dp).
@@ -103,7 +101,7 @@ export async function downloadPoPdf(po: PurchaseOrder, opts: PoPdfOptions): Prom
     body,
     styles: { fontSize: 9 },
     headStyles: { fillColor: EB_GREEN, textColor: [255, 255, 255], fontStyle: "bold" },
-    columnStyles: priced ? { 5: { halign: "right" }, 6: { halign: "right" } } : {},
+    columnStyles: priced ? { 4: { halign: "right" }, 5: { halign: "right" } } : {},
   });
 
   let y = ((d as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? 120) + 8;
@@ -130,10 +128,6 @@ export async function downloadPoPdf(po: PurchaseOrder, opts: PoPdfOptions): Prom
     d.text(`Notes: ${pdfText(po.notes)}`, 14, y + 4, { maxWidth: W - 28 });
     d.setTextColor(0, 0, 0);
   }
-  d.setFont("helvetica", "italic");
-  d.setFontSize(7.5);
-  d.text("Echo Barrier intercompany purchase order.", 14, 288);
-
   // Filename uses the internal number (the display value may be "Awaiting…").
   d.save(`${po.po_number.replace(/\s+/g, "")}.pdf`);
 }
