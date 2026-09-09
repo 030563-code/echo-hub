@@ -147,8 +147,11 @@ test("Fulfil from stock records the decision and takes the card away", async ({ 
   await expect(page.getByText("Recorded: this order is being fulfilled from SRO stock.")).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page.getByText("Nothing is waiting on this order here")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("fulfilling_from_stock")).toBeVisible();
+  await expect(
+    page.getByText("SRO are fulfilling this from their own stock, so no manufacturing order was raised."),
+  ).toBeVisible({ timeout: 15_000 });
+  // The status shows as the board's own badge, not as a raw column value.
+  await expect(page.getByText("From Stock", { exact: true }).first()).toBeVisible();
 });
 
 test("Manufacture pressed in two tabs at once raises exactly one Bamida order", async ({ page, context }) => {
