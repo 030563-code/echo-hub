@@ -14,11 +14,17 @@ interface CreateCompanyParams {
 // so we fetch candidates (CONTAINS_TOKEN, same pattern as searchCompanies.ts)
 // and compare exactly in code rather than trust the API's own matching.
 // A candidate with a conflicting domain is treated as a different business.
+//
+// Portal-wide, matching searchCompanies. It used to match only the caller's own
+// records for a non-admin, which paired badly with a search that was scoped the
+// same way: a rep who could not SEE the existing company could not dedup
+// against it either, so the one guard against minting a second record for a
+// business someone else already owns never fired. Now the rep is shown the
+// existing record and can use it.
 async function findExistingCompanyByName(
   accessToken: string,
   name: string,
-  domain: string,
-  ownerScope: string | null
+  domain: string
 ): Promise<{ id: string; name: string; domain: string } | null> {
   const target = name.trim().toLowerCase()
   if (!target) return null
@@ -34,12 +40,6 @@ async function findExistingCompanyByName(
         {
           filters: [
             { propertyName: 'name', operator: 'CONTAINS_TOKEN', value: name.trim() },
-            // Same-named companies exist per owner BY DESIGN in this portal, so
-            // a non-admin's dedup must only match their own records — matching
-            // another owner's would silently attach their pipeline to it.
-            ...(ownerScope
-              ? [{ propertyName: 'hubspot_owner_id', operator: 'EQ', value: ownerScope }]
-              : []),
           ],
         },
       ],
@@ -88,23 +88,19 @@ export async function createHubSpotCompany(params: CreateCompanyParams): Promise
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
   if (!accessToken) return { success: false, error: 'Token Missing' }
 
-  // Company search is owner-scoped for non-admins, so a company they create
-  // MUST be owned by them or they'd never find it again. Fail closed when the
-  // owner can't be resolved — an unowned company would be invisible to its own
-  // creator. Admins may create unowned records (they see everything).
+  // A new company is stamped with its creator so the CRM shows who brought the
+  // account in, and so it lands in their HubSpot views. Visibility no longer
+  // depends on it (the search is portal-wide), so an unresolved owner is no
+  // longer fatal: the record would still be findable by everyone. Admins create
+  // unowned records as before.
   const ownerScope = auth.profile.is_super_admin
     ? null
     : await resolveHubSpotOwnerId(auth.user.email ?? '', accessToken)
-  if (!auth.profile.is_super_admin && !ownerScope) {
-    return { success: false, error: 'Could not link your HubSpot user, so the company would not appear in your searches. Please try again or contact an administrator.' }
-  }
 
   try {
     // Avoid minting a duplicate company for an existing name — return the
-    // existing record instead of creating a new one. Scoped to the caller's own
-    // records for non-admins: same-named companies per owner are distinct
-    // businesses in this portal.
-    const existing = await findExistingCompanyByName(accessToken, params.name, params.domain, ownerScope)
+    // existing record instead of creating a new one.
+    const existing = await findExistingCompanyByName(accessToken, params.name, params.domain)
     if (existing) {
       return {
         success: true,

@@ -2,13 +2,16 @@
 
 import { createServerClient } from '@/lib/supabase/server'
 import { getAuthorizedUser } from '@/lib/authz'
-import { resolveHubSpotOwnerId } from '@/lib/hubspot-owner'
+import { getOwnerIndex } from '@/app/actions/hubspot/getOwners'
+import { ownerLabel } from '@/lib/hubspot-owners'
 
 interface CompanySearchResult {
   id: string
   name: string
   domain?: string
   source: 'hubspot' | 'supabase'
+  /** Who holds the record in HubSpot, so same-named duplicates stay tellable apart. */
+  owner?: string
   xero_code_usa?: string
   xero_code_can?: string
 }
@@ -34,34 +37,40 @@ export async function searchCompanies(query: string): Promise<{ success: boolean
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
 
-  // Companies in this portal are deliberately duplicated per owner (e.g. one
-  // HERMEQ record per region/rep), so a rep must only be offered THEIR OWN
-  // records — surfacing another owner's same-named company invites attaching a
-  // deal to the wrong region's account. Super admins see everything.
-  let ownerScope: string | null = null
-  if (!auth.profile.is_super_admin) {
-    if (!accessToken) return { success: false, error: 'HubSpot Access Token not configured' }
-    ownerScope = await resolveHubSpotOwnerId(auth.user.email ?? '', accessToken)
-    if (!ownerScope) {
-      // Fail closed: without a resolved owner the scope filter can't be built,
-      // and returning unscoped results would leak every owner's companies.
-      return { success: false, error: 'Could not link your HubSpot user for company search. Please try again or contact an administrator.' }
-    }
-  }
+  // THE SEARCH IS PORTAL-WIDE. Dean, 9 Sep 2026: "is it possible for Jillian to
+  // be able to select and see all the companies not just the companies under her
+  // name ... she is trying to find Dimeo Construction but it is under a nancy
+  // name", and "she can apparently see them in hubspot though".
+  //
+  // This used to pin `hubspot_owner_id` to the caller for anyone who is not a
+  // super admin, on the reasoning that this portal duplicates a company per
+  // owner (one HERMEQ record per region) and offering someone another rep's
+  // same-named record invites attaching a deal to the wrong region's account.
+  // The cure was worse than the disease. Measured against the live portal on
+  // 9 Sep 2026: 9,500 companies, of which that rep owned 5. The filter hid
+  // 99.9% of the CRM, and 5,796 of those companies belong to owners whose seat
+  // is now archived (two departed reps hold 3,790 and 2,006), so those records
+  // were unreachable for EVERY non-admin, permanently. HubSpot's own
+  // permissions already let her see all of it, so the Hub was the only thing
+  // standing in the way, and it was refusing to show her records she can open
+  // in the CRM in the next tab.
+  //
+  // The duplicate risk is answered by naming the owner on every result instead
+  // of hiding the record: the rep picks between two HERMEQs by reading who
+  // holds each one. Deal visibility is untouched and still owner-pinned in
+  // getDeals and getDealsForBoard; this is only about which company a new deal
+  // can be attached to.
 
   try {
-    // 1. Search Supabase (Account Registry) - Fuzzy Search. The registry has
-    // no owner column, so it cannot be owner-scoped — admins only.
-    let supabaseCompanies: Record<string, string>[] | null = null
-    if (!ownerScope) {
-      const { data, error: sbError } = await supabase
-        .from('account_registry')
-        .select('*')
-        .ilike('hubspot_company_name', `%${query}%`)
-        .limit(5)
-      if (sbError) console.error('account_registry search failed:', sbError.message)
-      supabaseCompanies = data
-    }
+    // 1. Search Supabase (Account Registry) - Fuzzy Search. Now runs for every
+    // caller: it was admin-only purely because the registry has no owner column
+    // and so could not be owner-scoped, and there is no scope left to honour.
+    const { data: supabaseCompanies, error: sbError } = await supabase
+      .from('account_registry')
+      .select('*')
+      .ilike('hubspot_company_name', `%${query}%`)
+      .limit(5)
+    if (sbError) console.error('account_registry search failed:', sbError.message)
 
     const sbResults: CompanySearchResult[] = (supabaseCompanies || []).map(c => ({
       id: c.hubspot_company_id.toString(),
@@ -81,17 +90,11 @@ export async function searchCompanies(query: string): Promise<{ success: boolean
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          // Groups are ORed, filters within a group are ANDed, so the owner
-          // filter has to be repeated in BOTH groups. Dropping it from either
-          // one would leak other reps' companies, which is exactly what the
-          // fail-closed owner resolution above exists to prevent.
+          // Groups are ORed, filters within a group are ANDed.
           filterGroups: [
             {
               filters: [
                 { propertyName: 'name', operator: 'CONTAINS_TOKEN', value: query },
-                ...(ownerScope
-                  ? [{ propertyName: 'hubspot_owner_id', operator: 'EQ', value: ownerScope }]
-                  : []),
               ]
             },
             {
@@ -102,13 +105,10 @@ export async function searchCompanies(query: string): Promise<{ success: boolean
                 // country variants. Measured against the live portal: 1 hit
                 // versus 10.
                 { propertyName: 'domain', operator: 'CONTAINS_TOKEN', value: `${query}*` },
-                ...(ownerScope
-                  ? [{ propertyName: 'hubspot_owner_id', operator: 'EQ', value: ownerScope }]
-                  : []),
               ]
             }
           ],
-          properties: ['name', 'domain'],
+          properties: ['name', 'domain', 'hubspot_owner_id'],
           limit: 50,
         }),
         cache: 'no-store'
@@ -116,11 +116,16 @@ export async function searchCompanies(query: string): Promise<{ success: boolean
 
       if (response.ok) {
         const data = await response.json()
-        hsResults = (data.results as Array<{ id: string; properties: { name: string; domain?: string } }>).map(c => ({
+        // Names for the owner ids, so two same-named companies can be told
+        // apart. One indexed fetch, memoised for ten minutes and shared with
+        // the deals board. An empty index degrades to a dash, never to a throw.
+        const owners = await getOwnerIndex()
+        hsResults = (data.results as Array<{ id: string; properties: { name: string; domain?: string; hubspot_owner_id?: string } }>).map(c => ({
           id: c.id,
           name: c.properties.name,
           domain: c.properties.domain,
-          source: 'hubspot'
+          source: 'hubspot',
+          owner: ownerLabel(owners, c.properties.hubspot_owner_id)
         }))
       }
     }

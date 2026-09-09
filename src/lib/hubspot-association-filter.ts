@@ -18,15 +18,17 @@ import {
  * post-filtering, which is what would have made the filter lie for any deal
  * outside the fetched page.
  *
- * Resolution is deliberately NOT owner-scoped, unlike searchCompanies, which
- * fails closed for a non-super-admin because it picks the company a new deal
- * will be attached to. Here the scoping is already done: getDeals and
- * getDealsForBoard pin `hubspot_owner_id EQ` for any non-admin, so the deals
- * that come back are the rep's own whatever company ids go in. Scoping the
- * lookup as well would drop a rep's own deal whenever it hangs off a company
- * record another rep owns, which this portal's per-owner duplicates make
- * routine. If that owner pinning is ever loosened, this comment is the thing
- * that stops being true.
+ * Resolution is deliberately NOT owner-scoped. The scoping is already done:
+ * getDeals and getDealsForBoard pin `hubspot_owner_id EQ` for any non-admin, so
+ * the deals that come back are the rep's own whatever company ids go in.
+ * Scoping the lookup as well would drop a rep's own deal whenever it hangs off
+ * a company record another rep owns, which this portal's per-owner duplicates
+ * make routine. If that owner pinning is ever loosened, this comment is the
+ * thing that stops being true.
+ *
+ * searchCompanies was owner-scoped when this was written and no longer is
+ * (9 Sep 2026): DEAL visibility stays owner-pinned, while which COMPANY a deal
+ * may be attached to is portal-wide.
  */
 
 /** Enough to fill an IN list, plus nothing: HubSpot reports the exact `total`

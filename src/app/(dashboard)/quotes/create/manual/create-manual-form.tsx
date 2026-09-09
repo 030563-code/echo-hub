@@ -28,6 +28,9 @@ interface CompanyResult {
   name: string
   domain?: string
   source: 'hubspot' | 'supabase'
+  /** Who holds the record in HubSpot. This portal keeps a company per owner
+   *  for some accounts, so the name is how a rep tells two HERMEQs apart. */
+  owner?: string
 }
 
 import { createHubSpotDeal } from '@/app/actions/hubspot/createDeal'
@@ -41,11 +44,9 @@ import {
 } from '@/lib/deal-wizard-draft'
 
 export default function CreateManualRequestForm({
-  restrictedToOwn = true,
   allowedCurrencies,
   defaultCurrency,
 }: {
-  restrictedToOwn?: boolean
   /** Resolved from the caller's pipeline on the server, so the pipeline id
    *  never reaches the client. */
   allowedCurrencies: string[]
@@ -540,7 +541,7 @@ export default function CreateManualRequestForm({
                 <div className="relative">
                   <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                   <Input
-                    placeholder={restrictedToOwn ? 'Search your companies…' : 'Search all companies…'}
+                    placeholder="Search all companies…"
                     className="pl-10 bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow"
                     value={companyName}
                     onChange={(e) => {
@@ -587,10 +588,15 @@ export default function CreateManualRequestForm({
                         <p className="text-xs text-gray-500 max-sm:truncate">
                           {company.domain || <span className="italic text-gray-400">no domain</span>}
                         </p>
-                        <div className="flex items-center gap-2 mt-1">
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
                           <span className={`text-xs px-2 py-0.5 rounded-full ${company.source === 'supabase' ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'}`}>
                             {company.source === 'supabase' ? 'Account Registry' : 'HubSpot'}
                           </span>
+                          {company.owner && company.owner !== '—' && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                              Owner: {company.owner}
+                            </span>
+                          )}
                         </div>
                       </button>
                     ))}
@@ -603,9 +609,8 @@ export default function CreateManualRequestForm({
                   </p>
                 ) : (
                   <p className="text-xs text-gray-500">
-                    {restrictedToOwn
-                      ? 'Searches the HubSpot companies assigned to you, or create a new one below.'
-                      : 'Search existing HubSpot companies, or create a new one below.'}
+                    Searches every company in HubSpot, whoever owns it. Create a new one below
+                    only when it is genuinely not here.
                   </p>
                 )}
               </div>
@@ -639,7 +644,7 @@ export default function CreateManualRequestForm({
                    available, a rep fixing a mistyped domain would click it
                    again and mint a duplicate — createHubSpotCompany's dedup
                    reads a different domain as a different business. */
-                <CreateCompanyDialog initialName={companyName} inFlightRef={inFlightRef} onCreated={handleCompanyCreated} restrictedToOwn={restrictedToOwn} />
+                <CreateCompanyDialog initialName={companyName} inFlightRef={inFlightRef} onCreated={handleCompanyCreated} />
               )}
             </div>
           </div>

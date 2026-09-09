@@ -8,7 +8,6 @@ import { allowedCurrenciesForPipeline } from '@/lib/pipeline-config'
 export default async function CreateManualRequestPage() {
   await requireCapability('quotes.create')
   const auth = await getAuthorizedUser()
-  const restrictedToOwn = auth.ok ? !auth.profile.is_super_admin : true
   // Resolved here so the pipeline id stays server-side.
   const allowedCurrencies = allowedCurrenciesForPipeline(auth.ok ? auth.profile.pipeline_id : null)
   return (
@@ -24,7 +23,6 @@ export default async function CreateManualRequestPage() {
       </div>
 
       <CreateManualRequestForm
-        restrictedToOwn={restrictedToOwn}
         allowedCurrencies={allowedCurrencies}
         defaultCurrency={allowedCurrencies[0]}
       />
