@@ -132,6 +132,17 @@ describe("the supplier actions trust the token and nothing the caller sends", ()
     expect(source).not.toContain('notifyCargoPartnerReady')
   })
 
+  it('tells us the order is ready, after drafting and never before the stamp', () => {
+    // The approval step made finishing silent, and a queue nobody is told about
+    // is a queue nobody works. This is the email that fixes that.
+    const stamp = source.indexOf("update({ finished_at:")
+    const drafted = source.indexOf('createCargoRequestDraft(')
+    const told = source.indexOf('notifyReadyForShipment(')
+    expect(told).toBeGreaterThan(drafted)
+    expect(drafted).toBeGreaterThan(stamp)
+    expect(source).not.toMatch(/notifyReadyForShipment[\s\S]{0,400}return \{ ok: false/)
+  })
+
   it('stops the dates changing once the order is finished', () => {
     expect(source).toMatch(/est_start[\s\S]{0,300}\.is\('finished_at', null\)/)
   })

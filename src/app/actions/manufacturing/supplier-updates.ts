@@ -16,6 +16,7 @@ import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveManufacturingToken } from '@/lib/manufacturing-token'
 import { createCargoRequestDraft } from '@/lib/cargo-request-store'
+import { notifyReadyForShipment } from '@/app/actions/purchase-orders/notify-ready-for-shipment'
 import type { CargoLine } from '@/lib/cargo-request'
 
 const DateInput = z
@@ -129,15 +130,28 @@ export async function markManufacturingFinished(input: { token: string }): Promi
   // pressing a button that says it did not work.
   const { data: po } = await admin
     .from('purchase_orders')
-    .select('po_number, lines:purchase_order_lines(sku, product_name, product_family, quantity)')
+    .select('po_number, master_ref, lines:purchase_order_lines(sku, product_name, product_family, quantity)')
     .eq('id', resolved.poId)
-    .maybeSingle<{ po_number: string | null; lines: CargoLine[] | null }>()
-  await createCargoRequestDraft({
+    .maybeSingle<{ po_number: string | null; master_ref: string | null; lines: CargoLine[] | null }>()
+  const draft = await createCargoRequestDraft({
     poId: resolved.poId,
     poNumber: po?.po_number ?? null,
     finishedAt: finishedAtIso,
     lines: po?.lines ?? [],
   })
+
+  // And tell us, because a queue nobody is told about is a queue nobody works.
+  // Dean, 9 Sep: the manufacturer pressing finished should email Juraj in
+  // production, the test address while testing, saying the order is ready for
+  // shipment. Built from the draft above, so the email and the approval screen
+  // cannot show different figures.
+  const told = await notifyReadyForShipment(
+    { poId: resolved.poId, poNumber: po?.po_number ?? null, masterRef: po?.master_ref ?? null },
+    draft,
+  )
+  if (!told.sent && told.reason === 'failed') {
+    console.error('markManufacturingFinished ready notify failed', resolved.poId)
+  }
 
   revalidatePath(`/purchase-orders/${resolved.poId}`)
   revalidatePath('/purchase-orders')
