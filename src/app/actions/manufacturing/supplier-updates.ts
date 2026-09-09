@@ -130,7 +130,7 @@ export async function markManufacturingFinished(input: { token: string }): Promi
   // pressing a button that says it did not work.
   const { data: po } = await admin
     .from('purchase_orders')
-    .select('po_number, master_ref, lines:purchase_order_lines(sku, product_name, product_family, quantity)')
+    .select('po_number, master_ref, lines:purchase_order_lines(product_name, product_family, quantity)')
     .eq('id', resolved.poId)
     .maybeSingle<{ po_number: string | null; master_ref: string | null; lines: CargoLine[] | null }>()
   const draft = await createCargoRequestDraft({

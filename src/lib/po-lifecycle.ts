@@ -38,6 +38,14 @@ export function stageLabel(stage: LifecycleStage): string {
   return LIFECYCLE_STAGES.find((s) => s.key === stage)?.label ?? stage;
 }
 
+/**
+ * Today as YYYY-MM-DD. UTC on purpose: it is compared against dates Bamida
+ * typed, and the server and the browser have to agree on which day it is.
+ */
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 /** What the board knows about a PO when it places it. */
 type StageInput = Pick<PurchaseOrder, "leg" | "status"> & Partial<Pick<PurchaseOrder, "manufacturing">>;
 
@@ -50,9 +58,13 @@ type StageInput = Pick<PurchaseOrder, "leg" | "status"> & Partial<Pick<PurchaseO
  * they are still choosing, fulfilling it from stock, or have raised the Bamida
  * order, so it sits at S.R.O and stays there. The Bamida order is what travels
  * onward, and it moves on the events Bamida themselves produce: the Hub sent it
- * to them, they gave their dates, they pressed finished.
+ * to them, their start date arrived, they pressed finished.
+ *
+ * `today` is a YYYY-MM-DD date, the shape the estimated dates are stored in. It
+ * is a parameter so the rule can be tested at a chosen date rather than only on
+ * the day the test happens to run.
  */
-export function deriveStage(po: StageInput): LifecycleStage {
+export function deriveStage(po: StageInput, today: string = todayIso()): LifecycleStage {
   if (po.status === "shipped" || po.status === "delivered") return "shipping";
 
   switch (po.leg) {
@@ -71,13 +83,23 @@ export function deriveStage(po: StageInput): LifecycleStage {
       const m = po.manufacturing;
       if (!m?.sent_at) return "sro";
       if (m.finished_at) return "shipping";
-      if (m.est_start || m.est_finish) return "manufacturing";
+      // Dean, 9 Sep: the order becomes Manufacturing in progress when the
+      // estimated start date ARRIVES, not when Bamida enter it. A start date a
+      // fortnight out is a plan, and until that day the order is still sitting
+      // at the factory waiting its turn. No write and no scheduled job: the
+      // column is worked out as the board renders, so a card moves on its own
+      // the morning the date comes round. A finish date on its own says nothing
+      // about having started, so it moves nothing.
+      if (m.est_start && m.est_start <= today) return "manufacturing";
       return "sent_manufacturing";
     }
   }
 }
 
 /** The column a PO renders in: its persisted stage, else the derived one. */
-export function effectiveStage(po: StageInput & Pick<PurchaseOrder, "lifecycle_stage">): LifecycleStage {
-  return isLifecycleStage(po.lifecycle_stage) ? po.lifecycle_stage : deriveStage(po);
+export function effectiveStage(
+  po: StageInput & Pick<PurchaseOrder, "lifecycle_stage">,
+  today: string = todayIso(),
+): LifecycleStage {
+  return isLifecycleStage(po.lifecycle_stage) ? po.lifecycle_stage : deriveStage(po, today);
 }

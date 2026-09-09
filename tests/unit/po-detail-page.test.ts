@@ -141,6 +141,36 @@ describe('what leaves the company carries names, not our codes', () => {
     expect(SUPPLIER_PAGE).toContain('{line.product_name || line.sku}')
   })
 
+  it('carries no SKU in any outbound email payload', () => {
+    // Dean, 9 Sep: the Code column was STILL in the cargo email after the SKU
+    // came off the documents, because the payload kept carrying the field and
+    // n8n kept printing it. So the rule is about the payload, not the render:
+    // if the Hub never sends it, no template can put it back.
+    //
+    // decide-po's OTHER webhook (N8N_PO_APPROVED_WEBHOOK_URL) is not an email.
+    // It creates the Xero purchase order and genuinely needs the SKU, which is
+    // why this walks the four notify modules rather than every action.
+    // Comments stripped first: these files SAY the word, explaining why they do
+    // not carry the field, and a guard that trips on its own reason is useless.
+    const code = (f: string) =>
+      read(f)
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/.*$/gm, '')
+    for (const f of [
+      'src/app/actions/purchase-orders/notify-sro.ts',
+      'src/app/actions/purchase-orders/notify-cargo-partner.ts',
+      'src/app/actions/purchase-orders/notify-ready-for-shipment.ts',
+      'src/lib/cargo-request.ts',
+    ]) {
+      expect(code(f), `${f} still carries a SKU into an email`).not.toMatch(/\bsku\b/i)
+    }
+    // And the two payload builders that hand those modules their lines.
+    expect(read('src/app/actions/purchase-orders/send-manufacturing-po.ts')).not.toMatch(/^\s+sku: l\.sku,$/m)
+    expect(read('src/app/actions/manufacturing/supplier-updates.ts')).not.toContain(
+      'purchase_order_lines(sku',
+    )
+  })
+
   it('resolves every entity code to a name, in one place', () => {
     const consts = read('src/lib/depot-constants.ts')
     expect(consts).toContain("'EB-SRO': 'Echo Barrier s.r.o.'")

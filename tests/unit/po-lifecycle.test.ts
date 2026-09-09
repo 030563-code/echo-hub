@@ -95,7 +95,10 @@ describe("deriveStage, the Bamida order moves on what Bamida do", () => {
 
   it("dates against an unsent order do not count", () => {
     expect(
-      deriveStage(po("SRO_TO_SUPPLIER", "approved", null, mfg({ est_start: "2026-09-09", est_finish: "2026-09-30" }))),
+      deriveStage(
+        po("SRO_TO_SUPPLIER", "approved", null, mfg({ est_start: "2026-09-09", est_finish: "2026-09-30" })),
+        "2026-09-30",
+      ),
     ).toBe("sro");
   });
 
@@ -105,12 +108,31 @@ describe("deriveStage, the Bamida order moves on what Bamida do", () => {
     );
   });
 
-  it("sent and dated: Manufacturing in progress, on either date", () => {
+  it("dated but not started yet: still Sent to manufacturing", () => {
     const sent = "2026-09-08T10:00:00Z";
-    expect(deriveStage(po("SRO_TO_SUPPLIER", "approved", null, mfg({ sent_at: sent, est_start: "2026-09-09" })))).toBe(
-      "manufacturing",
-    );
-    expect(deriveStage(po("SRO_TO_SUPPLIER", "approved", null, mfg({ sent_at: sent, est_finish: "2026-09-30" })))).toBe(
+    const dated = po("SRO_TO_SUPPLIER", "approved", null, mfg({ sent_at: sent, est_start: "2026-09-20" }));
+    expect(deriveStage(dated, "2026-09-09")).toBe("sent_manufacturing");
+    expect(deriveStage(dated, "2026-09-19")).toBe("sent_manufacturing");
+  });
+
+  it("the estimated start date arrives: Manufacturing in progress, with no write", () => {
+    const sent = "2026-09-08T10:00:00Z";
+    const dated = po("SRO_TO_SUPPLIER", "approved", null, mfg({ sent_at: sent, est_start: "2026-09-20" }));
+    expect(deriveStage(dated, "2026-09-20")).toBe("manufacturing");
+    expect(deriveStage(dated, "2026-10-01")).toBe("manufacturing");
+  });
+
+  it("a finish date on its own moves nothing: it does not say work has started", () => {
+    const sent = "2026-09-08T10:00:00Z";
+    expect(
+      deriveStage(po("SRO_TO_SUPPLIER", "approved", null, mfg({ sent_at: sent, est_finish: "2026-09-30" })), "2026-10-05"),
+    ).toBe("sent_manufacturing");
+  });
+
+  it("today defaults to the real date, so the board needs no clock passed in", () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const sent = "2026-09-08T10:00:00Z";
+    expect(deriveStage(po("SRO_TO_SUPPLIER", "approved", null, mfg({ sent_at: sent, est_start: today })))).toBe(
       "manufacturing",
     );
   });

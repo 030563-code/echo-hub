@@ -274,8 +274,8 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
       // The name, not the code. Nobody outside this database knows US-BAL.
       fromDepot: entityLabel(fromDepot),
       approvedBy: label,
+      // No SKU: an email says what the product is, not what we call it in here.
       lines: (po.lines ?? []).map((l) => ({
-        sku: l.sku,
         product_name: l.product_name,
         quantity: l.quantity,
       })),

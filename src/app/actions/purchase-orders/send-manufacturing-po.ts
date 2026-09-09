@@ -209,8 +209,13 @@ export async function sendManufacturingPoToBamida(
         link: link.url,
         link_expires_at: link.expiresAt,
         pallets: bamida.pallets,
+        /**
+         * No SKU. `EBH9NA` is our own database code and means nothing to a
+         * factory, so it does not travel: not printed, and not carried in the
+         * payload either, because the webhook body is readable in every n8n
+         * execution log.
+         */
         lines: (po.lines ?? []).map((l) => ({
-          sku: l.sku,
           product_name: l.product_name,
           quantity: l.quantity,
         })),

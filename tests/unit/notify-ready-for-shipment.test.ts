@@ -38,8 +38,8 @@ const draft = (overrides: Partial<CargoDraft> = {}): CargoDraft => ({
     poNumber: META.poNumber,
     finishedAt: '2026-09-30T14:05:00.000Z',
     lines: [
-      { sku: 'EBH9NA', product_name: 'Echo Barrier H9', product_family: 'H9', quantity: 140 },
-      { sku: 'EBH10NA', product_name: 'Echo Barrier H10', product_family: 'H10', quantity: 71 },
+      { product_name: 'Echo Barrier H9', product_family: 'H9', quantity: 140 },
+      { product_name: 'Echo Barrier H10', product_family: 'H10', quantity: 71 },
     ],
     consignee: { depot: 'US-BAL', address: '8125 Stayton Drive, Jessup, MD 20794' },
     to: '',

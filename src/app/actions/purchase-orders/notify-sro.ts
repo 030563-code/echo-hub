@@ -32,7 +32,6 @@ const TIMEOUT_MS = 15_000
 const DEFAULT_TO = 'juraj@echobarrier.eu'
 
 export type SroPoLine = {
-  sku: string | null
   product_name: string | null
   quantity: number | null
 }
@@ -115,7 +114,6 @@ export function buildSroNotifyPayload(input: NotifySroInput, recipients: Resolve
     /** Straight into the fulfilment step, not the board. */
     link: `${hubBaseUrl()}/purchase-orders/${input.poId}`,
     lines: input.lines.map((line) => ({
-      sku: line.sku,
       product_name: line.product_name,
       quantity: line.quantity,
     })),

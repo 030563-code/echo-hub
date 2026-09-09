@@ -71,8 +71,11 @@ export const OFFICE_IN_CHARGE = {
   role: 'CONTROLLING_AGENT',
 } as const
 
+/**
+ * Dean, 9 Sep: no SKU. `EBH9NA` is our own database code and means nothing to a
+ * freight forwarder, so it is not carried here and cannot reach the email.
+ */
 export type CargoLine = {
-  sku: string | null
   product_name: string | null
   product_family: string | null
   quantity: number | null
@@ -150,7 +153,6 @@ export function buildCargoDraft(input: {
     to: input.to,
     cc: input.cc,
     lines: input.lines.map((line) => ({
-      sku: line.sku,
       product_name: line.product_name,
       product_family: line.product_family,
       quantity: line.quantity,

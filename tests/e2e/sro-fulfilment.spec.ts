@@ -215,6 +215,34 @@ test("the board keeps the SRO order and the unsent Bamida order at S.R.O", async
   await expect(sro.getByText(bamidaPo.po_number, { exact: true })).toBeVisible();
 });
 
+test("the board waits for the estimated start date before saying Manufacturing in progress", async ({ page }) => {
+  test.setTimeout(90_000);
+  // Dean, 9 Sep: entering a date is a plan; the order is in progress on the day
+  // itself. Driven through the row rather than the supplier page so both sides
+  // of the date can be seen in one run, and put back exactly as it was found so
+  // the later tests still start from an unsent order.
+  const sentAt = new Date(Date.now() - 86_400_000).toISOString();
+  const future = new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10);
+  const past = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10);
+
+  await login(page, creds!);
+
+  await sb!.from("po_manufacturing").update({ sent_at: sentAt, est_start: future }).eq("po_id", bamidaPo.id);
+  await openKanban(page);
+  await expect(column(page, "Sent to manufacturing").getByText(bamidaPo.po_number, { exact: true })).toBeVisible();
+  await expect(
+    column(page, "Manufacturing in progress").getByText(bamidaPo.po_number, { exact: true }),
+  ).toHaveCount(0);
+
+  await sb!.from("po_manufacturing").update({ est_start: past }).eq("po_id", bamidaPo.id);
+  await openKanban(page);
+  await expect(
+    column(page, "Manufacturing in progress").getByText(bamidaPo.po_number, { exact: true }),
+  ).toBeVisible();
+
+  await sb!.from("po_manufacturing").update({ sent_at: null, est_start: null }).eq("po_id", bamidaPo.id);
+});
+
 test("the supplier link needs no login: dates save, finished is one-shot, a wrong link is refused", async ({
   browser,
 }) => {

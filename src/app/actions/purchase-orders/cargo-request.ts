@@ -29,8 +29,8 @@ import { sendDescription } from '@/lib/email-recipients'
 import { INCOTERMS, MODALITIES, CATEGORIES, DIRECTIONS, PACKAGE_TYPES } from '@/lib/cargo-request'
 import { notifyCargoPartnerReady } from '@/app/actions/purchase-orders/notify-cargo-partner'
 
+/** No SKU: our database codes do not go to a forwarder. Zod drops a stored one. */
 const Line = z.object({
-  sku: z.string().max(64).nullable(),
   product_name: z.string().max(200).nullable(),
   product_family: z.string().max(64).nullable(),
   quantity: z.number().int().min(0).nullable(),

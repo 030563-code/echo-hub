@@ -31,7 +31,7 @@ const INPUT = {
   masterRef: 'EBUS2026001',
   fromDepot: 'US-BAL',
   approvedBy: 'Dave Lindsay',
-  lines: [{ sku: 'EBH9NA', product_name: 'H9 Barrier', quantity: 96 }],
+  lines: [{ product_name: 'H9 Barrier', quantity: 96 }],
 }
 
 function lastBody(): Record<string, unknown> {
@@ -93,7 +93,7 @@ describe('notifySroPoReady, when it may send', () => {
     expect(body.link).toBe(
       'https://hub.echobarrier.com/purchase-orders/11111111-2222-3333-4444-555555555555',
     )
-    expect(body.lines).toEqual([{ sku: 'EBH9NA', product_name: 'H9 Barrier', quantity: 96 }])
+    expect(body.lines).toEqual([{ product_name: 'H9 Barrier', quantity: 96 }])
   })
 })
 

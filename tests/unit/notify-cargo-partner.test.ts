@@ -35,8 +35,8 @@ const META = {
 }
 
 const LINES = [
-  { sku: 'EBH9NA', product_name: 'Echo Barrier H9', product_family: 'H9', quantity: 140 },
-  { sku: 'EBH10NA', product_name: 'Echo Barrier H10', product_family: 'H10', quantity: 71 },
+  { product_name: 'Echo Barrier H9', product_family: 'H9', quantity: 140 },
+  { product_name: 'Echo Barrier H10', product_family: 'H10', quantity: 71 },
 ]
 
 function draft(overrides: Partial<CargoDraft> = {}): CargoDraft {
@@ -79,13 +79,13 @@ describe('pallets and description', () => {
     expect(palletsFor(LINES)).toBe(4) // 140/70 = 2, then 71/70 rounds to 2
   })
   it('ignores lines with no quantity', () => {
-    expect(palletsFor([{ sku: 'X', product_name: null, product_family: null, quantity: null }])).toBe(0)
+    expect(palletsFor([{ product_name: null, product_family: null, quantity: null }])).toBe(0)
   })
   it('names the models it is carrying', () => {
     expect(cargoDescription(LINES)).toBe('Acoustic Barriers H10, H9')
   })
   it('falls back when no family is recorded', () => {
-    expect(cargoDescription([{ sku: 'X', product_name: null, product_family: null, quantity: 1 }])).toBe(
+    expect(cargoDescription([{ product_name: null, product_family: null, quantity: 1 }])).toBe(
       'Acoustic Barriers',
     )
   })
