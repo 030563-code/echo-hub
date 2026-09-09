@@ -429,3 +429,36 @@ test("finishing drafts a shipment request, editable and not sent", async ({ page
   // Present, enabled, and deliberately not pressed: it emails a freight forwarder.
   await expect(page.getByRole("button", { name: "Approve and send" })).toBeEnabled();
 });
+
+test("a draft written before a field existed still opens the page", async ({ page }) => {
+  test.setTimeout(90_000);
+  // The real regression, 9 Sep: `request` is jsonb, so PO-01178's draft simply
+  // had no `pickup_from` key, the card read PICKUP_PARTIES[undefined].name, and
+  // the whole purchase order page died with "Cannot read properties of
+  // undefined". Reproduced here by taking the key back off a real draft.
+  const { data: before } = await sb!
+    .from("po_cargo_request")
+    .select("request")
+    .eq("po_id", bamidaPo.id)
+    .single();
+  expect(before).not.toBeNull();
+
+  const stripped = { ...(before!.request as Record<string, unknown>) };
+  delete stripped.pickup_from;
+  await sb!.from("po_cargo_request").update({ request: stripped }).eq("po_id", bamidaPo.id);
+
+  try {
+    await login(page, creds!);
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(String(e)));
+    await page.goto(`/purchase-orders/${bamidaPo.id}`);
+    await expect(page.getByRole("heading", { name: "Shipment request" })).toBeVisible({ timeout: 30_000 });
+    // The exact line that threw, defaulted to the factory.
+    await expect(page.getByText(/BAMIDA, s\.r\.o\., account 604070/)).toBeVisible();
+    expect(errors, `page errors: ${errors.join(" | ")}`).toHaveLength(0);
+  } finally {
+    // Put the row back however the test ends, so a failure here cannot leave a
+    // broken draft behind for the next test.
+    await sb!.from("po_cargo_request").update({ request: before!.request }).eq("po_id", bamidaPo.id);
+  }
+});

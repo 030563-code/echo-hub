@@ -258,3 +258,33 @@ describe('The shipment request pins what a person must not retype', () => {
     expect(card).toContain('The purchase order number. Fixed.')
   })
 })
+
+describe('A draft written before a field existed still opens the page', () => {
+  const STORE = 'src/lib/cargo-request-store.ts'
+
+  it('completes the stored shape at the load boundary, not at each reader', () => {
+    const src = read(STORE)
+    // `request` is jsonb. A row written before pickup_from existed simply does
+    // not have the key, and the cast on the way out claims otherwise. That took
+    // the whole purchase order page down with "Cannot read properties of
+    // undefined (reading 'name')".
+    expect(src).toContain('function hydrateDraft')
+    expect(src).toMatch(/draft: hydrateDraft\(data\.request\)/)
+    // The raw cast is gone from the loader.
+    expect(src).not.toMatch(/draft: data\.request as CargoDraft/)
+  })
+
+  it('defaults an unknown or missing pickup to the factory, and validates it', () => {
+    const src = read(STORE)
+    // Validated against the real list rather than a truthiness check, so a
+    // hand-edited jsonb value cannot get through either.
+    expect(src).toMatch(/PICKUP_FROM as readonly string\[\]\)\.includes\(draft\.pickup_from\)/)
+    expect(src).toMatch(/: 'BAMIDA'/)
+  })
+
+  it('lets the card read the pickup party without defending itself', () => {
+    // The point of fixing it at the boundary: the render stays plain.
+    const card = read('src/app/(dashboard)/purchase-orders/[id]/cargo-request-card.tsx')
+    expect(card).toContain('PICKUP_PARTIES[form.pickup_from]')
+  })
+})

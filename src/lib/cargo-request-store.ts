@@ -9,7 +9,7 @@ import 'server-only'
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { buildCargoDraft, type CargoDraft, type CargoLine, type PickupFrom } from '@/lib/cargo-request'
+import { buildCargoDraft, PICKUP_FROM, type CargoDraft, type CargoLine, type PickupFrom } from '@/lib/cargo-request'
 import { defaultCargoRecipients, resolveConsignee } from '@/app/actions/purchase-orders/notify-cargo-partner'
 
 export type CargoRequestRow = {
@@ -21,6 +21,30 @@ export type CargoRequestRow = {
   sentWasTest: boolean
 }
 
+/**
+ * A stored draft, made whole.
+ *
+ * `request` is jsonb, so a row written before a field existed simply does not
+ * have it, and the type assertion on the way out says otherwise. That is not
+ * theoretical: `pickup_from` was added on 9 Sep 2026 and every draft written
+ * before it went straight to a component that read
+ * `PICKUP_PARTIES[draft.pickup_from].name` and took the whole purchase order
+ * page down with it.
+ *
+ * So the shape is completed HERE, at the one boundary where untyped storage
+ * becomes a typed object, rather than defended at each of the places that read
+ * it. BAMIDA is the right default and not a guess: until that same day, the only
+ * thing that could create a draft at all was Bamida pressing finished. A save or
+ * a send re-pins it from the order's own fulfilment type anyway.
+ */
+function hydrateDraft(raw: unknown): CargoDraft {
+  const draft = (raw ?? {}) as CargoDraft
+  const pickup = (PICKUP_FROM as readonly string[]).includes(draft.pickup_from)
+    ? draft.pickup_from
+    : 'BAMIDA'
+  return { ...draft, pickup_from: pickup }
+}
+
 export async function loadCargoRequest(poId: string): Promise<CargoRequestRow | null> {
   const { data } = await createAdminClient()
     .from('po_cargo_request')
@@ -30,7 +54,7 @@ export async function loadCargoRequest(poId: string): Promise<CargoRequestRow | 
   if (!data) return null
   return {
     poId: data.po_id as string,
-    draft: data.request as CargoDraft,
+    draft: hydrateDraft(data.request),
     updatedAt: data.updated_at as string,
     sentAt: (data.sent_at as string | null) ?? null,
     sentTo: (data.sent_to as string[] | null) ?? [],
