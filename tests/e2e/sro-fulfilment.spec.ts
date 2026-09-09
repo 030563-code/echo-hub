@@ -16,11 +16,20 @@ import { deletePurchaseOrdersByNotes, serviceClient } from "./db-helpers";
 //   - the board keeps the SRO order and the unsent Bamida order at S.R.O;
 //   - the supplier link works with no login: dates save, Manufacturing finished
 //     is one-shot even when two browsers race it, a wrong link is refused, and
-//     the finished order shows on the board under Shipping.
+//     the finished order shows on the board under Shipping;
+//   - finishing drafts the shipment request, and the review card offers it for
+//     approval with the Incoterm still blank.
 //
 // Self-contained: fixtures are created in beforeAll with the service-role key
-// from .env.local and removed in afterAll (CASCADE takes lines, po_manufacturing
-// and the token). Nothing here can email anyone.
+// from .env.local and removed in afterAll (CASCADE takes lines, po_manufacturing,
+// po_cargo_request and the token).
+//
+// ONE BUTTON HERE REACHES n8n. Since 9 Sep, Manufacturing finished emails us to
+// say an order is ready for shipment, so a run sends one email. That is why the
+// spec refuses to run unless HUB_EMAIL_TEST_RECIPIENT is set: without it a
+// fixture order would tell Juraj that barriers he has never heard of are ready.
+// Send to Bamida and Approve and send are still only ever looked at, never
+// pressed: those two reach a factory and a freight forwarder.
 
 const TAG = "E2E SRO FULFILMENT FIXTURE";
 const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
@@ -109,6 +118,13 @@ test.afterAll(async () => {
 test.beforeEach(async () => {
   test.skip(!creds, "no admin creds in .env.local");
   test.skip(!sb, "no service-role key in .env.local");
+  // Manufacturing finished emails whoever the Hub decides. With the override on
+  // that is the tester; without it, it is Juraj, about an order that does not
+  // exist. Refuse rather than send.
+  test.skip(
+    !process.env.HUB_EMAIL_TEST_RECIPIENT,
+    "HUB_EMAIL_TEST_RECIPIENT is not set: pressing finished would email the real recipient",
+  );
 });
 
 test("an approved SRO order offers stock or manufacture, with the buildable figure", async ({ page }) => {
@@ -265,4 +281,57 @@ test("after Bamida press finished the Hub says so, and the board moves it to Shi
   await expect(page.getByRole("button", { name: "Send to Bamida" })).toHaveCount(0);
   await openKanban(page);
   await expect(column(page, "Shipping").getByText(bamidaPo.po_number, { exact: true })).toBeVisible();
+});
+
+// A label wraps its own control on the shipment request card, so filter on the
+// label text and reach inside it. Text alone would also match the read-only
+// summary rows.
+const field = (page: Page, label: string) =>
+  page.locator("label").filter({ hasText: label }).first();
+
+test("finishing drafts a shipment request, editable and not sent", async ({ page }) => {
+  test.setTimeout(90_000);
+  await login(page, creds!);
+
+  // Drafted by the finish in the previous test, never by a person.
+  const { data: drafted } = await sb!
+    .from("po_cargo_request")
+    .select("request, sent_at")
+    .eq("po_id", bamidaPo.id)
+    .single();
+  expect(drafted).not.toBeNull();
+  expect(drafted!.sent_at).toBeNull();
+  const draft = drafted!.request as Record<string, unknown>;
+  expect(draft.delivery_term).toBeNull();
+  expect(draft.pieces).toBe(1); // 20 units, 70 to a pallet, and a part pallet is a pallet
+  expect(draft.description).toBe("Acoustic Barriers H9");
+  expect(draft.cargo_readiness_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+  await page.goto(`/purchase-orders/${bamidaPo.id}`);
+  await expect(page.getByRole("heading", { name: "Shipment request" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/Nothing leaves until you press Approve and send/)).toBeVisible();
+
+  // The Incoterm is the field nobody has answered, so it starts blank and says so.
+  const incoterm = field(page, "Incoterm").locator("select");
+  await expect(incoterm).toHaveValue("");
+  await expect(page.getByText(/No Incoterm\./)).toBeVisible();
+
+  // Editable, and the edit survives a save that sends nothing.
+  await incoterm.selectOption("DAP");
+  await field(page, "Anything else they should know").locator("textarea").fill("Gate closes at 15:00");
+  await page.getByRole("button", { name: "Save without sending" }).click();
+  await expect(page.getByText("Saved. Nothing has been sent yet.")).toBeVisible({ timeout: 15_000 });
+
+  const { data: saved } = await sb!
+    .from("po_cargo_request")
+    .select("request, sent_at")
+    .eq("po_id", bamidaPo.id)
+    .single();
+  const after = saved!.request as Record<string, unknown>;
+  expect(after.delivery_term).toBe("DAP");
+  expect(after.notes).toBe("Gate closes at 15:00");
+  expect(saved!.sent_at).toBeNull(); // saving is not sending
+
+  // Present, enabled, and deliberately not pressed: it emails a freight forwarder.
+  await expect(page.getByRole("button", { name: "Approve and send" })).toBeEnabled();
 });
