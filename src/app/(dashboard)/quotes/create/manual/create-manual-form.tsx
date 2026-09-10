@@ -541,7 +541,7 @@ export default function CreateManualRequestForm({
                 <div className="relative">
                   <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                   <Input
-                    placeholder="Search all companies…"
+                    placeholder="Search your region's companies…"
                     className="pl-10 bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow"
                     value={companyName}
                     onChange={(e) => {
@@ -609,8 +609,8 @@ export default function CreateManualRequestForm({
                   </p>
                 ) : (
                   <p className="text-xs text-gray-500">
-                    Searches every company in HubSpot, whoever owns it. Create a new one below
-                    only when it is genuinely not here.
+                    Searches every company in your sales region, whichever colleague brought it
+                    in. Create a new one below only when it is genuinely not here.
                   </p>
                 )}
               </div>
