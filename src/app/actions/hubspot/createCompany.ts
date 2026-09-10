@@ -2,6 +2,7 @@
 
 import { getAuthorizedUser, hasCapability } from '@/lib/authz'
 import { resolveHubSpotOwnerId } from '@/lib/hubspot-owner'
+import { teamsForPipeline } from '@/lib/pipeline-config'
 import { externalCallsDisabled, STAGING_SKIP_NOTE } from '@/lib/env'
 
 interface CreateCompanyParams {
@@ -15,16 +16,18 @@ interface CreateCompanyParams {
 // and compare exactly in code rather than trust the API's own matching.
 // A candidate with a conflicting domain is treated as a different business.
 //
-// Portal-wide, matching searchCompanies. It used to match only the caller's own
-// records for a non-admin, which paired badly with a search that was scoped the
-// same way: a rep who could not SEE the existing company could not dedup
-// against it either, so the one guard against minting a second record for a
-// business someone else already owns never fired. Now the rep is shown the
-// existing record and can use it.
+// Scoped to the caller's TEAM, matching searchCompanies. It used to match only
+// the caller's OWN records, which paired badly with a search scoped the same
+// way: a rep who could not SEE a colleague's existing company could not dedup
+// against it either, so the guard against a second record for one business
+// never fired. Team scope fixes that while keeping the deliberate per-region
+// duplicates apart: a US rep deduping against the UK's record of the same
+// business would attach their pipeline to the wrong region's account.
 async function findExistingCompanyByName(
   accessToken: string,
   name: string,
-  domain: string
+  domain: string,
+  teamScope: string[] | null
 ): Promise<{ id: string; name: string; domain: string } | null> {
   const target = name.trim().toLowerCase()
   if (!target) return null
@@ -40,6 +43,9 @@ async function findExistingCompanyByName(
         {
           filters: [
             { propertyName: 'name', operator: 'CONTAINS_TOKEN', value: name.trim() },
+            ...(teamScope
+              ? [{ propertyName: 'hs_all_team_ids', operator: 'IN', values: teamScope }]
+              : []),
           ],
         },
       ],
@@ -88,19 +94,27 @@ export async function createHubSpotCompany(params: CreateCompanyParams): Promise
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
   if (!accessToken) return { success: false, error: 'Token Missing' }
 
-  // A new company is stamped with its creator so the CRM shows who brought the
-  // account in, and so it lands in their HubSpot views. Visibility no longer
-  // depends on it (the search is portal-wide), so an unresolved owner is no
-  // longer fatal: the record would still be findable by everyone. Admins create
-  // unowned records as before.
+  // A new company MUST be owned by its creator, because HubSpot derives the
+  // company's team stamp from the owner and the search is team-scoped: an
+  // unowned company would carry no team and be invisible to everyone, its
+  // creator included. So this still fails closed when the owner cannot be
+  // resolved. Admins may create unowned records (they see everything).
   const ownerScope = auth.profile.is_super_admin
     ? null
     : await resolveHubSpotOwnerId(auth.user.email ?? '', accessToken)
+  if (!auth.profile.is_super_admin && !ownerScope) {
+    return { success: false, error: 'Could not link your HubSpot user, so the company would not appear in your searches. Please try again or contact an administrator.' }
+  }
+
+  const teamScope = auth.profile.is_super_admin ? null : teamsForPipeline(auth.profile.pipeline_id)
+  if (teamScope && teamScope.length === 0) {
+    return { success: false, error: 'Your sales region is not set, so a new company could not be filed against your team. An administrator needs to set your region on your profile.' }
+  }
 
   try {
     // Avoid minting a duplicate company for an existing name — return the
     // existing record instead of creating a new one.
-    const existing = await findExistingCompanyByName(accessToken, params.name, params.domain)
+    const existing = await findExistingCompanyByName(accessToken, params.name, params.domain, teamScope)
     if (existing) {
       return {
         success: true,

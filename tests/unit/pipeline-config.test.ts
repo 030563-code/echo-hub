@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   PIPELINE_CONFIG,
   TEAM_PIPELINE_MAP,
+  teamsForPipeline,
   allowedCurrenciesForPipeline,
   quoteTemplateIdFor,
 } from '@/lib/pipeline-config'
@@ -106,5 +107,42 @@ describe('quote template ids', () => {
     expect(quoteTemplateIdFor('default')).toBeNull()
     expect(quoteTemplateIdFor('')).toBeNull()
     expect(quoteTemplateIdFor(null)).toBeNull()
+  })
+})
+
+/**
+ * teamsForPipeline inverts TEAM_PIPELINE_MAP so company search can be scoped to
+ * a rep's region. Dean, 9 Sep 2026: "Jillian should only see her USA sales team
+ * companies, those made under a person under her pipeline."
+ */
+describe('teamsForPipeline', () => {
+  const USA = 'dfc85d9e-7eb9-4ade-a9cf-4e726cbcc9cc'
+  const EURO = 'd739df20-18b4-4e4b-b183-943038071da1'
+
+  it('finds the one team behind USA SALES', () => {
+    expect(teamsForPipeline(USA)).toEqual(['949190'])
+  })
+
+  it('returns EVERY team feeding a pipeline, not just the first', () => {
+    // EURO SALES is fed by Europe, France and Spain. Returning one would hide
+    // two thirds of that region's companies from a French rep.
+    expect(teamsForPipeline(EURO)).toEqual(['32677', '570270', '592522'])
+  })
+
+  it('returns empty for a missing, blank or unknown pipeline', () => {
+    // Every caller fails closed on empty. Returning something here would be
+    // the difference between "no results" and "the whole portal".
+    expect(teamsForPipeline(null)).toEqual([])
+    expect(teamsForPipeline(undefined)).toEqual([])
+    expect(teamsForPipeline('   ')).toEqual([])
+    expect(teamsForPipeline('not-a-pipeline')).toEqual([])
+  })
+
+  it('covers every pipeline named in the map', () => {
+    // Self-check: a pipeline added to the map without a team would silently
+    // lock that whole region out of company search.
+    for (const pipelineId of new Set(Object.values(TEAM_PIPELINE_MAP))) {
+      expect(teamsForPipeline(pipelineId).length).toBeGreaterThan(0)
+    }
   })
 })

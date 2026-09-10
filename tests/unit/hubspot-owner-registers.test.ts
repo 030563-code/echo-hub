@@ -63,11 +63,26 @@ describe('searchCompanies source', () => {
     expect(SEARCH).toContain('export async function searchCompanies')
   })
 
-  it('never pins hubspot_owner_id, so the search stays portal-wide', () => {
-    // Dean, 9 Sep 2026: a rep must be able to find a company held by a
-    // colleague (Dimeo Construction sits under a departed rep). Re-adding an
-    // owner filter here hides 99.9% of the CRM from every non-admin again.
+  it('never pins hubspot_owner_id: the scope is the TEAM, not the person', () => {
+    // Dean, 9 Sep 2026: a rep must find a company a colleague brought in.
+    // Dimeo Construction sits under a rep who has left, so owner scoping
+    // cannot reach it by any route. Measured live: owner scoping gave that rep
+    // 426 of 57,400 companies; team scoping gives 27,994.
     expect(SEARCH).not.toContain("propertyName: 'hubspot_owner_id'")
+  })
+
+  it('scopes on hs_all_team_ids, the stamp that survives the owner leaving', () => {
+    // hubspot_team_id on the OWNER is wiped when a seat is archived (Dimeo's
+    // owner carries no teams at all), but the stamp on the COMPANY persists.
+    // That is the whole reason this property is the one being filtered.
+    expect(SEARCH).toContain("propertyName: 'hs_all_team_ids'")
+    expect(SEARCH).toContain('teamsForPipeline(')
+  })
+
+  it('fails closed when the caller has no region', () => {
+    // An unscoped search for a rep with no pipeline would hand them all 57,400
+    // companies, which is the thing the scoping exists to stop.
+    expect(SEARCH).toMatch(/teamScope\.length === 0[\s\S]{0,400}success: false/)
   })
 
   it('returns the owner so same-named duplicates stay tellable apart', () => {
