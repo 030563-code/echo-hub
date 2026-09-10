@@ -49,10 +49,7 @@ async function fetchOwners(archived: boolean): Promise<HubSpotOwner[] | null> {
 
 export async function getOwnerIndex(): Promise<OwnerIndex> {
   const empty: OwnerIndex = { ownerNameById: {}, teamNameById: {}, primaryTeamIdByOwnerId: {} }
-  // pricing.manage reaches this through the contractor editor's company search,
-  // the same widening searchCompanies already carries. Without it a pricing
-  // admin sees a raw owner id where a colleague's name belongs.
-  if (!(await hasAnyCapability(['quotes.view', 'quotes.create', 'pricing.manage']))) return empty
+  if (!(await hasAnyCapability(['quotes.view', 'quotes.create']))) return empty
   if (cached && Date.now() - cached.at < TTL_MS) return cached.value
 
   // BOTH REGISTERS. The endpoint returns only active owners unless asked, and

@@ -38,9 +38,6 @@ interface CompanyHit {
   id: string
   name: string
   domain?: string
-  /** The search is portal-wide, and this portal keeps a company per owner for
-   *  some accounts, so the owner is how the right one gets picked. */
-  owner?: string
 }
 
 /**
@@ -137,7 +134,6 @@ function ContractorEditor({
                     <span className="font-medium text-gray-900">{hit.name || 'Unnamed'}</span>
                     <span className="block text-xs text-gray-500">
                       {hit.domain ?? <span className="italic">no domain</span>}
-                      {hit.owner && hit.owner !== '—' ? ` · ${hit.owner}` : ''}
                     </span>
                   </button>
                 </li>

@@ -33,8 +33,6 @@ interface NameConflict {
   id: string
   name: string
   domain: string
-  /** Named so a rep can see the conflict is a colleague's record, not a stray. */
-  owner?: string
 }
 
 export interface CreatedCompany {
@@ -106,9 +104,7 @@ export function CreateCompanyDialog({ initialName, inFlightRef, onCreated }: Cre
           (c) => (c.domain ?? '').trim().toLowerCase() !== trimmedDomain.toLowerCase()
         )
         if (conflicting.length > 0) {
-          setNameConflicts(
-          conflicting.map((c) => ({ id: c.id, name: c.name, domain: c.domain ?? '', owner: c.owner }))
-        )
+          setNameConflicts(conflicting.map((c) => ({ id: c.id, name: c.name, domain: c.domain ?? '' })))
           return
         }
       }
@@ -209,9 +205,6 @@ export function CreateCompanyDialog({ initialName, inFlightRef, onCreated }: Cre
                       >
                         <span className="font-semibold text-gray-900">{c.name}</span>
                         <span className="text-gray-600">{c.domain ? ` — ${c.domain}` : ' — no domain'}</span>
-                        {c.owner && c.owner !== '—' && (
-                          <span className="block text-xs text-gray-600">Owned by {c.owner}</span>
-                        )}
                         <span className="block text-xs text-amber-800">Use this company</span>
                       </button>
                     </li>

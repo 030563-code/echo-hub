@@ -45,11 +45,6 @@ describe('getOwnerIndex source', () => {
     expect(SOURCE).toMatch(/if \(!active\) return/)
   })
 
-  it('lets a pricing admin resolve owner names', () => {
-    // The contractor editor's company search shows the owner, so pricing.manage
-    // reaches this too. Without it that page prints a raw id.
-    expect(SOURCE).toMatch(/hasAnyCapability\(\[[^\]]*'pricing\.manage'/)
-  })
 })
 
 describe('searchCompanies source', () => {
@@ -85,9 +80,12 @@ describe('searchCompanies source', () => {
     expect(SEARCH).toMatch(/teamScope\.length === 0[\s\S]{0,400}success: false/)
   })
 
-  it('returns the owner so same-named duplicates stay tellable apart', () => {
-    // The owner label is what replaced the filter as the guard against
-    // attaching a deal to the wrong region's account.
-    expect(SEARCH).toContain('ownerLabel(')
+  it('does not name the owner on a result', () => {
+    // Dean, 10 Sep 2026: the owner tag confused more than it helped once the
+    // search was team-scoped. Team scoping is what keeps a US HERMEQ apart from
+    // a French one, so the name was noise about colleagues the rep has no
+    // reason to think about.
+    expect(SEARCH).not.toContain('ownerLabel(')
+    expect(SEARCH).not.toContain('getOwnerIndex')
   })
 })

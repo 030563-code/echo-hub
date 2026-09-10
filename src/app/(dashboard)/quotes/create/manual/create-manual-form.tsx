@@ -28,9 +28,6 @@ interface CompanyResult {
   name: string
   domain?: string
   source: 'hubspot' | 'supabase'
-  /** Who holds the record in HubSpot. This portal keeps a company per owner
-   *  for some accounts, so the name is how a rep tells two HERMEQs apart. */
-  owner?: string
 }
 
 import { createHubSpotDeal } from '@/app/actions/hubspot/createDeal'
@@ -108,9 +105,9 @@ export default function CreateManualRequestForm({
     selectedCompanyIdRef.current = selectedCompany?.id ?? null
   }, [step, selectedCompany])
 
-  // Stale-response guard for the company search (same pattern as the contact
-  // list): the added owner-resolution hop upstream makes latency variance —
-  // and therefore out-of-order responses — more likely.
+  // Stale-response guard for the company search, same pattern as the contact
+  // list: a slow early keystroke must not land after a later one and show
+  // results for a query the rep has already moved on from.
   const companySearchSeqRef = useRef(0)
 
   // Debounced Search for Company
@@ -588,15 +585,10 @@ export default function CreateManualRequestForm({
                         <p className="text-xs text-gray-500 max-sm:truncate">
                           {company.domain || <span className="italic text-gray-400">no domain</span>}
                         </p>
-                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <div className="flex items-center gap-2 mt-1">
                           <span className={`text-xs px-2 py-0.5 rounded-full ${company.source === 'supabase' ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'}`}>
                             {company.source === 'supabase' ? 'Account Registry' : 'HubSpot'}
                           </span>
-                          {company.owner && company.owner !== '—' && (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
-                              Owner: {company.owner}
-                            </span>
-                          )}
                         </div>
                       </button>
                     ))}

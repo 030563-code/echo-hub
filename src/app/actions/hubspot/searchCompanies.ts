@@ -2,8 +2,6 @@
 
 import { createServerClient } from '@/lib/supabase/server'
 import { getAuthorizedUser } from '@/lib/authz'
-import { getOwnerIndex } from '@/app/actions/hubspot/getOwners'
-import { ownerLabel } from '@/lib/hubspot-owners'
 import { teamsForPipeline } from '@/lib/pipeline-config'
 
 interface CompanySearchResult {
@@ -11,8 +9,6 @@ interface CompanySearchResult {
   name: string
   domain?: string
   source: 'hubspot' | 'supabase'
-  /** Who holds the record in HubSpot, so two colleagues' records stay tellable apart. */
-  owner?: string
   xero_code_usa?: string
   xero_code_can?: string
 }
@@ -59,9 +55,12 @@ export async function searchCompanies(query: string): Promise<{ success: boolean
   // nearly all of them one departed rep's US accounts. They stay out of every
   // non-admin's search until someone stamps a team on them.
   //
-  // The owner name still rides on each result: within one team several people
-  // hold records, and a departed colleague's name explains a record nobody
-  // recognises.
+  // NO OWNER NAME ON THE RESULTS. Dean, 10 Sep 2026: "best if we remove the
+  // owner tag in the companies that tell them which owner just to not get
+  // confused." It was carried while the search was briefly portal-wide, where
+  // it was the only way to tell a US HERMEQ from a French one. Team scoping
+  // does that job at the source, so the tag became noise naming colleagues the
+  // rep has no reason to think about.
   let teamScope: string[] | null = null
   if (!auth.profile.is_super_admin) {
     teamScope = teamsForPipeline(auth.profile.pipeline_id)
@@ -138,7 +137,7 @@ export async function searchCompanies(query: string): Promise<{ success: boolean
               ]
             }
           ],
-          properties: ['name', 'domain', 'hubspot_owner_id'],
+          properties: ['name', 'domain'],
           limit: 50,
         }),
         cache: 'no-store'
@@ -146,16 +145,11 @@ export async function searchCompanies(query: string): Promise<{ success: boolean
 
       if (response.ok) {
         const data = await response.json()
-        // Names for the owner ids. One indexed fetch, memoised for ten minutes
-        // and shared with the deals board. An empty index degrades to a dash,
-        // never to a throw.
-        const owners = await getOwnerIndex()
-        hsResults = (data.results as Array<{ id: string; properties: { name: string; domain?: string; hubspot_owner_id?: string } }>).map(c => ({
+        hsResults = (data.results as Array<{ id: string; properties: { name: string; domain?: string } }>).map(c => ({
           id: c.id,
           name: c.properties.name,
           domain: c.properties.domain,
-          source: 'hubspot',
-          owner: ownerLabel(owners, c.properties.hubspot_owner_id)
+          source: 'hubspot'
         }))
       }
     }
