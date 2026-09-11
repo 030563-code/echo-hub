@@ -2,7 +2,7 @@
 
 import { createServerClient } from '@/lib/supabase/server'
 import { getAuthorizedUser } from '@/lib/authz'
-import { resolveHubSpotOwnerId } from '@/lib/hubspot-owner'
+import { teamsForPipeline } from '@/lib/pipeline-config'
 
 interface CompanySearchResult {
   id: string
@@ -34,26 +34,53 @@ export async function searchCompanies(query: string): Promise<{ success: boolean
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
 
-  // Companies in this portal are deliberately duplicated per owner (e.g. one
-  // HERMEQ record per region/rep), so a rep must only be offered THEIR OWN
-  // records — surfacing another owner's same-named company invites attaching a
-  // deal to the wrong region's account. Super admins see everything.
-  let ownerScope: string | null = null
+  // SCOPED TO THE REP'S REGION, BY TEAM. Dean, 9 Sep 2026: "Jillian should only
+  // see her USA sales team companies, those made under a person under her
+  // pipeline."
+  //
+  // This used to pin `hubspot_owner_id` to the caller, which was far too tight:
+  // measured against the live portal on 9 Sep 2026 that rep owned 426 of 57,400
+  // companies, so Dimeo Construction was unfindable because a colleague who has
+  // since left brought it in. Widening it to the whole portal was too loose the
+  // other way, offering a US rep the five European HERMEQ records.
+  //
+  // The right dimension is the team. `hs_all_team_ids` is stamped on the COMPANY
+  // and SURVIVES THE OWNER LEAVING, which is what makes it work here: Dimeo's
+  // owner is archived and carries no teams at all, yet the company still reads
+  // team 949190. Owner-based scoping cannot reach those records by any route;
+  // this does. USA sales sees 27,994 companies, and none of the UK's 8,058,
+  // Europe's 1,299 or Australia's 1,047.
+  //
+  // Known gap, Dean's call on 9 Sep 2026: 16,483 companies carry NO team stamp,
+  // nearly all of them one departed rep's US accounts. They stay out of every
+  // non-admin's search until someone stamps a team on them.
+  //
+  // NO OWNER NAME ON THE RESULTS. Dean, 10 Sep 2026: "best if we remove the
+  // owner tag in the companies that tell them which owner just to not get
+  // confused." It was carried while the search was briefly portal-wide, where
+  // it was the only way to tell a US HERMEQ from a French one. Team scoping
+  // does that job at the source, so the tag became noise naming colleagues the
+  // rep has no reason to think about.
+  let teamScope: string[] | null = null
   if (!auth.profile.is_super_admin) {
-    if (!accessToken) return { success: false, error: 'HubSpot Access Token not configured' }
-    ownerScope = await resolveHubSpotOwnerId(auth.user.email ?? '', accessToken)
-    if (!ownerScope) {
-      // Fail closed: without a resolved owner the scope filter can't be built,
-      // and returning unscoped results would leak every owner's companies.
-      return { success: false, error: 'Could not link your HubSpot user for company search. Please try again or contact an administrator.' }
+    teamScope = teamsForPipeline(auth.profile.pipeline_id)
+    if (teamScope.length === 0) {
+      // Fail closed. An unscoped search here would hand a rep with no region
+      // set every company in the portal, which is the thing this exists to stop.
+      return {
+        success: false,
+        error: 'Your sales region is not set, so company search cannot be scoped to your team. An administrator needs to set your region on your profile.',
+      }
     }
   }
 
   try {
-    // 1. Search Supabase (Account Registry) - Fuzzy Search. The registry has
-    // no owner column, so it cannot be owner-scoped — admins only.
+    // 1. Search Supabase (Account Registry) - Fuzzy Search. Admins only: the
+    // registry carries Xero account codes against a HubSpot company id and has
+    // no team column, so there is no way to scope it and a hit would leak a
+    // company from another region.
     let supabaseCompanies: Record<string, string>[] | null = null
-    if (!ownerScope) {
+    if (!teamScope) {
       const { data, error: sbError } = await supabase
         .from('account_registry')
         .select('*')
@@ -74,6 +101,12 @@ export async function searchCompanies(query: string): Promise<{ success: boolean
     // 2. Search HubSpot (if token exists)
     let hsResults: CompanySearchResult[] = []
     if (accessToken) {
+      // IN rather than EQ because one pipeline can draw on several teams: EURO
+      // SALES is fed by Europe, France and Spain. Verified live on the portal,
+      // `hs_all_team_ids` accepts both.
+      const teamFilter = teamScope
+        ? [{ propertyName: 'hs_all_team_ids', operator: 'IN', values: teamScope }]
+        : []
       const response = await fetch('https://api.hubapi.com/crm/v3/objects/companies/search', {
         method: 'POST',
         headers: {
@@ -81,17 +114,15 @@ export async function searchCompanies(query: string): Promise<{ success: boolean
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          // Groups are ORed, filters within a group are ANDed, so the owner
+          // Groups are ORed, filters within a group are ANDed, so the team
           // filter has to be repeated in BOTH groups. Dropping it from either
-          // one would leak other reps' companies, which is exactly what the
-          // fail-closed owner resolution above exists to prevent.
+          // one would leak another region's companies through that half of the
+          // search, which is exactly what the fail-closed check above prevents.
           filterGroups: [
             {
               filters: [
                 { propertyName: 'name', operator: 'CONTAINS_TOKEN', value: query },
-                ...(ownerScope
-                  ? [{ propertyName: 'hubspot_owner_id', operator: 'EQ', value: ownerScope }]
-                  : []),
+                ...teamFilter,
               ]
             },
             {
@@ -102,9 +133,7 @@ export async function searchCompanies(query: string): Promise<{ success: boolean
                 // country variants. Measured against the live portal: 1 hit
                 // versus 10.
                 { propertyName: 'domain', operator: 'CONTAINS_TOKEN', value: `${query}*` },
-                ...(ownerScope
-                  ? [{ propertyName: 'hubspot_owner_id', operator: 'EQ', value: ownerScope }]
-                  : []),
+                ...teamFilter,
               ]
             }
           ],

@@ -2,6 +2,7 @@
 
 import { getAuthorizedUser, hasCapability } from '@/lib/authz'
 import { resolveHubSpotOwnerId } from '@/lib/hubspot-owner'
+import { teamsForPipeline } from '@/lib/pipeline-config'
 import { externalCallsDisabled, STAGING_SKIP_NOTE } from '@/lib/env'
 
 interface CreateCompanyParams {
@@ -14,11 +15,19 @@ interface CreateCompanyParams {
 // so we fetch candidates (CONTAINS_TOKEN, same pattern as searchCompanies.ts)
 // and compare exactly in code rather than trust the API's own matching.
 // A candidate with a conflicting domain is treated as a different business.
+//
+// Scoped to the caller's TEAM, matching searchCompanies. It used to match only
+// the caller's OWN records, which paired badly with a search scoped the same
+// way: a rep who could not SEE a colleague's existing company could not dedup
+// against it either, so the guard against a second record for one business
+// never fired. Team scope fixes that while keeping the deliberate per-region
+// duplicates apart: a US rep deduping against the UK's record of the same
+// business would attach their pipeline to the wrong region's account.
 async function findExistingCompanyByName(
   accessToken: string,
   name: string,
   domain: string,
-  ownerScope: string | null
+  teamScope: string[] | null
 ): Promise<{ id: string; name: string; domain: string } | null> {
   const target = name.trim().toLowerCase()
   if (!target) return null
@@ -34,11 +43,8 @@ async function findExistingCompanyByName(
         {
           filters: [
             { propertyName: 'name', operator: 'CONTAINS_TOKEN', value: name.trim() },
-            // Same-named companies exist per owner BY DESIGN in this portal, so
-            // a non-admin's dedup must only match their own records — matching
-            // another owner's would silently attach their pipeline to it.
-            ...(ownerScope
-              ? [{ propertyName: 'hubspot_owner_id', operator: 'EQ', value: ownerScope }]
+            ...(teamScope
+              ? [{ propertyName: 'hs_all_team_ids', operator: 'IN', values: teamScope }]
               : []),
           ],
         },
@@ -88,10 +94,11 @@ export async function createHubSpotCompany(params: CreateCompanyParams): Promise
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
   if (!accessToken) return { success: false, error: 'Token Missing' }
 
-  // Company search is owner-scoped for non-admins, so a company they create
-  // MUST be owned by them or they'd never find it again. Fail closed when the
-  // owner can't be resolved — an unowned company would be invisible to its own
-  // creator. Admins may create unowned records (they see everything).
+  // A new company MUST be owned by its creator, because HubSpot derives the
+  // company's team stamp from the owner and the search is team-scoped: an
+  // unowned company would carry no team and be invisible to everyone, its
+  // creator included. So this still fails closed when the owner cannot be
+  // resolved. Admins may create unowned records (they see everything).
   const ownerScope = auth.profile.is_super_admin
     ? null
     : await resolveHubSpotOwnerId(auth.user.email ?? '', accessToken)
@@ -99,12 +106,15 @@ export async function createHubSpotCompany(params: CreateCompanyParams): Promise
     return { success: false, error: 'Could not link your HubSpot user, so the company would not appear in your searches. Please try again or contact an administrator.' }
   }
 
+  const teamScope = auth.profile.is_super_admin ? null : teamsForPipeline(auth.profile.pipeline_id)
+  if (teamScope && teamScope.length === 0) {
+    return { success: false, error: 'Your sales region is not set, so a new company could not be filed against your team. An administrator needs to set your region on your profile.' }
+  }
+
   try {
     // Avoid minting a duplicate company for an existing name — return the
-    // existing record instead of creating a new one. Scoped to the caller's own
-    // records for non-admins: same-named companies per owner are distinct
-    // businesses in this portal.
-    const existing = await findExistingCompanyByName(accessToken, params.name, params.domain, ownerScope)
+    // existing record instead of creating a new one.
+    const existing = await findExistingCompanyByName(accessToken, params.name, params.domain, teamScope)
     if (existing) {
       return {
         success: true,

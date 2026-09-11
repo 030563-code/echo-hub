@@ -41,11 +41,9 @@ import {
 } from '@/lib/deal-wizard-draft'
 
 export default function CreateManualRequestForm({
-  restrictedToOwn = true,
   allowedCurrencies,
   defaultCurrency,
 }: {
-  restrictedToOwn?: boolean
   /** Resolved from the caller's pipeline on the server, so the pipeline id
    *  never reaches the client. */
   allowedCurrencies: string[]
@@ -107,9 +105,9 @@ export default function CreateManualRequestForm({
     selectedCompanyIdRef.current = selectedCompany?.id ?? null
   }, [step, selectedCompany])
 
-  // Stale-response guard for the company search (same pattern as the contact
-  // list): the added owner-resolution hop upstream makes latency variance —
-  // and therefore out-of-order responses — more likely.
+  // Stale-response guard for the company search, same pattern as the contact
+  // list: a slow early keystroke must not land after a later one and show
+  // results for a query the rep has already moved on from.
   const companySearchSeqRef = useRef(0)
 
   // Debounced Search for Company
@@ -540,7 +538,7 @@ export default function CreateManualRequestForm({
                 <div className="relative">
                   <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                   <Input
-                    placeholder={restrictedToOwn ? 'Search your companies…' : 'Search all companies…'}
+                    placeholder="Search your region's companies…"
                     className="pl-10 bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow"
                     value={companyName}
                     onChange={(e) => {
@@ -603,9 +601,8 @@ export default function CreateManualRequestForm({
                   </p>
                 ) : (
                   <p className="text-xs text-gray-500">
-                    {restrictedToOwn
-                      ? 'Searches the HubSpot companies assigned to you, or create a new one below.'
-                      : 'Search existing HubSpot companies, or create a new one below.'}
+                    Searches every company in your sales region, whichever colleague brought it
+                    in. Create a new one below only when it is genuinely not here.
                   </p>
                 )}
               </div>
@@ -639,7 +636,7 @@ export default function CreateManualRequestForm({
                    available, a rep fixing a mistyped domain would click it
                    again and mint a duplicate — createHubSpotCompany's dedup
                    reads a different domain as a different business. */
-                <CreateCompanyDialog initialName={companyName} inFlightRef={inFlightRef} onCreated={handleCompanyCreated} restrictedToOwn={restrictedToOwn} />
+                <CreateCompanyDialog initialName={companyName} inFlightRef={inFlightRef} onCreated={handleCompanyCreated} />
               )}
             </div>
           </div>

@@ -50,6 +50,28 @@ export const TEAM_PIPELINE_MAP: Record<string, string> = {
   '57567': '14520121', // Echo Barrier Australia → AUSTRALIA SALES
 }
 
+/**
+ * The HubSpot teams that belong to a pipeline, for scoping company search.
+ *
+ * Dean, 9 Sep 2026: "Jillian should only see her USA sales team companies,
+ * those made under a person under her pipeline." A rep's region is
+ * profiles.pipeline_id, and TEAM_PIPELINE_MAP above is the team-to-pipeline
+ * direction, so this inverts it. EURO SALES is why the result is a list and not
+ * one id: three teams (Europe, France, Spain) feed that one pipeline.
+ *
+ * Returns [] for an unknown or missing pipeline, and every caller must FAIL
+ * CLOSED on that rather than falling back to an unfiltered search, or the
+ * scoping silently evaporates for exactly the users it is meant to constrain.
+ */
+export function teamsForPipeline(pipelineId: string | null | undefined): string[] {
+  const id = String(pipelineId ?? '').trim()
+  if (id === '') return []
+  return Object.entries(TEAM_PIPELINE_MAP)
+    .filter(([, pipeline]) => pipeline === id)
+    .map(([team]) => team)
+    .sort()
+}
+
 export const PIPELINE_CONFIG: PipelineConfig[] = [
   {
     pipelineId: 'dfc85d9e-7eb9-4ade-a9cf-4e726cbcc9cc',

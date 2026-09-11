@@ -47,11 +47,9 @@ interface CreateCompanyDialogProps {
   /** Shared with the rest of the form so a double-click here can't double-create. */
   inFlightRef: RefObject<boolean>
   onCreated: (company: CreatedCompany) => void
-  /** True when company visibility is scoped to the caller's own records. */
-  restrictedToOwn?: boolean
 }
 
-export function CreateCompanyDialog({ initialName, inFlightRef, onCreated, restrictedToOwn = true }: CreateCompanyDialogProps) {
+export function CreateCompanyDialog({ initialName, inFlightRef, onCreated }: CreateCompanyDialogProps) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState(initialName)
   const [domain, setDomain] = useState('')
@@ -192,7 +190,7 @@ export function CreateCompanyDialog({ initialName, inFlightRef, onCreated, restr
             {nameConflicts && nameConflicts.length > 0 && (
               <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 space-y-2">
                 <p>
-                  {restrictedToOwn ? 'You already have' : 'HubSpot already has'}{' '}
+                  HubSpot already has{' '}
                   {nameConflicts.length === 1 ? 'a company' : `${nameConflicts.length} companies`} called{' '}
                   <span className="font-semibold">{trimmedName}</span>, with a different domain. Use
                   the existing record unless this really is a separate business.
