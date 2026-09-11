@@ -88,14 +88,15 @@ test("the board has three tabs and a section per warehouse; a limited user is tu
   await login(page, creds!);
   await page.goto("/stock");
   await expect(page).toHaveURL(/\/stock\/finished$/);
+  // exact: the sidebar's "Bill of Materials" link also answers to "Materials".
   for (const tab of ["Finished goods", "Materials", "Movements"]) {
-    await expect(page.getByRole("link", { name: tab })).toBeVisible();
+    await expect(page.getByRole("link", { name: tab, exact: true })).toBeVisible();
   }
   // The fixture SRO order is ready to count against nothing yet; the depot
   // sections exist for whatever the balance table holds today.
   await expect(page.getByRole("heading", { name: "Stock" })).toBeVisible();
 
-  await page.getByRole("link", { name: "Movements" }).click();
+  await page.getByRole("link", { name: "Movements", exact: true }).click();
   await expect(page).toHaveURL(/\/stock\/movements$/);
 
   const limited = limitedCreds();
