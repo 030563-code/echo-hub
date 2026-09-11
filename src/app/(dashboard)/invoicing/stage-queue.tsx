@@ -42,7 +42,7 @@ const ACTION_LABEL: Record<CustomerInvoiceStatus, string> = {
   draft: 'Open',
   tax_calculated: 'Preview and file',
   filed: 'Generate PDF',
-  documented: 'Email to customer',
+  documented: 'Send to customer',
   sent: 'Send to Xero',
   authorizing: 'Reconcile',
   completed: 'View invoice',

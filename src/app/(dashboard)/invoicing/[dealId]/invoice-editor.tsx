@@ -56,6 +56,7 @@ import { sendOrderToTaxJar } from '@/app/actions/invoicing/record-taxjar'
 import { previewInvoicePdf } from '@/app/actions/invoicing/preview-invoice'
 import { generateInvoicePdf } from '@/app/actions/invoicing/generate-invoice-pdf'
 import { emailInvoiceToCustomer } from '@/app/actions/invoicing/email-invoice'
+import { markInvoiceSent } from '@/app/actions/invoicing/mark-sent'
 import { reconcileStuckInvoice } from '@/app/actions/invoicing/reset-authorizing'
 import { InvoiceStatusChip } from '../status-chip'
 
@@ -784,6 +785,20 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
           : `Invoice emailed to ${result.sentTo}.`,
         { duration: 12000 },
       )
+      router.refresh()
+    })
+
+  // The other door out of this step. Dean, 11 Sep 2026: some customers do not
+  // get the invoice by email (portal, by hand, with the goods), and Send to
+  // Xero will not run until the Hub knows they have it.
+  const onMarkSent = () =>
+    run('mark-sent', async () => {
+      const result = await markInvoiceSent({ invoiceId: invoice.id })
+      if (!result.success) {
+        toast.error(result.error, { duration: 12000 })
+        return
+      }
+      toast.success('Marked as sent. No email was sent from the Hub.', { duration: 8000 })
       router.refresh()
     })
 
@@ -1554,6 +1569,13 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                 <Button variant="outline" onClick={onGeneratePdf} disabled={pendingAction !== null}>
                   {spinner('pdf')}
                   Regenerate PDF
+                </Button>
+                {/* Two ways out of this step, side by side. Email sends the PDF
+                    from the Hub; Mark as sent records that the customer got it
+                    some other way. Both land on `sent`, where Send to Xero is. */}
+                <Button variant="outline" onClick={onMarkSent} disabled={pendingAction !== null}>
+                  {spinner('mark-sent')}
+                  Mark as sent (no email)
                 </Button>
                 <Button onClick={onEmail} disabled={pendingAction !== null} className="bg-green-700 hover:bg-green-800">
                   {spinner('email')}

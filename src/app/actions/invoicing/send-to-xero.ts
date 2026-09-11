@@ -59,7 +59,7 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
   if (invoice.status !== 'sent') {
     return {
       success: false,
-      error: `The invoice has to be emailed to the customer before it goes to Xero (this one is ${invoice.status}).`,
+      error: `The invoice has to go to the customer first, by email or marked as sent, before it goes to Xero (this one is ${invoice.status}).`,
     }
   }
   if (invoice.xero_invoice_id) {
