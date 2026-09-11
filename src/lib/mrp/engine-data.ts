@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { DEPOT_WAREHOUSES } from "@/lib/stock/warehouses";
 import type {
   BomComponentRow,
   BomProductRow,
@@ -84,6 +85,9 @@ export function createSupabaseEngineData(admin: SupabaseClient): EngineData {
         admin
           .from("warehouse_stock_levels")
           .select("warehouse_code, sku, quantity_on_hand, last_counted_at")
+          // North American depots only. EB-SRO now carries a real counted level
+          // and summing it into the depot buffers would suppress every reorder.
+          .in("warehouse_code", [...DEPOT_WAREHOUSES])
           .order("id")
           .range(from, to)
       ),

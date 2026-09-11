@@ -137,6 +137,18 @@ export function parsePoBoardView(raw: unknown): PoBoardView | null {
   return parsed.success ? parsed.data : null
 }
 
+/** The stock board: the search box and which warehouse is in view. */
+export const stockBoardViewSchema = z.object({
+  v: z.literal(1),
+  q: z.string().max(200),
+  warehouse: z.string().max(20),
+})
+export type StockBoardView = z.infer<typeof stockBoardViewSchema>
+export function parseStockBoardView(raw: unknown): StockBoardView | null {
+  const parsed = stockBoardViewSchema.safeParse(raw)
+  return parsed.success ? parsed.data : null
+}
+
 /** The BOM page: which tab, and its search box. */
 export const bomViewSchema = z.object({
   v: z.literal(1),

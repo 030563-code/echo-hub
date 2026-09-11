@@ -43,9 +43,10 @@ export const COV_WEEKS = 52;
 /**
  * Firm demand heuristic: hubspot_deal demand events dated within this many
  * days are presumed won-but-not-yet-shipped and still ahead of the stock
- * ledger (shipping them decrements warehouse_stock_levels; until then the
- * commitment must reduce NFP). 14d is a judgment call on typical
- * close→dispatch latency — DDS&OP-tunable.
+ * ledger. The Hub now decrements the depot when the customer invoice reaches
+ * `sent` (a customer_dispatch movement, US depots; CA-HAM is still manual),
+ * so this window covers the accepted-to-sent gap. 14d is a judgment call on
+ * typical close-to-dispatch latency, DDS&OP-tunable.
  */
 export const FIRM_DEMAND_WINDOW_DAYS = 14;
 

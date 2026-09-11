@@ -57,7 +57,7 @@ describe('navSections', () => {
     // Invoices (commercial intercompany invoices, /invoices) joined Operations in the
     // operations merge. It is a different module from Invoicing (/invoicing), which is
     // US customer invoicing and stays under Sales and Accounting.
-    expect(byGroup['Operations']).toEqual(['Purchase Orders', 'Bill of Materials', 'Transport', 'Invoices', 'MRP'])
+    expect(byGroup['Operations']).toEqual(['Purchase Orders', 'Bill of Materials', 'Transport', 'Invoices', 'MRP', 'Stock'])
   })
 
   it('drops a group entirely when every item in it is gated away', () => {

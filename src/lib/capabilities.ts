@@ -26,6 +26,7 @@ export const CAPABILITY_KEYS = [
   'transport.view',
   'mrp.view',
   'stock.edit',
+  'stock.view',
   'invoicing.view',
   'invoicing.manage',
   'pricing.view',
@@ -56,7 +57,8 @@ export const CAPABILITIES: CapabilityMeta[] = [
   { key: 'cost.view', module: 'costs', description: 'See prices/costs on POs, BOM and supplier documents (hidden from warehouse/production workers)' },
   { key: 'transport.view', module: 'transport', description: 'View shipments and transport tracking' },
   { key: 'mrp.view', module: 'mrp', description: 'View the MRP reorder/manufacturing dashboard' },
-  { key: 'stock.edit', module: 'mrp', description: 'Override warehouse stock levels (the dummy-stock override path)' },
+  { key: 'stock.edit', module: 'stock', description: 'Record stock counts and manual adjustments on the stock board' },
+  { key: 'stock.view', module: 'stock', description: 'View the stock board (on hand, committed, inbound, materials)' },
   { key: 'invoicing.view', module: 'invoicing', description: 'View the US accepted-quotes queue and draft invoices' },
   { key: 'invoicing.manage', module: 'invoicing', description: 'Edit drafts, calculate tax, and authorize US customer invoices' },
   { key: 'pricing.view', module: 'pricing', description: 'See list prices, contract prices and own discount cap' },
@@ -101,6 +103,7 @@ export const NAV_ICON_NAMES = [
   'Truck',
   'Gauge',
   'Receipt',
+  'Boxes',
 ] as const
 
 export type NavIconName = (typeof NAV_ICON_NAMES)[number]
@@ -135,6 +138,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Transport', href: '/transport', icon: 'Truck', requires: ['transport.view'], group: 'Operations' },
   { label: 'Invoices', href: '/invoices', icon: 'Receipt', requires: ['invoice.view'], group: 'Operations' },
   { label: 'MRP', href: '/mrp', icon: 'Gauge', requires: ['mrp.view'], group: 'Operations' },
+  { label: 'Stock', href: '/stock', icon: 'Boxes', requires: ['stock.view', 'stock.edit'], group: 'Operations' },
 ]
 
 export interface NavSection {

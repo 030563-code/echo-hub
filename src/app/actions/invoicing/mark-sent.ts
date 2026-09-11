@@ -21,6 +21,8 @@
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { applyStockMovements } from '@/lib/stock/apply'
+import { buildDispatchMovements } from '@/lib/stock/movements'
 import { requireInvoicingManage, loadInvoiceWithLines, logInvoiceEvent } from './shared'
 
 const Input = z.object({ invoiceId: z.string().uuid() })
@@ -37,7 +39,7 @@ export async function markInvoiceSent(input: { invoiceId: string }): Promise<Mar
 
   const loaded = await loadInvoiceWithLines(invoiceId)
   if (!loaded.ok) return { success: false, error: loaded.error }
-  const { invoice } = loaded
+  const { invoice, lines } = loaded
 
   // The document has to exist before anyone can have been given it. Same gate
   // as the email path, same wording shape.
@@ -62,6 +64,11 @@ export async function markInvoiceSent(input: { invoiceId: string }): Promise<Mar
   if (!won || won.length === 0) {
     return { success: false, error: 'This invoice has already moved on; reload to see its current step.' }
   }
+
+  // Same ledger deduction as the email door (D3): marked as sent means the
+  // customer has the goods, however the document reached them.
+  const ledger = await applyStockMovements(admin, buildDispatchMovements(invoiceId, lines), gate.auth.user.id)
+  if (!ledger.ok) console.error('customer dispatch ledger failed', invoiceId, ledger.error)
 
   await logInvoiceEvent(invoiceId, 'invoice_marked_sent', gate.auth.user.id, {
     note: 'Marked as sent by hand; no email was sent from the Hub.',

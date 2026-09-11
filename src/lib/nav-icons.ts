@@ -8,6 +8,7 @@ import {
   Truck,
   Gauge,
   Receipt,
+  Boxes,
   type LucideIcon,
 } from 'lucide-react'
 import type { NavIconName } from '@/lib/capabilities'
@@ -35,4 +36,5 @@ export const NAV_ICONS: Record<NavIconName, LucideIcon> = {
   Truck,
   Gauge,
   Receipt,
+  Boxes,
 }

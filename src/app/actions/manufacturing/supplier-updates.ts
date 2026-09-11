@@ -15,6 +15,9 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveManufacturingToken } from '@/lib/manufacturing-token'
+import { applyStockMovements } from '@/lib/stock/apply'
+import { buildManufacturedMovements } from '@/lib/stock/movements'
+import type { SuppliedBomRow } from '@/lib/mrp/supplied-materials'
 import { createCargoRequestDraft } from '@/lib/cargo-request-store'
 import { notifyReadyForShipment } from '@/app/actions/purchase-orders/notify-ready-for-shipment'
 import type { CargoLine } from '@/lib/cargo-request'
@@ -136,6 +139,33 @@ export async function markManufacturingFinished(input: { token: string }): Promi
       .eq('id', bamidaPo.parent_po_id)
       .eq('status', 'in_manufacturing')
     if (parentErr) console.error('markManufacturingFinished parent status failed', parentErr.message)
+  }
+
+  // THE LEDGER. Dean, 9 Sep 2026 (D2): the barriers now exist at s.r.o., so
+  // they are added to EB-SRO on hand (committed to this order until it is
+  // booked), and the s.r.o.-owned materials they were built from are gone,
+  // estimated from the supplied-components bill of materials because no row
+  // of it is verified yet. The one-shot claim above already guarantees this
+  // runs once per order; the ledger's own key is the backstop. Best effort,
+  // like everything after the timestamp.
+  {
+    const { data: builtLines } = await admin
+      .from('purchase_order_lines')
+      .select('sku, quantity')
+      .eq('po_id', resolved.poId)
+    const skus = Array.from(new Set((builtLines ?? []).map((l) => String(l.sku ?? '')).filter(Boolean)))
+    const { data: bomRows } = skus.length
+      ? await admin
+          .from('mrp_bom_map')
+          .select('finished_sku, component_code, component_desc, qty_per')
+          .in('finished_sku', skus)
+      : { data: [] as SuppliedBomRow[] }
+    const ledger = await applyStockMovements(
+      admin,
+      buildManufacturedMovements(resolved.poId, builtLines ?? [], (bomRows ?? []) as SuppliedBomRow[]),
+      null,
+    )
+    if (!ledger.ok) console.error('markManufacturingFinished stock ledger failed', resolved.poId, ledger.error)
   }
 
   // Barriers ready to collect, so DRAFT the shipment request. It is not sent

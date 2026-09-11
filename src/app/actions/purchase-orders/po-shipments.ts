@@ -40,6 +40,9 @@ async function resolveAndStore(token: string, admin: Admin, po: PoRef): Promise<
     return false;
   }
   const detail = await fetchShipmentDetail(token, spotIds[0]);
+  // The FIRST spot stored for a PO deducts the SRO leg's lines from EB-SRO:
+  // trigger trg_stock_on_booking (20260911120000_stock_ledger.sql), not this
+  // code, because this upsert cannot tell a first store from a refresh.
   await admin.from("po_shipments").upsert(
     {
       po_id: po.id,

@@ -38,7 +38,9 @@ describe('page keys', () => {
       'po-board:table',
       'po-approvals',
       'mrp-board',
-      'warehouse-stock',
+      'stock-board',
+      'stock-board:materials',
+      'stock-board:movements',
       'commercial-invoices',
     ]) {
       expect(isPageKey(key), key).toBe(true)

@@ -25,6 +25,12 @@ import {
   type BomProductRow,
   type MaterialShortage,
 } from '@/lib/mrp/materials'
+import {
+  suppliedShortagesFor,
+  type SuppliedBomRow,
+  type SuppliedShortage,
+} from '@/lib/mrp/supplied-materials'
+import { SRO_WAREHOUSE } from '@/lib/stock/warehouses'
 
 /** The Hub SKUs whose bill of materials is good enough to quote a figure from. */
 export const MANUFACTURABLE_SKUS = new Set(['EBH9NA'])
@@ -46,6 +52,13 @@ export type LineCapability = {
   unjoined: string[]
   /** True while the SKU to finished-good mapping is still nobody's confirmed word. */
   mappingProvisional: boolean
+  /**
+   * The s.r.o.-supplied materials (PC350FR, infill, Datatag) against the
+   * s.r.o.-owned stock, from the unverified mrp_bom_map recipe. INFORMS ONLY:
+   * it never feeds anyShort or blocks a button. Null when the SKU has no rows
+   * in that recipe.
+   */
+  supplied: { shortages: SuppliedShortage[]; unjoined: string[] } | null
 }
 
 export type OrderCapability = {
@@ -98,14 +111,19 @@ export async function assessOrderCapability(
     }
   }
 
-  const [{ data: productRows }, { data: componentRows }, { data: stockRows }] = await Promise.all([
-    admin.from('mrp_bom_product').select('fg_code, pallet_size').in('fg_code', fgCodes),
-    admin
-      .from('mrp_bom_component')
-      .select('fg_code, component_code, component_desc, qty, basis, line_type, is_gating, source_kind')
-      .in('fg_code', fgCodes),
-    admin.from('bamida_material_stock').select('ns_number, quantity').eq('is_active', true),
-  ])
+  const [{ data: productRows }, { data: componentRows }, { data: stockRows }, { data: suppliedRows }, { data: sroMaterialRows }] =
+    await Promise.all([
+      admin.from('mrp_bom_product').select('fg_code, pallet_size').in('fg_code', fgCodes),
+      admin
+        .from('mrp_bom_component')
+        .select('fg_code, component_code, component_desc, qty, basis, line_type, is_gating, source_kind')
+        .in('fg_code', fgCodes),
+      admin.from('bamida_material_stock').select('ns_number, quantity').eq('is_active', true),
+      // The s.r.o.-supplied recipe and the s.r.o.-owned stock behind it. A
+      // different code namespace from ns_number, so a second map, not a merge.
+      admin.from('mrp_bom_map').select('finished_sku, component_code, component_desc, qty_per').in('finished_sku', skus),
+      admin.from('material_stock_levels').select('component_code, quantity').eq('warehouse_code', SRO_WAREHOUSE),
+    ])
 
   const productByFg = new Map<string, BomProductRow>(
     (productRows ?? []).map((p) => [String(p.fg_code), p as BomProductRow]),
@@ -119,13 +137,23 @@ export async function assessOrderCapability(
   const stockByCode = new Map<string, number>(
     (stockRows ?? []).map((s) => [String(s.ns_number), Number(s.quantity)]),
   )
+  const supplied = (suppliedRows ?? []) as SuppliedBomRow[]
+  const sroStockByCode = new Map<string, number>(
+    (sroMaterialRows ?? []).map((m) => [String(m.component_code), Number(m.quantity)]),
+  )
+  const suppliedFor = (sku: string, quantity: number) =>
+    supplied.some((r) => r.finished_sku === sku)
+      ? suppliedShortagesFor(supplied, sroStockByCode, sku, quantity)
+      : null
 
   const assessed = lines.map((line): LineCapability => {
     const sku = String(line.sku ?? '').trim()
     const map = mapped.get(sku)
     const product = map ? productByFg.get(map.fgCode) : undefined
     const components = map ? componentsByFg.get(map.fgCode) : undefined
-    if (!map || !product || !components || components.length === 0) return blankLine(line)
+    if (!map || !product || !components || components.length === 0) {
+      return { ...blankLine(line), supplied: suppliedFor(sku, Number(line.quantity ?? 0)) }
+    }
 
     const quantity = Number(line.quantity ?? 0)
     const ceiling = materialsCeiling(product, components, stockByCode)
@@ -142,6 +170,7 @@ export async function assessOrderCapability(
       shortages: short.shortages,
       unjoined: Array.from(new Set([...ceiling.unjoined, ...short.unjoined])),
       mappingProvisional: !map.confirmed,
+      supplied: suppliedFor(sku, quantity),
     }
   })
 
@@ -164,5 +193,6 @@ function blankLine(line: CapabilityLineInput): LineCapability {
     shortages: [],
     unjoined: [],
     mappingProvisional: false,
+    supplied: null,
   }
 }

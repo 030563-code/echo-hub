@@ -167,6 +167,35 @@ export default function FulfilmentCard({
                       The SKU to model mapping is still provisional. Treat the figure as a guide.
                     </p>
                   )}
+
+                  {/* The s.r.o.-supplied materials, from the unverified recipe.
+                      A guide, never a block: neither button reads it. */}
+                  {line.supplied && (
+                    <div className="mt-1.5 rounded-md border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
+                      {line.supplied.shortages.length === 0 ? (
+                        <p>s.r.o.-supplied materials cover this order (unverified bill of materials).</p>
+                      ) : (
+                        <>
+                          <p className="font-medium text-gray-700">
+                            s.r.o.-supplied materials short (unverified bill of materials):
+                          </p>
+                          <ul className="mt-0.5 space-y-0.5 tabular-nums">
+                            {line.supplied.shortages.map((s) => (
+                              <li key={s.code}>
+                                {s.description ?? s.code}: need {s.need}, have {s.have}, short {s.short}
+                              </li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                      {line.supplied.unjoined.length > 0 && (
+                        <p className="mt-0.5 text-gray-400">
+                          {line.supplied.unjoined.length} supplied component
+                          {line.supplied.unjoined.length === 1 ? ' has' : 's have'} never been counted at s.r.o.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
           </div>

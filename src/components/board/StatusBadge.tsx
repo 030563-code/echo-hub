@@ -46,6 +46,18 @@ const STATUS_CONFIG: Record<string, { label: string; hue: Hue }> = {
   // Fulfilment type
   stock:                 { label: "Stock",          hue: "teal" },
   manufacture:           { label: "Manufacture",    hue: "purple" },
+  // Stock board: how fresh the last physical count is
+  never_counted:         { label: "Never counted",  hue: "red" },
+  count_stale:           { label: "Stale count",    hue: "yellow" },
+  counted:               { label: "Counted",        hue: "emerald" },
+  // Stock ledger movement kinds
+  receipt:               { label: "Receipt",        hue: "green" },
+  count:                 { label: "Count",          hue: "blue" },
+  manufactured:          { label: "Manufactured",   hue: "purple" },
+  shipped_out:           { label: "Shipped out",    hue: "indigo" },
+  customer_dispatch:     { label: "Dispatched",     hue: "teal" },
+  material_consumed:     { label: "Consumed",       hue: "orange" },
+  adjustment:            { label: "Adjustment",     hue: "zinc" },
 };
 
 const LIGHT: Record<Hue, string> = {

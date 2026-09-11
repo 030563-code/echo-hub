@@ -21,6 +21,8 @@
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { applyStockMovements } from '@/lib/stock/apply'
+import { buildDispatchMovements } from '@/lib/stock/movements'
 import { xeroFindContact } from '@/lib/xero-hub'
 import { requireInvoicingManage, loadInvoiceWithLines, logInvoiceEvent } from './shared'
 import { renderInvoicePdf } from './document-data'
@@ -165,7 +167,7 @@ export async function emailInvoiceToCustomer(input: { invoiceId: string }): Prom
   }
 
   const admin = createAdminClient()
-  await admin
+  const { data: won } = await admin
     .from('customer_invoices')
     .update({
       status: 'sent',
@@ -177,6 +179,17 @@ export async function emailInvoiceToCustomer(input: { invoiceId: string }): Prom
     })
     .eq('id', invoiceId)
     .eq('status', 'documented')
+    .select('id')
+
+  // THE LEDGER. Dean, 9 Sep 2026 (D3): the goods left the depot when the
+  // invoice went to the customer, so each goods line is deducted at its own
+  // ship-from depot. Only the winner of the transition posts, and the invoice
+  // id is the movement key, so a re-send can never deduct twice. Best effort:
+  // the invoice is already sent.
+  if (won && won.length > 0) {
+    const ledger = await applyStockMovements(admin, buildDispatchMovements(invoiceId, lines), gate.auth.user.id)
+    if (!ledger.ok) console.error('customer dispatch ledger failed', invoiceId, ledger.error)
+  }
 
   await logInvoiceEvent(invoiceId, 'invoice_emailed', gate.auth.user.id, {
     to: recipient,

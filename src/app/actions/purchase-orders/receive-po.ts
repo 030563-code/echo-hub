@@ -5,16 +5,18 @@ import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
-import { buildStockIncrements, type POLineLite } from "@/lib/mrp/receipts";
+import { buildReceiptMovements, type PoLineLite } from "@/lib/stock/movements";
+import { applyStockMovements } from "@/lib/stock/apply";
 import { settleDeliveredPO } from "@/lib/mrp/settle-po";
 
 // ---------------------------------------------------------------------------
 // Partial-delivery: log a batch of received quantities against an approved PO's
 // lines (append-only). A PO stays "open" (approved) until every line's Σ received
 // ≥ ordered, at which point it flips to 'delivered'. Receipts are qty-only (no
-// price) and are the SOLE automatic writer of warehouse_stock_levels: each
-// logged batch increments the receiving depot's stock per sku via the
-// service-role increment_stock RPC (MRP engine input). po.receive gated.
+// price). Each received row becomes a `receipt` movement in the stock ledger,
+// which is what raises the receiving depot's warehouse_stock_levels (MRP engine
+// input); the receipt row's own id is the movement's idempotency key.
+// po.receive gated.
 // ---------------------------------------------------------------------------
 
 const ReceiveSchema = z.object({
@@ -43,7 +45,7 @@ interface POForReceive {
   source: string;
   leg: string;
   from_entity: string;
-  lines?: POLineLite[];
+  lines?: PoLineLite[];
 }
 
 export async function recordReceipt(input: RecordReceiptInput): Promise<RecordReceiptResult> {
@@ -117,25 +119,26 @@ export async function recordReceipt(input: RecordReceiptInput): Promise<RecordRe
     });
   }
 
-  const { error: insErr } = await supabase.from("po_line_receipts").insert(rows);
+  const { data: inserted, error: insErr } = await supabase
+    .from("po_line_receipts")
+    .insert(rows)
+    .select("id, po_line_id, qty_received");
   if (insErr) {
     console.error("recordReceipt insert failed", insErr.message);
     return { success: false, error: "Failed to log the delivery." };
   }
 
-  // Goods have physically landed at the depot (from_entity on the depot leg) —
-  // increment its stock per sku via the service-role RPC. Best-effort: the
-  // receipt is already logged, so an increment failure is logged, not thrown.
+  // Goods have physically landed at the depot (from_entity on the depot leg):
+  // one `receipt` movement per received row, applied through the ledger.
+  // Best-effort: the receipt is already logged, so a ledger failure is logged,
+  // not thrown. A retry cannot double-count: the receipt row id is the key.
   const admin = createAdminClient();
-  const increments = buildStockIncrements(lines, poLines, po.from_entity);
-  for (const inc of increments) {
-    const { error } = await admin.rpc("increment_stock", {
-      p_warehouse: inc.warehouse_code,
-      p_sku: inc.sku,
-      p_delta: inc.delta,
-    });
-    if (error) console.error("stock increment failed", inc, error.message);
-  }
+  const ledger = await applyStockMovements(
+    admin,
+    buildReceiptMovements(inserted ?? [], poLines, po.from_entity),
+    user.id,
+  );
+  if (!ledger.ok) console.error("stock ledger failed for receipt", poId, ledger.error);
 
   // Recompute from the AUTHORITATIVE post-insert sum (re-read, don't trust the
   // pre-insert snapshot — a concurrent batch on another line could also have

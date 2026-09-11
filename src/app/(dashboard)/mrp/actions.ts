@@ -1,6 +1,7 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { DEPOT_WAREHOUSES } from "@/lib/stock/warehouses";
 import { hasCapability } from "@/lib/authz";
 import type { MRPRow } from "@/lib/erp-types";
 import { netOnOrderBySku, sumReceiptsByLine, sumStockBySku } from "@/lib/mrp/legacy-aggregates";
@@ -124,9 +125,11 @@ export async function calculateMRP(): Promise<MRPRow[]> {
   const safetyStockMap = await computeStatisticalSafetyStock(supabase);
 
   // 1. In Stock — warehouse_stock_levels (critical — fail hard if unavailable)
+  // Depots only: EB-SRO stock is s.r.o.'s to ship, not a depot's to sell.
   const { data: stockData, error: stockErr } = await supabase
     .from("warehouse_stock_levels")
-    .select("sku, product_name, quantity_on_hand");
+    .select("sku, product_name, quantity_on_hand")
+    .in("warehouse_code", [...DEPOT_WAREHOUSES]);
   if (stockErr) throw new Error("Failed to load warehouse stock");
 
   // 2. In Transit — shipment_contents (not yet delivered)
