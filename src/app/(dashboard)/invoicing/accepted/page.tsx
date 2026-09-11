@@ -9,7 +9,7 @@ import { getAcceptedSinceCutover, isNotInvoiceableStage } from '@/app/actions/in
 import { sourceLinesHash } from '@/lib/customer-invoice/hash'
 import { sanitizeUSAddress } from '@/lib/us-address'
 import { OpenInvoiceButton } from '../open-invoice-button'
-import { ExcludeFromQueueButton, RestoreToQueueButton } from '../queue-exclusion-buttons'
+import { ExcludeFromQueueButton } from '../queue-exclusion-buttons'
 import { InvoiceStatusChip, type QueueChip } from '../status-chip'
 
 export const dynamic = 'force-dynamic'
@@ -48,8 +48,11 @@ export default async function AcceptedQueuePage() {
   const acceptedIds = [...acceptedAt.keys()]
 
   // Deals held out of this queue on purpose: invoiced outside the Hub, or
-  // raised here in error. Reversible, and listed at the bottom of the page so
-  // nothing can quietly vanish.
+  // raised here in error. They used to be listed at the bottom of the page
+  // with an Undo. Dean, 11 Sep 2026: "no need for that exclusion list under
+  // the accepted quotes, just take it out of sight." The rows stay in
+  // invoicing_queue_exclusions as the record, and restoreDealToQueue still
+  // puts one back; there is simply no panel for it here.
   const { data: exclusionRows } = await admin
     .from('invoicing_queue_exclusions')
     .select('hubspot_deal_id, reason, excluded_at')
@@ -70,27 +73,6 @@ export default async function AcceptedQueuePage() {
         .in('hubspot_deal_id', acceptedIds)
         .in('depot_code', [...US_DEPOTS])
         .limit(500)
-
-  const excludedIds = [...excluded.keys()]
-  const { data: excludedDeals } = excludedIds.length === 0
-    ? { data: [] }
-    : await admin
-        .from('deals_registry')
-        .select('hubspot_deal_id, deal_name, quote_reference')
-        .in('hubspot_deal_id', excludedIds)
-  const excludedRows = (excludedDeals ?? [])
-    .map((d) => {
-      const dealId = String(d.hubspot_deal_id)
-      const held = excluded.get(dealId)
-      return {
-        dealId,
-        dealName: String(d.deal_name ?? dealId),
-        quoteRef: d.quote_reference ? String(d.quote_reference) : null,
-        reason: held?.reason ?? '',
-        at: held?.at ?? '',
-      }
-    })
-    .sort((a, b) => b.at.localeCompare(a.at))
 
   let rows: QueueRow[] = []
   if (!error && deals && deals.length > 0) {
@@ -262,29 +244,6 @@ export default async function AcceptedQueuePage() {
         </>
       )}
 
-      {excludedRows.length > 0 && (
-        <Card className="bg-white border-gray-200 p-4 sm:p-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900">Set aside</h2>
-          <p className="mt-1 text-xs text-gray-500">
-            Held out of the queue on purpose. Undo puts one back.
-          </p>
-          <ul className="mt-4 divide-y divide-gray-100">
-            {excludedRows.map((row) => (
-              <li key={row.dealId} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                <div className="min-w-0">
-                  <p className="truncate font-medium text-gray-900">{row.dealName}</p>
-                  <p className="text-xs text-gray-500">
-                    {row.quoteRef ?? 'No quote ref'} &middot; {row.reason}
-                    {row.at !== '' &&
-                      ` · ${new Date(row.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
-                  </p>
-                </div>
-                {canManage && <RestoreToQueueButton dealId={row.dealId} />}
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
     </div>
   )
 }

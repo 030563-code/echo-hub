@@ -13,10 +13,14 @@ describe('the accepted queue honours exclusions', () => {
     expect(page).toMatch(/stillWaiting[\s\S]{0,200}excluded\.has/)
   })
 
-  it('always shows what was set aside, so nothing disappears silently', () => {
+  it('shows no set-aside list on the page', () => {
+    // Dean, 11 Sep 2026: "no need for that exclusion list under the accepted
+    // quotes, just take it out of sight." The exclusion still filters the
+    // queue (above) and the rows stay in the table as the record; the page
+    // just does not list them.
     const page = read('src/app/(dashboard)/invoicing/accepted/page.tsx')
-    expect(page).toContain('Set aside')
-    expect(page).toContain('RestoreToQueueButton')
+    expect(page).not.toContain('Set aside')
+    expect(page).not.toContain('RestoreToQueueButton')
   })
 })
 
