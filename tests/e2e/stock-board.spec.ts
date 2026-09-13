@@ -83,13 +83,13 @@ const section = (page: Page, warehouse: string) => page.locator(`[data-stock-war
 const rowFor = (page: Page, warehouse: string, sku: string) =>
   section(page, warehouse).locator("tr", { has: page.getByText(sku, { exact: true }) });
 
-test("the board has three tabs and a section per warehouse; a limited user is turned away", async ({ page }) => {
+test("the board has four tabs and a section per warehouse; a limited user is turned away", async ({ page }) => {
   test.setTimeout(90_000);
   await login(page, creds!);
   await page.goto("/stock");
   await expect(page).toHaveURL(/\/stock\/finished$/);
   // exact: the sidebar's "Bill of Materials" link also answers to "Materials".
-  for (const tab of ["Finished goods", "Materials", "Movements"]) {
+  for (const tab of ["Finished goods", "Materials", "Movements", "Reconciliation"]) {
     await expect(page.getByRole("link", { name: tab, exact: true })).toBeVisible();
   }
   // The fixture SRO order is ready to count against nothing yet; the depot

@@ -71,6 +71,26 @@ export function suppliedRequirement(
 }
 
 /**
+ * What a set of order lines needs in total, per component code: the recipe
+ * applied to every open Bamida order at once. This is the materials board's
+ * "committed" column, the mirror of committed finished goods: rolls and infill
+ * already spoken for by orders Bamida has not finished. Linear and additive,
+ * so it is just suppliedRequirement summed over the lines.
+ */
+export function suppliedRequirementForLines(
+  rows: readonly SuppliedBomRow[],
+  lines: readonly { sku: string; quantity: number }[],
+): Map<string, number> {
+  const total = new Map<string, number>()
+  for (const line of lines) {
+    for (const [code, need] of suppliedRequirement(rows, line.sku, line.quantity)) {
+      total.set(code, round3((total.get(code) ?? 0) + need))
+    }
+  }
+  return total
+}
+
+/**
  * Shortages for one SKU at one quantity against s.r.o.-owned stock.
  *
  * `stockByCode` is component_code to quantity on hand. A code absent from it

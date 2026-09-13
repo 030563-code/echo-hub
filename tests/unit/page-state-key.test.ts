@@ -41,6 +41,7 @@ describe('page keys', () => {
       'stock-board',
       'stock-board:materials',
       'stock-board:movements',
+      'stock-board:reconciliation',
       'commercial-invoices',
     ]) {
       expect(isPageKey(key), key).toBe(true)

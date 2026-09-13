@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   SUPPLIED_CHARGE_CODES,
   suppliedRequirement,
+  suppliedRequirementForLines,
   suppliedShortagesFor,
   type SuppliedBomRow,
 } from '@/lib/mrp/supplied-materials'
@@ -34,6 +35,26 @@ describe('suppliedRequirement', () => {
   it('is empty for zero quantity or an unknown sku', () => {
     expect(suppliedRequirement(BOM, 'EBH9NA', 0).size).toBe(0)
     expect(suppliedRequirement(BOM, 'NOPE', 10).size).toBe(0)
+  })
+})
+
+describe('suppliedRequirementForLines', () => {
+  it('sums the recipe over every open order line, charge codes still dropped', () => {
+    const total = suppliedRequirementForLines(BOM, [
+      { sku: 'EBH9NA', quantity: 10 },
+      { sku: 'EBH8NA', quantity: 2 },
+      { sku: 'EBH9NA', quantity: 5 },
+      { sku: 'NOPE', quantity: 100 },
+    ])
+    expect([...total.entries()]).toEqual([
+      ['PC350FR-UV21', 61.35], // 15 x 2.85 + 2 x 9.3
+      ['ACI-T40', 120],
+      ['DAT-01', 15],
+    ])
+  })
+
+  it('is empty with no lines', () => {
+    expect(suppliedRequirementForLines(BOM, []).size).toBe(0)
   })
 })
 

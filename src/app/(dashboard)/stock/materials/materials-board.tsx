@@ -36,7 +36,8 @@ export default function MaterialsBoard({ rows, canEdit }: { rows: MaterialPositi
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-gray-600">
-          Raw materials Echo Barrier s.r.o. owns and supplies to Bamida, at {SRO_WAREHOUSE}. Bamida&apos;s own
+          Raw materials Echo Barrier s.r.o. owns and supplies to Bamida, at {SRO_WAREHOUSE}. Committed is what the
+          open Bamida orders will use (unverified recipe); on order is bought and not yet delivered. Bamida&apos;s own
           materials come from their daily feed and are shown beside each code where the two overlap.
         </p>
         <div className="flex items-center gap-2">
@@ -58,10 +59,10 @@ export default function MaterialsBoard({ rows, canEdit }: { rows: MaterialPositi
         />
       ) : (
         <div className="overflow-auto rounded-lg border border-gray-200 bg-white">
-          <table className="w-full min-w-[820px] text-sm">
+          <table className="w-full min-w-[1100px] text-sm">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50">
-                {['Component', 'Description', 'Unit', 'On hand (s.r.o.)', 'Est. used since count', 'At Bamida', 'Last counted'].map((h) => (
+                {['Component', 'Description', 'Unit', 'On hand (s.r.o.)', 'Committed', 'Available', 'On order', 'Est. used since count', 'At Bamida', 'Last counted'].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                     {h}
                   </th>
@@ -75,6 +76,11 @@ export default function MaterialsBoard({ rows, canEdit }: { rows: MaterialPositi
                   <td className="px-4 py-3 text-gray-600">{r.description ?? '—'}</td>
                   <td className="px-4 py-3 text-gray-500">{r.unit ?? '—'}</td>
                   <td className={`px-4 py-3 font-semibold tabular-nums ${r.on_hand < 0 ? 'text-red-700' : 'text-gray-900'}`}>{fmt(r.on_hand)}</td>
+                  <td className="px-4 py-3 tabular-nums text-gray-700" title="Recipe applied to every Bamida order not yet finished (unverified bill of materials)">
+                    {r.committed === 0 ? <span className="text-gray-400">0</span> : fmt(r.committed)}
+                  </td>
+                  <td className={`px-4 py-3 font-semibold tabular-nums ${r.available < 0 ? 'text-red-700' : 'text-gray-900'}`}>{fmt(r.available)}</td>
+                  <td className="px-4 py-3 tabular-nums text-gray-700">{r.on_order === 0 ? <span className="text-gray-400">0</span> : fmt(r.on_order)}</td>
                   <td className="px-4 py-3 tabular-nums text-amber-700">{r.estimated_since_count === 0 ? <span className="text-gray-400">0</span> : fmt(r.estimated_since_count)}</td>
                   <td className="px-4 py-3 tabular-nums text-gray-600">
                     {r.bamida_quantity === null ? (

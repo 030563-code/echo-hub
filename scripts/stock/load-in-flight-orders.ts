@@ -10,6 +10,8 @@
  *   chain_key,depot,sku,product_name,quantity,depot_po_number,sro_po_number,
  *   bamida_po_number,stage,sent_at,est_start,est_finish,finished_at,note
  * stage: sent | in_production | finished | ready_stock
+ * depot: US-BAL, US-SBD, CA-HAM or EB-SRO; BLANK for an order that refills the
+ * s.r.o. shelf (no depot leg, never shown as committed).
  *
  * Each chain is one call to hub_warm_start_po_chain, which inserts every leg
  * at its final status (so no webhook fires) and refuses any PO number that
@@ -79,8 +81,14 @@ function parse(text: string): { chains: Chain[]; errors: string[] } {
     const cells = raw.split(',').map((c) => c.trim().replace(/^"|"$/g, ''))
     const row = Object.fromEntries(HEADER.map((h, j) => [h, cells[j] ?? ''])) as Record<string, string>
     if (!row.chain_key) return errors.push(`line ${lineNo}: chain_key is blank`) && undefined
-    if (!(STOCK_WAREHOUSES as readonly string[]).includes(row.depot)) {
-      errors.push(`line ${lineNo}: depot "${row.depot}" is not one of ${STOCK_WAREHOUSES.join(', ')}`)
+    // A blank depot is a refill of the s.r.o. shelf (Bamida builds it, nobody
+    // is waiting for it): no depot leg, the SRO order is the root of its chain.
+    if (row.depot !== '' && !(STOCK_WAREHOUSES as readonly string[]).includes(row.depot)) {
+      errors.push(`line ${lineNo}: depot "${row.depot}" is not one of ${STOCK_WAREHOUSES.join(', ')} (blank means an s.r.o. refill)`)
+      return
+    }
+    if (row.depot === '' && row.stage === 'ready_stock') {
+      errors.push(`line ${lineNo}: a refill (blank depot) cannot be ready_stock`)
       return
     }
     if (!STAGES.has(row.stage)) return errors.push(`line ${lineNo}: stage "${row.stage}" is not sent, in_production, finished or ready_stock`) && undefined
@@ -137,7 +145,7 @@ async function main() {
   console.log(`${apply ? 'APPLYING' : 'DRY RUN'}: ${chains.length} chain${chains.length === 1 ? '' : 's'}`)
   for (const c of chains) {
     const units = c.lines.reduce((s, l) => s + l.quantity, 0)
-    console.log(`  ${c.key.padEnd(12)} ${c.depot}  ${c.stage.padEnd(13)} ${units} units in ${c.lines.length} line${c.lines.length === 1 ? '' : 's'}` +
+    console.log(`  ${c.key.padEnd(12)} ${(c.depot || 'refill').padEnd(6)}  ${c.stage.padEnd(13)} ${units} units in ${c.lines.length} line${c.lines.length === 1 ? '' : 's'}` +
       `  depot ${c.depot_po_number || '(mint)'}  sro ${c.sro_po_number || '(mint)'}  bamida ${c.stage === 'ready_stock' ? 'n/a' : c.bamida_po_number || '(mint)'}`)
   }
   if (!apply) {
@@ -149,7 +157,7 @@ async function main() {
   for (const c of chains) {
     const { data, error } = await admin.rpc('hub_warm_start_po_chain', {
       p: {
-        depot: c.depot,
+        depot: c.depot || null,
         stage: c.stage,
         note: c.note,
         lines: c.lines,

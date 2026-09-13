@@ -11,6 +11,7 @@ const TABS = [
   { href: '/stock/finished', label: 'Finished goods' },
   { href: '/stock/materials', label: 'Materials' },
   { href: '/stock/movements', label: 'Movements' },
+  { href: '/stock/reconciliation', label: 'Reconciliation' },
 ] as const
 
 export function StockNav() {
