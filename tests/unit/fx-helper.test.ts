@@ -50,3 +50,45 @@ describe('pickFxRate', () => {
     expect(pickFxRate([{ week_start_date: 'x', avg_rate: 'NaN' }], 'spot', asOf)).toBeNull()
   })
 })
+
+describe('pickFxRate for each pair', () => {
+  const methods = ['spot', 'rolling_13w', 'quarterly'] as const
+
+  it('defaults to EUR_USD, identical to naming it', () => {
+    for (const m of methods) {
+      expect(pickFxRate(rows, m, asOf), m).toEqual(pickFxRate(rows, m, asOf, 'EUR_USD'))
+      expect(pickFxRate(rows, m, asOf)?.pair, m).toBe('EUR_USD')
+    }
+  })
+
+  it('stamps EUR_CAD on the result and picks the rate the same way', () => {
+    const cadRows = [
+      { week_start_date: '2026-06-15', avg_rate: '1.5812' },
+      { week_start_date: '2026-06-08', avg_rate: 1.59 },
+      { week_start_date: '2026-06-01', avg_rate: 1.6 },
+    ]
+    const spot = pickFxRate(cadRows, 'spot', asOf, 'EUR_CAD')
+    expect(spot).toEqual({
+      pair: 'EUR_CAD',
+      rate: 1.5812,
+      method: 'spot',
+      week_start: '2026-06-15',
+      basis: 'latest week 2026-06-15',
+      latest_week: '2026-06-15',
+      weeks_used: 1,
+    })
+    const quarterly = pickFxRate(cadRows, 'quarterly', asOf, 'EUR_CAD')
+    expect(quarterly?.pair).toBe('EUR_CAD')
+    expect(quarterly?.rate).toBe(1.5904) // round4((1.5812 + 1.59 + 1.6) / 3)
+    expect(quarterly?.basis).toBe('Q2 2026 average (3 wks)')
+    expect(pickFxRate(cadRows, 'rolling_13w', asOf, 'EUR_CAD')?.rate).toBe(1.5904)
+  })
+
+  it('changes nothing but the pair between EUR_USD and EUR_CAD on the same rows', () => {
+    for (const m of methods) {
+      const usd = pickFxRate(rows, m, asOf, 'EUR_USD')
+      const cad = pickFxRate(rows, m, asOf, 'EUR_CAD')
+      expect(cad, m).toEqual({ ...usd, pair: 'EUR_CAD' })
+    }
+  })
+})

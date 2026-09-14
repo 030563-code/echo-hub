@@ -110,7 +110,7 @@ at its defaults, or merely opening a screen will offer to resume nothing.
 | `quotes:filters` | view | the six quotes list routes |
 | `po-board` | view | the purchase-order board |
 | `po-board:table`, `mrp-board`, `transport:table` | view | the shared board table |
-| `po-approvals`, `warehouse-stock`, `bom:materials`, `commercial-invoices:list`, `commercial-invoices:create` | view | search boxes |
+| `po-approvals`, `warehouse-stock`, `bom:materials`, `commercial-invoices:list`, `commercial-invoices:create`, `commercial-invoices:hs-codes` | view | search boxes |
 | `bom` | view | the BOM tab |
 
 ## The guard

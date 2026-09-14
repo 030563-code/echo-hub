@@ -7,13 +7,18 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
 import { buildCommercialInvoice, type CommercialInvoiceDoc, type CommercialInvoiceFx } from "@/lib/commercial-invoice";
 import { applyComposition, type CompositionRule, type HsCodeEntry } from "@/lib/invoice-composition";
-import { getEurUsdRate } from "@/lib/fx-helper";
+import { getFxRate } from "@/lib/fx-helper";
+import { INVOICE_LEGS, LEG_CONFIG, type InvoiceLeg } from "@/lib/invoice-legs";
+import { missingHsCodeLines, nameProducts } from "@/lib/hs-codes";
 
 // ---------------------------------------------------------------------------
 // Generate + persist a commercial invoice for one CONTAINER (it "travels with
-// the container"). Two legs:
-//   SRO_TO_GROUP — EUR, values straight from intercompany_prices.
-//   GROUP_TO_USA — USD, EUR base × rolling-13-week EUR_USD (snapshotted on the doc).
+// the container"). The legs and their parties, currency and FX pair live in
+// src/lib/invoice-legs.ts:
+//   SRO_TO_GROUP: EUR, values straight from intercompany_prices.
+//   GROUP_TO_USA: USD, EUR base times the quarterly EUR_USD rate.
+//   GROUP_TO_CANADA: CAD, EUR base times the quarterly EUR_CAD rate.
+// The rate is snapshotted on the doc.
 // Aggregate the container's shipment_contents by SKU, value, number+persist
 // header+lines ATOMICALLY (service-role RPC). Hub-PDF + DB only (no Xero).
 // Gated invoice.create AND cost.view (values shown).
@@ -21,17 +26,11 @@ import { getEurUsdRate } from "@/lib/fx-helper";
 
 const Input = z.object({
   container_ref: z.string().trim().min(1).max(120),
-  leg: z.enum(["SRO_TO_GROUP", "GROUP_TO_USA"]).default("SRO_TO_GROUP"),
+  leg: z.enum(INVOICE_LEGS).default("SRO_TO_GROUP"),
   // Destination country (e.g. 'BR') drives country-specific composition rules
   // (Brazil bundling). Optional — intercompany legs may have no customer country.
   destination_country: z.string().trim().max(60).optional(),
 });
-
-type Leg = "SRO_TO_GROUP" | "GROUP_TO_USA";
-const LEG_CONFIG: Record<Leg, { seller: string; buyer: string; currency: string; usesFx: boolean }> = {
-  SRO_TO_GROUP: { seller: "EB-SRO", buyer: "EB-GROUP", currency: "EUR", usesFx: false },
-  GROUP_TO_USA: { seller: "EB-GROUP", buyer: "EB-USA", currency: "USD", usesFx: true },
-};
 
 export type GenerateInvoiceResult =
   | { ok: true; doc: CommercialInvoiceDoc; warnings: string[] }
@@ -51,7 +50,7 @@ interface EntityRow {
   vat_tax_id: string | null;
 }
 
-export async function generateCommercialInvoice(input: { container_ref: string; leg?: Leg; destination_country?: string }): Promise<GenerateInvoiceResult> {
+export async function generateCommercialInvoice(input: { container_ref: string; leg?: InvoiceLeg; destination_country?: string }): Promise<GenerateInvoiceResult> {
   const auth = await getAuthorizedUser();
   if (!auth.ok) return { ok: false, error: auth.error };
   // Issuing a priced commercial document requires BOTH capabilities.
@@ -126,15 +125,15 @@ export async function generateCommercialInvoice(input: { container_ref: string; 
     if (Number.isFinite(v)) priceBySku.set(row.sku, v);
   }
 
-  // 4. FX (USD leg only) — QUARTER-STABLE EUR_USD (Juraj: "3-mo avg, updated
-  // quarterly"), snapshotted onto the doc so an issued invoice never re-derives.
+  // 4. FX (onward legs only): the leg's pair, QUARTER-STABLE (Juraj: "3-mo avg,
+  // updated quarterly"), snapshotted onto the doc so an issued invoice never re-derives.
   let fx: CommercialInvoiceFx | null = null;
   const fxNotes: string[] = [];
-  if (cfg.usesFx) {
-    const rate = await getEurUsdRate("quarterly");
-    if (!rate) return { ok: false, error: "EUR→USD FX rate unavailable (mfg fx_weekly)." };
+  if (cfg.usesFx && cfg.fxPair) {
+    const rate = await getFxRate(cfg.fxPair, "quarterly");
+    if (!rate) return { ok: false, error: `No ${cfg.fxPair} exchange rate found in fx_weekly, so the ${cfg.currency} values cannot be worked out.` };
     fx = { pair: rate.pair, rate: rate.rate, method: rate.method, week_start: rate.week_start };
-    fxNotes.push(`USD @ ${rate.rate} — ${rate.basis}.`);
+    fxNotes.push(`${cfg.currency} @ ${rate.rate}, ${rate.basis}.`);
     // Staleness: the frankfurter→fx_weekly sync is weekly and known to lag.
     if (rate.latest_week) {
       const ageDays = Math.floor((Date.now() - new Date(rate.latest_week).getTime()) / 86_400_000);
@@ -174,6 +173,9 @@ export async function generateCommercialInvoice(input: { container_ref: string; 
     hsCodes: (hsRows ?? []) as unknown as HsCodeEntry[],
   });
   const composedLines = composition.lines;
+  // Dean, 14 Sep 2026: every line carries an HS code. The draft is still saved
+  // (it can be completed with Edit), but setInvoiceStatus refuses to issue it.
+  const missingHs = missingHsCodeLines(composedLines);
 
   const spotId = rows.find((r) => r.spot_id)?.spot_id ?? null;
   // A container can carry lines from MORE THAN ONE PO — keep every distinct ref
@@ -240,6 +242,11 @@ export async function generateCommercialInvoice(input: { container_ref: string; 
   revalidatePath("/invoices");
 
   const warnings = [
+    ...(missingHs.length
+      ? [
+          `No HS code for ${nameProducts(missingHs)}. The invoice cannot be issued until each line has one. Set them on the HS codes tab under Invoices, or type them on this draft with Edit.`,
+        ]
+      : []),
     ...composition.applied,
     ...fxNotes,
     ...(missingPrice.length

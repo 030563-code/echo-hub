@@ -90,7 +90,7 @@ test.describe("staging tester accounts", () => {
     test.skip(!MANAGER, "no TESTER_MANAGER_* creds in env");
     await login(page, MANAGER!);
     await page.goto("/invoices");
-    await expect(page.getByText("New invoice — from a container")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("New invoice from a container")).toBeVisible({ timeout: 20_000 });
 
     // Generate the EUR (SRO→Group) invoice for a SPECIFIC real container — never
     // "the first row" (concurrent suites seed E2E fixture containers into the

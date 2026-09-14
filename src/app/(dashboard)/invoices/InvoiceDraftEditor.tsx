@@ -13,11 +13,21 @@ import {
   parseCommercialInvoiceDraft,
   type CommercialInvoiceDraft,
 } from "@/lib/page-drafts";
+import { currencySymbol } from "@/lib/invoice-legs";
+import { cn } from "@/lib/utils";
+import { isValidHsCode, normaliseHsCode } from "@/lib/hs-codes";
 
 // Editable-draft override. Full manual control over a DRAFT invoice's lines before
 // issuing: edit a description/price/HS code, DELETE ancillary lines (consolidation),
 // or ADD lines (split a product into HS-coded parts). Totals recompute live and are
 // re-reconciled server-side on save; every edit is audited. Draft only.
+
+/** A saved product_hs_codes row: the code for one product on one leg. */
+export interface SavedHsCode {
+  sku: string;
+  leg: string;
+  hs_code: string;
+}
 
 interface Row {
   sku: string;
@@ -36,11 +46,13 @@ const round2 = (v: number) => Math.round(v * 100) / 100;
 export default function InvoiceDraftEditor({
   invoiceId,
   doc,
+  savedHsCodes,
   onClose,
   onSaved,
 }: {
   invoiceId: string;
   doc: CommercialInvoiceDoc;
+  savedHsCodes: SavedHsCode[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -55,7 +67,7 @@ export default function InvoiceDraftEditor({
   );
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
-  const sym = doc.currency === "USD" ? "$" : "€";
+  const sym = currencySymbol(doc.currency);
 
   // Unsaved line edits, kept across a close and a reopen.
   //
@@ -98,6 +110,21 @@ export default function InvoiceDraftEditor({
     saveDraft({ v: 1, rows });
   }, [saveDraft, rows]);
 
+  // HS codes: blank saves (the draft just cannot be issued yet); anything typed
+  // must pass the same rule the database and the server action apply.
+  const hsState = rows.map((r) => {
+    const code = normaliseHsCode(r.hs_code);
+    return { code, missing: code === "", invalid: code !== "" && !isValidHsCode(code) };
+  });
+  const missingCount = hsState.filter((h) => h.missing).length;
+  const invalidLines = hsState.flatMap((h, i) => (h.invalid ? [i + 1] : []));
+  const savedForLeg = new Map(savedHsCodes.filter((c) => c.leg === doc.leg).map((c) => [c.sku, c.hs_code]));
+  const fillable = rows.filter((r, i) => hsState[i].missing && savedForLeg.has(r.sku.trim())).length;
+  const fillBlankCodes = () =>
+    setRows((rs) =>
+      rs.map((r) => (normaliseHsCode(r.hs_code) === "" && savedForLeg.has(r.sku.trim()) ? { ...r, hs_code: savedForLeg.get(r.sku.trim()) ?? "" } : r))
+    );
+
   const lineTotal = (r: Row) => round2(num(r.qty) * round2(num(r.unit_value)));
   const subtotal = round2(rows.reduce((s, r) => s + lineTotal(r), 0));
 
@@ -112,6 +139,10 @@ export default function InvoiceDraftEditor({
       setErr("An invoice needs at least one line.");
       return;
     }
+    if (invalidLines.length) {
+      setErr(`Fix the HS code on line ${invalidLines.join(", ")} first.`);
+      return;
+    }
     start(async () => {
       const res = await editInvoiceDraft({
         invoice_id: invoiceId,
@@ -120,7 +151,7 @@ export default function InvoiceDraftEditor({
           product_name: r.product_name.trim() || r.sku.trim() || "—",
           qty: num(r.qty),
           unit_value: num(r.unit_value),
-          hs_code: r.hs_code.trim() || null,
+          hs_code: normaliseHsCode(r.hs_code) || null,
         })),
       });
       if (!res.ok) {
@@ -173,6 +204,24 @@ export default function InvoiceDraftEditor({
 
           {err && <p className="text-xs text-red-700 mb-3">{err}</p>}
 
+          {missingCount > 0 && (
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <span>
+                {missingCount === 1 ? "1 line has" : `${missingCount} lines have`} no HS code. You can save the draft like this, but it
+                cannot be issued until every line has one.
+              </span>
+              {fillable > 0 && (
+                <button
+                  type="button"
+                  onClick={fillBlankCodes}
+                  className="ml-auto px-2.5 py-1 rounded-md border border-amber-300 bg-white text-amber-900 hover:bg-amber-100 transition-colors"
+                >
+                  Fill {fillable === 1 ? "1 blank code" : `${fillable} blank codes`} from the HS codes tab
+                </button>
+              )}
+            </div>
+          )}
+
           <div className="rounded-xl bg-white border border-gray-200 overflow-hidden">
             <table className="w-full text-xs">
               <thead>
@@ -193,7 +242,16 @@ export default function InvoiceDraftEditor({
                     <td className="px-2 py-1.5"><input className={inputCls} value={r.product_name} onChange={(e) => update(i, "product_name", e.target.value)} /></td>
                     <td className="px-2 py-1.5"><input className={`${inputCls} text-right`} inputMode="decimal" value={r.qty} onChange={(e) => update(i, "qty", e.target.value)} /></td>
                     <td className="px-2 py-1.5"><input className={`${inputCls} text-right`} inputMode="decimal" value={r.unit_value} onChange={(e) => update(i, "unit_value", e.target.value)} /></td>
-                    <td className="px-2 py-1.5"><input className={`${inputCls} font-mono`} placeholder="—" value={r.hs_code} onChange={(e) => update(i, "hs_code", e.target.value)} /></td>
+                    <td className="px-2 py-1.5">
+                      <input
+                        className={cn(inputCls, "font-mono", hsState[i].invalid && "border-red-500 focus:border-red-600", hsState[i].missing && "border-amber-400")}
+                        placeholder="Needed"
+                        aria-label={`HS code, line ${i + 1}`}
+                        aria-invalid={hsState[i].invalid || undefined}
+                        value={r.hs_code}
+                        onChange={(e) => update(i, "hs_code", e.target.value)}
+                      />
+                    </td>
                     <td className="px-2 py-1.5 text-right tabular-nums text-gray-900">{sym}{lineTotal(r).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td className="px-2 py-1.5 text-center">
                       <button onClick={() => del(i)} className="p-1 text-gray-400 hover:text-red-700 transition-colors" title="Delete line">
@@ -205,6 +263,12 @@ export default function InvoiceDraftEditor({
               </tbody>
             </table>
           </div>
+          {invalidLines.length > 0 && (
+            <p className="mt-2 text-xs text-red-700" role="alert">
+              The HS code on line {invalidLines.join(", ")} is not valid. An HS code is 6 to 10 digits, split by single dots or spaces,
+              for example 3926.90 or 3926 90 97.
+            </p>
+          )}
 
           <div className="flex items-center justify-between mt-3">
             <button onClick={addRow} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400 hover:bg-gray-50 rounded-lg transition-colors">
@@ -219,7 +283,7 @@ export default function InvoiceDraftEditor({
             <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors rounded-lg hover:bg-gray-100">Cancel</button>
             <button
               onClick={save}
-              disabled={pending}
+              disabled={pending || invalidLines.length > 0}
               className="inline-flex items-center gap-2 px-5 py-2 bg-echo-orange hover:bg-echo-orange-hover disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
             >
               {pending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save draft

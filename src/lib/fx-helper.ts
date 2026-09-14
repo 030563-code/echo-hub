@@ -1,8 +1,11 @@
 import 'server-only'
 import { createMfgClient } from '@/lib/supabase/mfg'
+import type { FxPair } from '@/lib/invoice-legs'
 
-// EUR→USD FX for the Group→USA commercial-invoice leg. Reads the mfg project's
-// fx_weekly (pair='EUR_USD', weekly avg_rate, source frankfurter.app).
+// EUR FX for the onward commercial-invoice legs: EUR_USD for Group to USA and
+// EUR_CAD for Group to Canada. Reads the mfg project's fx_weekly (weekly
+// avg_rate per pair, source frankfurter.app). The pair only chooses which rows
+// are read and is stamped on the result; the method is identical for both.
 //
 // Juraj's spec: "3-month average, auto-updated QUARTERLY" — a rate that is STABLE
 // within a quarter (customs/audit want the same rate for every shipment in a
@@ -41,7 +44,8 @@ function quarterOf(d: Date): { year: number; q: number; start: Date } {
 export function pickFxRate(
   rows: { week_start_date: string; avg_rate: number | string }[],
   method: FxMethod,
-  asOf: Date
+  asOf: Date,
+  pair: FxPair = 'EUR_USD'
 ): FxRate | null {
   const clean = rows
     .map((r) => ({ week: r.week_start_date, rate: Number(r.avg_rate) }))
@@ -51,7 +55,7 @@ export function pickFxRate(
   const latest_week = clean[0].week
 
   if (method === 'spot') {
-    return { pair: 'EUR_USD', rate: round4(clean[0].rate), method, week_start: clean[0].week, basis: `latest week ${clean[0].week}`, latest_week, weeks_used: 1 }
+    return { pair, rate: round4(clean[0].rate), method, week_start: clean[0].week, basis: `latest week ${clean[0].week}`, latest_week, weeks_used: 1 }
   }
 
   if (method === 'quarterly') {
@@ -67,7 +71,7 @@ export function pickFxRate(
     const pq = cur.q === 0 ? 4 : cur.q
     const py = cur.q === 0 ? cur.year - 1 : cur.year
     return {
-      pair: 'EUR_USD',
+      pair,
       rate: round4(avg),
       method,
       week_start: used[used.length - 1].week,
@@ -80,18 +84,18 @@ export function pickFxRate(
   // rolling_13w
   const win = clean.slice(0, 13)
   const avg = win.reduce((s, r) => s + r.rate, 0) / win.length
-  return { pair: 'EUR_USD', rate: round4(avg), method, week_start: win[win.length - 1].week, basis: `rolling ${win.length}-wk average`, latest_week, weeks_used: win.length }
+  return { pair, rate: round4(avg), method, week_start: win[win.length - 1].week, basis: `rolling ${win.length}-wk average`, latest_week, weeks_used: win.length }
 }
 
-export async function getEurUsdRate(method: FxMethod = 'quarterly'): Promise<FxRate | null> {
+export async function getFxRate(pair: FxPair, method: FxMethod = 'quarterly'): Promise<FxRate | null> {
   const mfg = createMfgClient()
   // Pull enough history to cover a full prior quarter (~26 weeks is plenty).
   const { data, error } = await mfg
     .from('fx_weekly')
     .select('week_start_date, avg_rate')
-    .eq('pair', 'EUR_USD')
+    .eq('pair', pair)
     .order('week_start_date', { ascending: false })
     .limit(30)
   if (error || !data) return null
-  return pickFxRate(data as { week_start_date: string; avg_rate: number | string }[], method, new Date())
+  return pickFxRate(data as { week_start_date: string; avg_rate: number | string }[], method, new Date(), pair)
 }

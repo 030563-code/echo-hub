@@ -4,6 +4,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { X, FileDown } from "lucide-react";
 import type { CommercialInvoiceDoc } from "@/lib/commercial-invoice";
 import { EB_GREEN, drawBrandHeader } from "@/lib/pdf-brand";
+import { currencySymbol, legLabel } from "@/lib/invoice-legs";
 
 // `doc` is built + cost-stripped SERVER-SIDE. When `priced` is false the values
 // are already absent (the viewer lacks cost.view).
@@ -17,7 +18,7 @@ export default function CommercialInvoiceModal({
   onClose: () => void;
 }) {
   const priced = doc.priced;
-  const sym = doc.currency === "USD" ? "$" : "€";
+  const sym = currencySymbol(doc.currency);
   const money = (v: number | null) =>
     v == null ? "—" : `${sym}${v.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -113,6 +114,8 @@ export default function CommercialInvoiceModal({
           <p className="text-xs text-gray-500 mb-3">
             {doc.seller.legal_name} → {doc.buyer.legal_name} · container{" "}
             <span className="font-mono text-gray-600">{doc.container_ref ?? "—"}</span> · {doc.currency}
+            {" · "}
+            {legLabel(doc.leg)}
           </p>
 
           {warnings.map((w, i) => (
@@ -126,6 +129,7 @@ export default function CommercialInvoiceModal({
                   <th className="text-left font-medium px-3 py-2">SKU</th>
                   <th className="text-left font-medium px-3 py-2">Description</th>
                   <th className="text-right font-medium px-3 py-2">Qty</th>
+                  <th className="text-left font-medium px-3 py-2">HS code</th>
                   {priced && <th className="text-right font-medium px-3 py-2">Unit value</th>}
                   {priced && <th className="text-right font-medium px-3 py-2">Line total</th>}
                 </tr>
@@ -136,13 +140,16 @@ export default function CommercialInvoiceModal({
                     <td className="px-3 py-2 font-mono text-gray-900">{l.sku}</td>
                     <td className="px-3 py-2 text-gray-600">{l.product_name}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-gray-600">{l.qty}</td>
+                    <td className="px-3 py-2 font-mono text-gray-900">
+                      {l.hs_code ? l.hs_code : <span className="font-sans text-amber-700">Missing</span>}
+                    </td>
                     {priced && <td className="px-3 py-2 text-right tabular-nums text-gray-500">{money(l.unit_value)}</td>}
                     {priced && <td className="px-3 py-2 text-right tabular-nums text-gray-900">{money(l.line_total)}</td>}
                   </tr>
                 ))}
                 {doc.lines.length === 0 && (
                   <tr>
-                    <td colSpan={priced ? 5 : 3} className="px-3 py-6 text-center text-gray-400">No lines.</td>
+                    <td colSpan={priced ? 6 : 4} className="px-3 py-6 text-center text-gray-400">No lines.</td>
                   </tr>
                 )}
               </tbody>

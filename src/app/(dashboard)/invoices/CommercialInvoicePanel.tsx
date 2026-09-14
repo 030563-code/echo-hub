@@ -9,6 +9,7 @@ import { generateCommercialInvoice } from "@/app/actions/invoices/generate-comme
 import CommercialInvoiceModal from "./CommercialInvoiceModal";
 import { usePersistedView } from "@/hooks/use-page-state";
 import { parseSearchView, type SearchView } from "@/lib/page-drafts";
+import { INVOICE_LEGS, LEG_CONFIG, legsForDestination, type InvoiceLeg } from "@/lib/invoice-legs";
 
 interface ContainerGroup {
   container_ref: string;
@@ -16,6 +17,8 @@ interface ContainerGroup {
   units: number;
   po_references: string[];
   spot_id: string | null;
+  /** The legs this container needs, from its lines' depot codes. */
+  legs: InvoiceLeg[];
 }
 
 export default function CommercialInvoicePanel({
@@ -41,22 +44,30 @@ export default function CommercialInvoicePanel({
   const setDestCountry = (next: string) => setDestView({ v: 1, q: next });
 
   const containers = useMemo<ContainerGroup[]>(() => {
-    const byRef = new Map<string, { skus: Set<string>; units: number; pos: Set<string>; spot: string | null }>();
+    const byRef = new Map<string, { skus: Set<string>; units: number; pos: Set<string>; spot: string | null; depots: (string | null)[] }>();
     for (const it of items) {
       if (!it.container_ref) continue;
-      const g = byRef.get(it.container_ref) ?? { skus: new Set<string>(), units: 0, pos: new Set<string>(), spot: null };
+      const g = byRef.get(it.container_ref) ?? { skus: new Set<string>(), units: 0, pos: new Set<string>(), spot: null, depots: [] };
       g.skus.add(it.sku);
       g.units += it.qty;
       if (it.po_reference) g.pos.add(it.po_reference);
       g.spot = g.spot ?? it.spot_id;
+      g.depots.push(it.depot_destination);
       byRef.set(it.container_ref, g);
     }
     return [...byRef.entries()]
-      .map(([container_ref, g]) => ({ container_ref, skus: g.skus.size, units: g.units, po_references: [...g.pos].sort(), spot_id: g.spot }))
+      .map(([container_ref, g]) => ({
+        container_ref,
+        skus: g.skus.size,
+        units: g.units,
+        po_references: [...g.pos].sort(),
+        spot_id: g.spot,
+        legs: legsForDestination(g.depots),
+      }))
       .sort((a, b) => a.container_ref.localeCompare(b.container_ref));
   }, [items]);
 
-  function generate(container_ref: string, leg: "SRO_TO_GROUP" | "GROUP_TO_USA") {
+  function generate(container_ref: string, leg: InvoiceLeg) {
     setError(null);
     setBusyRef(`${container_ref}:${leg}`);
     startTransition(async () => {
@@ -79,9 +90,11 @@ export default function CommercialInvoicePanel({
     <div className="mb-8">
       <div className="flex items-center gap-2 mb-3">
         <h2 className="text-sm font-semibold text-gray-900" style={{ fontFamily: "Varela Round, sans-serif" }}>
-          New invoice — from a container
+          New invoice from a container
         </h2>
-        <span className="text-[10px] text-gray-400">per container — EUR (SRO → Group) &amp; USD (Group → USA)</span>
+        <span className="text-[10px] text-gray-400">
+          One per container and leg: {INVOICE_LEGS.map((leg) => `${LEG_CONFIG[leg].label} (${LEG_CONFIG[leg].currency})`).join(", ")}
+        </span>
         {canCreate && (
           <span className="ml-auto flex items-center gap-1.5 text-[10px] text-gray-500">
             Destination
@@ -133,24 +146,18 @@ export default function CommercialInvoicePanel({
                   <td className="px-3 py-2 text-right">
                     {canCreate ? (
                       <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => generate(c.container_ref, "SRO_TO_GROUP")}
-                          disabled={pending}
-                          title="SRO → Group (EUR)"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50"
-                        >
-                          {pending && busyRef === `${c.container_ref}:SRO_TO_GROUP` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
-                          EUR
-                        </button>
-                        <button
-                          onClick={() => generate(c.container_ref, "GROUP_TO_USA")}
-                          disabled={pending}
-                          title="Group → USA (USD)"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50"
-                        >
-                          {pending && busyRef === `${c.container_ref}:GROUP_TO_USA` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
-                          USD
-                        </button>
+                        {c.legs.map((leg) => (
+                          <button
+                            key={leg}
+                            onClick={() => generate(c.container_ref, leg)}
+                            disabled={pending}
+                            title={`${LEG_CONFIG[leg].label} (${LEG_CONFIG[leg].currency})`}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50"
+                          >
+                            {pending && busyRef === `${c.container_ref}:${leg}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+                            {LEG_CONFIG[leg].currency}
+                          </button>
+                        ))}
                       </div>
                     ) : (
                       <span className="text-[10px] text-gray-400">view only</span>

@@ -43,6 +43,7 @@ describe('page keys', () => {
       'stock-board:movements',
       'stock-board:reconciliation',
       'commercial-invoices',
+      'commercial-invoices:hs-codes',
       'profile:details',
     ]) {
       expect(isPageKey(key), key).toBe(true)

@@ -123,12 +123,12 @@ test("PO lifecycle kanban drags + persists; invoices create panel moved", async 
   // ---- /invoices: the create panel now lives here ----
   await page.goto("/invoices");
   await expect(page.getByRole("heading", { name: "Commercial Invoices" })).toBeVisible();
-  await expect(page.getByText("New invoice — from a container")).toBeVisible();
+  await expect(page.getByText("New invoice from a container")).toBeVisible();
 
   // ---- /transport: no invoice create panel anymore (pure logistics) ----
   await page.goto("/transport");
   await expect(page.getByText("Logistics & Shipping")).toBeVisible();
-  await expect(page.getByText("New invoice — from a container")).toHaveCount(0);
+  await expect(page.getByText("New invoice from a container")).toHaveCount(0);
 
   // ---- restore: drag the card home + prove the restore persisted too ----
   await page.goto("/purchase-orders");

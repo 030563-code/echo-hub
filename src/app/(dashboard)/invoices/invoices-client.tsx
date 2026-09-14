@@ -13,6 +13,12 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { SearchBox } from "@/components/ui/search-box";
 import { usePersistedView } from "@/hooks/use-page-state";
 import { parseSearchView, type SearchView } from "@/lib/page-drafts";
+import { INVOICE_LEGS, LEG_CONFIG, currencySymbol, legLabel } from "@/lib/invoice-legs";
+import { missingHsCodeLines, nameProducts } from "@/lib/hs-codes";
+import type { SavedHsCode } from "./InvoiceDraftEditor";
+
+/** "SRO to Group (EUR), Group to USA (USD), Group to Canada (CAD)" */
+const LEG_SUMMARY = INVOICE_LEGS.map((leg) => `${LEG_CONFIG[leg].label} (${LEG_CONFIG[leg].currency})`).join(", ");
 
 const STATUS_STYLE: Record<string, string> = {
   draft: "bg-gray-100 text-gray-600",
@@ -24,11 +30,14 @@ export default function InvoicesClient({
   invoices,
   canViewCost,
   canManage,
+  hsCodes,
   createSlot,
 }: {
   invoices: InvoiceListRow[];
   canViewCost: boolean;
   canManage: boolean;
+  /** Every saved product_hs_codes row, so the draft editor can fill blank codes. */
+  hsCodes: SavedHsCode[];
   /** The "generate from a container" panel — rendered under the header. */
   createSlot?: React.ReactNode;
 }) {
@@ -72,6 +81,7 @@ export default function InvoicesClient({
       [
         r.doc.invoice_number,
         `${r.doc.seller.code} → ${r.doc.buyer.code}`,
+        legLabel(r.doc.leg),
         r.doc.seller.code,
         r.doc.buyer.code,
         r.doc.container_ref ?? "",
@@ -86,17 +96,17 @@ export default function InvoicesClient({
   const money = (d: CommercialInvoiceDoc) =>
     d.total == null
       ? "—"
-      : `${d.currency === "USD" ? "$" : "€"}${d.total.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      : `${currencySymbol(d.currency)}${d.total.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
-    <div className="p-6">
+    <div>
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: "Varela Round, sans-serif" }}>
             Commercial Invoices
           </h1>
           <p className="text-gray-500 text-sm mt-1">
-            Intercompany invoices issued per container — SRO→Group (EUR) · Group→USA (USD)
+            Intercompany invoices issued per container: {LEG_SUMMARY}. Every line needs an HS code before an invoice can be issued.
           </p>
         </div>
         {invoices.length > 0 && (
@@ -117,7 +127,7 @@ export default function InvoicesClient({
         <EmptyState
           icon={<Receipt className="w-8 h-8" />}
           title="No commercial invoices issued yet"
-          description="Pick a container above and choose the EUR (SRO→Group) or USD (Group→USA) leg to generate one."
+          description={`Pick a container above and choose a leg to generate one: ${LEG_SUMMARY}.`}
         />
       ) : (
         <div className="rounded-xl bg-white border border-gray-200 overflow-hidden">
@@ -141,7 +151,12 @@ export default function InvoicesClient({
                   </td>
                 </tr>
               )}
-              {filtered.map((r) => (
+              {filtered.map((r) => {
+                const missingHs = r.status === "draft" ? missingHsCodeLines(r.doc.lines) : [];
+                const hsReason = missingHs.length
+                  ? `Cannot be issued yet: ${missingHs.length === 1 ? "1 line has" : `${missingHs.length} lines have`} no HS code (${nameProducts(missingHs)}).`
+                  : null;
+                return (
                 <tr
                   key={r.id}
                   className="border-t border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer"
@@ -149,10 +164,22 @@ export default function InvoicesClient({
                 >
                   <td className="px-4 py-2.5 font-mono text-echo-orange">{r.doc.invoice_number}</td>
                   <td className="px-4 py-2.5 text-gray-600">{r.doc.date}</td>
-                  <td className="px-4 py-2.5 text-gray-600">{r.doc.seller.code} → {r.doc.buyer.code}</td>
+                  <td className="px-4 py-2.5 text-gray-600">
+                    {r.doc.seller.code} → {r.doc.buyer.code}
+                    <span className="block text-[10px] text-gray-400">{legLabel(r.doc.leg)}</span>
+                  </td>
                   <td className="px-4 py-2.5 font-mono text-gray-600">{r.doc.container_ref ?? "—"}</td>
                   <td className="px-4 py-2.5">
                     <span className={`inline-block px-2 py-0.5 rounded text-[10px] uppercase tracking-wide ${STATUS_STYLE[r.status] ?? STATUS_STYLE.draft}`}>{r.status}</span>
+                    {hsReason && (
+                      <span
+                        id={`hs-missing-${r.id}`}
+                        title={hsReason}
+                        className="ml-1.5 inline-block px-2 py-0.5 rounded text-[10px] bg-amber-50 text-amber-800 border border-amber-200"
+                      >
+                        {missingHs.length === 1 ? "1 line needs an HS code" : `${missingHs.length} lines need an HS code`}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-gray-900">{money(r.doc)}</td>
                   <td className="px-4 py-2.5 text-right">
@@ -160,8 +187,10 @@ export default function InvoicesClient({
                       {canManage && r.status === "draft" && (
                         <button
                           onClick={(e) => { e.stopPropagation(); transition(r.id, "issue"); }}
-                          disabled={pending}
-                          className="px-2.5 py-1.5 text-xs text-green-700 hover:text-green-800 border border-gray-300 hover:border-green-200 rounded-lg transition-colors disabled:opacity-50"
+                          disabled={pending || !!hsReason}
+                          title={hsReason ?? undefined}
+                          aria-describedby={hsReason ? `hs-missing-${r.id}` : undefined}
+                          className="px-2.5 py-1.5 text-xs text-green-700 hover:text-green-800 border border-gray-300 hover:border-green-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {pending && busyId === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Issue"}
                         </button>
@@ -193,7 +222,8 @@ export default function InvoicesClient({
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -208,6 +238,7 @@ export default function InvoicesClient({
         <InvoiceDraftEditor
           invoiceId={editing.id}
           doc={editing.doc}
+          savedHsCodes={hsCodes}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); router.refresh(); }}
         />

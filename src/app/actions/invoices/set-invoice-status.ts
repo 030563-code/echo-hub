@@ -4,12 +4,17 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
+import { issueBlockedReason } from "@/lib/hs-codes";
 
 // Commercial-invoice lifecycle: draft → issued, and draft/issued → void.
 // invoice.create-gated (issuing/voiding is a create-adjacent authority). The
 // transition is validated server-side against the current status so the UI can
 // never force an illegal jump. Voiding frees the (container_ref, leg) live-unique
 // slot so a corrected invoice can be re-generated.
+//
+// Issuing also needs every line to carry an HS code (Dean, 14 Sep 2026). The
+// list and the draft editor show the same rule, but this is where it holds.
+// Voiding stays allowed whatever the lines say.
 
 const Schema = z.object({
   invoice_id: z.string().uuid(),
@@ -44,6 +49,19 @@ export async function setInvoiceStatus(input: z.infer<typeof Schema>): Promise<S
   const current = (inv as { status: string }).status;
   const next = ALLOWED[current]?.[action];
   if (!next) return { ok: false, error: `Cannot ${action} an invoice that is '${current}'.` };
+
+  if (action === "issue") {
+    const { data: lines, error: linesErr } = await admin
+      .from("commercial_invoice_lines")
+      .select("sku, product_name, hs_code, sort_order")
+      .eq("invoice_id", invoice_id)
+      .order("sort_order", { ascending: true });
+    // A failed read must not look like "no lines, so nothing is missing".
+    if (linesErr || !lines) return { ok: false, error: "Could not read the invoice lines, so it was not issued." };
+    if (!lines.length) return { ok: false, error: "This invoice has no lines, so it cannot be issued." };
+    const blocked = issueBlockedReason(lines as { sku: string; product_name: string | null; hs_code: string | null }[]);
+    if (blocked) return { ok: false, error: blocked };
+  }
 
   const { error: upErr } = await admin
     .from("commercial_invoices")

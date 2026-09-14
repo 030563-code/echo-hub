@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
 import { reconcileInvoiceLines } from "@/lib/commercial-invoice";
+import { isValidHsCode, normaliseHsCode } from "@/lib/hs-codes";
 
 // Editable-draft override. Lets a finance user hand-adjust a DRAFT invoice's
 // lines before issuing — consolidate (delete ancillary lines + fold their value
@@ -21,7 +22,17 @@ const LineSchema = z.object({
   product_name: z.string().trim().min(1).max(300),
   qty: z.number().nonnegative().max(1_000_000),
   unit_value: z.number().nonnegative().max(100_000_000),
-  hs_code: z.string().trim().max(60).nullable().optional(),
+  // Blank means "no code yet" (the draft saves, but cannot be issued). Anything
+  // typed must pass the same format rule as product_hs_codes.
+  hs_code: z
+    .string()
+    .max(60)
+    .nullable()
+    .optional()
+    .transform((v) => normaliseHsCode(v) || null)
+    .refine((v) => v === null || isValidHsCode(v), {
+      message: "An HS code is 6 to 10 digits, split by single dots or spaces, e.g. 3926.90 or 3926 90 97.",
+    }),
 });
 
 const Schema = z.object({
@@ -31,7 +42,7 @@ const Schema = z.object({
 
 export type EditInvoiceDraftResult = { ok: true; subtotal: number; total: number } | { ok: false; error: string };
 
-export async function editInvoiceDraft(input: z.infer<typeof Schema>): Promise<EditInvoiceDraftResult> {
+export async function editInvoiceDraft(input: z.input<typeof Schema>): Promise<EditInvoiceDraftResult> {
   const auth = await getAuthorizedUser();
   if (!auth.ok) return { ok: false, error: auth.error };
   if (!auth.capabilities.has("invoice.create") || !auth.capabilities.has("cost.view")) {

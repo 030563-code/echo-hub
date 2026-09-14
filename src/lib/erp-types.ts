@@ -1,3 +1,5 @@
+import type { InvoiceLeg } from "@/lib/invoice-legs";
+
 export interface PurchaseOrder {
   id: string;
   po_number: string;
@@ -347,7 +349,7 @@ export interface IntercompanyPrice {
 export interface CommercialInvoice {
   id: string;
   invoice_number: string;
-  leg: "SRO_TO_GROUP" | "GROUP_TO_USA";
+  leg: InvoiceLeg;
   seller_entity_code: string;
   buyer_entity_code: string;
   shipment_spot_id: string | null;

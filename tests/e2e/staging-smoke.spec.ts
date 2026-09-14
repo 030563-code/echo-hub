@@ -74,5 +74,5 @@ test("staging: raise (required delivery) -> approve chain (ref) -> board + PDF",
   // ---- invoices page loads with the create panel ----
   await page.goto("/invoices");
   await expect(page.getByRole("heading", { name: "Commercial Invoices" })).toBeVisible();
-  await expect(page.getByText("New invoice — from a container")).toBeVisible();
+  await expect(page.getByText("New invoice from a container")).toBeVisible();
 });

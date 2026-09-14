@@ -36,6 +36,10 @@ export default async function InvoicesPage() {
     .order("created_at", { ascending: false });
   const headers = (invs ?? []) as CommercialInvoice[];
 
+  // Saved HS codes (RLS: invoice.view), so the draft editor can fill blank lines.
+  const { data: hsRows } = await supabase.from("product_hs_codes").select("sku, leg, hs_code");
+  const hsCodes = (hsRows ?? []) as { sku: string; leg: string; hs_code: string }[];
+
   // Lines per invoice.
   const ids = headers.map((h) => h.id);
   const linesByInv = new Map<string, CommercialInvoiceLineRow[]>();
@@ -92,6 +96,7 @@ export default async function InvoicesPage() {
       invoices={rows}
       canViewCost={canViewCost}
       canManage={canManage}
+      hsCodes={hsCodes}
       createSlot={canViewInvoice ? <CommercialInvoicePanel items={shipmentItems} canCreate={canCreateInvoice} /> : null}
     />
   );
