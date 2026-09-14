@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { isAgentUserId } from '@/lib/agent-account'
 
 // Public paths that an unauthenticated user may reach. Everything else under the
 // matcher requires a session. This is the SESSION gate only — capability
@@ -28,7 +29,7 @@ const PUBLIC_PATHS = ['/login', '/onboarding', '/auth/callback', '/manufacturing
 // its own auth, constant-time and fail-closed:
 //  - /api/mrp/run: Bearer MRP_CRON_SECRET (n8n cron).
 //  - /api/agent/quote: Bearer AGENT_QUOTE_SECRET or AGENT_QUOTE_SECRET_PREVIOUS
-//    (Bruce's Quote Sender in n8n), then a conversation binding check.
+//    (Jack's Quote Sender in n8n), then a conversation binding check.
 const SELF_AUTHENTICATED_PATHS = ['/api/mrp/run', '/api/agent/quote']
 
 function isPublic(pathname: string): boolean {
@@ -73,6 +74,22 @@ export async function middleware(req: NextRequest) {
 
   if (!user && !isPublic(req.nextUrl.pathname)) {
     return redirectWithCookies('/login')
+  }
+
+  // Jack, the ANZ AI sales agent, is a machine identity and may NEVER hold a
+  // browser session. His quote route mints its own session in process, with no
+  // cookies, so nothing legitimate lands here; a cookie for this user id means
+  // somebody signed in as the agent. Supabase leaves magic-link and
+  // password-recovery sign-in open for every email user and the public anon key
+  // is enough to ask for either, so "no password is stored" is not on its own a
+  // lock. Throw the session away rather than redirect with it: the cookies are
+  // cleared on the way out, so the next request is an ordinary logged-out one.
+  if (isAgentUserId(user?.id)) {
+    const redirect = NextResponse.redirect(new URL('/login?error=agent_account', req.url))
+    for (const cookie of req.cookies.getAll()) {
+      if (cookie.name.startsWith('sb-')) redirect.cookies.delete(cookie.name)
+    }
+    return redirect
   }
 
   return res

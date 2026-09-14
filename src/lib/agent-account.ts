@@ -1,0 +1,54 @@
+/**
+ * Jack, the ANZ AI sales agent, as a Hub user: who he is and what he may never
+ * do.
+ *
+ * Jack holds a real Supabase auth user so that createQuote runs under RLS
+ * exactly as it does for a rep. That user is a machine identity and must never
+ * be a person sitting in the Hub. Two things stop it, and both are needed:
+ *
+ *  1. Supabase side: the login address has no MX record, so the magic link and
+ *     password-recovery mail anyone can trigger with the public anon key lands
+ *     nowhere. That is the jack_cutover migration's job.
+ *  2. Hub side, here: any browser session carrying this user id is refused at
+ *     the middleware and at the auth callback, and its cookies are cleared. So
+ *     even a session obtained some other way buys nothing in the UI.
+ *
+ * Kept deliberately free of imports (no 'server-only', no Supabase, no zod) so
+ * the Edge middleware can use it without pulling a bundle in behind it.
+ *
+ * This module reads JACK_USER_ID, the same variable the quote route needs to
+ * work at all. An unset variable makes the route fail closed (500 INTERNAL on
+ * every call), so there is no state where the lockout is off while the agent is
+ * on.
+ */
+
+export function agentUserId(): string {
+  return String(process.env.JACK_USER_ID ?? '').trim()
+}
+
+/** True when this id is the agent's. False for everyone else, and false when
+ *  JACK_USER_ID is unset, because then no id can be the agent's. */
+export function isAgentUserId(userId: string | null | undefined): boolean {
+  const agent = agentUserId()
+  if (agent === '') return false
+  return String(userId ?? '').trim() === agent
+}
+
+/**
+ * The address a quote raised by the agent should print as its sender.
+ *
+ * NOT auth.users.email. After the Jack cutover that is a no-mail address, and
+ * createQuote copies the sender email onto the customer's quote, so a customer
+ * would be told to reply to something that bounces. JACK_SENDER_EMAIL is the
+ * mail identity (jack@echobarrier.com, the Gmail alias the Mailer sends as).
+ *
+ * Returns null for everyone who is not the agent, meaning "nothing to override",
+ * and null for the agent when the variable is unset, which omits the sender
+ * email rather than printing the no-mail one. HubSpot then falls back to the
+ * quote template and the deal owner.
+ */
+export function agentSenderEmail(userId: string | null | undefined): string | null {
+  if (!isAgentUserId(userId)) return null
+  const email = String(process.env.JACK_SENDER_EMAIL ?? '').trim()
+  return email === '' ? null : email
+}
