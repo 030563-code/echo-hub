@@ -1,5 +1,5 @@
 import { requireCapability } from "@/lib/authz";
-import { loadSroPoBoms, loadBomMaster, loadMaterials } from "@/lib/bom";
+import { loadSroPoBoms, loadBomMaster, loadMaterials, loadManufacturingPoNumbers } from "@/lib/bom";
 import { getSupplierByCode } from "@/lib/suppliers";
 import { buildBamidaPo, type BamidaPo, type BamidaSupplier } from "@/lib/bamida-po";
 import { stripBamidaPo, stripSroPoBomCosts, stripBomMasterCosts } from "@/lib/price-visibility";
@@ -32,10 +32,14 @@ export default async function BomPage() {
   // Build each Bamida supplier PO server-side from UNSTRIPPED data (so the line
   // set is right), then cost-strip for viewers without cost.view → the price-less
   // "BOM PO". The money never reaches a non-cost client (server-side enforced).
+  // The document is numbered after the manufacturing order raised under each
+  // SRO order. An order fulfilled from stock has no such child, so it keeps its
+  // own number rather than showing an EBSRO<n>-1 nobody ever raised.
   const today = new Date().toISOString().slice(0, 10);
+  const mfgNumbers = await loadManufacturingPoNumbers(orders.pos.map((p) => p.id));
   const bamidaByPo: Record<string, BamidaPo> = {};
   for (const po of orders.pos) {
-    const bp = buildBamidaPo(po, today, bamidaSupplier);
+    const bp = buildBamidaPo(po, today, bamidaSupplier, mfgNumbers[po.id]);
     bamidaByPo[po.id] = canViewCost ? bp : stripBamidaPo(bp);
   }
 

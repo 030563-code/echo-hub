@@ -17,12 +17,20 @@
  * at its final status (so no webhook fires) and refuses any PO number that
  * already exists rather than overwriting it. Dry run by default.
  *
+ * Every PO number must be filled in. A blank one used to be minted by the
+ * database trigger, which was harmless while those numbers were placeholders.
+ * Since the 14 Sep 2026 numbering scheme the minted number is the number n8n
+ * sends to Xero, so a blank here would spend EBUSA8001 or EBGRP8001 on an
+ * order raised months ago that already carries a real number somewhere else.
+ * The only number that may be blank is bamida_po_number on a ready_stock row,
+ * which has no Bamida order at all.
+ *
  * Before running with --apply: switch off the old n8n "PO Phase 1" Xero poll,
  * so it cannot insert its own rows beside the loaded chains.
  */
 import { createClient } from '@supabase/supabase-js'
 import { readFileSync } from 'node:fs'
-import { STOCK_WAREHOUSES } from '../../src/lib/stock/warehouses'
+import { STOCK_WAREHOUSES, SRO_WAREHOUSE } from '../../src/lib/stock/warehouses'
 
 function env(name: string): string {
   const v = process.env[name]
@@ -119,7 +127,34 @@ function parse(text: string): { chains: Chain[]; errors: string[] } {
       lines: [{ sku: row.sku.toUpperCase(), product_name: row.product_name, quantity: qty }],
     })
   })
-  return { chains: [...chains.values()], errors }
+  const out = [...chains.values()]
+  for (const c of out) checkNumbers(c, errors)
+  return { chains: out, errors }
+}
+
+/**
+ * Every number a warm-start chain needs, present and real.
+ *
+ * EB-SRO gets its own message because it fails differently: the depot has no
+ * number series in the scheme at all, so a blank there is refused deep inside
+ * hub_po_prefix_for_depot, after the chain has already started being written,
+ * with a message about depot codes that says nothing about what to do.
+ */
+function checkNumbers(c: Chain, errors: string[]): void {
+  if (c.depot === SRO_WAREHOUSE && !c.depot_po_number) {
+    errors.push(
+      `chain ${c.key}: depot ${SRO_WAREHOUSE} has no purchase order number series, so depot_po_number must be the real number off the order. ` +
+        'Leave depot blank instead if this order refills the s.r.o. shelf.',
+    )
+  } else if (c.depot !== '' && !c.depot_po_number) {
+    errors.push(`chain ${c.key}: depot_po_number is blank. Supply the real number; a blank one spends a live Xero-bound number on a historical order.`)
+  }
+  if (!c.sro_po_number) {
+    errors.push(`chain ${c.key}: sro_po_number is blank. Supply the real number; a blank one spends a live EBGRP number on a historical order.`)
+  }
+  if (c.stage !== 'ready_stock' && !c.bamida_po_number) {
+    errors.push(`chain ${c.key}: bamida_po_number is blank. Supply the real number, or use stage ready_stock if no Bamida order was ever raised.`)
+  }
 }
 
 async function main() {
@@ -146,7 +181,7 @@ async function main() {
   for (const c of chains) {
     const units = c.lines.reduce((s, l) => s + l.quantity, 0)
     console.log(`  ${c.key.padEnd(12)} ${(c.depot || 'refill').padEnd(6)}  ${c.stage.padEnd(13)} ${units} units in ${c.lines.length} line${c.lines.length === 1 ? '' : 's'}` +
-      `  depot ${c.depot_po_number || '(mint)'}  sro ${c.sro_po_number || '(mint)'}  bamida ${c.stage === 'ready_stock' ? 'n/a' : c.bamida_po_number || '(mint)'}`)
+      `  depot ${c.depot_po_number || 'n/a'}  sro ${c.sro_po_number}  bamida ${c.stage === 'ready_stock' ? 'n/a' : c.bamida_po_number}`)
   }
   if (!apply) {
     console.log('Dry run. Add --apply to load.')

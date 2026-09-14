@@ -128,11 +128,24 @@ describe('the Bamida manufacturing document number', () => {
     }
   }
 
-  it('is the -1 manufacturing number under a new Group order', () => {
-    expect(buildBamidaPo(sroOrder('EBGRP8001'), '2026-09-14').poNumber).toBe('EBSRO8001-1')
+  // The document is numbered after the manufacturing order that was actually
+  // raised, not after a number derived from the SRO order. Deriving printed an
+  // EBSRO<n>-1 on every SRO order, including the ones fulfilled from stock,
+  // which have no manufacturing child and never will.
+  it('is the manufacturing order number when one has been raised', () => {
+    expect(buildBamidaPo(sroOrder('EBGRP8001'), '2026-09-14', undefined, 'EBSRO8001-1').poNumber).toBe('EBSRO8001-1')
   })
 
-  it('stays the SRO order number under an older chain', () => {
+  it('is the SRO order number when no manufacturing order exists', () => {
+    // Fulfilled from stock: no child, so nothing to name it after.
+    expect(buildBamidaPo(sroOrder('EBGRP8001'), '2026-09-14').poNumber).toBe('EBGRP8001')
+    expect(buildBamidaPo(sroOrder('EBGRP8001'), '2026-09-14', undefined, null).poNumber).toBe('EBGRP8001')
+    expect(buildBamidaPo(sroOrder('EBGRP8001'), '2026-09-14', undefined, '  ').poNumber).toBe('EBGRP8001')
+  })
+
+  it('keeps its own number under a chain from before the scheme', () => {
     expect(buildBamidaPo(sroOrder('PO-01224'), '2026-09-14').poNumber).toBe('PO-01224')
+    // An old chain's manufacturing child carries a PO- number of its own.
+    expect(buildBamidaPo(sroOrder('PO-01224'), '2026-09-14', undefined, 'PO-01225').poNumber).toBe('PO-01225')
   })
 })

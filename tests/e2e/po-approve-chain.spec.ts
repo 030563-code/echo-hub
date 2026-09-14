@@ -15,6 +15,14 @@ import { deletePurchaseOrdersByNotes, serviceClient } from "./db-helpers";
 // Run this spec ONLY while those workflows are inactive or unpublished, so the
 // hand-offs 404 and the approval records "did not confirm". No email can leave.
 //
+// COST OF A RUN, since the 14 Sep 2026 numbering scheme: raising and approving
+// this chain spends one real EBUSA number and one real EBGRP number, out of the
+// same series Xero purchase orders are numbered from. Deleting the rows
+// afterwards does not give the numbers back (nextval is not undone), so the
+// live series shows a gap for every run. That is why the spec refuses to run
+// unless E2E_SPEND_PO_NUMBERS is set, the way sro-fulfilment.spec.ts refuses to
+// run without HUB_EMAIL_TEST_RECIPIENT.
+//
 // Every row of the chain carries MARKER in its notes and is deleted in afterAll.
 
 const MARKER = "E2E-APPROVE-CHAIN-MARKER do-not-keep";
@@ -29,6 +37,11 @@ test("PO approve chain: raise → tier1 → tier2(ref) → SRO decides", async (
   const c = adminCreds();
   test.skip(!c, "no admin creds in .env.local");
   test.skip(!sb, "no service-role key in .env.local");
+  // Each run burns a live EBUSA and a live EBGRP number that no cleanup returns.
+  test.skip(
+    !process.env.E2E_SPEND_PO_NUMBERS,
+    "E2E_SPEND_PO_NUMBERS is not set: this run would spend a live EBUSA and EBGRP number",
+  );
   await login(page, c!);
 
   // ---- raise a US-BAL root PO with the marker note ----

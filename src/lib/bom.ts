@@ -193,6 +193,32 @@ export async function loadSroPoBoms(): Promise<{ pos: SroPoBom[]; week: string |
 }
 
 /**
+ * The manufacturing order raised under each of these SRO orders, keyed by the
+ * SRO order's id.
+ *
+ * The Bamida document is numbered after that child (EBSRO8001-1 under
+ * EBGRP8001), and only orders being manufactured have one: an SRO order
+ * fulfilled from stock has no manufacturing child and never will. So this is a
+ * lookup rather than a field on SroPoBom, which for most orders is read back
+ * out of a cost_snapshot written long before the numbering scheme existed.
+ */
+export async function loadManufacturingPoNumbers(sroPoIds: string[]): Promise<Record<string, string>> {
+  if (sroPoIds.length === 0) return {}
+  const supabase = await createServerClient()
+  const { data } = await supabase
+    .from('purchase_orders')
+    .select('parent_po_id, po_number')
+    .eq('leg', 'SRO_TO_SUPPLIER')
+    .in('parent_po_id', sroPoIds)
+
+  const out: Record<string, string> = {}
+  for (const row of (data ?? []) as { parent_po_id: string | null; po_number: string | null }[]) {
+    if (row.parent_po_id && row.po_number) out[row.parent_po_id] = row.po_number
+  }
+  return out
+}
+
+/**
  * One SRO order's BOM, for the Bamida document that gets emailed.
  *
  * The frozen cost_snapshot is authoritative and is what almost every order

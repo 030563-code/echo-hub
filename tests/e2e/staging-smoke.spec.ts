@@ -15,6 +15,15 @@ import { adminCreds, login } from "./helpers";
 // n8n/Xero. The marker chain it creates is deleted afterwards (staging shares the
 // prod Supabase, so cleanup is by the orchestrator via the MARKER note).
 
+//
+// COST OF A RUN, since the 14 Sep 2026 numbering scheme: staging shares the
+// production Supabase, so raising and approving this chain spends one real
+// EBUSA number and one real EBGRP number out of the series Xero purchase orders
+// are numbered from. The MARKER cleanup deletes the rows but cannot give the
+// numbers back (nextval is not undone), so the live series shows a gap for
+// every run. Hence the E2E_SPEND_PO_NUMBERS gate below, the same shape as the
+// HUB_EMAIL_TEST_RECIPIENT gate in sro-fulfilment.spec.ts.
+
 const MARKER = "STAGING-SMOKE-MARKER do-not-keep";
 const col = (page: Page, label: string) =>
   page.locator("div.w-64").filter({ has: page.getByText(label, { exact: true }) }).first();
@@ -25,6 +34,11 @@ test("staging: raise (required delivery) -> approve chain (ref) -> board + PDF",
   test.setTimeout(240_000);
   const c = adminCreds();
   test.skip(!c, "no admin creds in .env.local");
+  // Each run burns a live EBUSA and a live EBGRP number that no cleanup returns.
+  test.skip(
+    !process.env.E2E_SPEND_PO_NUMBERS,
+    "E2E_SPEND_PO_NUMBERS is not set: this run would spend a live EBUSA and EBGRP number",
+  );
   await login(page, c!);
 
   // GATE — must be in sandbox mode before we click any Approve (else abort here).

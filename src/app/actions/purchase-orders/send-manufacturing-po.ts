@@ -127,7 +127,9 @@ export async function sendManufacturingPoToBamida(
       ? { name: supplierRow.name, address: addressLines, taxNumber: supplierRow.tax_number ?? undefined }
       : undefined;
 
-  const bamida = buildBamidaPo(bom, new Date().toISOString().slice(0, 10), supplier);
+  // `po` IS the manufacturing order, so its own number (EBSRO8001-1) is the one
+  // that goes on the document Bamida receive; `bom` belongs to its SRO parent.
+  const bamida = buildBamidaPo(bom, new Date().toISOString().slice(0, 10), supplier, po.po_number);
   if (bamida.lines.length === 0) {
     return {
       ok: false,

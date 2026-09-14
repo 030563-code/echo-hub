@@ -7,11 +7,13 @@ import { PO_PREFIX_BY_DEPOT } from '@/lib/po-number'
  * The numbering migration and the TypeScript that speaks to it must agree.
  *
  * Same genre as stock-schema-coherence.test.ts: read the migration and pin the
- * parts the Hub relies on. Above all: every series starts at 8001, only the
- * trigger can mint (the functions and sequences are closed to anon and
- * authenticated), s.r.o.'s documents take the digits of their Group order, an
- * older chain falls back to the PO- series, and the depot map in SQL is the
- * one in src/lib/po-number.ts.
+ * parts the Hub relies on. Above all: every series starts at 8001 and is wound
+ * past any number already in use, only the trigger can mint (the functions and
+ * sequences are closed to anon and authenticated), only a signed-in caller with
+ * po.create or po.approve can spend a number and it never picks its own,
+ * s.r.o.'s documents take the digits of their Group order's po_number, a PO-
+ * chain falls back to the PO- series and anything else is refused, and the
+ * depot map in SQL is the one in src/lib/po-number.ts.
  */
 
 const MIG = 'supabase/migrations/20260914140000_po_numbering_scheme.sql'
@@ -42,9 +44,18 @@ const up = stripComments(raw)
 
 describe('po numbering migration', () => {
   it('carries the house header and no em-dash', () => {
-    expect(raw).toContain('Applied live via MCP apply_migration on korylyniwsqtsvzuzydg')
     expect(raw).toContain('Never db push.')
     expect(raw).not.toContain('\u2014')
+  })
+
+  it('does not claim to have been applied, and states the n8n ordering constraint', () => {
+    // It had said "Applied live via MCP apply_migration" while nothing had been
+    // applied. The header is the only place an operator learns the order of
+    // work, so it has to be true and it has to name the workflow.
+    expect(raw).not.toContain('Applied live via MCP apply_migration')
+    expect(raw).toContain('NOT APPLIED when this file was written.')
+    expect(raw).toContain('Fz7xXgifva5n548u')
+    expect(raw).toContain('PurchaseOrderNumber')
   })
 
   it('creates the five series, each starting at 8001', () => {
@@ -53,6 +64,20 @@ describe('po numbering migration', () => {
     for (const m of created) {
       expect(m[2]).toBe('8001')
       expect(m[3]).toBe('8001')
+    }
+  })
+
+  it('winds each series past any number its prefix already carries', () => {
+    // The rollback drops these sequences. Without this, re-applying restarts
+    // every series at 8001 and re-issues numbers that are already purchase
+    // order numbers in Xero. is_called is false so the stored value IS the
+    // next one out: 8001 on a clean table, max + 1 otherwise.
+    for (const prefix of ['EBUSA', 'EBCAN', 'EBFRA', 'EBAUS', 'EBGRP']) {
+      const seq = `public.po_number_seq_${prefix.toLowerCase()}`
+      expect(up, `${prefix} setval`).toContain(
+        `select setval('${seq}', greatest(8001, coalesce((select max(substring(po_number from '^${prefix}([0-9]+)$')::bigint) + 1 from public.purchase_orders where po_number ~ '^${prefix}[0-9]+$'), 8001)), false);`,
+      )
+      expect(up.indexOf(`create sequence ${seq} `)).toBeLessThan(up.indexOf(`setval('${seq}'`))
     }
   })
 
@@ -103,6 +128,10 @@ describe('po numbering migration', () => {
   it('derives EBSRO<n>-1 and -2 from the parent SRO order numbered EBGRP<n>', () => {
     const mint = fn(up, 'hub_mint_po_number')
     expect(mint).toMatch(/if p_leg in \('SRO_TO_SUPPLIER', 'SRO_TO_CARGO'\) then/)
+    // Pin the SOURCE column. The digits come from the parent's po_number, which
+    // is the number Xero carries; master_ref would pass every other assertion
+    // here and be wrong the moment a chain's root is not its Group order.
+    expect(mint).toMatch(/select po\.leg, po\.po_number\s+into v_parent_leg, v_parent_no/)
     expect(mint).toMatch(/from public\.purchase_orders po\s+where po\.id = p_parent_po_id;/)
     expect(mint).toContain("v_digits := substring(v_parent_no from '^EBGRP([0-9]+)$');")
     expect(mint).toMatch(
@@ -123,6 +152,39 @@ describe('po numbering migration', () => {
     expect(fallback).toBeLessThan(mint.indexOf("raise exception 'No purchase order number series for leg %.'"))
   })
 
+  it('takes the fallback only for a PO- parent, and says so in the log', () => {
+    const mint = fn(up, 'hub_mint_po_number')
+    // The fallback is reachable ONLY from a parent numbered in the pre-scheme
+    // PO- series. It used to catch every number that was not EBGRP<n>, which
+    // with zero legacy chains in the table could only ever have hidden a bug.
+    expect(mint).toContain("if v_parent_no ~ '^PO-[0-9]+$' then")
+    expect(mint.indexOf("if v_parent_no ~ '^PO-[0-9]+$' then")).toBeLessThan(
+      mint.indexOf('return public.generate_po_number();'),
+    )
+    // A number that missed the scheme has to be visible somewhere.
+    expect(mint).toMatch(/raise warning 'Purchase order % is from before the EBGRP scheme/)
+  })
+
+  it('refuses any other parent instead of quietly giving it an old-series number', () => {
+    const mint = fn(up, 'hub_mint_po_number')
+    expect(mint).toMatch(
+      /raise exception 'The order behind this % order cannot be used to number it: % is not an EBGRP order/,
+    )
+    // The refusal names the leg and the parent's number, and nothing else.
+    expect(mint).toMatch(/p_leg, coalesce\(nullif\(v_parent_no, ''\), '\(blank\)'\);/)
+  })
+
+  it('never puts a purchase order id in a message', () => {
+    const mint = fn(up, 'hub_mint_po_number')
+    // A message that told the caller whether an id existed would be a free row
+    // probe of the table. The missing-parent case says only what the caller
+    // already knows: which of its own orders could not be numbered.
+    expect(mint).not.toMatch(/raise exception '[^']*',[^;]*p_parent_po_id/)
+    expect(mint).toMatch(
+      /if not found then\s+raise exception 'The order behind this % order cannot be used to number it\.', p_leg;/,
+    )
+  })
+
   it('refuses an s.r.o. document with no parent, and any other leg', () => {
     const mint = fn(up, 'hub_mint_po_number')
     expect(mint).toMatch(/if p_parent_po_id is null then\s+raise exception/)
@@ -140,6 +202,43 @@ describe('po numbering migration', () => {
     // master_ref rules unchanged: a root starts its chain, a child inherits.
     expect(trig).toMatch(/new\.master_ref := 'MR-' \|\| new\.po_number;/)
     expect(trig).toMatch(/select master_ref into new\.master_ref\s+from public\.purchase_orders\s+where id = new\.parent_po_id;/)
+  })
+
+  it('checks who is asking BEFORE a number is spent on them', () => {
+    const trig = fn(up, 'po_before_insert')
+    expect(trig).toContain('v_role text := auth.role();')
+    expect(trig).toMatch(/if v_role = 'anon' then\s+raise exception/)
+    expect(trig).toMatch(
+      /if not \(public\.has_capability\('po\.create'\) or public\.has_capability\('po\.approve'\)\) then\s+raise exception/,
+    )
+    // The order is the whole point: this trigger runs before RLS refuses
+    // anything and nextval is not undone by the rollback that follows, so a
+    // check after the mint would still let a refused insert burn a number.
+    expect(trig.indexOf("v_role = 'anon'")).toBeLessThan(trig.indexOf('hub_mint_po_number'))
+    expect(trig.indexOf('has_capability')).toBeLessThan(trig.indexOf('hub_mint_po_number'))
+    // anon has no policy on the table, so it has no business holding writes.
+    expect(up).toContain('revoke insert, update, delete, truncate on public.purchase_orders from anon;')
+  })
+
+  it('overwrites the number a session caller supplies', () => {
+    const trig = fn(up, 'po_before_insert')
+    expect(trig).toMatch(/if v_role = 'authenticated' then/)
+    // Dropped, not merely ignored, so the rules below re-derive both. A
+    // po.create holder could otherwise squat EBSRO<n>-1 and block that chain's
+    // real manufacturing order for good.
+    expect(trig).toMatch(/new\.po_number := null;\s+new\.master_ref := null;/)
+    expect(trig.indexOf('new.po_number := null;')).toBeLessThan(trig.indexOf('hub_mint_po_number'))
+  })
+
+  it('refuses a rename from a signed-in session', () => {
+    const guard = fn(up, 'po_guard_number_update')
+    expect(guard).toMatch(/returns trigger\s+language plpgsql\s+security definer\s+set search_path = public, pg_temp/)
+    expect(guard).toMatch(
+      /if auth\.role\(\) = 'authenticated'\s+and \(new\.po_number is distinct from old\.po_number\s+or new\.master_ref is distinct from old\.master_ref\) then\s+raise exception/,
+    )
+    expect(up).toMatch(
+      /create trigger trg_po_number_guard\s+before update on public\.purchase_orders\s+for each row execute function public\.po_guard_number_update\(\);/,
+    )
   })
 
   it('asserts the unique guarantees instead of assuming them', () => {
@@ -185,6 +284,21 @@ describe('po numbering rollback', () => {
     expect(down.indexOf('drop function if exists public.hub_mint_po_number')).toBeLessThan(
       down.indexOf('drop function if exists public.hub_po_prefix_for_depot(text);'),
     )
+  })
+
+  it('drops the rename guard with the scheme it protected', () => {
+    expect(down).toContain('drop trigger if exists trg_po_number_guard on public.purchase_orders;')
+    expect(down).toContain('drop function if exists public.po_guard_number_update();')
+    expect(down.indexOf('drop trigger if exists trg_po_number_guard')).toBeLessThan(
+      down.indexOf('drop function if exists public.po_guard_number_update()'),
+    )
+  })
+
+  it('does not hand anon its write privileges back', () => {
+    // The rollback restores the old trigger, not the old hole: no anon policy
+    // ever used those grants, and giving them back would re-open the only way
+    // a holder of the public anon key could spend purchase order numbers.
+    expect(down).not.toMatch(/grant[^;]*on public\.purchase_orders[^;]*to anon/i)
   })
 
   it('drops all five sequences', () => {

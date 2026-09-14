@@ -1,5 +1,4 @@
 import type { SroPoBom } from '@/lib/erp-types'
-import { sroDocumentNumber } from '@/lib/po-number'
 
 // Build the Bamida supplier PO from an exploded SRO order. Per PO-00001385 the
 // Bamida PO bills MANUFACTURING (MAN) + PRINTING (PRI) per unit + PACKAGING per
@@ -77,7 +76,23 @@ function mkLine(code: string, description: string, qty: number, price: number, t
   return { code, description, qty, unit: 'EA', price: round2(price), amount: round2(qty * price), taxRate }
 }
 
-export function buildBamidaPo(po: SroPoBom, isoDate: string, supplier: BamidaSupplier = DEFAULT_SUPPLIER): BamidaPo {
+/**
+ * The Bamida document for one SRO order.
+ *
+ * `manufacturingPoNumber` is the po_number of the SRO order's manufacturing
+ * child (EBSRO8001-1 under EBGRP8001), when one has been raised. It is passed
+ * in rather than derived because not every SRO order has one: an order
+ * fulfilled from stock has no manufacturing child and never will, and printing
+ * EBSRO8001-1 on its document would put a number on paper that no order in the
+ * Hub or in Xero carries. With no child the SRO order's own number is used, as
+ * it was before the numbering scheme.
+ */
+export function buildBamidaPo(
+  po: SroPoBom,
+  isoDate: string,
+  supplier: BamidaSupplier = DEFAULT_SUPPLIER,
+  manufacturingPoNumber?: string | null,
+): BamidaPo {
   const lines: BamidaPoLine[] = []
   let pallets = 0
 
@@ -103,9 +118,8 @@ export function buildBamidaPo(po: SroPoBom, isoDate: string, supplier: BamidaSup
   const tax = round2(lines.reduce((s, l) => s + ((l.amount ?? 0) * (l.taxRate ?? 0)) / 100, 0))
 
   return {
-    // The manufacturing order Bamida receive: EBSRO8001-1 under EBGRP8001. An
-    // SRO order from before the scheme keeps its own number, as it always did.
-    poNumber: sroDocumentNumber(po.po_number, 'Manufacturing') ?? po.po_number,
+    // The manufacturing order Bamida receive, when there is one.
+    poNumber: manufacturingPoNumber?.trim() || po.po_number,
     reference: po.master_ref,
     date: isoDate,
     supplier,
