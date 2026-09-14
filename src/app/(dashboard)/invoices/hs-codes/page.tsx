@@ -14,7 +14,15 @@ export const dynamic = 'force-dynamic'
  * an invoice with a blank code cannot be issued. Juraj enters the codes here.
  *
  * invoice.view to see, invoice.create to change (the save action checks again).
- * One row per product that has an intercompany price on any leg.
+ *
+ * One row per product a container line can carry: every SKU with an
+ * intercompany price, plus every active po_product_catalog SKU. A catalogue
+ * product with no transfer price still lands on an invoice (valued at 0), so it
+ * still needs a code, and listing only priced SKUs left it with no way to get one.
+ *
+ * A missing code only counts against a leg the product has an active
+ * intercompany price on. The other cells stay editable but are not counted, so
+ * the Canada column does not ask for codes for products never sold to Canada.
  */
 export default async function HsCodesPage() {
   const auth = await requireCapability('invoice.view')
@@ -22,23 +30,36 @@ export default async function HsCodesPage() {
 
   const supabase = await createServerClient()
   // intercompany_prices is readable only with cost.view, which an HS code
-  // editor may not hold. This reads the SKU column and nothing else, never a
-  // value, so it goes through the service role after the invoice.view check.
+  // editor may not hold. This reads which SKU is priced on which leg and
+  // nothing else, never a value, so it goes through the service role after the
+  // invoice.view check.
   const admin = createAdminClient()
 
-  const [{ data: priceRows, error: priceErr }, { data: hsRows, error: hsErr }] = await Promise.all([
-    admin.from('intercompany_prices').select('sku'),
-    supabase.from('product_hs_codes').select('sku, leg, hs_code'),
-  ])
+  const [{ data: priceRows, error: priceErr }, { data: catalogRows, error: catalogErr }, { data: hsRows, error: hsErr }] =
+    await Promise.all([
+      admin.from('intercompany_prices').select('sku, leg, active'),
+      supabase.from('po_product_catalog').select('sku, product_name, active'),
+      supabase.from('product_hs_codes').select('sku, leg, hs_code'),
+    ])
 
-  const skus = [...new Set(((priceRows ?? []) as { sku: string }[]).map((r) => r.sku))].sort()
-  const { data: nameRows, error: nameErr } = skus.length
-    ? await supabase.from('po_product_catalog').select('sku, product_name').in('sku', skus)
-    : { data: [], error: null }
+  const loadError =
+    priceErr || catalogErr || hsErr ? 'Could not load the products or their HS codes. Reload the page to try again.' : null
 
-  const loadError = priceErr || hsErr || nameErr ? 'Could not load the products or their HS codes. Reload the page to try again.' : null
+  const prices = (priceRows ?? []) as { sku: string; leg: string; active: boolean }[]
+  const catalog = (catalogRows ?? []) as { sku: string; product_name: string | null; active: boolean }[]
 
-  const nameBySku = new Map(((nameRows ?? []) as { sku: string; product_name: string | null }[]).map((r) => [r.sku, r.product_name]))
+  const skus = [
+    ...new Set([...prices.map((r) => r.sku), ...catalog.filter((r) => r.active).map((r) => r.sku)]),
+  ].sort()
+
+  const nameBySku = new Map(catalog.map((r) => [r.sku, r.product_name]))
+  const pricedLegsBySku = new Map<string, InvoiceLeg[]>()
+  for (const row of prices) {
+    if (!row.active || !isInvoiceLeg(row.leg)) continue
+    const legs = pricedLegsBySku.get(row.sku) ?? []
+    if (!legs.includes(row.leg)) legs.push(row.leg)
+    pricedLegsBySku.set(row.sku, legs)
+  }
   const codesBySku = new Map<string, Record<InvoiceLeg, string>>()
   for (const row of (hsRows ?? []) as { sku: string; leg: string; hs_code: string }[]) {
     if (!isInvoiceLeg(row.leg)) continue
@@ -51,6 +72,7 @@ export default async function HsCodesPage() {
     sku,
     product_name: nameBySku.get(sku) ?? null,
     codes: codesBySku.get(sku) ?? emptyCodes(),
+    pricedLegs: INVOICE_LEGS.filter((leg) => pricedLegsBySku.get(sku)?.includes(leg)),
   }))
 
   return <HsCodesClient products={loadError ? [] : products} canEdit={canEdit} loadError={loadError} />

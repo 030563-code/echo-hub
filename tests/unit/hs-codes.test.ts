@@ -4,9 +4,12 @@ import {
   HS_CODE_MIN_DIGITS,
   isValidHsCode,
   issueBlockedReason,
+  missingHsCodeAdvice,
   missingHsCodeLines,
+  missingHsCodesByCause,
   nameProducts,
   normaliseHsCode,
+  splitPartSkus,
 } from '@/lib/hs-codes'
 
 describe('normaliseHsCode', () => {
@@ -117,5 +120,52 @@ describe('nameProducts and issueBlockedReason', () => {
     expect(reason).toContain('M1 Mini Gen Set (M1NA)')
     expect(reason).not.toContain('CCSNA')
     expect(reason).not.toContain('\u2014')
+  })
+})
+
+describe('missing HS codes, worded by where the code comes from', () => {
+  const split = [
+    { sku: 'EBH9NA', product_name: 'Echo Barrier H9', hs_code: null },
+    { sku: 'CCSNA', product_name: 'CS Enclosure Frame', hs_code: null },
+    { sku: 'CCSNA', product_name: 'CS Enclosure Body', hs_code: '7308.90' },
+    { sku: 'EBH8NA', product_name: 'Echo Barrier H8', hs_code: '3926.90' },
+  ]
+
+  it('treats a SKU on more than one line as split parts, ignoring blank SKUs', () => {
+    expect([...splitPartSkus(split)]).toEqual(['CCSNA'])
+    expect([...splitPartSkus([{ sku: '' }, { sku: ' ' }, { sku: 'A' }])]).toEqual([])
+    expect([...splitPartSkus([{ sku: 'A ' }, { sku: 'A' }])]).toEqual(['A'])
+  })
+
+  it('splits the missing lines into tab-fillable and draft-only, using the whole invoice', () => {
+    const { onTab, onDraft } = missingHsCodesByCause(split)
+    expect(onTab.map((l) => l.product_name)).toEqual(['Echo Barrier H9'])
+    // The body has its code, but the frame is still a split part: its SKU repeats.
+    expect(onDraft.map((l) => l.product_name)).toEqual(['CS Enclosure Frame'])
+  })
+
+  it('sends tab-fillable lines to the HS codes tab and split parts to the draft', () => {
+    const advice = missingHsCodeAdvice(split)
+    expect(advice).toContain('For Echo Barrier H9 (EBH9NA), set the code on the HS codes tab, then use Fill on this draft or regenerate.')
+    expect(advice).toContain('CS Enclosure Frame (CCSNA) is a part split by a composition rule, which the HS codes tab cannot fill, so type its code on the draft with Edit.')
+    expect(advice).not.toContain('\u2014')
+  })
+
+  it('says nothing about the tab when only split parts are missing', () => {
+    const advice = missingHsCodeAdvice([
+      { sku: 'CCSNA', product_name: 'Frame', hs_code: null },
+      { sku: 'CCSNA', product_name: 'Body', hs_code: ' ' },
+    ])
+    expect(advice).not.toContain('HS codes tab, then')
+    expect(advice).toContain('Frame (CCSNA), Body (CCSNA) are parts split by a composition rule')
+    expect(advice).toContain('type each code on the draft with Edit')
+  })
+
+  it('is empty when nothing is missing, and the issue reason carries the advice', () => {
+    expect(missingHsCodeAdvice([{ sku: 'A', product_name: 'A', hs_code: '3926.90' }])).toBe('')
+    const reason = issueBlockedReason(split)
+    expect(reason).toContain('2 lines have no HS code.')
+    expect(reason).toContain('HS codes tab')
+    expect(reason).toContain('on the draft with Edit')
   })
 })

@@ -13,6 +13,7 @@
 
 import { z } from 'zod'
 import { BIO_MAX, JOB_TITLE_MAX } from '@/lib/profile/avatar'
+import { INVOICE_LEGS } from '@/lib/invoice-legs'
 
 // ---------------------------------------------------------------------------
 // Raise a purchase order
@@ -407,6 +408,31 @@ export type CommercialInvoiceDraft = z.infer<typeof commercialInvoiceDraftSchema
 
 export function parseCommercialInvoiceDraft(raw: unknown): CommercialInvoiceDraft | null {
   const parsed = commercialInvoiceDraftSchema.safeParse(raw)
+  return parsed.success ? parsed.data : null
+}
+
+// ---------------------------------------------------------------------------
+// Invoices, the HS codes tab: codes typed but not saved yet
+//
+// Keyed by SKU, then by leg, holding only the legs whose typed value differs
+// from the saved code, exactly as typed so a half-typed "3926 " survives. Every
+// row still commits with its own Save button; this only stops a reload, a tab
+// switch or a filter from throwing the typing away. No fingerprint: each row is
+// compared with the codes as they are now when it comes back, so a leg that
+// meanwhile matches what was saved simply stops counting as a change.
+// ---------------------------------------------------------------------------
+
+export const HS_CODES_DRAFT_KEY = 'invoices:hs-codes'
+
+export const hsCodesDraftSchema = z.object({
+  v: z.literal(1),
+  codes: z.record(z.string().max(120), z.partialRecord(z.enum(INVOICE_LEGS), z.string().max(40))),
+})
+
+export type HsCodesDraft = z.infer<typeof hsCodesDraftSchema>
+
+export function parseHsCodesDraft(raw: unknown): HsCodesDraft | null {
+  const parsed = hsCodesDraftSchema.safeParse(raw)
   return parsed.success ? parsed.data : null
 }
 

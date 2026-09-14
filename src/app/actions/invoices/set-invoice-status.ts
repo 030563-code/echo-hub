@@ -15,6 +15,11 @@ import { issueBlockedReason } from "@/lib/hs-codes";
 // Issuing also needs every line to carry an HS code (Dean, 14 Sep 2026). The
 // list and the draft editor show the same rule, but this is where it holds.
 // Voiding stays allowed whatever the lines say.
+//
+// Issuing goes through hub_issue_commercial_invoice, which takes the invoice row
+// FOR UPDATE, re-checks draft, checks the HS codes and flips the status in one
+// transaction. editInvoiceDraft replaces lines under the same lock, so an edit
+// racing an issue can never rewrite the lines of an invoice that was just issued.
 
 const Schema = z.object({
   invoice_id: z.string().uuid(),
@@ -51,26 +56,45 @@ export async function setInvoiceStatus(input: z.infer<typeof Schema>): Promise<S
   if (!next) return { ok: false, error: `Cannot ${action} an invoice that is '${current}'.` };
 
   if (action === "issue") {
-    const { data: lines, error: linesErr } = await admin
-      .from("commercial_invoice_lines")
-      .select("sku, product_name, hs_code, sort_order")
-      .eq("invoice_id", invoice_id)
-      .order("sort_order", { ascending: true });
-    // A failed read must not look like "no lines, so nothing is missing".
-    if (linesErr || !lines) return { ok: false, error: "Could not read the invoice lines, so it was not issued." };
-    if (!lines.length) return { ok: false, error: "This invoice has no lines, so it cannot be issued." };
-    const blocked = issueBlockedReason(lines as { sku: string; product_name: string | null; hs_code: string | null }[]);
-    if (blocked) return { ok: false, error: blocked };
+    const { data, error: rpcErr } = await admin.rpc("hub_issue_commercial_invoice", { p_invoice_id: invoice_id });
+    if (rpcErr || !data) return { ok: false, error: "Could not issue the invoice." };
+    const res = data as IssueRpcResult;
+    if (!res.ok) return { ok: false, error: issueRefusal(res) };
+  } else {
+    const { error: upErr } = await admin
+      .from("commercial_invoices")
+      .update({ status: next })
+      .eq("id", invoice_id)
+      .eq("status", current); // optimistic guard against a concurrent transition
+    if (upErr) return { ok: false, error: "Failed to update the invoice status." };
   }
-
-  const { error: upErr } = await admin
-    .from("commercial_invoices")
-    .update({ status: next })
-    .eq("id", invoice_id)
-    .eq("status", current); // optimistic guard against a concurrent transition
-  if (upErr) return { ok: false, error: "Failed to update the invoice status." };
 
   revalidatePath("/invoices");
   revalidatePath("/transport");
   return { ok: true, status: next };
+}
+
+type IssueRpcLine = { sku: string; product_name: string | null; hs_code: string | null };
+
+/** What hub_issue_commercial_invoice returns. */
+type IssueRpcResult =
+  | { ok: true; status: "issued" }
+  | { ok: false; reason: "not_found" }
+  | { ok: false; reason: "not_draft"; status: string }
+  | { ok: false; reason: "no_lines" }
+  | { ok: false; reason: "missing_hs_codes"; missing_skus: string[]; lines: IssueRpcLine[] };
+
+function issueRefusal(res: Exclude<IssueRpcResult, { ok: true }>): string {
+  switch (res.reason) {
+    case "not_found":
+      return "Invoice not found.";
+    case "not_draft":
+      return `Cannot issue an invoice that is '${res.status}'.`;
+    case "no_lines":
+      return "This invoice has no lines, so it cannot be issued.";
+    case "missing_hs_codes":
+      return issueBlockedReason(res.lines ?? []) ?? "This invoice cannot be issued: a line has no HS code.";
+    default:
+      return "Could not issue the invoice.";
+  }
 }

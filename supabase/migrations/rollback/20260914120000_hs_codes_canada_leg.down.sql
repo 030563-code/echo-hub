@@ -10,6 +10,11 @@
 -- edited after the migration are deleted with the rest; export them first if they
 -- matter.
 
+-- The app issues and edits drafts through these two functions, so roll the app
+-- back first.
+drop function if exists public.hub_replace_commercial_invoice_lines(uuid, jsonb, jsonb);
+drop function if exists public.hub_issue_commercial_invoice(uuid);
+
 alter table public.product_hs_codes drop constraint if exists product_hs_codes_hs_code_format;
 alter table public.product_hs_codes drop constraint if exists product_hs_codes_leg_check;
 

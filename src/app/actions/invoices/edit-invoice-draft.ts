@@ -16,6 +16,13 @@ import { isValidHsCode, normaliseHsCode } from "@/lib/hs-codes";
 //   • Every edit is AUDITED (before/after) to commercial_invoice_edit_log.
 // Gated invoice.create AND cost.view (values are edited). Writes via service-role
 // after the gate (the lines/header tables are service-role-write only).
+//
+// The lines and totals are replaced by hub_replace_commercial_invoice_lines,
+// which takes the invoice row FOR UPDATE and re-checks draft before it deletes
+// and inserts, all in one transaction. setInvoiceStatus issues under the same
+// lock, so an edit that races an issue either lands before it (and the issue
+// checks the edited lines) or is refused after it. The "before" for the edit
+// log is the set of lines the function replaced, read under that lock.
 
 const LineSchema = z.object({
   sku: z.string().trim().min(1).max(120),
@@ -54,56 +61,48 @@ export async function editInvoiceDraft(input: z.input<typeof Schema>): Promise<E
 
   const admin = createAdminClient();
 
-  // Draft-only guard + current state (for tax carry-through + the audit "before").
+  // An early draft-only refusal, and the tax to carry through. The function
+  // below checks draft again under the row lock, which is the check that holds.
   const { data: inv, error: readErr } = await admin
     .from("commercial_invoices")
-    .select("id, status, tax_total, container_ref")
+    .select("id, status, tax_total")
     .eq("id", invoice_id)
     .maybeSingle();
   if (readErr || !inv) return { ok: false, error: "Invoice not found." };
-  const header = inv as { id: string; status: string; tax_total: number | string; container_ref: string | null };
+  const header = inv as { id: string; status: string; tax_total: number | string };
   if (header.status !== "draft") {
     return { ok: false, error: `Only a draft invoice can be edited (this one is '${header.status}'). Void it to re-issue.` };
   }
 
-  const { data: beforeLines } = await admin
-    .from("commercial_invoice_lines")
-    .select("sku, product_name, qty, unit_value, line_total, hs_code, sort_order")
-    .eq("invoice_id", invoice_id)
-    .order("sort_order", { ascending: true });
-
-  // Reconcile totals from the edited lines (rounds unit first → line_total exact).
+  // Reconcile totals from the edited lines (rounds unit first, so line_total is exact).
   const taxTotal = Number(header.tax_total) || 0;
   const recon = reconcileInvoiceLines(
     lines.map((l) => ({ sku: l.sku, product_name: l.product_name, qty: l.qty, unit_value: l.unit_value, hs_code: l.hs_code ?? null })),
     taxTotal
   );
 
-  // Replace lines atomically-ish (service-role): delete then insert the new set.
-  const { error: delErr } = await admin.from("commercial_invoice_lines").delete().eq("invoice_id", invoice_id);
-  if (delErr) return { ok: false, error: "Could not update the invoice lines." };
-
-  const { error: insErr } = await admin.from("commercial_invoice_lines").insert(
-    recon.lines.map((l, i) => ({
-      invoice_id,
+  const { data: replaced, error: rpcErr } = await admin.rpc("hub_replace_commercial_invoice_lines", {
+    p_invoice_id: invoice_id,
+    p_lines: recon.lines.map((l, i) => ({
       sku: l.sku,
       product_name: l.product_name,
       qty: l.qty,
       unit_value: l.unit_value,
       line_total: l.line_total,
       hs_code: l.hs_code,
-      container_ref: header.container_ref,
       sort_order: i,
-    }))
-  );
-  if (insErr) return { ok: false, error: "Could not save the edited lines." };
-
-  const { error: upErr } = await admin
-    .from("commercial_invoices")
-    .update({ subtotal: recon.subtotal, total: recon.total, updated_at: new Date().toISOString() })
-    .eq("id", invoice_id)
-    .eq("status", "draft"); // never touch a doc that was issued concurrently
-  if (upErr) return { ok: false, error: "Could not update the invoice totals." };
+    })),
+    p_header: { subtotal: recon.subtotal, total: recon.total },
+  });
+  if (rpcErr || !replaced) return { ok: false, error: "Could not save the edited lines." };
+  const result = replaced as ReplaceRpcResult;
+  if (!result.ok) {
+    if (result.reason === "not_draft") {
+      return { ok: false, error: `Only a draft invoice can be edited (this one is '${result.status}'). Void it to re-issue.` };
+    }
+    if (result.reason === "not_found") return { ok: false, error: "Invoice not found." };
+    return { ok: false, error: "An invoice needs at least one line" };
+  }
 
   // Audit the override (best-effort — the edit already committed).
   try {
@@ -111,7 +110,7 @@ export async function editInvoiceDraft(input: z.input<typeof Schema>): Promise<E
       invoice_id,
       edited_by: auth.user.id,
       edited_by_label: auth.user.email ?? "Hub user",
-      before: { lines: beforeLines ?? [] },
+      before: { lines: result.before ?? [] },
       after: { lines: recon.lines, subtotal: recon.subtotal, total: recon.total },
     });
   } catch (e) {
@@ -122,3 +121,10 @@ export async function editInvoiceDraft(input: z.input<typeof Schema>): Promise<E
   revalidatePath("/transport");
   return { ok: true, subtotal: recon.subtotal, total: recon.total };
 }
+
+/** What hub_replace_commercial_invoice_lines returns. */
+type ReplaceRpcResult =
+  | { ok: true; before: unknown[] }
+  | { ok: false; reason: "not_found" }
+  | { ok: false; reason: "not_draft"; status: string }
+  | { ok: false; reason: "no_lines" };

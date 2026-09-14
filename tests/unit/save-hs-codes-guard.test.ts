@@ -81,18 +81,32 @@ describe('src/app/actions/invoices/save-hs-codes.ts', () => {
     expect(writes.map((m) => m[1]).sort()).toEqual(['delete', 'upsert'])
     for (const w of writes) expect(w.index!).toBeGreaterThan(admin)
     const tables = [...body.matchAll(/\.from\('([^']+)'\)/g)].map((m) => m[1])
-    expect(new Set(tables)).toEqual(new Set(['intercompany_prices', 'product_hs_codes']))
+    expect(new Set(tables)).toEqual(new Set(['intercompany_prices', 'po_product_catalog', 'product_hs_codes']))
     expect(body).toMatch(/\.from\('product_hs_codes'\)\.upsert\(upserts, \{ onConflict: 'sku,leg' \}\)/)
     expect(body).toMatch(/\.from\('product_hs_codes'\)\.delete\(\)\.eq\('sku', sku\)\.in\('leg', cleared\)/)
   })
 
-  it('refuses a SKU with no intercompany price before any write', () => {
-    const lookup = body.search(/\.from\('intercompany_prices'\)\.select\('sku'\)\.eq\('sku', sku\)/)
-    const refuse = body.search(/if \(!priced\?\.length\) return \{ ok: false/)
+  it('accepts a SKU that is priced OR in the active catalogue, and refuses anything else before any write', () => {
+    // H1: a catalogue product with no transfer price still lands on invoices, so
+    // it must be codeable. The page lists the same union.
+    const priced = body.search(/\.from\('intercompany_prices'\)\.select\('sku'\)\.eq\('sku', sku\)/)
+    const listed = body.search(/\.from\('po_product_catalog'\)\.select\('sku'\)\.eq\('sku', sku\)\.eq\('active', true\)/)
+    const lookupFail = body.search(/if \(priceErr \|\| catalogErr\) return \{ ok: false/)
+    const refuse = body.search(/if \(!priced\?\.length && !listed\?\.length\) \{\s*return \{ ok: false/)
     const firstWrite = body.search(/\.(upsert|delete)\(/)
-    expect(lookup).toBeGreaterThan(-1)
-    expect(refuse).toBeGreaterThan(lookup)
+    for (const [name, at] of Object.entries({ priced, listed, lookupFail, refuse })) expect(at, name).toBeGreaterThan(-1)
+    expect(lookupFail).toBeGreaterThan(Math.max(priced, listed))
+    expect(refuse).toBeGreaterThan(lookupFail)
     expect(firstWrite).toBeGreaterThan(refuse)
+  })
+
+  it('treats codes as a partial record: absent legs are never touched', () => {
+    // H8: each leg is optional, and only the legs received are upserted or deleted.
+    expect(body).toMatch(/codes: z\s*\.object\(codesShape\)\s*\.partial\(\)\s*\.strict\(\)/)
+    expect(body).toMatch(/const received = INVOICE_LEGS\.filter\(\(leg\) => codes\[leg\] !== undefined\)/)
+    expect(body).toMatch(/const upserts = received\s*\.filter/)
+    expect(body).toMatch(/const cleared = received\.filter/)
+    expect(body).not.toMatch(/INVOICE_LEGS\.filter\(\(leg\) => codes\[leg\] (===|!==) ''\)/)
   })
 
   it('normalises each code and validates it with the shared rule', () => {
@@ -117,10 +131,20 @@ describe('the HS codes page', () => {
     expect(body).toMatch(/const canEdit = auth\.capabilities\.has\('invoice\.create'\)/)
   })
 
-  it('reads only the SKU column of intercompany_prices through the service role', () => {
-    expect(body).toContain("admin.from('intercompany_prices').select('sku')")
+  it('reads which SKU is priced on which leg through the service role, never a value', () => {
+    expect(body).toContain("admin.from('intercompany_prices').select('sku, leg, active')")
     expect(body).not.toMatch(/unit_value/)
     expect(body).not.toMatch(/\.(upsert|insert|update|delete)\(/)
+  })
+
+  it('lists the union of priced SKUs and active catalogue SKUs', () => {
+    expect(body).toContain("supabase.from('po_product_catalog').select('sku, product_name, active')")
+    expect(body).toMatch(/\.\.\.prices\.map\(\(r\) => r\.sku\), \.\.\.catalog\.filter\(\(r\) => r\.active\)\.map\(\(r\) => r\.sku\)/)
+  })
+
+  it('counts a leg only where the product has an active price on it', () => {
+    expect(body).toMatch(/if \(!row\.active \|\| !isInvoiceLeg\(row\.leg\)\) continue/)
+    expect(body).toMatch(/pricedLegs: INVOICE_LEGS\.filter/)
   })
 })
 

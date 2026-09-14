@@ -9,7 +9,7 @@ import { buildCommercialInvoice, type CommercialInvoiceDoc, type CommercialInvoi
 import { applyComposition, type CompositionRule, type HsCodeEntry } from "@/lib/invoice-composition";
 import { getFxRate } from "@/lib/fx-helper";
 import { INVOICE_LEGS, LEG_CONFIG, type InvoiceLeg } from "@/lib/invoice-legs";
-import { missingHsCodeLines, nameProducts } from "@/lib/hs-codes";
+import { missingHsCodeAdvice, missingHsCodeLines } from "@/lib/hs-codes";
 
 // ---------------------------------------------------------------------------
 // Generate + persist a commercial invoice for one CONTAINER (it "travels with
@@ -244,7 +244,7 @@ export async function generateCommercialInvoice(input: { container_ref: string; 
   const warnings = [
     ...(missingHs.length
       ? [
-          `No HS code for ${nameProducts(missingHs)}. The invoice cannot be issued until each line has one. Set them on the HS codes tab under Invoices, or type them on this draft with Edit.`,
+          `${missingHs.length === 1 ? "1 line has" : `${missingHs.length} lines have`} no HS code, so the invoice cannot be issued until each line has one. ${missingHsCodeAdvice(composedLines)}`,
         ]
       : []),
     ...composition.applied,

@@ -54,6 +54,62 @@ export function nameProducts(lines: readonly { sku: string; product_name: string
   return names.join(', ')
 }
 
+/**
+ * The SKUs that sit on more than one line of an invoice: the parts of a split.
+ *
+ * A split composition rule (invoice_composition_rules, rule_type 'split') turns
+ * one product into several lines that keep the parent's SKU, for example the CS
+ * Enclosure frame and body. The HS codes tab holds one code per SKU per leg, so
+ * it cannot tell those parts apart: their codes are typed on the draft itself.
+ */
+export function splitPartSkus(lines: readonly { sku: string }[]): Set<string> {
+  const seen = new Set<string>()
+  const repeated = new Set<string>()
+  for (const l of lines) {
+    const sku = l.sku.trim()
+    // A line with no SKU yet (just added on the draft) is not a product at all.
+    if (!sku) continue
+    if (seen.has(sku)) repeated.add(sku)
+    seen.add(sku)
+  }
+  return repeated
+}
+
+/**
+ * The lines with no HS code, split by where the code has to come from:
+ *  - onTab: one line per product, so a code saved on the HS codes tab fills it.
+ *  - onDraft: split parts sharing a SKU, so each code is typed on the draft.
+ * `lines` is the whole invoice, not only the missing lines, because a split part
+ * is recognised by its SKU repeating across the invoice.
+ */
+export function missingHsCodesByCause<T extends { sku: string; hs_code: string | null | undefined }>(
+  lines: readonly T[],
+): { onTab: T[]; onDraft: T[] } {
+  const parts = splitPartSkus(lines)
+  const missing = missingHsCodeLines(lines)
+  return {
+    onTab: missing.filter((l) => !parts.has(l.sku.trim())),
+    onDraft: missing.filter((l) => parts.has(l.sku.trim())),
+  }
+}
+
+/** What to do about the missing codes, one sentence per cause. Empty when none are missing. */
+export function missingHsCodeAdvice(
+  lines: readonly { sku: string; product_name: string | null; hs_code: string | null | undefined }[],
+): string {
+  const { onTab, onDraft } = missingHsCodesByCause(lines)
+  const sentences: string[] = []
+  if (onTab.length) {
+    sentences.push(`For ${nameProducts(onTab)}, set the code on the HS codes tab, then use Fill on this draft or regenerate.`)
+  }
+  if (onDraft.length) {
+    sentences.push(
+      `${nameProducts(onDraft)} ${onDraft.length === 1 ? 'is a part' : 'are parts'} split by a composition rule, which the HS codes tab cannot fill, so type ${onDraft.length === 1 ? 'its code' : 'each code'} on the draft with Edit.`,
+    )
+  }
+  return sentences.join(' ')
+}
+
 /** Why an invoice cannot be issued yet, or null when every line has an HS code. */
 export function issueBlockedReason(
   lines: readonly { sku: string; product_name: string | null; hs_code: string | null | undefined }[],
@@ -61,5 +117,5 @@ export function issueBlockedReason(
   const missing = missingHsCodeLines(lines)
   if (!missing.length) return null
   const count = missing.length === 1 ? '1 line has' : `${missing.length} lines have`
-  return `This invoice cannot be issued: ${count} no HS code (${nameProducts(missing)}). Open the draft with Edit and type each code, or fill them from the HS codes tab.`
+  return `This invoice cannot be issued: ${count} no HS code. ${missingHsCodeAdvice(lines)}`
 }

@@ -19,6 +19,27 @@ interface ContainerGroup {
   spot_id: string | null;
   /** The legs this container needs, from its lines' depot codes. */
   legs: InvoiceLeg[];
+  /** The distinct depot codes on its lines, sorted. */
+  depots: string[];
+  /** How many of its lines have no depot code, and how many lines it has. */
+  linesWithoutDepot: number;
+  lines: number;
+}
+
+/**
+ * Why a container is offered both Group invoices, in plain words, or null when
+ * its depots decide the legs. legsForDestination offers both onward legs when a
+ * line has no depot, because that line could be bound for either country;
+ * saying so stops the Canada button looking like it came from nowhere.
+ */
+function unknownDepotNote(c: Pick<ContainerGroup, "linesWithoutDepot" | "lines">): string | null {
+  if (c.linesWithoutDepot === 0) return null;
+  if (c.linesWithoutDepot === c.lines) {
+    return c.lines === 1
+      ? "Its line has no depot, so both Group invoices are offered."
+      : "None of its lines has a depot, so both Group invoices are offered.";
+  }
+  return `${c.linesWithoutDepot === 1 ? "1 line has" : `${c.linesWithoutDepot} lines have`} no depot, so both Group invoices are offered.`;
 }
 
 export default function CommercialInvoicePanel({
@@ -63,6 +84,9 @@ export default function CommercialInvoicePanel({
         po_references: [...g.pos].sort(),
         spot_id: g.spot,
         legs: legsForDestination(g.depots),
+        depots: [...new Set(g.depots.map((d) => (d ?? "").trim()).filter(Boolean))].sort(),
+        linesWithoutDepot: g.depots.filter((d) => (d ?? "").trim() === "").length,
+        lines: g.depots.length,
       }))
       .sort((a, b) => a.container_ref.localeCompare(b.container_ref));
   }, [items]);
@@ -121,6 +145,7 @@ export default function CommercialInvoicePanel({
               <tr className="bg-gray-50 text-[10px] uppercase tracking-wider text-gray-500">
                 <th className="text-left font-medium px-3 py-2">Container</th>
                 <th className="text-left font-medium px-3 py-2">PO ref</th>
+                <th className="text-left font-medium px-3 py-2">Depots</th>
                 <th className="text-right font-medium px-3 py-2">SKUs</th>
                 <th className="text-right font-medium px-3 py-2">Units</th>
                 <th className="px-3 py-2" />
@@ -138,6 +163,18 @@ export default function CommercialInvoicePanel({
                     ) : (
                       <span title={`This container carries ${c.po_references.length} POs: ${c.po_references.join(", ")}`}>
                         {c.po_references.join(", ")}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-gray-600">
+                    {c.depots.length > 0 ? (
+                      <span className="font-mono">{c.depots.join(", ")}</span>
+                    ) : (
+                      <span className="text-amber-700">No depot</span>
+                    )}
+                    {unknownDepotNote(c) && (
+                      <span className="block text-[10px] text-amber-700" data-testid="container-unknown-depot">
+                        {unknownDepotNote(c)}
                       </span>
                     )}
                   </td>
