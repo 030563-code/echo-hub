@@ -24,7 +24,7 @@ test.describe('Navigation + RBAC (privileged user)', () => {
 
   test('dashboard lists the accessible module cards', async ({ page }) => {
     await expect(page.getByText('Welcome to the Echo Barrier Hub')).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'MRP' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Warehousing/Stock' })).toBeVisible()
   })
 
   const opsModules = [
