@@ -12,6 +12,7 @@ import { entityLabel } from "@/lib/depot-constants";
 import { chainNumber, displayPoNumber } from "@/lib/po-number";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SearchBox } from "@/components/ui/search-box";
+import PoPurposeTag from "@/components/po/po-purpose-tag";
 import type { PurchaseOrder } from "@/lib/erp-types";
 import { usePersistedView } from "@/hooks/use-page-state";
 import { parseSearchView, type SearchView } from "@/lib/page-drafts";
@@ -172,7 +173,10 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
                 <div key={po.id} className="bg-white border border-gray-200 rounded-xl p-5">
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-3">
                     <div>
-                      <p className="font-mono text-echo-orange font-medium">{displayPoNumber(po.po_number)}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-mono text-echo-orange font-medium">{displayPoNumber(po.po_number)}</p>
+                        <PoPurposeTag poNumber={po.po_number} />
+                      </div>
                       <p className="text-xs text-gray-500 mt-0.5">
                         <span>{entityLabel(po.from_entity)}</span> →{" "}
                         <span>{entityLabel(po.to_entity)}</span>

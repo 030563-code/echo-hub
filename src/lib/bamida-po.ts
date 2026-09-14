@@ -1,4 +1,5 @@
 import type { SroPoBom } from '@/lib/erp-types'
+import { sroDocumentNumber } from '@/lib/po-number'
 
 // Build the Bamida supplier PO from an exploded SRO order. Per PO-00001385 the
 // Bamida PO bills MANUFACTURING (MAN) + PRINTING (PRI) per unit + PACKAGING per
@@ -102,7 +103,9 @@ export function buildBamidaPo(po: SroPoBom, isoDate: string, supplier: BamidaSup
   const tax = round2(lines.reduce((s, l) => s + ((l.amount ?? 0) * (l.taxRate ?? 0)) / 100, 0))
 
   return {
-    poNumber: po.po_number,
+    // The manufacturing order Bamida receive: EBSRO8001-1 under EBGRP8001. An
+    // SRO order from before the scheme keeps its own number, as it always did.
+    poNumber: sroDocumentNumber(po.po_number, 'Manufacturing') ?? po.po_number,
     reference: po.master_ref,
     date: isoDate,
     supplier,

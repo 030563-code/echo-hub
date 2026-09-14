@@ -17,13 +17,13 @@ import type { PurchaseOrderLine } from "@/lib/erp-types";
 //   2. RAISES the next tier's leg as a new `requested` row (so it appears in the
 //      approval queue) — Depot→Group→SRO; SRO is terminal,
 //   3. fires the n8n webhook for the APPROVED leg, so n8n creates the AUTHORISED PO
-//      in THAT tier's Xero account and writes the real Xero PO# back onto the leg
-//      (the depot Xero# becomes the master; n8n also sets reference_po_number to the
-//      parent leg's number). All Xero work + per-entity product codes live in n8n
+//      in THAT tier's Xero account under the Hub's own po_number (EBUSA8001,
+//      EBGRP8001; the numbering scheme of 14 Sep 2026) and writes the Xero ids
+//      back onto the leg. All Xero work + per-entity product codes live in n8n
 //      (the Xero-via-n8n decision); the Hub holds no Xero credentials.
 //
-// The Hub owns the legs + progression so the chain is testable without n8n; the
-// real Xero numbers replace the Hub placeholders once n8n runs.
+// The Hub owns the legs, their numbers and the progression, so the chain is
+// testable without n8n and the number never changes after the order is raised.
 //
 // email-recipients: none (the po-hub-approved webhook creates the Xero PO in
 // that tier's account. It sends no mail. Any email raised from this file has

@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2, Ship } from "lucide-react";
 import { raiseCargoPo } from "@/app/actions/purchase-orders/raise-cargo-po";
-import { chainNumber } from "@/lib/po-number";
+import { chainNumber, sroDocumentNumber } from "@/lib/po-number";
 import type { PurchaseOrder } from "@/lib/erp-types";
 
 /** Shared by the purchase order board drawer and the single order page, so it is not re-inlined. */
@@ -42,7 +42,7 @@ export default function CargoPoButton({ po }: { po: PurchaseOrder }) {
         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50"
       >
         {pending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ship className="w-3.5 h-3.5" />}
-        Raise cargo PO ({chainNumber(po)}-2)
+        Raise cargo PO ({sroDocumentNumber(po.po_number, "Shipping") ?? `${chainNumber(po)}-2`})
       </button>
       {msg && <p className="text-[10px] text-green-700 mt-2">{msg}</p>}
       {err && <p className="text-[10px] text-amber-700 mt-2">{err}</p>}

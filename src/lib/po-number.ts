@@ -1,9 +1,20 @@
 import type { PurchaseOrder } from './erp-types'
 
-// Rooted at the SRO order (Juraj/Dean's model): the intercompany order flowing
-// depot → group → SRO is ONE order and shares the base number (PO-001); the SRO's
-// two fulfilment children are its suffixes — Bamida manufacturing = base-1, Cargo
-// transport = base-2. So: PO-001 (the order) / PO-001-1 (Bamida) / PO-001-2 (Cargo).
+// The purchase order numbering scheme (Dean, 14 Sep 2026). The Hub mints every
+// number in the database trigger (po_before_insert -> hub_mint_po_number, see
+// supabase/migrations/20260914140000_po_numbering_scheme.sql) and n8n sends that
+// exact number to Xero:
+//
+//   EBUSA8001 / EBCAN8001 / EBFRA8001 / EBAUS8001   the depot's order on Group
+//   EBGRP8001                                        Group's order on s.r.o.
+//   EBSRO8001-1                                      manufacturing order to Bamida
+//   EBSRO8001-2                                      shipping order to Cargo Partner
+//   EBSRO8001-3                                      accounting order to Bamida
+//
+// s.r.o.'s orders carry the digits of their Group order, and the suffix is the
+// document's purpose. The new numbers say where they sit in the chain, so they
+// are shown as they are. Chains raised before the scheme keep the older label,
+// built from master_ref: PO-001 (the order) / PO-001-1 (Bamida) / PO-001-2 (Cargo).
 const LEG_INDEX: Record<PurchaseOrder['leg'], number> = {
   DEPOT_TO_EB_GROUP: 0,
   EB_GROUP_TO_SRO: 0,
@@ -12,16 +23,91 @@ const LEG_INDEX: Record<PurchaseOrder['leg'], number> = {
 }
 
 /**
- * The "PO-001 / PO-001-1 / PO-001-2" unified chain label (meeting requirement).
- * Derived from the shared `master_ref` + the leg's role: the SRO order reads as
- * the base, its Bamida manufacturing child as base-1, its Cargo transport child
- * as base-2 — trackable end-to-end.
+ * The depot code to its number series. Mirrors public.hub_po_prefix_for_depot;
+ * tests/unit/po-numbering-schema-coherence.test.ts keeps the two identical.
+ * EU-SK, GB-BSE and EB-SRO have no series in the scheme, so they are absent.
+ */
+export const PO_PREFIX_BY_DEPOT: Readonly<Record<string, string>> = {
+  'US-BAL': 'EBUSA',
+  'US-SBD': 'EBUSA',
+  'CA-HAM': 'EBCAN',
+  'EU-FR': 'EBFRA',
+  'AU-SYD': 'EBAUS',
+}
+
+/** True when a depot can raise an order, i.e. it has a number series. */
+export function depotHasPoSeries(depot: string): boolean {
+  return Object.hasOwn(PO_PREFIX_BY_DEPOT, depot)
+}
+
+/**
+ * The number series for a depot. Throws for a depot with no series, the same
+ * refusal the database makes, rather than borrowing another country's prefix.
+ */
+export function poPrefixForDepot(depot: string): string {
+  if (!depotHasPoSeries(depot)) {
+    throw new Error(
+      `Depot ${depot || '(blank)'} has no purchase order number series. Depot orders can be raised for ${Object.keys(PO_PREFIX_BY_DEPOT).join(', ')}.`,
+    )
+  }
+  return PO_PREFIX_BY_DEPOT[depot]
+}
+
+const NEW_SCHEME = /^(?:EB(?:USA|CAN|FRA|AUS|GRP)\d+|EBSRO\d+-[123])$/
+const SRO_SUFFIX = /^EBSRO\d+-([123])$/
+const GROUP_NUMBER = /^EBGRP(\d+)$/
+
+export type PoNumberPurpose = 'Manufacturing' | 'Shipping' | 'Accounting'
+
+const PURPOSE_SUFFIX: Record<PoNumberPurpose, 1 | 2 | 3> = {
+  Manufacturing: 1,
+  Shipping: 2,
+  Accounting: 3,
+}
+
+/** A number minted under the 14 Sep 2026 scheme (EBUSA8001, EBGRP8001, EBSRO8001-2). */
+export function isNewSchemePoNumber(poNumber: string | null | undefined): boolean {
+  return !!poNumber && NEW_SCHEME.test(poNumber.trim())
+}
+
+/**
+ * What an s.r.o. document is for, read off its suffix: -1 Manufacturing (to
+ * Bamida, specs), -2 Shipping (to Cargo Partner), -3 Accounting (to Bamida,
+ * priced). Null for every other number, which has no suffix to read.
+ */
+export function poNumberPurpose(poNumber: string | null | undefined): PoNumberPurpose | null {
+  const m = poNumber?.trim().match(SRO_SUFFIX)
+  if (!m) return null
+  return m[1] === '1' ? 'Manufacturing' : m[1] === '2' ? 'Shipping' : 'Accounting'
+}
+
+/**
+ * The s.r.o. document number that belongs under a Group order: EBGRP8001 with
+ * Shipping is EBSRO8001-2. The same derivation the database mint makes. Null
+ * when the Group order predates the scheme, so the caller keeps its old label.
+ */
+export function sroDocumentNumber(
+  groupPoNumber: string | null | undefined,
+  purpose: PoNumberPurpose,
+): string | null {
+  const m = groupPoNumber?.trim().match(GROUP_NUMBER)
+  return m ? `EBSRO${m[1]}-${PURPOSE_SUFFIX[purpose]}` : null
+}
+
+/**
+ * The chain label for an order. A number from the new scheme already says
+ * where it sits (EBSRO8001-1 is the manufacturing order under EBGRP8001), so it
+ * is returned as it is.
  *
- * DISPLAY-ONLY — the canonical number stays `po_number` (n8n + Cargo Partner look
- * up by that). The trigger's "MR-" master_ref prefix is stripped.
+ * An older chain keeps its "PO-001 / PO-001-1 / PO-001-2" label, derived from
+ * the shared master_ref and the leg's role: the SRO order reads as the base,
+ * its Bamida child as base-1, its Cargo child as base-2. The "MR-" prefix is
+ * stripped. Display only: the canonical number stays po_number, which is what
+ * n8n, Xero and Cargo Partner look up.
  */
 export function chainNumber(po: Pick<PurchaseOrder, 'po_number' | 'master_ref' | 'leg'>): string {
-  // No master_ref = no real chain to express → show the canonical number as-is.
+  if (isNewSchemePoNumber(po.po_number)) return po.po_number
+  // No master_ref = no real chain to express, so show the canonical number as-is.
   if (!po.master_ref) return po.po_number
   const base = po.master_ref.replace(/^MR-/, '')
   const idx = LEG_INDEX[po.leg] ?? 0

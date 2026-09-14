@@ -165,16 +165,17 @@ await sb
 // board shows it as "Awaiting Xero PO number" like any placeholder — the spec
 // finds this fixture via the search box (which filters on the raw po_number),
 // not by its displayed text.
-// Its final po_number is stable across runs too (forced below), so it needs the
-// same delete-before-insert guard as the others — otherwise a re-run without
-// teardown leaves a second PO-00001364 row that already has a po_shipments link
-// persisted from a prior run's "detect" (CASCADE removes that link with it).
-await sb.from('purchase_orders').delete().eq('po_number', 'PO-00001364')
+// Its po_number is stable across runs too, so makePo's delete-before-insert
+// guard applies: otherwise a re-run without teardown leaves a second
+// PO-00001364 row that already has a po_shipments link persisted from a prior
+// run's "detect" (CASCADE removes that link with it).
+// The number goes in WITH the insert, never after it. A US-BAL depot order
+// inserted blank takes the next EBUSA number from the live series (the scheme
+// of 14 Sep 2026), and a rename afterwards would leave that number burnt, a
+// gap in the purchase order numbers Xero receives.
 const cargoPo = await makePo('DEPOT_TO_EB_GROUP', 'US-BAL', 'EB-GROUP', [
   { sku: 'EBH9NA', product_name: 'Echo Barrier H9', product_family: 'H9', quantity: 8 },
-])
-await sb.from('purchase_orders').update({ po_number: 'PO-00001364' }).eq('id', cargoPo.id)
-cargoPo.po_number = 'PO-00001364'
+], 'PO-00001364')
 
 // Fixture D — a container in shipment_contents for the commercial-invoice test
 // (EBH9NA has a seeded transfer price of €27.01, so 10 → €270.10).

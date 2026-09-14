@@ -7,6 +7,7 @@ import { deletePageState } from "@/lib/page-state-server";
 import { RAISE_PO_KEY } from "@/lib/page-drafts";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
+import { depotHasPoSeries, PO_PREFIX_BY_DEPOT } from "@/lib/po-number";
 
 // ---------------------------------------------------------------------------
 // Raise a purchase order in the Hub (the FRONT of the intercompany chain).
@@ -19,7 +20,8 @@ import { getAuthorizedUser } from "@/lib/authz";
 // validated against the caller's own `allowed_depots`, SKUs are validated against
 // the catalogue server-side (never trust client product names), and the write goes
 // through the SESSION client so the "hub: raise PO" RLS policy is the enforcer.
-// po_number / master_ref are minted by the existing po_before_insert DB trigger.
+// po_number / master_ref are minted by the po_before_insert DB trigger: EBUSA8001
+// for a US depot, EBCAN for Canada, EBFRA for France, EBAUS for Australia.
 // ---------------------------------------------------------------------------
 
 const LineSchema = z.object({
@@ -64,6 +66,15 @@ export async function createPurchaseOrder(input: CreatePOInput): Promise<CreateP
   const depotOk = profile.is_super_admin || depots.includes("ALL") || depots.includes(data.from_entity);
   if (!depotOk) {
     return { success: false, error: "You are not permitted to raise a PO for this depot" };
+  }
+
+  // The database refuses a depot with no number series; say so plainly here
+  // rather than letting that surface as a failed insert.
+  if (!depotHasPoSeries(data.from_entity)) {
+    return {
+      success: false,
+      error: `Purchase orders cannot be raised for ${data.from_entity} yet. It has no order number series (depots with one: ${Object.keys(PO_PREFIX_BY_DEPOT).join(", ")}).`,
+    };
   }
 
   const supabase = await createServerClient();

@@ -8,8 +8,8 @@ import { getAuthorizedUser } from "@/lib/authz";
 import { chainNumber } from "@/lib/po-number";
 import type { PurchaseOrderLine } from "@/lib/erp-types";
 
-// Raise the Cargo/transport PO (Juraj's "PO-001-2") as a real child of the SRO
-// order (PO-001) — a sibling of the Bamida manufacturing PO. This makes the
+// Raise the Cargo/transport PO (the shipping order, EBSRO8001-2) as a real child
+// of the SRO order (EBGRP8001), a sibling of the Bamida manufacturing PO. This makes the
 // cargo-partner order a raised, numbered, trackable PO instead of only a SPOT-ID
 // lookup. transport.view-gated (logistics owns cargo); written via service-role
 // AFTER the gate. It is NOT an intercompany approval leg, so it is created
@@ -20,6 +20,9 @@ const Schema = z.object({ sro_po_id: z.string().uuid("Invalid PO id") });
 export type RaiseCargoResult =
   | { ok: true; po_number: string; chain: string }
   | { ok: false; error: string };
+
+/** Postgres unique_violation: the (parent_po_id, leg) index caught a second cargo PO. */
+const UNIQUE_VIOLATION = "23505";
 
 interface SroPo {
   id: string;
@@ -62,8 +65,10 @@ export async function raiseCargoPo(input: z.infer<typeof Schema>): Promise<Raise
     .maybeSingle();
   if (dupe) return { ok: false, error: "A cargo PO already exists for this SRO order." };
 
-  // Create the SRO_TO_CARGO child. The trigger mints po_number + inherits
-  // master_ref from parent_po_id, so the chain label resolves to base-2.
+  // Create the SRO_TO_CARGO child. The trigger mints po_number (EBSRO<n>-2 under
+  // EBGRP<n>, the old PO- series under an older chain) and inherits master_ref
+  // from parent_po_id. Two presses racing past the check above both reach this
+  // insert; the unique index on (parent_po_id, leg) refuses the second.
   const { data: child, error: childErr } = await admin
     .from("purchase_orders")
     .insert({
@@ -78,6 +83,9 @@ export async function raiseCargoPo(input: z.infer<typeof Schema>): Promise<Raise
     })
     .select("id, po_number, master_ref, leg")
     .single();
+  if (childErr?.code === UNIQUE_VIOLATION) {
+    return { ok: false, error: "A cargo PO already exists for this SRO order." };
+  }
   if (childErr || !child) {
     console.error("raiseCargoPo insert failed", childErr?.message);
     return { ok: false, error: "Failed to raise the cargo PO." };

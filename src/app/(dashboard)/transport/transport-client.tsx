@@ -418,7 +418,7 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
                   value={lookupRef}
                   onChange={(e) => { touchedRef.current = true; setLookupRef(e.target.value); }}
                   onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleLookup(); } }}
-                  placeholder="e.g. PO-00001364"
+                  placeholder="e.g. EBSRO8001-1"
                   aria-label="PO number"
                   className={inputCls + " flex-1"}
                 />
@@ -568,7 +568,7 @@ export default function ShippingClient({ items }: { items: ShipmentContent[] }) 
                   type="text"
                   value={form.po_reference ?? ""}
                   onChange={(e) => set("po_reference", e.target.value)}
-                  placeholder="e.g. PO-01001"
+                  placeholder="e.g. EBSRO8001-1"
                   className={inputCls}
                 />
               </Field>

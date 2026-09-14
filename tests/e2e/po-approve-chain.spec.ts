@@ -81,6 +81,10 @@ test("PO approve chain: raise → tier1 → tier2(ref) → SRO decides", async (
     .single();
   expect(groupLeg).not.toBeNull();
   expect(sroLeg!.reference_po_number).toBe(groupLeg!.po_number);
+  // The numbering scheme of 14 Sep 2026: the Hub mints both numbers, and they
+  // are the ones Xero receives. A US-BAL order is EBUSA, its Group order EBGRP.
+  expect(groupLeg!.po_number).toMatch(/^EBUSA\d+$/);
+  expect(sroLeg!.po_number).toMatch(/^EBGRP\d+$/);
   const { count } = await sb!
     .from("purchase_orders")
     .select("id", { count: "exact", head: true })

@@ -95,8 +95,8 @@ export async function raiseManufacturingPo(
     .maybeSingle();
   if (dupe) return { ok: false, error: "A manufacturing order already exists for this SRO order." };
 
-  // The trigger mints po_number and inherits master_ref from parent_po_id, so
-  // chainNumber renders this as base-1 with no change to po-number.ts.
+  // The trigger mints po_number (EBSRO<n>-1 under EBGRP<n>, the old PO- series
+  // under an older chain) and inherits master_ref from parent_po_id.
   const { data: child, error: childErr } = await admin
     .from("purchase_orders")
     .insert({

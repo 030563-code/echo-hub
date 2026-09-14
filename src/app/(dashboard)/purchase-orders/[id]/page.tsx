@@ -14,6 +14,7 @@ import DownloadPoPdfButton from '@/components/po/download-po-pdf-button'
 import ShipmentSection from '@/components/po/shipment-section'
 import AttachmentsSection from '@/components/po/attachments-section'
 import CargoPoButton from '@/components/po/cargo-po-button'
+import PoPurposeTag from '@/components/po/po-purpose-tag'
 import TimelineItem from '@/components/po/timeline-item'
 import DetailSection from '@/components/po/detail-section'
 import StatusBadge from '@/components/board/StatusBadge'
@@ -149,11 +150,20 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
 
       <div className="mt-4 mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'Varela Round, sans-serif' }}>
-            {displayPoNumber(po.po_number)}
-          </h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'Varela Round, sans-serif' }}>
+              {displayPoNumber(po.po_number)}
+            </h1>
+            <PoPurposeTag poNumber={po.po_number} />
+          </div>
           <p className="text-sm text-gray-500 mt-1">
-            {legLabel(po.leg)} · <span className="font-mono">{chainNumber(po)}</span> ·{' '}
+            {legLabel(po.leg)} ·{' '}
+            {/* A new-scheme number is its own chain label, already in the heading. */}
+            {chainNumber(po) !== po.po_number ? (
+              <>
+                <span className="font-mono">{chainNumber(po)}</span> ·{' '}
+              </>
+            ) : null}
             {entityLabel(po.from_entity)} to {entityLabel(po.to_entity)}
             {po.reference_po_number ? (
               <> · reference <span className="font-mono">{displayPoNumber(po.reference_po_number)}</span></>
@@ -196,7 +206,10 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
                       : 'rounded-lg border border-gray-200 px-3 py-2 text-xs hover:bg-gray-50 transition-colors'
                   }
                 >
-                  <span className="block font-mono text-gray-900">{displayPoNumber(leg.po_number)}</span>
+                  <span className="flex items-center gap-1.5 font-mono text-gray-900">
+                    {displayPoNumber(leg.po_number)}
+                    <PoPurposeTag poNumber={leg.po_number} />
+                  </span>
                   <span className="mt-1 flex items-center gap-1.5 text-gray-500">
                     {legLabel(leg.leg as typeof po.leg)}
                     <StatusBadge status={leg.status} />
