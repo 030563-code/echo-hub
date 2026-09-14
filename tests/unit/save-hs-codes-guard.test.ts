@@ -148,6 +148,27 @@ describe('the HS codes page', () => {
   })
 })
 
+describe('the HS codes screen', () => {
+  const client = code(read('src/app/(dashboard)/invoices/hs-codes/hs-codes-client.tsx'))
+
+  it('sends only the legs that changed, never the whole row', () => {
+    // Sending every leg would blank a code a colleague saved on another leg.
+    expect(client).toContain('Object.fromEntries(changed.map((s) => [s.leg, s.code]))')
+    expect(client).not.toMatch(/Object\.fromEntries\(state\.map/)
+  })
+
+  it('drops a box typed back to the saved code, so it is not sent later', () => {
+    expect(client).toMatch(/const same = value === baseline\(p, leg\)/)
+    expect(client).toMatch(/if \(same\) delete row\[leg\]/)
+  })
+
+  it('leaves the stored draft alone while the product list failed to load', () => {
+    expect(client).toContain('enabled: canEdit && !loadError')
+    expect(client).toContain('load: canEdit && !loadError')
+    expect(client).toMatch(/if \(!canEdit \|\| loadError\) return\s+saveDraft/)
+  })
+})
+
 describe('product_hs_codes writes', () => {
   it('happen in save-hs-codes.ts and nowhere else in src', () => {
     const offenders = walk(join(process.cwd(), 'src'))

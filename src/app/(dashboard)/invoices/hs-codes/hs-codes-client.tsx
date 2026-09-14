@@ -107,24 +107,49 @@ export default function HsCodesClient({
   } = usePageState<HsCodesDraft>({
     pageKey: HS_CODES_DRAFT_KEY,
     parse: parseHsCodesDraft,
-    enabled: canEdit,
-    load: canEdit,
+    // A failed load renders no products, so every stored code would look saved
+    // and the empty draft would delete it. Keep the draft untouched until a load works.
+    enabled: canEdit && !loadError,
+    load: canEdit && !loadError,
     onRestore: (restored) => {
       if (!restored) return
+      // Only legs that still differ from the saved code come back: one that now
+      // matches is not an edit, and kept it would be sent the next time the saved
+      // code changes underneath it.
+      const bySku = new Map(products.map((p) => [p.sku, p]))
+      const back: Typed = {}
+      const invalidBack: string[] = []
+      for (const [sku, legs] of Object.entries(restored.data.codes)) {
+        const p = bySku.get(sku)
+        if (!p) continue
+        const row: LegCodes = {}
+        for (const leg of INVOICE_LEGS) {
+          const value = legs[leg]
+          if (value === undefined || normaliseHsCode(value) === normaliseHsCode(p.codes[leg])) continue
+          row[leg] = value
+          const code = normaliseHsCode(value)
+          if (code !== '' && !isValidHsCode(code)) invalidBack.push(`${sku}:${leg}`)
+        }
+        if (Object.keys(row).length) back[sku] = row
+      }
       // Anything typed while the read was in flight wins over the stored copy.
       setTyped((cur) => {
-        const next: Typed = { ...restored.data.codes }
+        const next: Typed = { ...back }
         for (const [sku, legs] of Object.entries(cur)) next[sku] = { ...next[sku], ...legs }
         return next
       })
+      // A restored half-typed code is not being typed now, so its error shows at once.
+      if (invalidBack.length) {
+        setRevealed((cur) => ({ ...cur, ...Object.fromEntries(invalidBack.map((k) => [k, true as const])) }))
+      }
     },
     isEmpty: (d) => Object.keys(d.codes).length === 0,
   })
 
   useEffect(() => {
-    if (!canEdit) return
+    if (!canEdit || loadError) return
     saveDraft({ v: 1, codes: unsaved })
-  }, [canEdit, saveDraft, unsaved])
+  }, [canEdit, loadError, saveDraft, unsaved])
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase()
@@ -140,8 +165,21 @@ export default function HsCodesClient({
   const allSet = products.length > 0 && missing.every((m) => m.count === 0)
   const unpricedCount = products.filter((p) => p.pricedLegs.length === 0).length
 
-  function setCode(sku: string, leg: InvoiceLeg, value: string) {
-    setTyped((cur) => ({ ...cur, [sku]: { ...cur[sku], [leg]: value } }))
+  function setCode(p: HsCodeProduct, leg: InvoiceLeg, value: string) {
+    const sku = p.sku
+    // Typed back to exactly the saved code, the box is no longer an edit. Kept, it
+    // would be sent as a change once a colleague's save refreshes that code.
+    // Compared as typed, not normalised, so a space typed after a code survives.
+    const same = value === baseline(p, leg)
+    setTyped((cur) => {
+      const row = { ...cur[sku] }
+      if (same) delete row[leg]
+      else row[leg] = value
+      const next = { ...cur }
+      if (Object.keys(row).length) next[sku] = row
+      else delete next[sku]
+      return next
+    })
     // Typing hides the format error until the next blur, Enter or Save.
     setRevealed((cur) => {
       if (!cur[`${sku}:${leg}`]) return cur
@@ -280,7 +318,7 @@ export default function HsCodesClient({
                       saved={baselineCodes(p)}
                       revealedLegs={INVOICE_LEGS.filter((leg) => revealed[`${p.sku}:${leg}`])}
                       canEdit={canEdit}
-                      onChange={(leg, value) => setCode(p.sku, leg, value)}
+                      onChange={(leg, value) => setCode(p, leg, value)}
                       onReveal={(legs) => reveal(p.sku, legs)}
                       onSaved={(codes) => onSaved(p, codes)}
                     />

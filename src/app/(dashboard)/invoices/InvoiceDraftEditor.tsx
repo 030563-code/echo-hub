@@ -105,6 +105,13 @@ export default function InvoiceDraftEditor({
         return;
       }
       setRows(restored.data.rows);
+      // A restored half-typed code is not being typed now, and Save draft stays
+      // disabled while it is invalid, so name its line straight away.
+      const bad = restored.data.rows.flatMap((r, i) => {
+        const code = normaliseHsCode(r.hs_code);
+        return code !== "" && !isValidHsCode(code) ? [[i, true as const] as const] : [];
+      });
+      if (bad.length) setRevealedHs(Object.fromEntries(bad));
     },
     // Untouched lines are not an edit; only a real change is worth keeping.
     isEmpty: (d) => JSON.stringify(d.rows) === draftBase,
