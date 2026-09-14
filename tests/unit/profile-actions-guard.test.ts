@@ -68,6 +68,22 @@ describe('src/app/actions/profile.ts', () => {
     expect(new Set(idFilters)).toEqual(new Set(['auth.user.id']))
   })
 
+  it('changes the photo version before the bytes, so a cached url never points at the wrong image', () => {
+    const body = (name: string) => {
+      const start = source.indexOf(`export async function ${name}(`)
+      const next = source.indexOf('\nexport ', start + 1)
+      return start === -1 ? '' : source.slice(start, next === -1 ? undefined : next)
+    }
+    const upload = body('uploadAvatar')
+    const stamp = upload.indexOf('avatar_updated_at: new Date().toISOString()')
+    expect(stamp, 'uploadAvatar stamps avatar_updated_at').toBeGreaterThan(-1)
+    expect(stamp).toBeLessThan(upload.indexOf('.upload(auth.user.id,'))
+    const remove = body('removeAvatar')
+    const clear = remove.indexOf('avatar_updated_at: null')
+    expect(clear, 'removeAvatar clears avatar_updated_at').toBeGreaterThan(-1)
+    expect(clear).toBeLessThan(remove.indexOf('.remove([auth.user.id])'))
+  })
+
   it('ignores the declared file type and stores the sniffed one', () => {
     expect(source).toMatch(/sniffImageType\(bytes\)/)
     expect(source).not.toMatch(/file\.type/)
@@ -77,16 +93,48 @@ describe('src/app/actions/profile.ts', () => {
 describe('src/app/api/avatar/[userId]/route.ts', () => {
   const source = existsSync(join(process.cwd(), ROUTE)) ? read(ROUTE) : ''
 
-  it('serves GET only', () => {
-    const methods = [...source.matchAll(/^export\s+(?:async\s+)?function\s+(\w+)/gm)].map((m) => m[1])
+  /** The route without its whole-line comments, so prose cannot satisfy a check. */
+  const code = source
+    .split('\n')
+    .filter((line) => !/^\s*\/\//.test(line))
+    .join('\n')
+
+  it('serves GET only, and exports nothing but GET and the dynamic flag', () => {
+    const methods = [...code.matchAll(/^export\s+(?:async\s+)?function\s+(\w+)/gm)].map((m) => m[1])
     expect(methods).toEqual(['GET'])
-    expect(source).toMatch(/export const dynamic = 'force-dynamic'/)
+    expect(code).toMatch(/^export const dynamic = 'force-dynamic'$/m)
+    // Every other export is refused: a POST, a const, a let, a default, a
+    // re-export, or an export { } list.
+    const exportLines = code.split('\n').filter((line) => /\bexport\b/.test(line))
+    const allowed = [/^export\s+(?:async\s+)?function\s+GET\s*\(/, /^export const dynamic = 'force-dynamic'$/]
+    const other = exportLines.filter((line) => !allowed.some((re) => re.test(line)))
+    expect(other).toEqual([])
+    expect(exportLines).toHaveLength(2)
+    expect(code).not.toMatch(/\bexport\s*\{/)
   })
 
   it('authorises on the session user or a super admin', () => {
-    expect(source).toMatch(/getAuthorizedUser\(\)/)
-    expect(source).toMatch(/===\s*auth\.user\.id|auth\.user\.id\s*===/)
-    expect(source).toMatch(/auth\.profile\.is_super_admin/)
+    expect(code).toMatch(/getAuthorizedUser\(\)/)
+    expect(code).toMatch(/===\s*auth\.user\.id|auth\.user\.id\s*===/)
+    expect(code).toMatch(/auth\.profile\.is_super_admin/)
+  })
+
+  it('refuses a non-owner who is not a super admin before it reads the bucket', () => {
+    // The decision: the requested id is the session user, or the viewer is a super admin.
+    const decision = /const\s+(\w+)\s*=\s*parsed\.data\s*===\s*auth\.user\.id\s*\|\|\s*auth\.profile\.is_super_admin\b/.exec(
+      code,
+    )
+    expect(decision, 'the owner-or-super-admin decision is missing').toBeTruthy()
+    // The denial: an early return of the 404 when that decision is false.
+    const denial = new RegExp(`if\\s*\\(\\s*!${decision![1]}\\s*\\)\\s*return\\s+notFound\\(\\)`).exec(code)
+    expect(denial, 'the early return that refuses everyone else is missing').toBeTruthy()
+    // Both come before the first storage read, so no byte is fetched for a refused viewer.
+    const download = code.indexOf('.download(')
+    expect(download, 'the storage download call is missing').toBeGreaterThan(-1)
+    expect(decision!.index).toBeLessThan(denial!.index)
+    expect(denial!.index).toBeLessThan(download)
+    // And notFound really answers 404.
+    expect(code).toMatch(/function notFound\(\): Response \{\s*return new Response\('Not found', \{\s*status: 404,/)
   })
 
   it('re-sniffs what it serves and sandboxes the response', () => {

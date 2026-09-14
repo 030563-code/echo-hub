@@ -8,7 +8,7 @@
  * Initials sit on an echo-orange circle, which reads on both the white header
  * and the black sidebar. A photo that fails to load (deleted since the page
  * rendered, or a session that lapsed) falls back to the initials rather than
- * showing a broken image.
+ * showing a broken image, including one that failed before hydration.
  */
 
 import { useState } from 'react'
@@ -52,6 +52,12 @@ export function Avatar({
         alt={label}
         decoding="async"
         className={cn(base, 'object-cover bg-gray-100')}
+        // The img is server-rendered, so a request that failed before React
+        // hydrated never reaches onError. A finished image with no width is a
+        // broken one. setState from a ref callback, not an effect.
+        ref={(el) => {
+          if (el && el.complete && el.naturalWidth === 0) setFailedSrc(src)
+        }}
         onError={() => setFailedSrc(src)}
       />
     )

@@ -1,6 +1,8 @@
 import { test, expect, type Page } from '@playwright/test'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
 import { deflateSync } from 'node:zlib'
-import { adminCreds, login } from './helpers'
+import { adminCreds, limitedCreds, login } from './helpers'
 
 /**
  * Your profile, end to end: job title, bio and photo.
@@ -9,9 +11,23 @@ import { adminCreds, login } from './helpers'
  * title, bio and photo that were there first and puts them back at the end,
  * pass or fail. The photo restore re-uploads the original bytes, which the page
  * re-encodes, so a restored photo is the same picture but not the same file.
+ *
+ * It refuses to start if a photo is on screen but its bytes could not be read,
+ * because the upload below would overwrite the only copy. The originals are also
+ * written to the test's output folder, so a restore that fails can be done by
+ * hand before the next run clears that folder.
+ *
+ * Every step inside the try has its own timeout, well inside the test's, so a
+ * hung click still leaves the finally block time to put things back.
  */
 
 const admin = adminCreds()
+const limited = limitedCreds()
+
+/** Per action inside the test. Short enough that several can fail and restore still runs. */
+const STEP_MS = 15_000
+/** Per navigation, which may compile the route on a cold dev server. */
+const NAV_MS = 30_000
 
 /** A real, decodable PNG: a solid square, built by hand so no fixture file is needed. */
 function makePng(size: number, rgb: [number, number, number]): Buffer {
@@ -48,24 +64,28 @@ function makePng(size: number, rgb: [number, number, number]): Buffer {
   ])
 }
 
-/** Open the page and wait until the details form has finished reading its draft.
- *  A leftover draft from an earlier run is discarded, so the inputs show what is
- *  really saved. */
+/** Open the page and wait until the details form shows what is really saved.
+ *  A leftover draft from an earlier run is discarded first.
+ *
+ *  "No changes to save." is the signal: the form shows it only when the job
+ *  title and bio, trimmed, equal the saved values and no save is running. While
+ *  a draft that differs is on screen it is hidden, so it cannot pass early. */
 async function openProfile(page: Page) {
-  await page.goto('/profile')
-  await expect(page.getByRole('heading', { name: 'Your profile' })).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByLabel('Job title')).toBeVisible({ timeout: 30_000 })
+  await page.goto('/profile', { timeout: NAV_MS })
+  await expect(page.getByRole('heading', { name: 'Your profile' })).toBeVisible({ timeout: NAV_MS })
+  await expect(page.getByLabel('Job title')).toBeVisible({ timeout: NAV_MS })
   const discard = page.getByRole('button', { name: 'Discard these changes' })
-  if (await discard.isVisible()) await discard.click()
+  if (await discard.isVisible()) await discard.click({ timeout: STEP_MS })
+  await expect(page.getByText('No changes to save.')).toBeVisible({ timeout: STEP_MS })
 }
 
 async function saveDetails(page: Page, jobTitle: string, bio: string) {
-  await page.getByLabel('Job title').fill(jobTitle)
-  await page.getByLabel('Bio').fill(bio)
+  await page.getByLabel('Job title').fill(jobTitle, { timeout: STEP_MS })
+  await page.getByLabel('Bio').fill(bio, { timeout: STEP_MS })
   const save = page.getByRole('button', { name: 'Save details' })
   if (await save.isDisabled()) return // already saved exactly this
-  await save.click()
-  await expect(page.getByText('Your details are saved.')).toBeVisible({ timeout: 15_000 })
+  await save.click({ timeout: STEP_MS })
+  await expect(page.getByText('Your details are saved.')).toBeVisible({ timeout: STEP_MS })
 }
 
 const avatarBox = (page: Page) => page.getByTestId('profile-avatar')
@@ -73,8 +93,30 @@ const avatarBox = (page: Page) => page.getByTestId('profile-avatar')
 test.describe('Your profile', () => {
   test.skip(!admin, 'Set E2E_USERNAME/E2E_PASSWORD to run the profile path')
 
-  test('job title, bio and photo save, show, and stay private', async ({ page, playwright, baseURL }) => {
-    test.setTimeout(180_000)
+  test('job title, bio and photo save, show, and stay private', async ({
+    page,
+    browser,
+    playwright,
+    baseURL,
+  }, testInfo) => {
+    test.setTimeout(240_000)
+    // Remove photo asks first. Playwright dismisses dialogs by default, which
+    // would silently cancel the removal, so accept that one confirm and no other.
+    page.on('dialog', (dialog) => {
+      if (dialog.type() === 'confirm' && dialog.message().startsWith('Remove your photo?')) void dialog.accept()
+      else void dialog.dismiss()
+    })
+    // A photo that fails to load is shown as initials, so "no img" alone does not
+    // mean "no photo". Any failed photo request on this page counts as a photo
+    // that exists but could not be read.
+    const photoFailures: string[] = []
+    const isPhotoUrl = (url: string) => new URL(url).pathname.startsWith('/api/avatar/')
+    page.on('response', (res) => {
+      if (isPhotoUrl(res.url()) && res.status() !== 200) photoFailures.push(`${res.status()} ${res.url()}`)
+    })
+    page.on('requestfailed', (req) => {
+      if (isPhotoUrl(req.url())) photoFailures.push(`failed ${req.url()}`)
+    })
     await login(page, admin!)
     await openProfile(page)
 
@@ -85,10 +127,32 @@ test.describe('Your profile', () => {
     let originalPhoto: { buffer: Buffer; mimeType: string } | null = null
     if ((await originalImg.count()) > 0) {
       const src = await originalImg.getAttribute('src')
-      const res = src ? await page.request.get(src) : null
-      if (res?.ok()) {
-        originalPhoto = { buffer: await res.body(), mimeType: res.headers()['content-type'] ?? 'image/jpeg' }
+      const res = src ? await page.request.get(src, { timeout: STEP_MS }) : null
+      const mimeType = res?.headers()['content-type'] ?? ''
+      if (!res || res.status() !== 200 || !/^image\/(jpeg|png|webp)$/.test(mimeType)) {
+        // Nothing has been changed yet. Going on would overwrite the only copy.
+        throw new Error(
+          `The profile shows a photo but its bytes could not be read (${res ? `${res.status()} ${mimeType}` : 'no src'}). ` +
+            'Stopping before anything is changed.',
+        )
       }
+      originalPhoto = { buffer: await res.body(), mimeType }
+    } else if (photoFailures.length > 0) {
+      throw new Error(
+        `The profile shows initials but a photo request failed (${photoFailures.join(', ')}). ` +
+          'Stopping before anything is changed.',
+      )
+    }
+
+    // A copy on disk, for putting things back by hand if the restore fails.
+    const keep = async (name: string, data: string | Buffer) => {
+      const file = testInfo.outputPath(name)
+      await mkdir(dirname(file), { recursive: true })
+      await writeFile(file, data)
+    }
+    await keep('original-profile.json', JSON.stringify({ jobTitle: originalJobTitle, bio: originalBio }, null, 2))
+    if (originalPhoto) {
+      await keep(`original-avatar.${originalPhoto.mimeType.split('/')[1]}`, originalPhoto.buffer)
     }
 
     const stamp = Date.now()
@@ -98,26 +162,29 @@ test.describe('Your profile', () => {
     try {
       // ---- Details ----
       await saveDetails(page, jobTitle, bio)
-      await page.reload()
+      await page.reload({ timeout: NAV_MS })
       await openProfile(page)
       await expect(page.getByLabel('Job title')).toHaveValue(jobTitle)
       await expect(page.getByLabel('Bio')).toHaveValue(bio)
       await expect(page.getByText(`${bio.length} / 500`)).toBeVisible()
 
       // ---- Photo upload ----
-      await page.locator('input[type="file"]').setInputFiles({
-        name: 'e2e-avatar.png',
-        mimeType: 'image/png',
-        buffer: makePng(64, [255, 112, 38]),
-      })
-      await expect(page.getByAltText('Preview of your new photo')).toBeVisible({ timeout: 15_000 })
-      await page.getByRole('button', { name: 'Save photo' }).click()
-      await expect(page.getByText('Your photo is saved.')).toBeVisible({ timeout: 15_000 })
+      await page.locator('input[type="file"]').setInputFiles(
+        {
+          name: 'e2e-avatar.png',
+          mimeType: 'image/png',
+          buffer: makePng(64, [255, 112, 38]),
+        },
+        { timeout: STEP_MS },
+      )
+      await expect(page.getByAltText('Preview of your new photo')).toBeVisible({ timeout: STEP_MS })
+      await page.getByRole('button', { name: 'Save photo' }).click({ timeout: STEP_MS })
+      await expect(page.getByText('Your photo is saved.')).toBeVisible({ timeout: STEP_MS })
 
       const img = avatarBox(page).locator('img')
-      await expect(img).toHaveAttribute('src', /^\/api\/avatar\//, { timeout: 15_000 })
+      await expect(img).toHaveAttribute('src', /^\/api\/avatar\//, { timeout: STEP_MS })
       const src = (await img.getAttribute('src'))!
-      const served = await page.request.get(src)
+      const served = await page.request.get(src, { timeout: STEP_MS })
       expect(served.status()).toBe(200)
       expect(served.headers()['content-type']).toMatch(/^image\/(jpeg|png|webp)$/)
 
@@ -127,7 +194,7 @@ test.describe('Your profile', () => {
       // ---- Nobody without a session gets it ----
       const anon = await playwright.request.newContext({ baseURL })
       try {
-        const res = await anon.get(`/api/avatar/${adminId}`, { maxRedirects: 0 })
+        const res = await anon.get(`/api/avatar/${adminId}`, { maxRedirects: 0, timeout: STEP_MS })
         expect(res.status()).not.toBe(200)
         if (res.status() >= 300 && res.status() < 400) {
           expect(res.headers()['location'] ?? '').toContain('/login')
@@ -136,10 +203,24 @@ test.describe('Your profile', () => {
         await anon.dispose()
       }
 
+      // ---- A signed-in user who is neither the owner nor a super admin gets 404 ----
+      await test.step('another signed-in user cannot fetch the photo', async (step) => {
+        step.skip(!limited, 'Set E2E_LIMITED_USERNAME/E2E_LIMITED_PASSWORD to check another user gets 404')
+        const context = await browser.newContext({ baseURL })
+        try {
+          const other = await context.newPage()
+          await login(other, limited!)
+          const res = await other.request.get(`/api/avatar/${adminId}`, { maxRedirects: 0, timeout: STEP_MS })
+          expect(res.status()).toBe(404)
+        } finally {
+          await context.close()
+        }
+      })
+
       // ---- Photo removal ----
-      await page.getByRole('button', { name: 'Remove photo' }).click()
-      await expect(page.getByText('Your photo is removed.')).toBeVisible({ timeout: 15_000 })
-      await expect(avatarBox(page).locator('img')).toHaveCount(0, { timeout: 15_000 })
+      await page.getByRole('button', { name: 'Remove photo' }).click({ timeout: STEP_MS })
+      await expect(page.getByText('Your photo is removed.')).toBeVisible({ timeout: STEP_MS })
+      await expect(avatarBox(page).locator('img')).toHaveCount(0, { timeout: STEP_MS })
       await expect(avatarBox(page).getByRole('img')).toHaveText(/^[A-Z0-9?]{1,2}$/)
     } finally {
       // ---- Put everything back ----

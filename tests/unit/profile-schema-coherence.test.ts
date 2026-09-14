@@ -92,8 +92,18 @@ describe('profile bio and avatar migration', () => {
       expect(down, needle).toContain(needle)
     }
     // The bucket goes only when it is empty.
-    expect(down).toMatch(
+    const del = down.match(
       /delete from storage\.buckets\s+where id = 'avatars'\s+and not exists \(select 1 from storage\.objects where bucket_id = 'avatars'\)/,
     )
+    expect(del, 'guarded bucket delete not found').toBeTruthy()
+    // protect_buckets_delete is a statement-level trigger, so it raises 42501
+    // even when the guard matches no row, unless this transaction-local setting
+    // is on first. Without it the rollback aborts as a whole.
+    const allow = down.match(/select set_config\('storage\.allow_delete_query', 'true', true\);/)
+    expect(allow, 'transaction-local set_config for storage.allow_delete_query not found').toBeTruthy()
+    expect(allow!.index!).toBeLessThan(del!.index!)
+    // Nothing else sits between them, so the setting is on for that delete.
+    const between = down.slice(allow!.index! + allow![0].length, del!.index!)
+    expect(between.trim()).toBe('')
   })
 })

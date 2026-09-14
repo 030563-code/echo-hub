@@ -98,6 +98,20 @@ export async function uploadAvatar(formData: FormData): Promise<ProfileResult> {
   }
 
   const admin = createAdminClient()
+  // The version is stamped BEFORE the bytes change: the route caches a versioned
+  // url for a year, so a new version must never point at bytes that did not
+  // change with it, while a failed upload after the stamp only serves the old
+  // photo under a new url, which is still the right picture.
+  const { data: rows, error: rowErr } = await admin
+    .from('profiles')
+    .update({ avatar_updated_at: new Date().toISOString() })
+    .eq('id', auth.user.id)
+    .select('id')
+  if (rowErr || !rows || rows.length === 0) {
+    console.error('uploadAvatar profile update failed', rowErr?.message ?? 'no profile row')
+    return { success: false, error: 'Your photo could not be saved. Try again in a moment.' }
+  }
+
   // The object key is the user id and nothing else, so nobody can name a
   // folder or a file, and a new photo replaces the old one in place.
   const { error: upErr } = await admin.storage.from(AVATAR_BUCKET).upload(auth.user.id, bytes, {
@@ -110,16 +124,6 @@ export async function uploadAvatar(formData: FormData): Promise<ProfileResult> {
     return { success: false, error: 'Your photo could not be uploaded. Try again in a moment.' }
   }
 
-  const { data: rows, error: rowErr } = await admin
-    .from('profiles')
-    .update({ avatar_updated_at: new Date().toISOString() })
-    .eq('id', auth.user.id)
-    .select('id')
-  if (rowErr || !rows || rows.length === 0) {
-    console.error('uploadAvatar profile update failed', rowErr?.message ?? 'no profile row')
-    return { success: false, error: 'Your photo was uploaded but could not be saved to your profile. Try again.' }
-  }
-
   revalidatePath('/', 'layout')
   return { success: true }
 }
@@ -129,12 +133,9 @@ export async function removeAvatar(): Promise<ProfileResult> {
   if (!auth.ok) return { success: false, error: NOT_SIGNED_IN }
 
   const admin = createAdminClient()
-  const { error: rmErr } = await admin.storage.from(AVATAR_BUCKET).remove([auth.user.id])
-  if (rmErr) {
-    console.error('removeAvatar storage remove failed', rmErr.message)
-    return { success: false, error: 'Your photo could not be removed. Try again in a moment.' }
-  }
-
+  // The version is cleared BEFORE the object goes: with no version no screen
+  // asks for the photo, so a failed remove after this leaves only an unreachable
+  // object that the next upload overwrites, never a cached url pointing at a hole.
   const { data: rows, error: rowErr } = await admin
     .from('profiles')
     .update({ avatar_updated_at: null })
@@ -142,7 +143,13 @@ export async function removeAvatar(): Promise<ProfileResult> {
     .select('id')
   if (rowErr || !rows || rows.length === 0) {
     console.error('removeAvatar profile update failed', rowErr?.message ?? 'no profile row')
-    return { success: false, error: 'Your photo was deleted but your profile still shows it. Try again.' }
+    return { success: false, error: 'Your photo could not be removed. Try again in a moment.' }
+  }
+
+  const { error: rmErr } = await admin.storage.from(AVATAR_BUCKET).remove([auth.user.id])
+  if (rmErr) {
+    // Already gone from every screen, so this is not the user's problem.
+    console.error('removeAvatar storage remove failed', rmErr.message)
   }
 
   revalidatePath('/', 'layout')

@@ -99,7 +99,8 @@ export function OpenOnPhone({ className }: { className?: string }) {
             </div>
 
             <p className="text-center text-xs text-muted-foreground">
-              Sign in the first time. To keep the Hub on your phone, use Share, then Add to Home Screen.
+              Sign in the first time. To keep the Hub on your phone: on iPhone, tap Share, then Add to Home Screen. On
+              Android, open the browser menu, then Add to Home screen.
             </p>
 
             <div className="w-full space-y-2">

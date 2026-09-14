@@ -73,6 +73,23 @@ async function encodeAvatar(file: File): Promise<Blob> {
   throw new PhotoError('That photo is too detailed to shrink to 512 KB. Try a different photo.')
 }
 
+/**
+ * Focus a button once it has rendered and is enabled again.
+ *
+ * Called from the photo handlers, never from an effect. Each photo action swaps
+ * the focused button for another one, and a button that unmounts drops focus to
+ * the page. A frame is usually enough for React to commit, but the target can
+ * still be disabled for that frame while the busy flag clears, so it tries a
+ * few more frames before giving up.
+ */
+function focusWhenReady(ref: React.RefObject<HTMLButtonElement | null>, framesLeft = 10) {
+  requestAnimationFrame(() => {
+    const el = ref.current
+    if (el && el.isConnected && !el.disabled) el.focus()
+    else if (framesLeft > 1) focusWhenReady(ref, framesLeft - 1)
+  })
+}
+
 interface Props {
   userId: string
   email: string | null
@@ -98,6 +115,8 @@ export default function ProfileForm({
   // anyone would want back.
   // ------------------------------------------------------------------
   const inputRef = useRef<HTMLInputElement>(null)
+  const uploadButtonRef = useRef<HTMLButtonElement>(null)
+  const savePhotoButtonRef = useRef<HTMLButtonElement>(null)
   const [preview, setPreview] = useState<{ blob: Blob; url: string } | null>(null)
   const [photoError, setPhotoError] = useState<string | null>(null)
   const [photoBusy, setPhotoBusy] = useState<'reading' | 'saving' | 'removing' | null>(null)
@@ -124,6 +143,7 @@ export default function ProfileForm({
     try {
       const blob = await encodeAvatar(file)
       setPreview({ blob, url: URL.createObjectURL(blob) })
+      focusWhenReady(savePhotoButtonRef)
     } catch (err) {
       setPhotoError(err instanceof PhotoError ? err.message : UNREADABLE)
     } finally {
@@ -141,6 +161,7 @@ export default function ProfileForm({
       const res = await uploadAvatar(formData)
       if (res.success) {
         setPreview(null)
+        focusWhenReady(uploadButtonRef)
         toast.success('Your photo is saved.')
       } else {
         setPhotoError(res.error)
@@ -156,12 +177,16 @@ export default function ProfileForm({
   }
 
   async function deletePhoto() {
+    // Every other file delete in the Hub asks first.
+    if (!window.confirm('Remove your photo? You can upload a new one at any time.')) return
     setPhotoBusy('removing')
     setPhotoError(null)
     try {
       const res = await removeAvatar()
-      if (res.success) toast.success('Your photo is removed.')
-      else {
+      if (res.success) {
+        focusWhenReady(uploadButtonRef)
+        toast.success('Your photo is removed.')
+      } else {
         setPhotoError(res.error)
         toast.error(res.error)
       }
@@ -181,7 +206,10 @@ export default function ProfileForm({
   const [bio, setBio] = useState(savedBio ?? '')
   const [savingDetails, setSavingDetails] = useState(false)
 
-  const savedJson = JSON.stringify({ v: 1, jobTitle: savedJobTitle ?? '', bio: savedBio ?? '' })
+  // The server trims what it stores, so text that differs from the saved values
+  // only in surrounding spaces is the saved text, not a change and not a draft.
+  const matchesSaved = (values: { jobTitle: string; bio: string }) =>
+    values.jobTitle.trim() === (savedJobTitle ?? '') && values.bio.trim() === (savedBio ?? '')
 
   const {
     status: draftStatus,
@@ -202,7 +230,7 @@ export default function ProfileForm({
     // land after the server has already cleared it.
     enabled: !savingDetails,
     // Matching what is already saved is not a draft.
-    isEmpty: (draft) => JSON.stringify(draft) === savedJson,
+    isEmpty: (draft) => matchesSaved(draft),
   })
   const draftReady = draftStatus === 'ready'
 
@@ -211,8 +239,8 @@ export default function ProfileForm({
     saveDraft({ v: 1, jobTitle, bio })
   }, [draftReady, saveDraft, jobTitle, bio])
 
-  const showDraftStrip = restored !== null && JSON.stringify(restored.data) !== savedJson
-  const changed = jobTitle.trim() !== (savedJobTitle ?? '') || bio.trim() !== (savedBio ?? '')
+  const showDraftStrip = restored !== null && !matchesSaved(restored.data)
+  const changed = !matchesSaved({ jobTitle, bio })
 
   async function startAgain() {
     await clearDraft()
@@ -272,7 +300,13 @@ export default function ProfileForm({
             <div className="flex flex-wrap items-center gap-2">
               {preview ? (
                 <>
-                  <Button type="button" size="sm" onClick={savePhoto} disabled={photoBusy !== null}>
+                  <Button
+                    ref={savePhotoButtonRef}
+                    type="button"
+                    size="sm"
+                    onClick={savePhoto}
+                    disabled={photoBusy !== null}
+                  >
                     {photoBusy === 'saving' ? 'Saving photo…' : 'Save photo'}
                   </Button>
                   <Button
@@ -282,6 +316,7 @@ export default function ProfileForm({
                     onClick={() => {
                       setPreview(null)
                       setPhotoError(null)
+                      focusWhenReady(uploadButtonRef)
                     }}
                     disabled={photoBusy !== null}
                   >
@@ -291,6 +326,7 @@ export default function ProfileForm({
               ) : (
                 <>
                   <Button
+                    ref={uploadButtonRef}
                     type="button"
                     size="sm"
                     onClick={() => inputRef.current?.click()}
@@ -344,7 +380,7 @@ export default function ProfileForm({
         {!draftReady ? (
           <p className="mt-6 text-sm text-gray-600">Opening your details…</p>
         ) : (
-          <form onSubmit={saveDetails} className="mt-6 space-y-5">
+          <form onSubmit={saveDetails} className="mt-6 space-y-5" aria-busy={savingDetails}>
             {showDraftStrip && (
               <DraftStrip
                 what="your unsaved details"
@@ -364,6 +400,9 @@ export default function ProfileForm({
                 type="text"
                 value={jobTitle}
                 onChange={(e) => setJobTitle(e.target.value)}
+                // Read-only, not disabled, while a save is on its way: the save
+                // writes back what was sent, so anything typed now would be lost.
+                readOnly={savingDetails}
                 placeholder="Operations Manager"
                 maxLength={JOB_TITLE_MAX}
                 autoComplete="organization-title"
@@ -378,6 +417,7 @@ export default function ProfileForm({
                 id="profile-bio"
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
+                readOnly={savingDetails}
                 placeholder="What you look after, and what people come to you for."
                 maxLength={BIO_MAX}
                 rows={5}
