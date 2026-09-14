@@ -17,9 +17,16 @@
  * the Edge middleware can use it without pulling a bundle in behind it.
  *
  * This module reads JACK_USER_ID, the same variable the quote route needs to
- * work at all. An unset variable makes the route fail closed (500 INTERNAL on
- * every call), so there is no state where the lockout is off while the agent is
- * on.
+ * work at all. Unset, the route fails closed (500 INTERNAL on every call) AND
+ * the lockout is off, because with no id to compare against no session can be
+ * the agent's.
+ *
+ * That pairing is only safe where both are off together. A Netlify DEPLOY
+ * PREVIEW is the case where they are not: the preview runs against PRODUCTION
+ * Supabase, so the Jack auth user is real there even though the preview's own
+ * route is dead. JACK_USER_ID is an id, not a secret, so it belongs in the
+ * preview context too and the cutover notes say so. Keep AGENT_QUOTE_SECRET
+ * production-only: that is what stops a preview raising a real quote.
  */
 
 export function agentUserId(): string {

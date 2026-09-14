@@ -546,6 +546,19 @@ describe('urgent pricing', () => {
     expectNoWrites()
   })
 
+  it('NO_FLOOR on a ZERO floor, which the database permits and would quote at nothing', async () => {
+    readyToQuote()
+    loadPricingForQuote.mockResolvedValue({
+      listPrices: [audRows[0], { ...audRows[1], floor_price: 0 }],
+      contractPrices: [], contractorName: null, cap: jackCap,
+    })
+    expect(await call(req(urgent()))).toEqual({ status: 422, body: { ok: false, code: 'NO_FLOOR' } })
+    expectNoWrites()
+    // The same row at LIST pricing is fine: floor_price = 0 only bites the
+    // urgent path, and refusing the whole list cart over it would be wrong.
+    expect((await call(req(create()))).status).toBe(200)
+  })
+
   it('DISCOUNT_REFUSED when Jack has no discount cap row at all', async () => {
     readyToQuote(null)
     expect(await call(req(urgent()))).toEqual({ status: 422, body: { ok: false, code: 'DISCOUNT_REFUSED' } })

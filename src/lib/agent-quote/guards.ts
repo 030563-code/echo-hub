@@ -374,11 +374,21 @@ export function checkListPriced(lines: readonly Pick<PricedCartLine, 'priceSourc
  * The per-unit cash discount that takes each line from its unit price down to
  * its floor price, in line order.
  *
- * Null when ANY line cannot be floored: no floor_price on the row, a floor
- * above the unit price, or a negative floor. The database does not enforce the
- * second of those on the view Jack reads, so it is checked here rather than
- * assumed. A floor equal to the unit price gives 0, which the caller passes as
- * no discount at all rather than as a zero-value one.
+ * Null when ANY line cannot be floored: no floor_price on the row, a floor that
+ * is not a POSITIVE number, or a floor above the unit price.
+ *
+ * list_prices_check is `floor_price IS NULL OR (floor_price >= 0 AND
+ * floor_price <= unit_price)`, so the two values the database genuinely permits
+ * and Jack must never quote are NULL and ZERO. Zero is the dangerous one: it
+ * discounts the whole unit price away, and the floor test downstream asks
+ * whether the net is BELOW the floor, which zero against zero is not, so
+ * nothing else in the Hub would refuse a free quote. Above-unit and negative
+ * floors stay refused as belt and braces, for a view or a loader that stops
+ * matching the table. Matches the n8n layer, which already refuses `floor <= 0`
+ * in Build urgent reply and requires `f > 0` in SQ Decide.
+ *
+ * A floor equal to the unit price gives 0, which the caller passes as no
+ * discount at all rather than as a zero-value one.
  */
 export function urgentPerUnitDiscounts(
   lines: readonly Pick<PricedCartLine, 'priced' | 'floorPrice'>[],
@@ -390,7 +400,9 @@ export function urgentPerUnitDiscounts(
     const floor = line.floorPrice
     if (floor === null || floor === undefined || !Number.isFinite(Number(floor))) return null
     const floorPrice = roundCents(Number(floor))
-    if (floorPrice < 0 || floorPrice > unit) return null
+    // `> 0` rather than `>= 0`: a zero floor, and a sub-cent floor that rounds
+    // to zero, would both take the line to nothing.
+    if (!(floorPrice > 0) || floorPrice > unit) return null
     out.push(roundCents(unit - floorPrice))
   }
   return out

@@ -353,6 +353,19 @@ describe('urgent pricing: the floor maths', () => {
     expect(urgentPerUnitDiscounts([line(275, 300)])).toBeNull()
     expect(urgentPerUnitDiscounts([line(275, -1)])).toBeNull()
   })
+
+  it('refuses a ZERO floor rather than quoting the line at nothing', () => {
+    // list_prices_check permits floor_price = 0, and it is the one permitted
+    // value that would discount the whole unit price away. The floor test
+    // downstream asks whether the net is BELOW the floor, and 0 is not below 0,
+    // so nothing else in the Hub would refuse a free quote.
+    expect(urgentPerUnitDiscounts([line(275, 0)])).toBeNull()
+    expect(urgentPerUnitDiscounts([line(275, 205), line(3, 0)])).toBeNull()
+    // A sub-cent floor rounds to zero and is the same quote.
+    expect(urgentPerUnitDiscounts([line(275, 0.004)])).toBeNull()
+    // One cent is a real floor, however daft, and is quoted as one.
+    expect(urgentPerUnitDiscounts([line(275, 0.01)])).toEqual([274.99])
+  })
 })
 
 describe('urgent pricing: the HubSpot expiry date', () => {
