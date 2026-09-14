@@ -103,7 +103,7 @@ describe('quote template ids', () => {
   })
 
   it('has an AU key for the Australian template, never the Geoff USA id', () => {
-    // Bruce quotes with template 'AU'. The value is null until the Australian
+    // Jack quotes with template 'AU'. The value is null until the Australian
     // clone of "Geoff USA" exists; until then the route refuses with
     // TEMPLATE_MISSING before any write. 447512623874 IS "Geoff USA" and must
     // never be used as the Australian template.

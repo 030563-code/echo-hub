@@ -9,18 +9,28 @@ import {
   amountCeiling,
   checkAmountCeiling,
   checkCaps,
+  checkUrgentCap,
+  acceptByFrom,
+  hasLapsed,
+  formatSydneyDeadline,
+  urgentCommentLine,
+  quoteComments,
+  urgentPerUnitDiscounts,
+  linesFromRow,
   linesKey,
   mergeLines,
   isUuid,
   hasAmountMismatch,
   quoteReferenceOf,
+  ANZ_QUOTATION_SENT_STAGE,
   CODE_STATUS,
   AGENT_QUOTE_COMMENTS,
+  URGENT_EXPIRY_DAYS,
   type DealShape,
 } from '@/lib/agent-quote/guards'
 
 /**
- * Guards for POST /api/agent/quote. Contract C1 in the Bruce quotes plan.
+ * Guards for POST /api/agent/quote. Contract C1 in the Jack quotes plan.
  * Every refusal here happens before a single HubSpot write.
  */
 
@@ -31,7 +41,7 @@ const H9X = '19850990926'
 const HOOKS = '29207708995'
 const BUNGEES = '29231439368'
 
-const base = { action: 'create', conversationId: 'conv_abc123', dealId: '64951402250' }
+const base = { action: 'create', conversationId: 'conv_abc123', dealId: '64951402250', pricing: 'list' }
 
 describe('authorizeBearer', () => {
   const SECRET = 'a'.repeat(64)
@@ -218,10 +228,19 @@ describe('pricing and amount', () => {
     expect(checkAmountCeiling(Number.NaN, 50000)).toBe('AMOUNT_CEILING')
   })
 
-  it('flags an amount mismatch only above a cent', () => {
-    expect(hasAmountMismatch(100, 100.01)).toBe(false)
-    expect(hasAmountMismatch('100', '100.02')).toBe(true)
+  it('flags an amount mismatch with the SAME rule the publish tail uses', () => {
+    // CREATED takes amountMismatch from quote-publish-tail, REPEAT computes it
+    // here, and the Sender holds the email when it is true. Two rules meant one
+    // call could hold and its retry could send: this one is character for
+    // character the tail's `amount != null && Math.abs(amount - hubAmount) >
+    // 0.01`, so they cannot disagree, boundary included.
+    const tail = (amount: number | string | null, hubAmount: number | string | null) =>
+      amount != null && hubAmount != null && Math.abs(Number(amount) - Number(hubAmount)) > 0.01
+    for (const [a, b] of [[100, 100.01], [100.01, 100], ['100', '100.02'], [4999.99, 5000], [100, 100], [10200, 10200.005]] as const) {
+      expect(hasAmountMismatch(a, b)).toBe(tail(a, b))
+    }
     expect(hasAmountMismatch(null, 100)).toBe(false)
+    expect(hasAmountMismatch(100, undefined)).toBe(false)
   })
 })
 
@@ -232,7 +251,7 @@ describe('caps, ids and fixed values', () => {
     expect(checkCaps({ dealLast7Days: 0, allLast24Hours: 20 })).toBe('CAP_REACHED')
   })
 
-  it('accepts only a uuid for BRUCE_USER_ID', () => {
+  it('accepts only a uuid for JACK_USER_ID', () => {
     expect(isUuid('7d6c2a3e-1b4f-4a8e-9c0d-2e3f4a5b6c7d')).toBe(true)
     expect(isUuid('7d6c2a3e-1b4f-4a8e-9c0d-2e3f4a5b6c7d,created_by_uid.is.null')).toBe(false)
     expect(isUuid(undefined)).toBe(false)
@@ -248,8 +267,10 @@ describe('caps, ids and fixed values', () => {
     expect(CODE_STATUS.UNAUTHORIZED).toBe(401)
     expect(CODE_STATUS.BAD_REQUEST).toBe(400)
     expect(CODE_STATUS.NOT_BOUND).toBe(403)
-    expect(CODE_STATUS.CAP_REACHED).toBe(409)
-    for (const c of ['NOT_ANZ_DEAL', 'DEAL_CLOSED', 'BAD_STAGE', 'WRONG_OWNER', 'NOT_AUD', 'CONTACT_COUNT', 'CONTRACT_CUSTOMER', 'FOREIGN_QUOTE', 'PRODUCT_NOT_ALLOWED', 'NO_PRICE', 'AMOUNT_CEILING', 'TEMPLATE_MISSING', 'NO_BRUCE_QUOTE'] as const) {
+    for (const c of ['CAP_REACHED', 'IN_PROGRESS', 'URGENT_CAP', 'REISSUE_CAP'] as const) {
+      expect(CODE_STATUS[c]).toBe(409)
+    }
+    for (const c of ['NOT_ANZ_DEAL', 'DEAL_CLOSED', 'BAD_STAGE', 'WRONG_OWNER', 'NOT_AUD', 'CONTACT_COUNT', 'CONTRACT_CUSTOMER', 'FOREIGN_QUOTE', 'PRODUCT_NOT_ALLOWED', 'NO_PRICE', 'NO_FLOOR', 'DISCOUNT_REFUSED', 'AMOUNT_CEILING', 'TEMPLATE_MISSING', 'NO_JACK_QUOTE', 'NO_URGENT_QUOTE', 'NOT_LAPSED'] as const) {
       expect(CODE_STATUS[c]).toBe(422)
     }
     expect(CODE_STATUS.QUOTE_PUBLISH_FAILED).toBe(502)
@@ -260,5 +281,176 @@ describe('caps, ids and fixed values', () => {
   it('prints fixed ASCII comments', () => {
     expect(AGENT_QUOTE_COMMENTS).toEqual(['Prices in Australian dollars, excluding GST.', 'Freight is quoted separately.'])
     expect(AGENT_QUOTE_COMMENTS.join('\n')).toMatch(/^[\x20-\x7e\n]+$/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Urgent floor pricing (urgent-pricing.md, Dean 2026-09-14)
+// ---------------------------------------------------------------------------
+
+describe('urgent pricing: the body', () => {
+  const lines = [{ productId: H10, quantity: 4 }]
+
+  it('requires a pricing mode on every create', () => {
+    expect(parseAgentQuoteBody({ action: 'create', conversationId: 'conv_a1', dealId: '1', lines })).toEqual({
+      ok: false,
+      code: 'BAD_REQUEST',
+    })
+    expect(parseAgentQuoteBody({ ...base, pricing: 'cheap', lines }).ok).toBe(false)
+  })
+
+  it('needs the urgency note for urgent, and refuses one on a list quote', () => {
+    const urgent = parseAgentQuoteBody({ ...base, pricing: 'urgent', urgencyNote: 'site starts Monday', lines })
+    expect(urgent).toEqual({
+      ok: true,
+      value: { ...base, pricing: 'urgent', urgencyNote: 'site starts Monday', lines },
+    })
+    expect(parseAgentQuoteBody({ ...base, pricing: 'urgent', lines })).toEqual({ ok: false, code: 'BAD_REQUEST' })
+    expect(parseAgentQuoteBody({ ...base, pricing: 'urgent', urgencyNote: '   ', lines })).toEqual({ ok: false, code: 'BAD_REQUEST' })
+    expect(parseAgentQuoteBody({ ...base, urgencyNote: 'site starts Monday', lines })).toEqual({ ok: false, code: 'BAD_REQUEST' })
+  })
+
+  it('caps the urgency note at 200 characters', () => {
+    expect(parseAgentQuoteBody({ ...base, pricing: 'urgent', urgencyNote: 'x'.repeat(200), lines }).ok).toBe(true)
+    expect(parseAgentQuoteBody({ ...base, pricing: 'urgent', urgencyNote: 'x'.repeat(201), lines }).ok).toBe(false)
+  })
+
+  it('accepts a reissue with a deal id and nothing else', () => {
+    expect(parseAgentQuoteBody({ action: 'reissue', dealId: '64951402250' })).toEqual({
+      ok: true,
+      value: { action: 'reissue', dealId: '64951402250' },
+    })
+    // No conversation is needed, and none is accepted: the lapsed urgent quote
+    // on the deal is the binding.
+    expect(parseAgentQuoteBody({ action: 'reissue', dealId: '1', conversationId: 'conv_a1' }).ok).toBe(false)
+    expect(parseAgentQuoteBody({ action: 'reissue', dealId: '1', lines }).ok).toBe(false)
+    expect(parseAgentQuoteBody({ action: 'reissue', dealId: 'x' }).ok).toBe(false)
+  })
+})
+
+describe('urgent pricing: the floor maths', () => {
+  const line = (listUnitPrice: number, floorPrice: number | null) => ({
+    priced: { listUnitPrice, netUnitPrice: listUnitPrice, registry: { unit_price: listUnitPrice, discount_percentage: 0 }, hubspot: { price: listUnitPrice } },
+    floorPrice,
+  })
+
+  it('takes each line from its unit price down to its floor', () => {
+    // The live H10 numbers: 275.00 unit, 205.00 floor.
+    expect(urgentPerUnitDiscounts([line(275, 205), line(3, 2), line(1.5, 1)])).toEqual([70, 1, 0.5])
+  })
+
+  it('gives 0, not a discount, when the floor IS the unit price', () => {
+    expect(urgentPerUnitDiscounts([line(275, 275)])).toEqual([0])
+  })
+
+  it('refuses the whole quote when any line has no floor', () => {
+    expect(urgentPerUnitDiscounts([line(275, 205), line(3, null)])).toBeNull()
+    expect(urgentPerUnitDiscounts([line(275, undefined as unknown as null)])).toBeNull()
+    expect(urgentPerUnitDiscounts([])).toBeNull()
+  })
+
+  it('refuses a floor above the unit price or below zero, which the view does not enforce', () => {
+    expect(urgentPerUnitDiscounts([line(275, 300)])).toBeNull()
+    expect(urgentPerUnitDiscounts([line(275, -1)])).toBeNull()
+  })
+})
+
+describe('urgent pricing: the 24 hour window', () => {
+  const now = new Date('2026-09-14T05:15:00.000Z')
+
+  it('closes 24 hours after the quote', () => {
+    expect(acceptByFrom(now)).toBe('2026-09-15T05:15:00.000Z')
+  })
+
+  it('lapses at the deadline, and never on a missing or junk deadline', () => {
+    expect(hasLapsed('2026-09-14T05:14:59.000Z', now)).toBe(true)
+    expect(hasLapsed('2026-09-14T05:15:00.000Z', now)).toBe(true)
+    expect(hasLapsed('2026-09-14T05:15:01.000Z', now)).toBe(false)
+    expect(hasLapsed(null, now)).toBe(false)
+    expect(hasLapsed('soon', now)).toBe(false)
+  })
+
+  it('caps urgent at one per deal in the window', () => {
+    expect(checkUrgentCap(0)).toBeNull()
+    expect(checkUrgentCap(1)).toBe('URGENT_CAP')
+    expect(checkUrgentCap(4)).toBe('URGENT_CAP')
+  })
+
+  it('expires the HubSpot quote the next day', () => {
+    expect(URGENT_EXPIRY_DAYS).toBe(1)
+  })
+})
+
+describe('urgent pricing: the words on the quote', () => {
+  // 05:15 UTC on 15 September 2026 is 3:15pm in Sydney (AEST, UTC+10).
+  const acceptBy = '2026-09-15T05:15:00.000Z'
+
+  it('says the deadline in Sydney time, in words', () => {
+    expect(formatSydneyDeadline(acceptBy)).toBe('3:15pm Tuesday 15 September 2026')
+  })
+
+  it('follows the Sydney clock across daylight saving', () => {
+    // AEDT, UTC+11, from the first Sunday in October.
+    expect(formatSydneyDeadline('2026-10-06T05:15:00.000Z')).toBe('4:15pm Tuesday 6 October 2026')
+  })
+
+  it('adds the deadline line to an urgent quote and nothing to a list one', () => {
+    expect(quoteComments('list', null)).toBe(AGENT_QUOTE_COMMENTS.join('\n'))
+    expect(quoteComments('list', acceptBy)).toBe(AGENT_QUOTE_COMMENTS.join('\n'))
+    expect(quoteComments('urgent', acceptBy)).toBe(
+      [
+        'Prices in Australian dollars, excluding GST.',
+        'Freight is quoted separately.',
+        'Urgent order price, valid until 3:15pm Tuesday 15 September 2026 Sydney time. After that the standard price applies.',
+      ].join('\n'),
+    )
+  })
+
+  it('stays ASCII, because this text reaches a customer document', () => {
+    expect(urgentCommentLine(acceptBy)).toMatch(/^[\x20-\x7e]+$/)
+    expect(quoteComments('urgent', acceptBy)).toMatch(/^[\x20-\x7e\n]+$/)
+  })
+
+  it('refuses to print a deadline it cannot read', () => {
+    expect(() => formatSydneyDeadline('tomorrow')).toThrow(/real timestamp/)
+  })
+})
+
+describe('reissue', () => {
+  const good: DealShape = {
+    pipeline: '14520121',
+    dealstage: ANZ_QUOTATION_SENT_STAGE,
+    hubspot_owner_id: '30234944',
+    deal_currency_code: 'AUD',
+    contactIds: ['247940140576'],
+  }
+
+  it('is allowed from Quotation sent and nowhere else', () => {
+    expect(checkDealShape(good, [ANZ_QUOTATION_SENT_STAGE])).toBeNull()
+    for (const dealstage of ['39459178', '39459179', '39459180', '39459181']) {
+      expect(checkDealShape({ ...good, dealstage }, [ANZ_QUOTATION_SENT_STAGE])).toBe('BAD_STAGE')
+      // The same deal is quotable on a create, so this really is the narrowing.
+      expect(checkDealShape({ ...good, dealstage })).toBeNull()
+    }
+    expect(checkDealShape({ ...good, dealstage: '39459183' }, [ANZ_QUOTATION_SENT_STAGE])).toBe('DEAL_CLOSED')
+  })
+
+  it('rebuilds the request lines from a stored deal_quotes row', () => {
+    expect(
+      linesFromRow([
+        { productId: H10, quantity: 4, name: 'H10' } as unknown as { productId: string; quantity: number },
+        { productId: HOOKS, quantity: 4 },
+        { productId: HOOKS, quantity: 4 },
+      ]),
+    ).toEqual([
+      { productId: H10, quantity: 4 },
+      { productId: HOOKS, quantity: 8 },
+    ])
+  })
+
+  it('drops rows it cannot read rather than guessing a quantity', () => {
+    expect(linesFromRow([{ productId: '', quantity: 4 }, { productId: H9, quantity: 0 }, { productId: H9 }])).toEqual([])
+    expect(linesFromRow(null)).toEqual([])
+    expect(linesFromRow(undefined)).toEqual([])
   })
 })

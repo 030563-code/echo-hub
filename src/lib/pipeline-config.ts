@@ -175,7 +175,7 @@ export function allowedCurrenciesForPipeline(pipelineId: string | null | undefin
 export const QUOTE_TEMPLATE_IDS: Record<string, string | null> = {
   US: '454422093232', // "Jillian USA"
   CAN: '456904456263', // "Jillian CAD"
-  // Australia (Bruce, the ANZ AI sales agent). NULL ON PURPOSE until the
+  // Australia (Jack, the ANZ AI sales agent). NULL ON PURPOSE until the
   // Australian template cloned from "Geoff USA" (447512623874) exists and its
   // own id is pasted here. While null, quoteTemplateIdFor('AU') returns null,
   // so createQuote and /api/agent/quote refuse before any write. Never the

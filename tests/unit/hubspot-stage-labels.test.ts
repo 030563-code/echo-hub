@@ -58,7 +58,7 @@ describe('stage labels', () => {
 })
 
 describe('Australia Sales Quotation sent stage', () => {
-  // Bruce, the ANZ AI sales agent, quotes into pipeline 14520121. createQuote and
+  // Jack, the ANZ AI sales agent, quotes into pipeline 14520121. createQuote and
   // markQuoteSent find a pipeline's Quotation sent stage by a key containing
   // QUOTATION_SENT, so the old CONTRACT_SENT key made both refuse for AU.
   const au = HUBSPOT_PIPELINES.AUSTRALIA_SALES

@@ -67,9 +67,39 @@ export interface PublishedQuote {
   linkChanged: boolean
 }
 
+/**
+ * A machine-readable reason a publish refused, for the few cases a caller has
+ * to branch on rather than show.
+ *
+ * IN_FLIGHT is the one-in-flight unique index (23505): another generate or an
+ * edit already owns this deal. The agent route answers it with its own
+ * IN_PROGRESS code instead of retrying, because a retry would resume THAT row.
+ * Matching on the sentence would have been a string compare on rep-facing text.
+ */
+export type PublishFailureCode = 'IN_FLIGHT'
+
 export type PublishQuoteResult =
   | { success: true; quote: PublishedQuote }
-  | { success: false; error: string; dealQuoteId?: string; step?: QuoteStep }
+  | { success: false; error: string; code?: PublishFailureCode; dealQuoteId?: string; step?: QuoteStep }
+
+/**
+ * Extra columns an AGENT quote carries. Absent for every quote a person raises,
+ * and then no column is written, so the rep path is untouched by this and does
+ * not depend on the columns existing.
+ */
+export interface AgentQuoteStamp {
+  /** 'list' or 'urgent'. Recorded even for 'list' so the reissue check can read
+   *  the newest Jack row and tell the two apart without inference. */
+  pricingMode: 'list' | 'urgent'
+  /** ISO, created time plus 24 hours. Urgent only; null on a list quote. */
+  acceptBy: string | null
+  /** The urgent deal_quotes row this quote reissues at standard prices. */
+  reissueOf: string | null
+  /** What the caller said made the job urgent, as the agent heard it. The
+   *  AUDIT of why a floor price was offered, and nothing else: it is never
+   *  printed on the quote and never emailed. Null on a list quote. */
+  urgencyNote: string | null
+}
 
 export interface PublishQuoteContext {
   dealId: string
@@ -85,6 +115,10 @@ export interface PublishQuoteContext {
   hubAmount: number
   createdByUid: string
   createdByLabel: string
+  /** Days from today to hs_expiration_date. Omitted means the house default
+   *  (QUOTE_EXPIRY_DAYS, 60). An urgent agent quote passes 1. */
+  expiryDays?: number
+  agentQuote?: AgentQuoteStamp
 }
 
 /** HubSpot bodies can be long; the column is text but the UI is not. */
