@@ -5,6 +5,7 @@ import {
   teamsForPipeline,
   allowedCurrenciesForPipeline,
   quoteTemplateIdFor,
+  QUOTE_TEMPLATE_IDS,
 } from '@/lib/pipeline-config'
 import { DEPOT_MAPPING } from '@/lib/depot-constants'
 
@@ -99,6 +100,22 @@ describe('quote template ids', () => {
 
   it('is forgiving about how the value is typed', () => {
     expect(quoteTemplateIdFor('  us ')).toBe('454422093232')
+  })
+
+  it('has an AU key for the Australian template, never the Geoff USA id', () => {
+    // Bruce quotes with template 'AU'. The value is null until the Australian
+    // clone of "Geoff USA" exists; until then the route refuses with
+    // TEMPLATE_MISSING before any write. 447512623874 IS "Geoff USA" and must
+    // never be used as the Australian template.
+    expect(Object.prototype.hasOwnProperty.call(QUOTE_TEMPLATE_IDS, 'AU')).toBe(true)
+    expect(quoteTemplateIdFor('AU')).not.toBe('447512623874')
+    const au = quoteTemplateIdFor('AU')
+    expect(au === null || /^\d+$/.test(au)).toBe(true)
+  })
+
+  it('offers AUSTRALIA SALES exactly the AU template', () => {
+    const au = PIPELINE_CONFIG.find((p) => p.pipelineId === '14520121')
+    expect(au?.allowedTemplates.map((t) => t.value)).toEqual(['AU'])
   })
 
   it('returns null rather than guessing for a template with no id', () => {

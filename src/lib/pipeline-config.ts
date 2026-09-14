@@ -145,7 +145,7 @@ export const PIPELINE_CONFIG: PipelineConfig[] = [
     pipelineId: '14520121',
     label: 'AUSTRALIA SALES',
     allowedDepots: [{ label: 'AU-SYD', value: 'AU-Sydney' }],
-    allowedTemplates: [{ label: 'Standard Quote Template', value: 'default' }],
+    allowedTemplates: [{ label: 'Australia Quote Template', value: 'AU' }],
     allowedDistributors: [],
     // TODO confirm with Dean. Only the US list is verified against the portal.
     allowedCurrencies: ['AUD'],
@@ -172,9 +172,15 @@ export function allowedCurrenciesForPipeline(pipelineId: string | null | undefin
  * so this map is correct only while Jillian is the only US rep on the Hub.
  * Before a second one is onboarded the id belongs on their profile row.
  */
-export const QUOTE_TEMPLATE_IDS: Record<string, string> = {
+export const QUOTE_TEMPLATE_IDS: Record<string, string | null> = {
   US: '454422093232', // "Jillian USA"
   CAN: '456904456263', // "Jillian CAD"
+  // Australia (Bruce, the ANZ AI sales agent). NULL ON PURPOSE until the
+  // Australian template cloned from "Geoff USA" (447512623874) exists and its
+  // own id is pasted here. While null, quoteTemplateIdFor('AU') returns null,
+  // so createQuote and /api/agent/quote refuse before any write. Never the
+  // Geoff USA id itself: that is a US-branded template.
+  AU: null,
 }
 
 /** The template id for a profile's template value, or null when there is none.
