@@ -28,6 +28,7 @@ import {
 } from '@/lib/customer-invoice/delivery-address-book'
 import { lookupZipJurisdiction } from '@/app/actions/tax/lookup-zip'
 import { getXeroItemAccounts, saveInvoiceCoding } from '@/app/actions/invoicing/save-coding'
+import { saveInvoiceReference } from '@/app/actions/invoicing/save-reference'
 import {
   US_DEPOTS,
   DEPOT_FROM_ADDRESSES,
@@ -291,6 +292,23 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
   /** True once the normal Save button is gone, so coding needs its own save. */
   const codingNeedsOwnSave = codingEditable && !editable
 
+  /**
+   * The three REFERENCE fields stay editable after Send to TaxJar.
+   *
+   * Dean: "you should be able still to edit some of the fields after the send
+   * to taxjar step like the customer PO reference number etc everything you
+   * would need before sending the invoice". A PO number usually arrives after
+   * the order does, and none of these three is a tax input, so filing the sale
+   * is no reason to freeze them. They do print, so saving one on a documented
+   * invoice clears the stored PDF hash and asks for a regenerate before the
+   * document goes out. See actions/invoicing/save-reference.ts.
+   */
+  const referenceEditable = canManage && (status === 'filed' || status === 'documented')
+  const referenceDirty =
+    header.customer_po_number.trim() !== (invoice.customer_po_number ?? '') ||
+    header.delivery_location.trim() !== (invoice.delivery_location ?? '') ||
+    header.delivery_requested_by.trim() !== (invoice.delivery_requested_by ?? '')
+
   // ------------------------------------------------------------------
   // The saved draft.
   //
@@ -444,6 +462,27 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
         return
       }
       toast.success('Xero codes saved.')
+      router.refresh()
+    })
+
+  /** Persist just the reference fields, for an invoice TaxJar has filed. */
+  const onSaveReference = () =>
+    run('reference', async () => {
+      const result = await saveInvoiceReference({
+        invoiceId: invoice.id,
+        customer_po_number: header.customer_po_number.trim() || null,
+        delivery_location: header.delivery_location.trim() || null,
+        delivery_requested_by: header.delivery_requested_by.trim() || null,
+      })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(
+        result.regenerateNeeded
+          ? 'Saved. Generate the PDF again so the document matches.'
+          : 'Saved.',
+      )
       router.refresh()
     })
   // Only the end of the line is terminal now. 'sent' means the customer has the
@@ -916,7 +955,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
               value={header.customer_po_number}
               onChange={(e) => setHeader({ ...header, customer_po_number: e.target.value })}
               placeholder="Shown on the invoice as Reference"
-              disabled={!editable}
+              disabled={!editable && !referenceEditable}
             />
           </div>
           <div>
@@ -1112,7 +1151,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
               value={header.delivery_location}
               onChange={(e) => setHeader({ ...header, delivery_location: e.target.value })}
               placeholder="Location G52"
-              disabled={!editable}
+              disabled={!editable && !referenceEditable}
             />
             <p className="mt-1 text-xs text-gray-500">
               The customer&apos;s own name for this yard or depot. Printed under the street.
@@ -1125,7 +1164,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
               value={header.delivery_requested_by}
               onChange={(e) => setHeader({ ...header, delivery_requested_by: e.target.value })}
               placeholder="Dan Buckley"
-              disabled={!editable}
+              disabled={!editable && !referenceEditable}
             />
             <p className="mt-1 text-xs text-gray-500">
               Printed at the foot of the delivery address.
@@ -1544,6 +1583,19 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                 <Button variant="outline" onClick={onSaveCoding} disabled={pendingAction !== null}>
                   {spinner('coding')}
                   Save Xero codes
+                </Button>
+              </div>
+            )}
+
+            {referenceEditable && referenceDirty && (
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <p className="mr-auto text-xs text-amber-700">
+                  The customer PO number, location or requester has been changed and not saved.
+                  {status === 'documented' && ' Saving asks for the PDF to be generated again.'}
+                </p>
+                <Button variant="outline" onClick={onSaveReference} disabled={pendingAction !== null}>
+                  {spinner('reference')}
+                  Save reference fields
                 </Button>
               </div>
             )}
