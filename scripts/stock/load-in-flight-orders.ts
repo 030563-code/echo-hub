@@ -154,15 +154,25 @@ function parse(text: string): { chains: Chain[]; errors: string[] } {
  * refuse a blank there with a message about depot codes that says nothing about
  * what to put in the CSV.
  */
-const DEPOT_NUMBER_WAY_FORWARD =
-  "Put the depot order's Xero purchase order number there if it has one. If the depot leg never had a number of its own, leave depot blank and the chain loads as an s.r.o. refill."
-
 function checkNumbers(c: Chain, errors: string[]): void {
   if (c.depot !== '' && !c.depot_po_number) {
-    const reason = depotHasPoSeries(c.depot)
-      ? 'a blank one would spend a live Xero-bound number on a historical order'
-      : `depot ${c.depot} has no purchase order number series, so the database cannot number it`
-    errors.push(`chain ${c.key}: depot_po_number is blank, and ${reason}. ${DEPOT_NUMBER_WAY_FORWARD}`)
+    // Two different problems, and only one of them has "leave the depot blank"
+    // as an answer. A real depot order MUST keep its depot: the depot leg is
+    // what makes those units inbound to that depot and committed against it,
+    // and what the goods are received against when they land. Blanking the
+    // depot to get past this refusal would lose all three. A warehouse with no
+    // number series (EB-SRO today) has no depot leg to lose, so there the
+    // refill shape is the right answer.
+    const [reason, wayForward] = depotHasPoSeries(c.depot)
+      ? [
+          'a blank one would spend a live Xero-bound number on a historical order',
+          "Put that depot order's own purchase order number there. If it truly never had one, put the reference the depot used, so the chain can still be found by it. Do NOT blank the depot: the chain would load with no depot leg, and those units would stop counting as inbound to the depot.",
+        ]
+      : [
+          `depot ${c.depot} has no purchase order number series, so the database cannot number it`,
+          "Put that order's Xero purchase order number there, or leave depot blank so the chain loads as an s.r.o. refill.",
+        ]
+    errors.push(`chain ${c.key}: depot_po_number is blank, and ${reason}. ${wayForward}`)
   }
   if (!c.sro_po_number) {
     errors.push(`chain ${c.key}: sro_po_number is blank. Supply the real number; a blank one spends a live EBGRP number on a historical order.`)

@@ -45,9 +45,13 @@ loader checks every chain in the file before it writes any of them, so a blank
 found late does not leave half the file loaded. A blank `depot` means an order
 that refills the s.r.o. shelf (the UK H9 refills): no depot leg, the SRO order
 is the root of its own chain, and its lines are never shown as committed.
-`EB-SRO` in `depot` is a depot leg like any other and needs `depot_po_number`
-filled with that order's real Xero purchase order number; if the depot leg never
-had a number of its own, leave `depot` blank and the chain loads as a refill.
+`EB-SRO` in `depot` needs `depot_po_number` filled with that order's real Xero
+purchase order number; `EB-SRO` has no number series of its own, so if that
+order never had a number, leave `depot` blank and the chain loads as a refill.
+A real depot (`US-BAL`, `US-SBD`, `CA-HAM`) is different: keep the depot and put
+a number in. Blanking the depot to get past the refusal loses the depot leg, and
+with it the depot's inbound figure, the committed figure, and anything to
+receive the goods against when they land.
 The only number that may be blank is `bamida_po_number` on a `ready_stock` row,
 which has no Bamida order at all. A cell holding only spaces, quoted or not,
 counts as blank.
