@@ -148,6 +148,13 @@ const REPEAT_COLUMNS =
  * the same cart are different offers at different money, and handing back the
  * list one for an urgent request would quote the customer a price Jack never
  * spoke. A row written before the pricing column existed reads as list.
+ *
+ * A match with NO quote_link is still returned. That row is a HubSpot quote
+ * that published but whose link never came back within three read-backs, so
+ * there IS a live public quote out there under that number. The route refuses
+ * rather than quoting again: skipping the row here would mint a second public
+ * quote numbered REF-2 for the same cart, which is the one outcome worse than
+ * refusing.
  */
 export async function findRepeatQuote(
   admin: Admin,
@@ -174,7 +181,7 @@ export async function findRepeatQuote(
     if ((row.pricing_mode ?? 'list') !== pricing) continue
     const stored = Array.isArray(row.line_items) ? row.line_items : []
     const key = linesKey(stored.map((l) => ({ productId: String(l.productId ?? ''), quantity: Number(l.quantity ?? 0) })))
-    if (row.quote_link && key === wanted) return row
+    if (key === wanted) return row
   }
   return null
 }

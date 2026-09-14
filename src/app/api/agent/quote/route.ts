@@ -185,7 +185,11 @@ export async function POST(request: Request) {
       if (await hasForeignQuote(admin, jackUserId, body.dealId)) return fail('FOREIGN_QUOTE')
 
       const repeat = await findRepeatQuote(admin, jackUserId, body.dealId, body.lines, body.pricing, now)
-      if (repeat) return rowResponse('REPEAT', repeat)
+      // A published row with no link is a HubSpot quote that exists under that
+      // number with a link nobody read back. Quoting again would put a SECOND
+      // public quote on the deal for the same cart, so refuse and let the
+      // Sender's failure path put it in front of a person.
+      if (repeat) return repeat.quote_link ? rowResponse('REPEAT', repeat) : fail('QUOTE_PUBLISH_FAILED')
 
       if (await hasInFlightQuote(admin, body.dealId)) return fail('IN_PROGRESS')
 

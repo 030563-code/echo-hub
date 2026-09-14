@@ -260,6 +260,18 @@ describe('before the session', () => {
     expectNoWrites()
   })
 
+  it('refuses rather than quoting again when the earlier quote published with no link', async () => {
+    // There IS a live HubSpot quote under that number; a second one for the
+    // same cart would be numbered REF-2 and both would be public.
+    data.findRepeatQuote.mockResolvedValue({
+      id: publishedQuote.dealQuoteId, quote_number: 'JA202600123', quote_link: null, pdf_link: null,
+      amount: 10200, hub_amount: 10200, currency: 'AUD', expires_on: '2026-10-14', pricing_mode: 'list', accept_by: null, line_items: [],
+    })
+    expect(await call(req(create()))).toEqual({ status: 502, body: { ok: false, code: 'QUOTE_PUBLISH_FAILED' } })
+    expect(mintJackClient).not.toHaveBeenCalled()
+    expectNoWrites()
+  })
+
   it('asks for a repeat of the SAME pricing, so an urgent call never gets a list link', async () => {
     await call(req(urgent()))
     expect(data.findRepeatQuote).toHaveBeenCalledWith({ tag: 'admin' }, JACK_ID, DEAL, expect.any(Array), 'urgent', expect.any(Date))
