@@ -51,6 +51,11 @@ import { agentSenderEmail, agentUserId, isAgentUserId } from '@/lib/agent-accoun
 
 const COOKIE = 'sb-korylyniwsqtsvzuzydg-auth-token'
 
+/** The customer-facing Gmail alias: From header, and reply-to on the quote. */
+const MAIL_IDENTITY = 'jack.walker@echobarrier.com'
+/** The Supabase login, which must never receive mail. See agent-account.ts. */
+const LOGIN_IDENTITY = 'jack.agent@no-mail.echobarrier.com'
+
 function request(path: string, withSession = true): NextRequest {
   return new NextRequest(new URL(path, 'https://hub.echobarrier.com'), {
     headers: withSession ? { cookie: `${COOKIE}=eyJhbGciOi.stub; theme=dark` } : {},
@@ -90,8 +95,8 @@ describe('isAgentUserId', () => {
 
 describe('the quote sender address', () => {
   it('is the mail identity for the agent, and untouched for everyone else', () => {
-    process.env.JACK_SENDER_EMAIL = 'jack@echobarrier.com'
-    expect(agentSenderEmail(JACK_ID)).toBe('jack@echobarrier.com')
+    process.env.JACK_SENDER_EMAIL = MAIL_IDENTITY
+    expect(agentSenderEmail(JACK_ID)).toBe('jack.walker@echobarrier.com')
     expect(agentSenderEmail(HUMAN_ID)).toBeNull()
   })
 
@@ -99,6 +104,19 @@ describe('the quote sender address', () => {
     expect(agentSenderEmail(JACK_ID)).toBeNull()
     process.env.JACK_SENDER_EMAIL = '   '
     expect(agentSenderEmail(JACK_ID)).toBeNull()
+  })
+
+  // The two addresses are different on purpose: the login one must never be a
+  // real mailbox, because a magic link into it is a Jack session.
+  it('keeps the mail identity and the login identity apart', () => {
+    expect(MAIL_IDENTITY).not.toBe(LOGIN_IDENTITY)
+    expect(LOGIN_IDENTITY.endsWith('@no-mail.echobarrier.com')).toBe(true)
+    expect(MAIL_IDENTITY.endsWith('@echobarrier.com')).toBe(true)
+    expect(MAIL_IDENTITY).not.toContain('no-mail')
+
+    const example = readFileSync(join(process.cwd(), '.env.local.example'), 'utf8')
+    expect(example).toContain(`JACK_SENDER_EMAIL=${MAIL_IDENTITY}`)
+    expect(example).toContain(`JACK_AUTH_EMAIL=${LOGIN_IDENTITY}`)
   })
 })
 

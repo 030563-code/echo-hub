@@ -573,11 +573,13 @@ export async function createQuote(params: CreateQuoteParams) {
 
   const contactId = deal?.associations?.contacts?.results?.[0]?.id ?? null
   const senderName = splitFullName(profile.display_name || '')
-  // NOT user.email for the ANZ agent. Its Supabase login address is a no-mail
-  // one on purpose (see lib/agent-account.ts), and this value is printed on the
-  // customer's quote as the person to reply to, so the mail identity has to
-  // come from configuration instead. Null for everyone else, meaning "no
-  // override", so a rep's quote carries exactly the address it always did.
+  // NOT user.email for the ANZ agent. Its Supabase LOGIN address
+  // (jack.agent@no-mail.echobarrier.com) is deliberately not deliverable, see
+  // lib/agent-account.ts, and this value is printed on the customer's quote as
+  // the person to reply to. So the agent's MAIL identity
+  // (jack.walker@echobarrier.com, JACK_SENDER_EMAIL) comes from configuration
+  // instead. Null for everyone else, meaning "no override", so a rep's quote
+  // carries exactly the address it always did.
   const senderEmail = agentSenderEmail(user.id) ?? user.email ?? null
   const quoteResult = await runQuotePipeline({
     dealId: params.dealId,

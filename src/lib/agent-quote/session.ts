@@ -13,7 +13,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
  *    no wildcard). Anyone can ask Supabase for a magic link or a password reset
  *    for a known address using the public anon key, so a deliverable one hands
  *    a full Jack session to whoever can read that mailbox. It is NOT the same
- *    as jack@echobarrier.com, which is the mail identity in the From header.
+ *    as jack.walker@echobarrier.com, which is the MAIL identity: the Gmail
+ *    alias in the From header and on the quote. The two must never be swapped,
+ *    in either direction.
  *  - the Hub refuses a browser session for this user id outright. See
  *    isAgentUserId in lib/agent-account.ts, the middleware gate and the auth
  *    callback: even a valid Jack session cookie is thrown away at the door.
