@@ -12,6 +12,7 @@ import {
   authorizeBearer,
   checkAmountCeiling,
   checkCaps,
+  checkDealProgress,
   checkDealShape,
   checkListPriced,
   checkProductSkus,
@@ -71,11 +72,12 @@ import { quoteTemplateIdFor } from '@/lib/pipeline-config'
 // Order, every refusal before any write:
 //   auth, strict body, conversation bound to the deal (jack_tool_calls
 //   log_lead in 24 h), then for create: product allowlist, no quote by a
-//   person, repeat (returns the earlier quote), nothing in flight, the urgent
-//   cap, the volume caps. Then a per-request Jack session (no password), and
-//   inside it: deal shape, contract customer, HubSpot SKUs, list-price-only
-//   pre-check, the floor discount for urgent, amount ceiling, AU template, and
-//   finally the unchanged createQuote.
+//   person, repeat (holds the earlier quote back for the deal check below),
+//   nothing in flight, the urgent cap, the volume caps. Then a per-request Jack
+//   session (no password), and inside it: for a repeat, that the deal has not
+//   moved on; otherwise deal shape, contract customer, HubSpot SKUs,
+//   list-price-only pre-check, the floor discount for urgent, amount ceiling,
+//   AU template, and finally the unchanged createQuote.
 //
 // Responses are fixed codes only. Nothing from the request, HubSpot or
 // Supabase is echoed, and headers and bodies are never logged.
@@ -137,6 +139,26 @@ function rowResponse(code: 'REPEAT' | 'REISSUED', row: RepeatRow): NextResponse 
   })
 }
 
+/**
+ * Has the deal moved out from under an earlier quote?
+ *
+ * Null when Jack may still answer on it. Reads the deal through the same
+ * action createForJack uses, so a repeat and a fresh quote agree about what a
+ * quotable deal is, and needs the Jack session for the same reason.
+ */
+async function dealProgress(dealId: string): Promise<AgentQuoteCode | null> {
+  const deal = await getDealDetails(dealId)
+  if (!deal.success || !deal.data) {
+    return deal.error === 'Deal not found' ? 'NOT_ANZ_DEAL' : 'HUBSPOT_ERROR'
+  }
+  const props = deal.data.properties ?? ({} as typeof deal.data.properties)
+  return checkDealProgress({
+    pipeline: props.pipeline,
+    dealstage: props.dealstage,
+    hubspot_owner_id: props.hubspot_owner_id,
+  })
+}
+
 export async function POST(request: Request) {
   const secrets = {
     AGENT_QUOTE_SECRET: process.env.AGENT_QUOTE_SECRET,
@@ -173,35 +195,46 @@ export async function POST(request: Request) {
 
     /** Set for create and reissue: what to quote and how. */
     let plan: { lines: AgentQuoteLine[]; pricing: QuotePricing; reissueOf: string | null; stages: readonly string[] } | null = null
+    /** Set instead of `plan` when this cart has already been quoted. */
+    let repeat: RepeatRow | null = null
 
     if (body.action === 'create') {
       const notAllowed = checkProductsAllowed(body.lines)
       if (notAllowed) return fail(notAllowed)
 
-      // BEFORE the repeat lookup. A repeat answers with a link and no HubSpot
-      // read at all, so a person who has re-quoted the deal since must be seen
-      // first: otherwise Jack hands the customer his own older link while the
-      // rep's quote is the live one.
+      // BEFORE the repeat lookup, and cheaper than it: a person who has
+      // re-quoted the deal since must be seen first, or Jack hands the customer
+      // his own older link while the rep's quote is the live one. The deal's
+      // own stage, owner and closed state are checked further down, inside the
+      // session, because reading them needs one.
       if (await hasForeignQuote(admin, jackUserId, body.dealId)) return fail('FOREIGN_QUOTE')
 
-      const repeat = await findRepeatQuote(admin, jackUserId, body.dealId, body.lines, body.pricing, now)
+      const found = await findRepeatQuote(admin, jackUserId, body.dealId, body.lines, body.pricing, now)
       // A published row with no link is a HubSpot quote that exists under that
       // number with a link nobody read back. Quoting again would put a SECOND
       // public quote on the deal for the same cart, so refuse and let the
       // Sender's failure path put it in front of a person.
-      if (repeat) return repeat.quote_link ? rowResponse('REPEAT', repeat) : fail('QUOTE_PUBLISH_FAILED')
+      if (found && !found.quote_link) return fail('QUOTE_PUBLISH_FAILED')
 
-      if (await hasInFlightQuote(admin, body.dealId)) return fail('IN_PROGRESS')
+      if (found) {
+        // Answered below, inside the session, once the deal has been read. The
+        // caps and the in-flight check are deliberately skipped: a repeat
+        // raises nothing, and refusing one on a cap would leave the caller
+        // without the link to a quote that already went out.
+        repeat = found
+      } else {
+        if (await hasInFlightQuote(admin, body.dealId)) return fail('IN_PROGRESS')
 
-      if (body.pricing === 'urgent') {
-        const urgentCap = checkUrgentCap(await countUrgentQuotes(admin, jackUserId, body.dealId, now))
-        if (urgentCap) return fail(urgentCap)
+        if (body.pricing === 'urgent') {
+          const urgentCap = checkUrgentCap(await countUrgentQuotes(admin, jackUserId, body.dealId, now))
+          if (urgentCap) return fail(urgentCap)
+        }
+
+        const capped = checkCaps(await countJackQuotes(admin, jackUserId, body.dealId, now))
+        if (capped) return fail(capped)
+
+        plan = { lines: body.lines, pricing: body.pricing, reissueOf: null, stages: ANZ_QUOTABLE_STAGES }
       }
-
-      const capped = checkCaps(await countJackQuotes(admin, jackUserId, body.dealId, now))
-      if (capped) return fail(capped)
-
-      plan = { lines: body.lines, pricing: body.pricing, reissueOf: null, stages: ANZ_QUOTABLE_STAGES }
     } else if (body.action === 'reissue') {
       const latest = await findLatestJackQuote(admin, jackUserId, body.dealId)
       if (!latest) return fail('NO_URGENT_QUOTE')
@@ -246,6 +279,12 @@ export async function POST(request: Request) {
         const supabase = await createServerClient()
         const { data: me } = await supabase.auth.getUser()
         if (me?.user?.id !== jackUserId) return fail('INTERNAL')
+
+        if (repeat) {
+          step = 'repeat'
+          const moved = await dealProgress(body.dealId)
+          return moved ? fail(moved) : rowResponse('REPEAT', repeat)
+        }
 
         if (body.action === 'mark_sent') {
           step = 'mark_sent'

@@ -4,6 +4,7 @@ import {
   parseAgentQuoteBody,
   checkProductsAllowed,
   checkProductSkus,
+  checkDealProgress,
   checkDealShape,
   checkListPriced,
   amountCeiling,
@@ -199,6 +200,36 @@ describe('checkDealShape', () => {
   it('refuses two contacts and none', () => {
     expect(checkDealShape({ ...good, contactIds: ['1', '2'] })).toBe('CONTACT_COUNT')
     expect(checkDealShape({ ...good, contactIds: [] })).toBe('CONTACT_COUNT')
+  })
+})
+
+describe('checkDealProgress', () => {
+  const good = { pipeline: '14520121', dealstage: '39459179', hubspot_owner_id: '30234944' }
+
+  it('asks only whether the deal has moved on, which is what a REPEAT turns on', () => {
+    expect(checkDealProgress(good)).toBeNull()
+    expect(checkDealProgress({ ...good, pipeline: '14356619' })).toBe('NOT_ANZ_DEAL')
+    expect(checkDealProgress({ ...good, dealstage: '39459183' })).toBe('DEAL_CLOSED')
+    expect(checkDealProgress({ ...good, dealstage: '39459184' })).toBe('DEAL_CLOSED')
+    expect(checkDealProgress({ ...good, dealstage: '1216646' })).toBe('BAD_STAGE')
+    expect(checkDealProgress({ ...good, hubspot_owner_id: '123' })).toBe('WRONG_OWNER')
+  })
+
+  it('narrows to one stage for a reissue, exactly as checkDealShape does', () => {
+    expect(checkDealProgress({ ...good, dealstage: '39459182' }, [ANZ_QUOTATION_SENT_STAGE])).toBeNull()
+    expect(checkDealProgress(good, [ANZ_QUOTATION_SENT_STAGE])).toBe('BAD_STAGE')
+  })
+
+  it('is the front half of checkDealShape, so the two can never disagree', () => {
+    const shaped: DealShape = { ...good, deal_currency_code: 'AUD', contactIds: ['1'] }
+    for (const dealstage of ['39459178', '39459182', '39459183', '1216646']) {
+      const progress = checkDealProgress({ ...shaped, dealstage })
+      if (progress) expect(checkDealShape({ ...shaped, dealstage })).toBe(progress)
+    }
+    // And the back half is the part a repeat deliberately skips.
+    expect(checkDealProgress(good)).toBeNull()
+    expect(checkDealShape({ ...shaped, deal_currency_code: 'USD' })).toBe('NOT_AUD')
+    expect(checkDealShape({ ...shaped, contactIds: [] })).toBe('CONTACT_COUNT')
   })
 })
 

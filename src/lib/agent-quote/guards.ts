@@ -329,6 +329,32 @@ export interface DealShape {
 }
 
 /**
+ * The part of the deal shape that says whether Jack may still act on this deal
+ * at all: the right pipeline, open, on a stage he may quote from, and still
+ * owned by the ANZ rep.
+ *
+ * This is what a REPEAT is checked against. A repeat hands back a quote that
+ * already exists, so the rules that decide whether a NEW one may be priced do
+ * not apply to it: the currency and the contact count were true when the quote
+ * was raised and cannot make an already-sent document wrong now. What can is
+ * the deal moving on underneath it. Closed won or lost, a stage outside the
+ * quotable set, or a new owner all mean a person has taken the deal over, and
+ * Jack mailing his own older link into that is exactly the confusion the
+ * FOREIGN_QUOTE check exists to stop.
+ */
+export function checkDealProgress(
+  deal: Pick<DealShape, 'pipeline' | 'dealstage' | 'hubspot_owner_id'>,
+  stages: readonly string[] = ANZ_QUOTABLE_STAGES,
+): AgentQuoteCode | null {
+  if (String(deal.pipeline ?? '') !== ANZ_PIPELINE_ID) return 'NOT_ANZ_DEAL'
+  const stage = String(deal.dealstage ?? '')
+  if (CLOSED_WON_STAGES.includes(stage) || CLOSED_LOST_STAGES.includes(stage)) return 'DEAL_CLOSED'
+  if (!stages.includes(stage)) return 'BAD_STAGE'
+  if (String(deal.hubspot_owner_id ?? '') !== ANZ_OWNER_ID) return 'WRONG_OWNER'
+  return null
+}
+
+/**
  * The deal Jack may quote: Australia Sales, open, Appointment to Quotation
  * sent, owned by Geoff, AUD, exactly one contact. AUD is required explicitly
  * because createQuote prices a blank currency as USD. The single contact is
@@ -341,11 +367,8 @@ export function checkDealShape(
   deal: DealShape,
   stages: readonly string[] = ANZ_QUOTABLE_STAGES,
 ): AgentQuoteCode | null {
-  if (String(deal.pipeline ?? '') !== ANZ_PIPELINE_ID) return 'NOT_ANZ_DEAL'
-  const stage = String(deal.dealstage ?? '')
-  if (CLOSED_WON_STAGES.includes(stage) || CLOSED_LOST_STAGES.includes(stage)) return 'DEAL_CLOSED'
-  if (!stages.includes(stage)) return 'BAD_STAGE'
-  if (String(deal.hubspot_owner_id ?? '') !== ANZ_OWNER_ID) return 'WRONG_OWNER'
+  const moved = checkDealProgress(deal, stages)
+  if (moved) return moved
   const currency = String(deal.deal_currency_code ?? '').trim().toUpperCase()
   if (!currency || !allowedCurrenciesForPipeline(ANZ_PIPELINE_ID).includes(currency)) return 'NOT_AUD'
   if (deal.contactIds.length !== 1) return 'CONTACT_COUNT'

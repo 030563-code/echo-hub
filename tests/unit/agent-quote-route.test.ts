@@ -124,6 +124,20 @@ const audRows = [
 ]
 /** Jack's rep_discount_caps row: no percentage limit, the floor is the guard. */
 const jackCap = { max_discount_pct: null, max_discount_per_unit: 2700 }
+/** The row findRepeatQuote hands back for an already-quoted cart. */
+const repeatRow = () => ({
+  id: publishedQuote.dealQuoteId,
+  quote_number: 'JA202600123-2',
+  quote_link: publishedQuote.quoteLink,
+  pdf_link: null,
+  amount: '10200.00',
+  hub_amount: '10200',
+  currency: 'AUD',
+  expires_on: '2026-10-14',
+  pricing_mode: 'list',
+  accept_by: null,
+  line_items: [],
+})
 const publishedQuote = {
   dealQuoteId: '9b2f0c1e-0000-4000-8000-000000000001',
   quoteId: '123',
@@ -244,11 +258,8 @@ describe('before the session', () => {
     expect(mintJackClient).not.toHaveBeenCalled()
   })
 
-  it('200 REPEAT returns the earlier published quote without a session', async () => {
-    data.findRepeatQuote.mockResolvedValue({
-      id: publishedQuote.dealQuoteId, quote_number: 'JA202600123-2', quote_link: publishedQuote.quoteLink, pdf_link: null,
-      amount: '10200.00', hub_amount: '10200', currency: 'AUD', expires_on: '2026-10-14', pricing_mode: 'list', accept_by: null, line_items: [],
-    })
+  it('200 REPEAT returns the earlier published quote, after reading the deal', async () => {
+    data.findRepeatQuote.mockResolvedValue(repeatRow())
     const { status, body } = await call(req(create()))
     expect(status).toBe(200)
     expect(body).toEqual({
@@ -256,8 +267,69 @@ describe('before the session', () => {
       pdfLink: null, amount: 10200, currency: 'AUD', expiresOn: '2026-10-14', dealQuoteId: publishedQuote.dealQuoteId,
       amountMismatch: false, pricing: 'list', acceptBy: null,
     })
-    expect(mintJackClient).not.toHaveBeenCalled()
+    // The deal is read under Jack's own session, the same way a fresh quote
+    // reads it, so a repeat cannot answer from a deal nobody looked at.
+    expect(mintJackClient).toHaveBeenCalled()
+    expect(getDealDetails).toHaveBeenCalledWith(DEAL)
+    expect(signOut).toHaveBeenCalled()
     expectNoWrites()
+  })
+
+  it('refuses a repeat once the deal has moved out from under the quote', async () => {
+    data.findRepeatQuote.mockResolvedValue(repeatRow())
+    const moved = (properties: Record<string, string>) => ({
+      ...fixtureDeal,
+      data: { ...fixtureDeal.data, properties: { ...fixtureDeal.data.properties, ...properties } },
+    })
+
+    getDealDetails.mockResolvedValue(moved({ dealstage: '39459183' })) // Closed won
+    expect((await call(req(create())))).toEqual({ status: 422, body: { ok: false, code: 'DEAL_CLOSED' } })
+
+    getDealDetails.mockResolvedValue(moved({ dealstage: '39459184' })) // Closed lost
+    expect((await call(req(create()))).body).toEqual({ ok: false, code: 'DEAL_CLOSED' })
+
+    getDealDetails.mockResolvedValue(moved({ dealstage: '39459999' })) // off the quotable set
+    expect((await call(req(create()))).body).toEqual({ ok: false, code: 'BAD_STAGE' })
+
+    getDealDetails.mockResolvedValue(moved({ hubspot_owner_id: '77777777' })) // a person took it over
+    expect((await call(req(create()))).body).toEqual({ ok: false, code: 'WRONG_OWNER' })
+
+    getDealDetails.mockResolvedValue(moved({ pipeline: '14356619' })) // another pipeline
+    expect((await call(req(create()))).body).toEqual({ ok: false, code: 'NOT_ANZ_DEAL' })
+
+    getDealDetails.mockResolvedValue({ success: false, error: 'Deal not found' })
+    expect((await call(req(create()))).body).toEqual({ ok: false, code: 'NOT_ANZ_DEAL' })
+
+    getDealDetails.mockResolvedValue({ success: false, error: 'HubSpot 500' })
+    expect((await call(req(create()))).body).toEqual({ ok: false, code: 'HUBSPOT_ERROR' })
+
+    expectNoWrites()
+  })
+
+  it('does NOT re-run the pricing shape checks on a repeat, because the quote already exists', async () => {
+    // A second contact or a changed deal currency would stop a NEW quote being
+    // priced. Neither makes the document that already went out wrong, and
+    // refusing here would leave the caller with no link to a live quote.
+    data.findRepeatQuote.mockResolvedValue(repeatRow())
+    getDealDetails.mockResolvedValue({
+      ...fixtureDeal,
+      data: {
+        ...fixtureDeal.data,
+        properties: { ...fixtureDeal.data.properties, deal_currency_code: 'USD' },
+        associations: { contacts: { results: [{ id: '1' }, { id: '2' }] } },
+      },
+    })
+    expect((await call(req(create()))).body).toMatchObject({ ok: true, code: 'REPEAT' })
+    expectNoWrites()
+  })
+
+  it('answers a repeat even at the cap, and never asks whether one is in flight', async () => {
+    data.findRepeatQuote.mockResolvedValue(repeatRow())
+    data.countJackQuotes.mockResolvedValue({ dealLast7Days: 3, allLast24Hours: 20 })
+    data.hasInFlightQuote.mockResolvedValue(true)
+    expect((await call(req(create()))).body).toMatchObject({ ok: true, code: 'REPEAT' })
+    expect(data.hasInFlightQuote).not.toHaveBeenCalled()
+    expect(data.countJackQuotes).not.toHaveBeenCalled()
   })
 
   it('refuses rather than quoting again when the earlier quote published with no link', async () => {
