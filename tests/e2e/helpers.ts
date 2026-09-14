@@ -38,7 +38,7 @@ export async function login(page: Page, c: Creds) {
 
 /** Proxy for "is this user privileged?" — only admins/ops users see the MRP nav. */
 export async function canSeeMrp(page: Page): Promise<boolean> {
-  return (await page.locator('aside').getByRole('link', { name: 'MRP', exact: true }).count()) > 0
+  return (await page.locator('aside').getByRole('link', { name: 'Warehousing/Stock', exact: true }).count()) > 0
 }
 
 /**

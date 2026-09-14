@@ -35,7 +35,7 @@ test.describe("staging tester accounts", () => {
     await login(page, MANAGER!);
     await expect(page.getByText("STAGING SANDBOX", { exact: false })).toBeVisible({ timeout: 20_000 });
 
-    for (const item of ["Purchase Orders", "Bill of Materials", "Transport", "Invoices", "MRP"]) {
+    for (const item of ["Purchase Orders", "Bill of Materials", "Transport", "Invoices", "Warehousing/Stock"]) {
       await expect(navLink(page, item)).toBeVisible();
     }
     // Manager approves — the Approvals queue must open.
@@ -51,7 +51,7 @@ test.describe("staging tester accounts", () => {
     await login(page, SALES!);
     await expect(navLink(page, "Quotes")).toBeVisible();
     await expect(navLink(page, "Purchase Orders")).toBeVisible();
-    for (const hidden of ["Invoices", "Bill of Materials", "MRP", "Transport"]) {
+    for (const hidden of ["Invoices", "Bill of Materials", "Warehousing/Stock", "Transport"]) {
       await expect(navLink(page, hidden)).toHaveCount(0);
     }
     // Can open the raise form; delivery address is REQUIRED (starred label).
@@ -71,7 +71,7 @@ test.describe("staging tester accounts", () => {
     await expect(navLink(page, "Purchase Orders")).toBeVisible();
     await expect(navLink(page, "Bill of Materials")).toBeVisible();
     await expect(navLink(page, "Transport")).toBeVisible();
-    for (const hidden of ["Quotes", "Invoices", "MRP"]) {
+    for (const hidden of ["Quotes", "Invoices", "Warehousing/Stock"]) {
       await expect(navLink(page, hidden)).toHaveCount(0);
     }
     // No po.create → no Raise PO button on the board.

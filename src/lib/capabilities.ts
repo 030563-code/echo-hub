@@ -137,7 +137,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Bill of Materials', href: '/bom', icon: 'Layers', requires: ['bom.view'], group: 'Operations' },
   { label: 'Transport', href: '/transport', icon: 'Truck', requires: ['transport.view'], group: 'Operations' },
   { label: 'Invoices', href: '/invoices', icon: 'Receipt', requires: ['invoice.view'], group: 'Operations' },
-  { label: 'MRP', href: '/mrp', icon: 'Gauge', requires: ['mrp.view'], group: 'Operations' },
+  { label: 'Warehousing/Stock', href: '/mrp', icon: 'Gauge', requires: ['mrp.view'], group: 'Operations' },
   { label: 'Stock', href: '/stock', icon: 'Boxes', requires: ['stock.view', 'stock.edit'], group: 'Operations' },
 ]
 

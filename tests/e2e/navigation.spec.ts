@@ -16,7 +16,7 @@ test.describe('Navigation + RBAC (privileged user)', () => {
 
   test('sidebar shows every workstream — and no Weeklies', async ({ page }) => {
     const nav = page.locator('aside')
-    for (const label of ['Dashboard', 'Quotes', 'Purchase Orders', 'Bill of Materials', 'Transport', 'MRP']) {
+    for (const label of ['Dashboard', 'Quotes', 'Purchase Orders', 'Bill of Materials', 'Transport', 'Warehousing/Stock']) {
       await expect(nav.getByRole('link', { name: label })).toBeVisible()
     }
     await expect(nav.getByRole('link', { name: 'Weeklies', exact: true })).toHaveCount(0)
@@ -28,7 +28,7 @@ test.describe('Navigation + RBAC (privileged user)', () => {
   })
 
   const opsModules = [
-    { link: 'MRP', url: /\/mrp$/, heading: 'MRP Prediction Dashboard' },
+    { link: 'Warehousing/Stock', url: /\/mrp$/, heading: 'MRP Prediction Dashboard' },
     { link: 'Transport', url: /\/transport$/, heading: 'Logistics & Shipping' },
     { link: 'Purchase Orders', url: /\/purchase-orders$/, heading: 'Supplier & PO Tracker' },
     { link: 'Bill of Materials', url: /\/bom$/, heading: 'Bill of Materials & Pricing' },
