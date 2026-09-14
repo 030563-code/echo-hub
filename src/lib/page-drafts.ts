@@ -12,6 +12,7 @@
  */
 
 import { z } from 'zod'
+import { BIO_MAX, JOB_TITLE_MAX } from '@/lib/profile/avatar'
 
 // ---------------------------------------------------------------------------
 // Raise a purchase order
@@ -406,5 +407,29 @@ export type CommercialInvoiceDraft = z.infer<typeof commercialInvoiceDraftSchema
 
 export function parseCommercialInvoiceDraft(raw: unknown): CommercialInvoiceDraft | null {
   const parsed = commercialInvoiceDraftSchema.safeParse(raw)
+  return parsed.success ? parsed.data : null
+}
+
+// ---------------------------------------------------------------------------
+// Your profile: the job title and bio being written
+//
+// Typed content, so a draft. Only the text is kept: the chosen photo preview is
+// a decoded image in memory and is never stored.
+// ---------------------------------------------------------------------------
+
+export const PROFILE_DETAILS_KEY = 'profile:details'
+
+export const profileDetailsDraftSchema = z.object({
+  v: z.literal(1),
+  // The inputs cannot hold more than these, so a longer row is not a draft
+  // this page wrote and is treated as no draft at all.
+  jobTitle: z.string().max(JOB_TITLE_MAX),
+  bio: z.string().max(BIO_MAX),
+})
+
+export type ProfileDetailsDraft = z.infer<typeof profileDetailsDraftSchema>
+
+export function parseProfileDetailsDraft(raw: unknown): ProfileDetailsDraft | null {
+  const parsed = profileDetailsDraftSchema.safeParse(raw)
   return parsed.success ? parsed.data : null
 }

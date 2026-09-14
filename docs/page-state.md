@@ -106,6 +106,7 @@ at its defaults, or merely opening a screen will offer to resume nothing.
 | `invoice-editor:{invoiceId}` | draft | the customer invoice editor |
 | `commercial-invoice:{invoiceId}` | draft | the commercial invoice line editor |
 | `bom:material-prices` | draft | BOM, typed material prices |
+| `profile:details` | draft | Your profile, the job title and bio |
 | `quotes:filters` | view | the six quotes list routes |
 | `po-board` | view | the purchase-order board |
 | `po-board:table`, `mrp-board`, `transport:table` | view | the shared board table |
