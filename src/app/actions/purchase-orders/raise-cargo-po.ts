@@ -65,10 +65,13 @@ export async function raiseCargoPo(input: z.infer<typeof Schema>): Promise<Raise
     .maybeSingle();
   if (dupe) return { ok: false, error: "A cargo PO already exists for this SRO order." };
 
-  // Create the SRO_TO_CARGO child. The trigger mints po_number (EBSRO<n>-2 under
-  // EBGRP<n>, the old PO- series under an older chain) and inherits master_ref
-  // from parent_po_id. Two presses racing past the check above both reach this
-  // insert; the unique index on (parent_po_id, leg) refuses the second.
+  // Create the SRO_TO_CARGO child. The trigger mints po_number and inherits
+  // master_ref from parent_po_id. Under an SRO order numbered EBGRP<n> the
+  // number is EBSRO<n>-2. Under any other SRO number (an old PO- chain, a
+  // warm-started s.r.o. number such as 1405 or EBG26094) it is a PO- number,
+  // with a database warning naming the parent, and the order is still raised.
+  // Two presses racing past the check above both reach this insert; the unique
+  // index on (parent_po_id, leg) refuses the second.
   const { data: child, error: childErr } = await admin
     .from("purchase_orders")
     .insert({

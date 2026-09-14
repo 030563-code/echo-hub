@@ -23,14 +23,18 @@
  * sends to Xero, so a blank here would spend EBUSA8001 or EBGRP8001 on an
  * order raised months ago that already carries a real number somewhere else.
  * The only number that may be blank is bamida_po_number on a ready_stock row,
- * which has no Bamida order at all.
+ * which has no Bamida order at all. A depot leg that never had a number of its
+ * own takes the depot order's Xero purchase order number if it has one;
+ * otherwise leave depot blank and the chain loads as an s.r.o. refill.
+ * A cell holding only spaces, quoted or not, counts as blank.
  *
  * Before running with --apply: switch off the old n8n "PO Phase 1" Xero poll,
  * so it cannot insert its own rows beside the loaded chains.
  */
 import { createClient } from '@supabase/supabase-js'
 import { readFileSync } from 'node:fs'
-import { STOCK_WAREHOUSES, SRO_WAREHOUSE } from '../../src/lib/stock/warehouses'
+import { STOCK_WAREHOUSES } from '../../src/lib/stock/warehouses'
+import { depotHasPoSeries } from '../../src/lib/po-number'
 
 function env(name: string): string {
   const v = process.env[name]
@@ -86,7 +90,9 @@ function parse(text: string): { chains: Chain[]; errors: string[] } {
   }
   lines.slice(1).forEach((raw, i) => {
     const lineNo = i + 2
-    const cells = raw.split(',').map((c) => c.trim().replace(/^"|"$/g, ''))
+    // Trim again after the quotes come off, so a quoted space (" ") is blank
+    // rather than a one-character number that slips past the checks below.
+    const cells = raw.split(',').map((c) => c.trim().replace(/^"|"$/g, '').trim())
     const row = Object.fromEntries(HEADER.map((h, j) => [h, cells[j] ?? ''])) as Record<string, string>
     if (!row.chain_key) return errors.push(`line ${lineNo}: chain_key is blank`) && undefined
     // A blank depot is a refill of the s.r.o. shelf (Bamida builds it, nobody
@@ -133,21 +139,30 @@ function parse(text: string): { chains: Chain[]; errors: string[] } {
 }
 
 /**
- * Every number a warm-start chain needs, present and real.
+ * Every number a warm-start chain needs, present and real, checked for every
+ * chain before any chain is written.
  *
- * EB-SRO gets its own message because it fails differently: the depot has no
- * number series in the scheme at all, so a blank there is refused deep inside
- * hub_po_prefix_for_depot, after the chain has already started being written,
- * with a message about depot codes that says nothing about what to do.
+ * Checking up front is about the file, not the chain. Each chain is one call to
+ * hub_warm_start_po_chain, a single atomic statement, so a chain the database
+ * refuses leaves nothing of itself behind. But the loop below carries on past a
+ * failed chain, so a refusal found only at the database is a PARTIAL LOAD: the
+ * chains before and after it are in, that one is not, and the rerun has to pick
+ * it out by hand.
+ *
+ * A depot with no number series (EB-SRO today, and EU-SK or GB-BSE if they
+ * ever become stock warehouses) gets its own reason, because the database would
+ * refuse a blank there with a message about depot codes that says nothing about
+ * what to put in the CSV.
  */
+const DEPOT_NUMBER_WAY_FORWARD =
+  "Put the depot order's Xero purchase order number there if it has one. If the depot leg never had a number of its own, leave depot blank and the chain loads as an s.r.o. refill."
+
 function checkNumbers(c: Chain, errors: string[]): void {
-  if (c.depot === SRO_WAREHOUSE && !c.depot_po_number) {
-    errors.push(
-      `chain ${c.key}: depot ${SRO_WAREHOUSE} has no purchase order number series, so depot_po_number must be the real number off the order. ` +
-        'Leave depot blank instead if this order refills the s.r.o. shelf.',
-    )
-  } else if (c.depot !== '' && !c.depot_po_number) {
-    errors.push(`chain ${c.key}: depot_po_number is blank. Supply the real number; a blank one spends a live Xero-bound number on a historical order.`)
+  if (c.depot !== '' && !c.depot_po_number) {
+    const reason = depotHasPoSeries(c.depot)
+      ? 'a blank one would spend a live Xero-bound number on a historical order'
+      : `depot ${c.depot} has no purchase order number series, so the database cannot number it`
+    errors.push(`chain ${c.key}: depot_po_number is blank, and ${reason}. ${DEPOT_NUMBER_WAY_FORWARD}`)
   }
   if (!c.sro_po_number) {
     errors.push(`chain ${c.key}: sro_po_number is blank. Supply the real number; a blank one spends a live EBGRP number on a historical order.`)

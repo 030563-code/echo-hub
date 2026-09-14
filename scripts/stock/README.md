@@ -38,9 +38,19 @@ line. Fractions are fine (metres of roll).
 `in-flight-orders.csv`: one row per order line; rows sharing `chain_key` make
 one order. `stage` is one of `sent`, `in_production`, `finished`, `ready_stock`.
 Real Xero and Bamida PO numbers matter, because Cargo Partner auto-detect keys
-on the PO number; a blank number lets the Hub mint one. A blank `depot` means an
-order that refills the s.r.o. shelf (the UK H9 refills): no depot leg, the SRO
-order is the root of its own chain, and its lines are never shown as committed.
+on the PO number. A blank number is refused rather than minted: since the
+14 Sep 2026 numbering scheme a blank would spend a live EBUSA or EBGRP number,
+one Xero is about to put on a new order, on an order raised months ago. The
+loader checks every chain in the file before it writes any of them, so a blank
+found late does not leave half the file loaded. A blank `depot` means an order
+that refills the s.r.o. shelf (the UK H9 refills): no depot leg, the SRO order
+is the root of its own chain, and its lines are never shown as committed.
+`EB-SRO` in `depot` is a depot leg like any other and needs `depot_po_number`
+filled with that order's real Xero purchase order number; if the depot leg never
+had a number of its own, leave `depot` blank and the chain loads as a refill.
+The only number that may be blank is `bamida_po_number` on a `ready_stock` row,
+which has no Bamida order at all. A cell holding only spaces, quoted or not,
+counts as blank.
 
 `material-orders.csv`: `component_code,quantity,unit,expected_at,supplier,note`.
 Codes as for the materials count. `expected_at` is `YYYY-MM-DD` or blank.

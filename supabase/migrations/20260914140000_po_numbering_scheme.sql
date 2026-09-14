@@ -18,7 +18,11 @@
 -- window. Apply this first and leave n8n as it was and every number minted
 -- here is overwritten by Xero's own the moment the order reaches n8n: the Hub
 -- would show EBUSA8001 for a second and then a Xero number, the series would
--- run on regardless, and the two records would never line up again.
+-- run on regardless, and the two records would never line up again. With the
+-- update guard below, that old PATCH is REFUSED on any order carrying a scheme
+-- number instead of silently applied, so an n8n left unchanged shows up as
+-- failed executions rather than as wrong numbers. That is still a failure:
+-- change n8n first.
 --
 -- What changes:
 --  - Five sequences, each starting at 8001: po_number_seq_ebusa (US depots),
@@ -28,7 +32,11 @@
 --    privileges hand every new sequence to anon and authenticated, so they are
 --    revoked explicitly below. Each one is then wound past any number already
 --    on an order, so re-applying after the rollback cannot re-issue a number
---    that is already a purchase order number in Xero.
+--    that is already a purchase order number in Xero. That reconstruction only
+--    sees numbers still in purchase_orders: a number that reached Xero and
+--    whose row was later deleted leaves no trace here, so after a rollback and
+--    a re-apply it could be issued again. Check Xero's highest number in each
+--    series before re-applying, and setval past it if Xero is ahead.
 --  - hub_po_prefix_for_depot(depot): the depot code to its series. US-BAL and
 --    US-SBD are EBUSA, CA-HAM is EBCAN, EU-FR is EBFRA, AU-SYD is EBAUS. These
 --    are the depot codes the Hub carries in from_entity (DEPOT_MAPPING in
@@ -44,14 +52,17 @@
 --    <n> is the digits of the parent SRO order's number when that parent is an
 --    EB_GROUP_TO_SRO order numbered EBGRP<n>. raise-manufacturing-po.ts and
 --    raise-cargo-po.ts both insert these legs with parent_po_id = the SRO order.
---    A parent numbered in the pre-scheme PO- series falls back to
---    generate_po_number() and logs a warning while it does, so a chain that
---    started under the old scheme keeps working and is still visible. A parent
---    numbered anything else is REFUSED rather than quietly given an old-series
---    number: purchase_orders holds no such chain, so that case can only mean
---    something has gone wrong (n8n writing a Xero number over the Hub's, say),
---    and a silent fallback would hide it. Any other leg is refused.
---    The -3 accounting order has no leg of its own, so nothing here mints it.
+--    ANY other parent that exists falls back to generate_po_number() and
+--    raises a warning naming the parent's number, the parent's leg and the
+--    child's leg. That covers a chain from before the scheme (PO-01224), a
+--    warm-started chain carrying s.r.o.'s own number (1405, EBG26094), an
+--    older Xero-shaped number (PO-USA18139) and test fixtures (E2EPO26005).
+--    All of those are real paths, and refusing them left the manufacturing and
+--    shipping buttons dead on those orders. The case a refusal was meant to
+--    catch, n8n writing Xero's number over an EBGRP order, is now stopped where
+--    it happens, by po_guard_number_update. A missing parent is still refused,
+--    and so is any other leg. The -3 accounting order has no leg of its own,
+--    so nothing here mints it.
 --  - po_before_insert checks who is asking, then mints. It becomes SECURITY
 --    DEFINER with a pinned search_path: the Hub raises depot orders through the
 --    session client (create-po.ts, under the "hub: raise PO" policy), and that
@@ -59,9 +70,22 @@
 --    function or the sequences directly. Every other insert path
 --    (hub_approve_po_leg, hub_warm_start_po_chain, mrp_draft_po_chain and the
 --    service role) already runs as a definer or as the service role.
---  - po_guard_number_update, a new BEFORE UPDATE trigger, refuses a po_number
---    or master_ref change from a signed-in session. Nothing in the Hub renames
---    an order; only n8n and the service role ever wrote to those columns.
+--  - po_guard_number_update, a new BEFORE UPDATE trigger, holds two rules:
+--     1. A signed-in session changes neither po_number nor master_ref, on any
+--        row.
+--     2. NOBODY changes a po_number minted under the scheme (EBUSA, EBCAN,
+--        EBFRA, EBAUS or EBGRP<n>, EBSRO<n>-1/-2/-3), or a master_ref of 'MR-'
+--        followed by one: not the service role, not a definer function, not a
+--        direct connection. That number is the one Xero holds, so changing it
+--        on our side only ever splits the two records. This is where n8n
+--        PATCHing Xero's number back onto the row is stopped. Writing back
+--        xero_po_id and xero_tenant_id on the same row is unaffected, and a PO-
+--        row can still be renamed by the service role, as it always could.
+--    Before the guard was written, src, scripts, supabase, tests and the live
+--    function bodies (pg_get_functiondef) were searched for any UPDATE that
+--    sets po_number or master_ref. There is none: the Hub's own updates set
+--    status, lifecycle, approval, fulfilment and cost snapshot columns only.
+--    The only writer of those two columns after insert was the n8n PATCH.
 --
 -- Who may spend a number, and why that is checked in the trigger:
 --  - po_before_insert runs BEFORE row level security decides anything, and
@@ -97,7 +121,9 @@
 -- restores a trigger that runs as the caller. mrp_draft_po_chain passes its own
 -- numbers and is not affected. hub_warm_start_po_chain with a depot of EB-SRO
 -- and no depot_po_number is now refused; pass the number or leave the depot
--- blank for a refill.
+-- blank for a refill. The warm start inserts with explicit numbers, so a
+-- warm-started s.r.o. number such as 1405 is kept as given, and a later
+-- manufacturing or shipping order under it takes a PO- number with a warning.
 
 -- ---------------------------------------------------------------------------
 -- The guarantees this scheme leans on. Stop here if either has gone.
@@ -244,22 +270,18 @@ begin
       return 'EBSRO' || v_digits || case p_leg when 'SRO_TO_SUPPLIER' then '-1' else '-2' end;
     end if;
 
-    -- A chain that started before the new scheme keeps the old series. Say so
-    -- in the log: these are numbers that missed the scheme, and after the last
-    -- PO- chain is closed a line here means something is wrong rather than old.
-    if v_parent_no ~ '^PO-[0-9]+$' then
-      raise warning 'Purchase order % is from before the EBGRP scheme, so its % order falls back to the PO- series.',
-        v_parent_no, p_leg;
-      return public.generate_po_number();
-    end if;
-
-    -- Anything else is a bug, not history. purchase_orders holds no chain
-    -- outside those two shapes, so landing here means the parent was numbered
-    -- by something other than the Hub (n8n writing a Xero number back over it
-    -- is the way that happens). Refuse rather than paper over it with a number
-    -- from a series nobody is expecting.
-    raise exception 'The order behind this % order cannot be used to number it: % is not an EBGRP order, so there is no EBSRO number to derive from it.',
-      p_leg, coalesce(nullif(v_parent_no, ''), '(blank)');
+    -- Any other parent has no EBGRP digits to derive from, and every way to
+    -- get here is a real one: a chain from before the scheme (PO-01224), a
+    -- warm-started chain carrying s.r.o.'s own number (1405, EBG26094), an
+    -- older Xero-shaped number (PO-USA18139), a test fixture (E2EPO26005), or
+    -- a parent on another leg. The order still has to be raisable, so it takes
+    -- the old series. The warning names the parent's number, the parent's leg
+    -- and this order's leg, so a number that missed the scheme can be traced
+    -- from the log. Overwriting an EBGRP number (n8n writing Xero's back) is
+    -- not a way here any more: po_guard_number_update refuses it at the source.
+    raise warning 'Purchase order % (leg %) has no EBGRP number to derive from, so its % order takes a PO- number instead of an EBSRO one.',
+      v_parent_no, v_parent_leg, p_leg;
+    return public.generate_po_number();
   end if;
 
   raise exception 'No purchase order number series for leg %.', coalesce(nullif(p_leg, ''), '(blank)');
@@ -267,7 +289,7 @@ end;
 $$;
 
 comment on function public.hub_mint_po_number(text, text, uuid) is
-  'Mints the purchase order number for a new order: EBUSA/EBCAN/EBFRA/EBAUS<n> for a depot order, EBGRP<n> for a Group order, EBSRO<n>-1 / -2 for the manufacturing and shipping orders under EBGRP<n>, and the old PO- series under a PO- chain. Any other parent number is refused. Called only by po_before_insert.';
+  'Mints the purchase order number for a new order: EBUSA/EBCAN/EBFRA/EBAUS<n> for a depot order, EBGRP<n> for a Group order, EBSRO<n>-1 / -2 for the manufacturing and shipping orders under EBGRP<n>, and the old PO- series, with a warning naming the parent, under any other parent. A missing parent is refused. Called only by po_before_insert.';
 
 revoke all on function public.hub_mint_po_number(text, text, uuid) from public, anon, authenticated;
 
@@ -335,11 +357,26 @@ $$;
 -- ---------------------------------------------------------------------------
 -- Renaming an order is not a thing the Hub does.
 --
--- authenticated holds UPDATE on purchase_orders, and the "hub: approve PO"
--- policy does not pin po_number or master_ref, so an approver could otherwise
--- rename an order onto a number reserved for another chain and take it out of
--- service. Nothing in the Hub writes either column on an update. anon is not
--- named here because its UPDATE privilege is revoked below.
+-- Rule 1, signed-in sessions, every row. authenticated holds UPDATE on
+-- purchase_orders, and the "hub: approve PO" policy does not pin po_number or
+-- master_ref, so an approver could otherwise rename an order onto a number
+-- reserved for another chain and take it out of service. anon is not named
+-- here because its UPDATE privilege is revoked below.
+--
+-- Rule 2, every caller, scheme numbers. A number minted here is the number
+-- Xero holds for the order. The way it would get overwritten is the service
+-- role (n8n PATCHing Xero's own number back, and re-keying master_ref with it),
+-- which no policy and no grant can stop, so the trigger refuses it whoever is
+-- asking: service role, definer function or direct connection. A PO- row is
+-- outside the scheme and keeps its old behaviour for the service role.
+--
+-- No UPDATE anywhere in the Hub sets either column (src, scripts, supabase,
+-- tests and the live function bodies were searched), so neither rule stands in
+-- the way of anything the Hub does.
+--
+-- Rule 2 carries no errcode, so PostgREST answers 400 rather than 403: the
+-- request is wrong, the credential is fine, and n8n should not be sent looking
+-- for a permissions problem.
 -- ---------------------------------------------------------------------------
 create or replace function public.po_guard_number_update()
 returns trigger
@@ -354,12 +391,25 @@ begin
     raise exception 'A purchase order number cannot be changed once the order exists.'
       using errcode = '42501';
   end if;
+
+  if new.po_number is distinct from old.po_number
+     and old.po_number ~ '^(EB(USA|CAN|FRA|AUS|GRP)[0-9]+|EBSRO[0-9]+-[123])$' then
+    raise exception 'Purchase order number % is the number Xero holds for this order, and it cannot be changed once the order exists.',
+      old.po_number;
+  end if;
+
+  if new.master_ref is distinct from old.master_ref
+     and old.master_ref ~ '^MR-(EB(USA|CAN|FRA|AUS|GRP)[0-9]+|EBSRO[0-9]+-[123])$' then
+    raise exception 'Chain % is keyed on the number Xero holds for its first order, and it cannot be changed once the order exists.',
+      old.master_ref;
+  end if;
+
   return new;
 end;
 $$;
 
 comment on function public.po_guard_number_update() is
-  'Refuses a po_number or master_ref change from a signed-in session. The service role and the definer paths are unaffected.';
+  'Refuses a po_number or master_ref change from a signed-in session on any row, and from every caller, the service role included, on a number minted under the scheme (EBUSA/EBCAN/EBFRA/EBAUS/EBGRP<n>, EBSRO<n>-1/-2/-3, or MR- followed by one). That number is the one Xero holds.';
 
 drop trigger if exists trg_po_number_guard on public.purchase_orders;
 create trigger trg_po_number_guard

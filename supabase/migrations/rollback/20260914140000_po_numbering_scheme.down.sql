@@ -26,6 +26,9 @@
 --
 -- Also revert the n8n change to workflow Fz7xXgifva5n548u before or with this,
 -- or Xero keeps receiving the Hub's number while the Hub mints PO- numbers.
+-- Dropping the update guard also lifts its refusal of any change to an EB
+-- number, the service role included, so from here nothing in the database
+-- stops a PATCH renaming EBUSA8001 and friends on orders that keep them.
 
 create or replace function public.po_before_insert()
 returns trigger

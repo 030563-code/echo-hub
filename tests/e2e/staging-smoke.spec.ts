@@ -7,8 +7,10 @@ import { adminCreds, login } from "./helpers";
 // approving up the chain with the reference carrying, the board's "Awaiting Xero"
 // display, and the PO PDF download.
 //
-//   E2E_BASE_URL=https://echo-hub-staging.netlify.app \
+//   E2E_BASE_URL=https://echo-hub-staging.netlify.app E2E_SPEND_PO_NUMBERS=1 \
 //     npx playwright test --config=playwright.remote.config.ts
+//
+// Without E2E_SPEND_PO_NUMBERS the spec skips: see COST OF A RUN below.
 //
 // SAFETY: the STAGING-banner assertion runs BEFORE any Approve click, so if the
 // deploy were NOT in sandbox mode the test aborts before anything could reach

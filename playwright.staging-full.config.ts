@@ -7,7 +7,10 @@ import { resolve } from "node:path";
 // the deployed UI too; specs that need LIVE external calls (Cargo) or mfg writes
 // (BOM price save) self-skip on remote — the staging kill switch blocks those by
 // design. po-approve-chain is excluded here because staging-smoke.spec.ts already
-// covers the approve chain on staging (and localhost approvals are n8n-live).
+// covers the approve chain on staging (and localhost approvals are n8n-live), and
+// that smoke spec runs ONLY with E2E_SPEND_PO_NUMBERS set: each approve chain
+// spends a live EBUSA and a live EBGRP number that no cleanup gives back. So a
+// sweep without the flag covers the approve chain not at all, by design.
 try {
   const raw = readFileSync(resolve(process.cwd(), ".env.local"), "utf8");
   for (const line of raw.split("\n")) {

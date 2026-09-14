@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { PO_PREFIX_BY_DEPOT } from '@/lib/po-number'
+import { PO_PREFIX_BY_DEPOT, isNewSchemePoNumber } from '@/lib/po-number'
 
 /**
  * The numbering migration and the TypeScript that speaks to it must agree.
@@ -11,9 +11,10 @@ import { PO_PREFIX_BY_DEPOT } from '@/lib/po-number'
  * past any number already in use, only the trigger can mint (the functions and
  * sequences are closed to anon and authenticated), only a signed-in caller with
  * po.create or po.approve can spend a number and it never picks its own,
- * s.r.o.'s documents take the digits of their Group order's po_number, a PO-
- * chain falls back to the PO- series and anything else is refused, and the
- * depot map in SQL is the one in src/lib/po-number.ts.
+ * s.r.o.'s documents take the digits of their Group order's po_number, any
+ * other parent falls back to the PO- series with a warning that names it, a
+ * number minted under the scheme cannot be renamed by anyone, the service role
+ * included, and the depot map in SQL is the one in src/lib/po-number.ts.
  */
 
 const MIG = 'supabase/migrations/20260914140000_po_numbering_scheme.sql'
@@ -141,7 +142,7 @@ describe('po numbering migration', () => {
     expect(mint).not.toMatch(/po_number_seq_ebsro/)
   })
 
-  it('falls back to the old PO- series under a chain from before the scheme', () => {
+  it('falls back to the old PO- series under any other existing parent', () => {
     const mint = fn(up, 'hub_mint_po_number')
     const derive = mint.indexOf("return 'EBSRO'")
     const fallback = mint.indexOf('return public.generate_po_number();')
@@ -150,28 +151,29 @@ describe('po numbering migration', () => {
     // Exactly one fallback, and it sits inside the s.r.o. branch, before the final refusal.
     expect(mint.match(/generate_po_number\(\)/g)).toHaveLength(1)
     expect(fallback).toBeLessThan(mint.indexOf("raise exception 'No purchase order number series for leg %.'"))
+    // Unconditional once the EBGRP derive has not returned. Round 1 refused
+    // anything but EBGRP<n> or PO-<n>, which left the manufacturing and
+    // shipping buttons dead on warm-started chains (1405, EBG26094), on
+    // Xero-shaped numbers (PO-USA18139) and on test fixtures (E2EPO26005).
+    const between = mint.slice(mint.indexOf('end if;', derive) + 'end if;'.length, fallback)
+    expect(between).not.toMatch(/\bif\b/)
+    expect(between).not.toMatch(/raise exception/)
+    expect(mint).not.toMatch(/v_parent_no ~ '\^PO-/)
+    expect(mint).not.toContain('is not an EBGRP order')
   })
 
-  it('takes the fallback only for a PO- parent, and says so in the log', () => {
+  it('names the parent number, the parent leg and the child leg in the fallback warning', () => {
     const mint = fn(up, 'hub_mint_po_number')
-    // The fallback is reachable ONLY from a parent numbered in the pre-scheme
-    // PO- series. It used to catch every number that was not EBGRP<n>, which
-    // with zero legacy chains in the table could only ever have hidden a bug.
-    expect(mint).toContain("if v_parent_no ~ '^PO-[0-9]+$' then")
-    expect(mint.indexOf("if v_parent_no ~ '^PO-[0-9]+$' then")).toBeLessThan(
-      mint.indexOf('return public.generate_po_number();'),
-    )
-    // A number that missed the scheme has to be visible somewhere.
-    expect(mint).toMatch(/raise warning 'Purchase order % is from before the EBGRP scheme/)
-  })
-
-  it('refuses any other parent instead of quietly giving it an old-series number', () => {
-    const mint = fn(up, 'hub_mint_po_number')
-    expect(mint).toMatch(
-      /raise exception 'The order behind this % order cannot be used to number it: % is not an EBGRP order/,
-    )
-    // The refusal names the leg and the parent's number, and nothing else.
-    expect(mint).toMatch(/p_leg, coalesce\(nullif\(v_parent_no, ''\), '\(blank\)'\);/)
+    // Pin the ARGUMENTS as well as the text. The round-1 pin matched only the
+    // prefix of the message, so a warning naming no parent at all still passed.
+    const m = mint.match(/raise warning '([^']*)',\s*([^;]*);\s*return public\.generate_po_number\(\);/)
+    expect(m, 'the warning must sit directly before the fallback').toBeTruthy()
+    const [, text, args] = m ?? []
+    expect(text.match(/%/g)).toHaveLength(3)
+    expect(text).toMatch(/^Purchase order % \(leg %\) has no EBGRP number to derive from, so its % order takes a PO- number/)
+    expect(args.split(',').map((a) => a.trim())).toEqual(['v_parent_no', 'v_parent_leg', 'p_leg'])
+    // The parent's number and leg come from the parent's own row.
+    expect(mint).toMatch(/select po\.leg, po\.po_number\s+into v_parent_leg, v_parent_no/)
   })
 
   it('never puts a purchase order id in a message', () => {
@@ -239,6 +241,57 @@ describe('po numbering migration', () => {
     expect(up).toMatch(
       /create trigger trg_po_number_guard\s+before update on public\.purchase_orders\s+for each row execute function public\.po_guard_number_update\(\);/,
     )
+  })
+
+  describe('refuses a rename of a scheme number from EVERY caller', () => {
+    // n8n PATCHing Xero's own number over the Hub's runs as the service role,
+    // which no policy or grant stops. The guard is the only thing that can.
+    const guard = () => fn(up, 'po_guard_number_update')
+    const NUMBER_RULE =
+      /if new\.po_number is distinct from old\.po_number\s+and old\.po_number ~ '([^']+)' then\s+raise exception '([^']*)',\s*old\.po_number;/
+    const REF_RULE =
+      /if new\.master_ref is distinct from old\.master_ref\s+and old\.master_ref ~ '([^']+)' then\s+raise exception '([^']*)',\s*old\.master_ref;/
+
+    it('guards po_number and master_ref with no role condition', () => {
+      const g = guard()
+      const num = g.match(NUMBER_RULE)
+      const ref = g.match(REF_RULE)
+      expect(num, 'po_number rule not found').toBeTruthy()
+      expect(ref, 'master_ref rule not found').toBeTruthy()
+      // Neither rule may be nested inside the authenticated check: each is its
+      // own top-level if, after the session rule has closed.
+      const sessionEnd = g.indexOf('end if;')
+      expect(g.indexOf('if new.po_number is distinct from old.po_number')).toBeGreaterThan(sessionEnd)
+      expect(g.indexOf('if new.master_ref is distinct from old.master_ref')).toBeGreaterThan(sessionEnd)
+      const outsideSession = g.slice(sessionEnd)
+      expect(outsideSession).not.toMatch(/auth\.role|current_user|session_user|service_role/)
+    })
+
+    it('says the number is the one Xero holds and cannot change once the order exists', () => {
+      const g = guard()
+      for (const rule of [NUMBER_RULE, REF_RULE]) {
+        const text = g.match(rule)?.[2] ?? ''
+        expect(text).toContain('the number Xero holds')
+        expect(text).toContain('cannot be changed once the order exists')
+      }
+    })
+
+    it('matches exactly the numbers the TypeScript calls new-scheme', () => {
+      const g = guard()
+      const numberPattern = new RegExp(g.match(NUMBER_RULE)?.[1] ?? '^$')
+      const refPattern = new RegExp(g.match(REF_RULE)?.[1] ?? '^$')
+      expect(numberPattern.source).toBe('^(EB(USA|CAN|FRA|AUS|GRP)[0-9]+|EBSRO[0-9]+-[123])$')
+      expect(refPattern.source).toBe('^MR-(EB(USA|CAN|FRA|AUS|GRP)[0-9]+|EBSRO[0-9]+-[123])$')
+      const samples = [
+        'EBUSA8001', 'EBCAN8001', 'EBFRA8001', 'EBAUS8001', 'EBGRP8001', 'EBSRO8001-1', 'EBSRO8001-2', 'EBSRO8001-3',
+        'EBSRO8001-4', 'EBSRO8001', 'EBGRP', 'EBG26086', 'EBG26094', 'EBUSA26013x', 'PO-01224', 'PO-USA18139',
+        '1405', 'E2EPO26005', 'MRPD-20260914-01', 'xEBUSA8001', '',
+      ]
+      for (const n of samples) {
+        expect(numberPattern.test(n), n).toBe(isNewSchemePoNumber(n))
+        expect(refPattern.test(`MR-${n}`), `MR-${n}`).toBe(isNewSchemePoNumber(n))
+      }
+    })
   })
 
   it('asserts the unique guarantees instead of assuming them', () => {

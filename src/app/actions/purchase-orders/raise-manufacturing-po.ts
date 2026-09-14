@@ -95,8 +95,11 @@ export async function raiseManufacturingPo(
     .maybeSingle();
   if (dupe) return { ok: false, error: "A manufacturing order already exists for this SRO order." };
 
-  // The trigger mints po_number (EBSRO<n>-1 under EBGRP<n>, the old PO- series
-  // under an older chain) and inherits master_ref from parent_po_id.
+  // The trigger mints po_number and inherits master_ref from parent_po_id. Under
+  // an SRO order numbered EBGRP<n> the number is EBSRO<n>-1. Under any other SRO
+  // number (an old PO- chain, a warm-started s.r.o. number such as 1405, a test
+  // fixture) it is a PO- number, with a database warning naming the parent, so
+  // the button works on every SRO order rather than failing on the older ones.
   const { data: child, error: childErr } = await admin
     .from("purchase_orders")
     .insert({

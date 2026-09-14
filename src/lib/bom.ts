@@ -205,11 +205,14 @@ export async function loadSroPoBoms(): Promise<{ pos: SroPoBom[]; week: string |
 export async function loadManufacturingPoNumbers(sroPoIds: string[]): Promise<Record<string, string>> {
   if (sroPoIds.length === 0) return {}
   const supabase = await createServerClient()
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('purchase_orders')
     .select('parent_po_id, po_number')
     .eq('leg', 'SRO_TO_SUPPLIER')
     .in('parent_po_id', sroPoIds)
+  // A failure here is not fatal (the document falls back to the SRO order's own
+  // number) but it is silent on screen, so it has to be loud in the log.
+  if (error) console.error('Could not read the manufacturing order numbers for these SRO orders:', error.message)
 
   const out: Record<string, string> = {}
   for (const row of (data ?? []) as { parent_po_id: string | null; po_number: string | null }[]) {
