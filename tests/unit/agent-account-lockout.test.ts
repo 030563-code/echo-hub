@@ -42,6 +42,8 @@ vi.mock('@/lib/supabase/server', () => ({
   }),
 }))
 
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { NextRequest } from 'next/server'
 import { middleware } from '@/middleware'
 import { GET as authCallback } from '@/app/auth/callback/route'
@@ -165,5 +167,23 @@ describe('/auth/callback', () => {
     profileSingle.mockResolvedValue({ data: { pipeline_id: null, display_name: null } })
     const res = await callback()
     expect(res.headers.get('location')).toBe('https://hub.echobarrier.com/onboarding')
+  })
+})
+
+describe('createQuote never prints the login address on a quote', () => {
+  // The other half of the same finding, and the half that reaches a customer.
+  // createQuote copies the sender email onto the HubSpot quote, so after the
+  // cutover user.email would tell customers to reply to an address with no MX
+  // record. A source check because there is no unit test around createQuote
+  // itself: it is a 'use server' action wired to HubSpot and Supabase end to
+  // end, and this is the one line that must not come back.
+  const src = readFileSync(join(process.cwd(), 'src/app/actions/sales/create-quote.ts'), 'utf8')
+
+  it('resolves the sender through agentSenderEmail and sends that, not user.email', () => {
+    expect(src).toContain("import { agentSenderEmail } from '@/lib/agent-account'")
+    expect(src).toContain('const senderEmail = agentSenderEmail(user.id) ?? user.email ?? null')
+    expect(src).toContain('email: senderEmail,')
+    expect(src).not.toContain('email: user.email')
+    expect(src).not.toContain("createdByLabel: user.email")
   })
 })
