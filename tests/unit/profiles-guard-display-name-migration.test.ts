@@ -11,8 +11,8 @@ import { join } from 'node:path'
  * as anon's, since the PUBLIC grant alone kept anon able to call it.
  */
 
-const UP = 'supabase/migrations/pending/20260914140000_profiles_guard_display_name.sql'
-const DOWN = 'supabase/migrations/rollback/20260914140000_profiles_guard_display_name.down.sql'
+const UP = 'supabase/migrations/pending/20260914160000_profiles_guard_display_name.sql'
+const DOWN = 'supabase/migrations/rollback/20260914160000_profiles_guard_display_name.down.sql'
 
 function code(path: string): string {
   return readFileSync(join(process.cwd(), path), 'utf8')

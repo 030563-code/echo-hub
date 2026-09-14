@@ -11,8 +11,8 @@ import { join } from 'node:path'
  * rep raised is untouched by this in both directions.
  */
 
-const UP = 'supabase/migrations/pending/20260914150000_deal_quotes_agent_pricing.sql'
-const DOWN = 'supabase/migrations/rollback/20260914150000_deal_quotes_agent_pricing.down.sql'
+const UP = 'supabase/migrations/pending/20260914161000_deal_quotes_agent_pricing.sql'
+const DOWN = 'supabase/migrations/rollback/20260914161000_deal_quotes_agent_pricing.down.sql'
 
 function code(path: string): string {
   return readFileSync(join(process.cwd(), path), 'utf8')

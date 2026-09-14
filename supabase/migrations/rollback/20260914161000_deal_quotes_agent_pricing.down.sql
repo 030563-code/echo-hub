@@ -1,4 +1,4 @@
--- Rollback for pending/20260914150000_deal_quotes_agent_pricing.sql.
+-- Rollback for pending/20260914161000_deal_quotes_agent_pricing.sql.
 -- Run as ONE transaction (MCP execute_sql in one batch, or psql
 -- --single-transaction -f).
 --
