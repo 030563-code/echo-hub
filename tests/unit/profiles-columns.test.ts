@@ -31,6 +31,10 @@ const PROFILE_COLUMNS = new Set([
   'created_at',
   'updated_at',
   'phone',
+  // 20260914100000_profile_bio_avatar
+  'job_title',
+  'bio',
+  'avatar_updated_at',
   '*',
 ])
 
