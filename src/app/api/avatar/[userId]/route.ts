@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { NextRequest } from 'next/server'
 import { getAuthorizedUser } from '@/lib/authz'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { AVATAR_BUCKET, sniffImageType } from '@/lib/profile/avatar'
+import { AVATAR_BUCKET, avatarVersion, sniffImageType } from '@/lib/profile/avatar'
 
 // ---------------------------------------------------------------------------
 // GET /api/avatar/<userId>: a profile photo, served same-origin.
@@ -13,6 +13,14 @@ import { AVATAR_BUCKET, sniffImageType } from '@/lib/profile/avatar'
 //
 // Who may see a photo: its owner, or a super admin. Everyone else gets 404, the
 // same answer as "no photo", so the route never says whether one exists.
+//
+// The database decides whether there is a photo, not the bucket. The route
+// reads avatar_updated_at before it touches Storage and answers 404 while it is
+// null, so an object a failed removal left behind is never served. It also
+// decides caching: only a url whose version is the CURRENT one may be cached
+// for a year, and any other version, or none, is fetched fresh every time. The
+// upload puts the bytes in before it changes the version, so a url cached for a
+// year never holds a photo older than the version it names.
 //
 // The bytes are sniffed again on the way OUT. The upload action already
 // refused anything that was not a JPEG, PNG or WebP, but the bucket is the
@@ -46,6 +54,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!allowed) return notFound()
 
   const admin = createAdminClient()
+  const { data: row, error: rowErr } = await admin
+    .from('profiles')
+    .select('avatar_updated_at')
+    .eq('id', parsed.data)
+    .maybeSingle()
+  if (rowErr || !row || row.avatar_updated_at === null) return notFound()
+  const version = avatarVersion(row.avatar_updated_at)
+  if (version === null) return notFound()
+
   const { data, error } = await admin.storage.from(AVATAR_BUCKET).download(parsed.data)
   if (error || !data) return notFound()
 
@@ -53,15 +70,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const contentType = sniffImageType(bytes)
   if (!contentType) return notFound()
 
-  // A versioned url changes whenever the photo does, so it can be cached for a
-  // year. An unversioned one must always be fetched fresh.
-  const versioned = request.nextUrl.searchParams.has('v')
+  // The same number avatarSrc() put in the url. Only the current version is
+  // immutable; a stale version or no version at all must always be fetched fresh.
+  const isCurrent = request.nextUrl.searchParams.get('v') === String(version)
 
   return new Response(bytes, {
     status: 200,
     headers: {
       'Content-Type': contentType,
-      'Cache-Control': versioned ? 'private, max-age=31536000, immutable' : 'private, no-store',
+      'Cache-Control': isCurrent ? 'private, max-age=31536000, immutable' : 'private, no-store',
       'Content-Disposition': 'inline',
       'Content-Security-Policy': "default-src 'none'; sandbox",
       'X-Content-Type-Options': 'nosniff',

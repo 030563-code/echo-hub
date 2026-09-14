@@ -6,6 +6,7 @@ import {
   BIO_MAX,
   JOB_TITLE_MAX,
   avatarSrc,
+  avatarVersion,
   initialsFor,
   sniffImageType,
 } from '@/lib/profile/avatar'
@@ -92,6 +93,22 @@ describe('avatarSrc', () => {
 
   it('changes when the photo changes', () => {
     expect(avatarSrc(id, '2026-09-14T10:00:00Z')).not.toBe(avatarSrc(id, '2026-09-14T10:00:01Z'))
+  })
+
+  it('carries exactly the version the image route compares against', () => {
+    // Postgres returns microseconds; both sides must truncate them the same way.
+    const at = '2026-09-14T10:00:00.123456+00:00'
+    const v = new URL(avatarSrc(id, at)!, 'http://x').searchParams.get('v')
+    expect(v).toBe(String(avatarVersion(at)))
+    expect(avatarVersion(at)).toBe(Date.parse('2026-09-14T10:00:00.123Z'))
+  })
+})
+
+describe('avatarVersion', () => {
+  it('is null with no photo or an unparseable timestamp', () => {
+    expect(avatarVersion(null)).toBeNull()
+    expect(avatarVersion('')).toBeNull()
+    expect(avatarVersion('not a date')).toBeNull()
   })
 })
 

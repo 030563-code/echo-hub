@@ -68,20 +68,29 @@ describe('src/app/actions/profile.ts', () => {
     expect(new Set(idFilters)).toEqual(new Set(['auth.user.id']))
   })
 
-  it('changes the photo version before the bytes, so a cached url never points at the wrong image', () => {
+  it('puts the bytes in before the version, and clears the version before the bytes go', () => {
     const body = (name: string) => {
       const start = source.indexOf(`export async function ${name}(`)
       const next = source.indexOf('\nexport ', start + 1)
       return start === -1 ? '' : source.slice(start, next === -1 ? undefined : next)
     }
+    // Upload: the object is upserted FIRST, so no version is ever stamped for
+    // bytes that are not in place yet.
     const upload = body('uploadAvatar')
+    const put = upload.indexOf('.upload(auth.user.id,')
     const stamp = upload.indexOf('avatar_updated_at: new Date().toISOString()')
+    expect(put, 'uploadAvatar upserts the object').toBeGreaterThan(-1)
+    expect(upload).toMatch(/upsert:\s*true/)
     expect(stamp, 'uploadAvatar stamps avatar_updated_at').toBeGreaterThan(-1)
-    expect(stamp).toBeLessThan(upload.indexOf('.upload(auth.user.id,'))
+    expect(put, 'uploadAvatar must upsert the bytes before it stamps the version').toBeLessThan(stamp)
+    // Remove: the version is nulled FIRST, so the route 404s even if the
+    // object delete then fails.
     const remove = body('removeAvatar')
     const clear = remove.indexOf('avatar_updated_at: null')
+    const drop = remove.indexOf('.remove([auth.user.id])')
     expect(clear, 'removeAvatar clears avatar_updated_at').toBeGreaterThan(-1)
-    expect(clear).toBeLessThan(remove.indexOf('.remove([auth.user.id])'))
+    expect(drop, 'removeAvatar removes the object').toBeGreaterThan(-1)
+    expect(clear, 'removeAvatar must null the version before it removes the object').toBeLessThan(drop)
   })
 
   it('ignores the declared file type and stores the sniffed one', () => {
@@ -93,11 +102,13 @@ describe('src/app/actions/profile.ts', () => {
 describe('src/app/api/avatar/[userId]/route.ts', () => {
   const source = existsSync(join(process.cwd(), ROUTE)) ? read(ROUTE) : ''
 
-  /** The route without its whole-line comments, so prose cannot satisfy a check. */
-  const code = source
-    .split('\n')
-    .filter((line) => !/^\s*\/\//.test(line))
-    .join('\n')
+  /**
+   * The route without its comments, so prose cannot satisfy a check: block
+   * comments first (a denial wrapped in slash-star must not count), then line
+   * comments, whole-line or trailing. A trailing one must start after
+   * whitespace, so the // inside a url in a string is left alone.
+   */
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1')
 
   it('serves GET only, and exports nothing but GET and the dynamic flag', () => {
     const methods = [...code.matchAll(/^export\s+(?:async\s+)?function\s+(\w+)/gm)].map((m) => m[1])
@@ -120,14 +131,25 @@ describe('src/app/api/avatar/[userId]/route.ts', () => {
   })
 
   it('refuses a non-owner who is not a super admin before it reads the bucket', () => {
-    // The decision: the requested id is the session user, or the viewer is a super admin.
-    const decision = /const\s+(\w+)\s*=\s*parsed\.data\s*===\s*auth\.user\.id\s*\|\|\s*auth\.profile\.is_super_admin\b/.exec(
-      code,
-    )
-    expect(decision, 'the owner-or-super-admin decision is missing').toBeTruthy()
-    // The denial: an early return of the 404 when that decision is false.
-    const denial = new RegExp(`if\\s*\\(\\s*!${decision![1]}\\s*\\)\\s*return\\s+notFound\\(\\)`).exec(code)
+    // The decision: the requested id is the session user, or the viewer is a
+    // super admin, and NOTHING else. Anchored to the whole line, so a trailing
+    // "|| true" or any other clause after is_super_admin does not match.
+    const decision =
+      /^[ \t]*const\s+(\w+)\s*=\s*parsed\.data\s*===\s*auth\.user\.id\s*\|\|\s*auth\.profile\.is_super_admin[ \t]*;?[ \t]*$/m.exec(
+        code,
+      )
+    expect(decision, 'the owner-or-super-admin decision is missing, or has something after it').toBeTruthy()
+    // The denial: an early return of the 404 when that decision is false, on its own line.
+    const denial = new RegExp(
+      `^[ \\t]*if\\s*\\(\\s*!${decision![1]}\\s*\\)\\s*return\\s+notFound\\(\\)[ \\t]*;?[ \\t]*$`,
+      'm',
+    ).exec(code)
     expect(denial, 'the early return that refuses everyone else is missing').toBeTruthy()
+    // The denial follows the decision directly. Nothing may sit between them: no
+    // continuation line ("|| true" on the next line still belongs to the
+    // expression) and no reassignment.
+    const between = code.slice(decision!.index + decision![0].length, denial!.index)
+    expect(between.trim(), 'code between the decision and the denial').toBe('')
     // Both come before the first storage read, so no byte is fetched for a refused viewer.
     const download = code.indexOf('.download(')
     expect(download, 'the storage download call is missing').toBeGreaterThan(-1)
@@ -135,6 +157,46 @@ describe('src/app/api/avatar/[userId]/route.ts', () => {
     expect(denial!.index).toBeLessThan(download)
     // And notFound really answers 404.
     expect(code).toMatch(/function notFound\(\): Response \{\s*return new Response\('Not found', \{\s*status: 404,/)
+  })
+
+  it('asks the database for the current version before it reads the bucket, and 404s without one', () => {
+    const download = code.indexOf('.download(')
+    expect(download, 'the storage download call is missing').toBeGreaterThan(-1)
+    // The read: avatar_updated_at for the REQUESTED user, as one row or none.
+    const read = /\.from\('profiles'\)\s*\.select\('avatar_updated_at'\)\s*\.eq\('id',\s*parsed\.data\)\s*\.maybeSingle\(\)/.exec(code)
+    expect(read, 'the avatar_updated_at read is missing').toBeTruthy()
+    expect(read!.index, 'avatar_updated_at must be read before the download').toBeLessThan(download)
+    // An error, no row, or a null version all give the same 404, before the download.
+    const nullCheck =
+      /^[ \t]*if\s*\(\s*rowErr\s*\|\|\s*!row\s*\|\|\s*row\.avatar_updated_at\s*===\s*null\s*\)\s*return\s+notFound\(\)[ \t]*;?[ \t]*$/m.exec(
+        code,
+      )
+    expect(nullCheck, 'the error / no row / null version check returning 404 is missing').toBeTruthy()
+    expect(read!.index).toBeLessThan(nullCheck!.index)
+    expect(nullCheck!.index).toBeLessThan(download)
+    // The version comes from the same conversion avatarSrc() uses.
+    expect(code).toMatch(/import \{[^}]*\bavatarVersion\b[^}]*\} from '@\/lib\/profile\/avatar'/)
+    const version = /^[ \t]*const\s+(\w+)\s*=\s*avatarVersion\(row\.avatar_updated_at\)[ \t]*;?[ \t]*$/m.exec(code)
+    expect(version, 'the version is not computed with avatarVersion()').toBeTruthy()
+    expect(code).toMatch(new RegExp(`^[ \\t]*if\\s*\\(\\s*${version![1]}\\s*===\\s*null\\s*\\)\\s*return\\s+notFound\\(\\)`, 'm'))
+  })
+
+  it('caches for a year only when the url names the current version', () => {
+    const version = /const\s+(\w+)\s*=\s*avatarVersion\(row\.avatar_updated_at\)/.exec(code)
+    expect(version, 'the version is not computed with avatarVersion()').toBeTruthy()
+    // v must EQUAL the current version, not merely be present.
+    const current = new RegExp(
+      `^[ \\t]*const\\s+(\\w+)\\s*=\\s*request\\.nextUrl\\.searchParams\\.get\\('v'\\)\\s*===\\s*String\\(${version![1]}\\)[ \\t]*;?[ \\t]*$`,
+      'm',
+    ).exec(code)
+    expect(current, 'the v-equals-current-version comparison is missing').toBeTruthy()
+    expect(code).not.toMatch(/searchParams\.has\(/)
+    // The immutable header is guarded by that comparison and nothing else.
+    const header = new RegExp(
+      `'Cache-Control':\\s*${current![1]}\\s*\\?\\s*'private, max-age=31536000, immutable'\\s*:\\s*'private, no-store'`,
+    )
+    expect(code).toMatch(header)
+    expect(code.match(/immutable/g) ?? []).toHaveLength(1)
   })
 
   it('re-sniffs what it serves and sandboxes the response', () => {

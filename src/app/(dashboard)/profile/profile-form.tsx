@@ -105,8 +105,8 @@ export default function ProfileForm({
   userId,
   email,
   displayName,
-  jobTitle: savedJobTitle,
-  bio: savedBio,
+  jobTitle: rawJobTitle,
+  bio: rawBio,
   avatarUpdatedAt,
 }: Props) {
   // ------------------------------------------------------------------
@@ -202,14 +202,21 @@ export default function ProfileForm({
   // ------------------------------------------------------------------
   // Details: job title and bio. Typed content, so a page-state draft.
   // ------------------------------------------------------------------
-  const [jobTitle, setJobTitle] = useState(savedJobTitle ?? '')
-  const [bio, setBio] = useState(savedBio ?? '')
+  // The saved values, normalised once: trimmed, and '' for none. The action
+  // trims what it stores, but the database also lets a signed-in user write
+  // untrimmed text directly, and a stored value with stray spaces must not look
+  // like a change on every visit.
+  const savedJobTitle = (rawJobTitle ?? '').trim()
+  const savedBio = (rawBio ?? '').trim()
+
+  const [jobTitle, setJobTitle] = useState(savedJobTitle)
+  const [bio, setBio] = useState(savedBio)
   const [savingDetails, setSavingDetails] = useState(false)
 
-  // The server trims what it stores, so text that differs from the saved values
-  // only in surrounding spaces is the saved text, not a change and not a draft.
+  // Trimmed against trimmed: text that differs from the saved values only in
+  // surrounding spaces is the saved text, not a change and not a draft.
   const matchesSaved = (values: { jobTitle: string; bio: string }) =>
-    values.jobTitle.trim() === (savedJobTitle ?? '') && values.bio.trim() === (savedBio ?? '')
+    values.jobTitle.trim() === savedJobTitle && values.bio.trim() === savedBio
 
   const {
     status: draftStatus,
@@ -244,8 +251,8 @@ export default function ProfileForm({
 
   async function startAgain() {
     await clearDraft()
-    setJobTitle(savedJobTitle ?? '')
-    setBio(savedBio ?? '')
+    setJobTitle(savedJobTitle)
+    setBio(savedBio)
   }
 
   async function saveDetails(event: React.FormEvent<HTMLFormElement>) {

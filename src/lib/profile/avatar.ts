@@ -49,17 +49,29 @@ export function sniffImageType(bytes: Uint8Array): AvatarImageType | null {
 }
 
 /**
- * The same-origin url for a user's photo, or null when they have none.
+ * A photo's version: avatar_updated_at as epoch milliseconds, or null when
+ * there is no photo or the timestamp does not parse.
  *
- * The version parameter is the time the photo last changed, so the route can
- * let the browser cache a versioned url for a year and a new photo still shows
- * the moment it is saved.
+ * avatarSrc() puts this number in the url and the image route compares the url
+ * against it, so both read it from here and cannot drift apart.
  */
-export function avatarSrc(userId: string, avatarUpdatedAt: string | null): string | null {
+export function avatarVersion(avatarUpdatedAt: string | null): number | null {
   if (!avatarUpdatedAt) return null
   const ms = new Date(avatarUpdatedAt).getTime()
-  if (Number.isNaN(ms)) return null
-  return `/api/avatar/${encodeURIComponent(userId)}?v=${ms}`
+  return Number.isNaN(ms) ? null : ms
+}
+
+/**
+ * The same-origin url for a user's photo, or null when they have none.
+ *
+ * The version parameter is the time the photo last changed. The route caches a
+ * url for a year only while its version is the current one, so a new photo
+ * still shows the moment it is saved.
+ */
+export function avatarSrc(userId: string, avatarUpdatedAt: string | null): string | null {
+  const version = avatarVersion(avatarUpdatedAt)
+  if (version === null) return null
+  return `/api/avatar/${encodeURIComponent(userId)}?v=${version}`
 }
 
 /** The first letter or digit in a word, uppercased, or '' when it has none.

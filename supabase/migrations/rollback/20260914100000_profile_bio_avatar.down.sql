@@ -1,4 +1,5 @@
 -- Rollback for 20260914100000_profile_bio_avatar.sql.
+-- Run it as ONE transaction: through the Supabase SQL editor or MCP execute_sql (one batch), or with psql --single-transaction -f. Plain psql -f runs each statement in autocommit, so the set_config below is gone before the bucket delete, which then fails after the columns are already dropped.
 --
 -- Remove every object in the avatars bucket first, through the Storage API, not
 -- by deleting rows. The bucket is deleted only when it is empty: while it still

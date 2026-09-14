@@ -12,13 +12,18 @@ import { adminCreds, limitedCreds, login } from './helpers'
  * pass or fail. The photo restore re-uploads the original bytes, which the page
  * re-encodes, so a restored photo is the same picture but not the same file.
  *
- * It refuses to start if a photo is on screen but its bytes could not be read,
+ * Any request for a photo on the page means the user has one, whatever is on
+ * screen, because a photo that fails to load is drawn as initials. Only no photo
+ * request at all with initials shown counts as no photo. When there is a photo
+ * its bytes must be read (200, an image type) before anything is changed,
  * because the upload below would overwrite the only copy. The originals are also
  * written to the test's output folder, so a restore that fails can be done by
  * hand before the next run clears that folder.
  *
  * Every step inside the try has its own timeout, well inside the test's, so a
- * hung click still leaves the finally block time to put things back.
+ * hung click still leaves the finally block time to put things back. The second
+ * user's login has no timeouts of its own, so it happens before the try, while
+ * nothing has been changed yet.
  */
 
 const admin = adminCreds()
@@ -106,16 +111,12 @@ test.describe('Your profile', () => {
       if (dialog.type() === 'confirm' && dialog.message().startsWith('Remove your photo?')) void dialog.accept()
       else void dialog.dismiss()
     })
-    // A photo that fails to load is shown as initials, so "no img" alone does not
-    // mean "no photo". Any failed photo request on this page counts as a photo
-    // that exists but could not be read.
-    const photoFailures: string[] = []
-    const isPhotoUrl = (url: string) => new URL(url).pathname.startsWith('/api/avatar/')
-    page.on('response', (res) => {
-      if (isPhotoUrl(res.url()) && res.status() !== 200) photoFailures.push(`${res.status()} ${res.url()}`)
-    })
-    page.on('requestfailed', (req) => {
-      if (isPhotoUrl(req.url())) photoFailures.push(`failed ${req.url()}`)
+    // Every photo url this page asks for, whatever comes back. A photo that fails
+    // to load is shown as initials, so "no img" alone does not mean "no photo".
+    // Recorded at the request, so one still on its way counts too.
+    const photoRequests: string[] = []
+    page.on('request', (req) => {
+      if (new URL(req.url()).pathname.startsWith('/api/avatar/')) photoRequests.push(req.url())
     })
     await login(page, admin!)
     await openProfile(page)
@@ -124,24 +125,24 @@ test.describe('Your profile', () => {
     const originalJobTitle = await page.getByLabel('Job title').inputValue()
     const originalBio = await page.getByLabel('Bio').inputValue()
     const originalImg = avatarBox(page).locator('img')
+    const shownSrc = (await originalImg.count()) > 0 ? await originalImg.getAttribute('src') : null
+    // A photo on screen, or any photo request at all, means there is a photo.
+    const photoUrl = shownSrc ?? photoRequests[0] ?? null
     let originalPhoto: { buffer: Buffer; mimeType: string } | null = null
-    if ((await originalImg.count()) > 0) {
-      const src = await originalImg.getAttribute('src')
-      const res = src ? await page.request.get(src, { timeout: STEP_MS }) : null
-      const mimeType = res?.headers()['content-type'] ?? ''
-      if (!res || res.status() !== 200 || !/^image\/(jpeg|png|webp)$/.test(mimeType)) {
+    if (photoUrl) {
+      const res = await page.request.get(photoUrl, { timeout: STEP_MS })
+      const mimeType = res.headers()['content-type'] ?? ''
+      if (res.status() !== 200 || !/^image\/(jpeg|png|webp)$/.test(mimeType)) {
         // Nothing has been changed yet. Going on would overwrite the only copy.
         throw new Error(
-          `The profile shows a photo but its bytes could not be read (${res ? `${res.status()} ${mimeType}` : 'no src'}). ` +
+          `The profile has a photo (${photoUrl}) but its bytes could not be read (${res.status()} ${mimeType}). ` +
             'Stopping before anything is changed.',
         )
       }
       originalPhoto = { buffer: await res.body(), mimeType }
-    } else if (photoFailures.length > 0) {
-      throw new Error(
-        `The profile shows initials but a photo request failed (${photoFailures.join(', ')}). ` +
-          'Stopping before anything is changed.',
-      )
+    } else {
+      // No photo request at all, and initials on screen: the only "no photo".
+      await expect(avatarBox(page).getByRole('img')).toHaveText(/^[A-Z0-9?]{1,2}$/, { timeout: STEP_MS })
     }
 
     // A copy on disk, for putting things back by hand if the restore fails.
@@ -158,6 +159,19 @@ test.describe('Your profile', () => {
     const stamp = Date.now()
     const jobTitle = `E2E Operations Manager ${stamp}`
     const bio = `E2E bio ${stamp}. Looks after the profile page test.`
+
+    // The second user signs in NOW, before anything is changed. login() sets no
+    // timeouts, so a hang there must not eat the time the restore needs. The
+    // check itself cannot wait until after the restore either: with no photo the
+    // route answers 404 to everyone, which would prove nothing about who may see it.
+    const otherContext = limited ? await browser.newContext({ baseURL }) : null
+    const other = otherContext ? await otherContext.newPage() : null
+    if (other) {
+      await login(other, limited!).catch(async (err) => {
+        await otherContext!.close()
+        throw err
+      })
+    }
 
     try {
       // ---- Details ----
@@ -205,16 +219,10 @@ test.describe('Your profile', () => {
 
       // ---- A signed-in user who is neither the owner nor a super admin gets 404 ----
       await test.step('another signed-in user cannot fetch the photo', async (step) => {
-        step.skip(!limited, 'Set E2E_LIMITED_USERNAME/E2E_LIMITED_PASSWORD to check another user gets 404')
-        const context = await browser.newContext({ baseURL })
-        try {
-          const other = await context.newPage()
-          await login(other, limited!)
-          const res = await other.request.get(`/api/avatar/${adminId}`, { maxRedirects: 0, timeout: STEP_MS })
-          expect(res.status()).toBe(404)
-        } finally {
-          await context.close()
-        }
+        step.skip(!other, 'Set E2E_LIMITED_USERNAME/E2E_LIMITED_PASSWORD to check another user gets 404')
+        // Already signed in above; only this timed request runs inside the try.
+        const res = await other!.request.get(`/api/avatar/${adminId}`, { maxRedirects: 0, timeout: STEP_MS })
+        expect(res.status()).toBe(404)
       })
 
       // ---- Photo removal ----
@@ -223,22 +231,27 @@ test.describe('Your profile', () => {
       await expect(avatarBox(page).locator('img')).toHaveCount(0, { timeout: STEP_MS })
       await expect(avatarBox(page).getByRole('img')).toHaveText(/^[A-Z0-9?]{1,2}$/)
     } finally {
-      // ---- Put everything back ----
-      await openProfile(page)
-      await saveDetails(page, originalJobTitle, originalBio)
+      try {
+        // ---- Put everything back ----
+        await openProfile(page)
+        await saveDetails(page, originalJobTitle, originalBio)
 
-      const hasPhotoNow = (await avatarBox(page).locator('img').count()) > 0
-      if (originalPhoto) {
-        await page.locator('input[type="file"]').setInputFiles({
-          name: 'restored-avatar',
-          mimeType: originalPhoto.mimeType,
-          buffer: originalPhoto.buffer,
-        })
-        await page.getByRole('button', { name: 'Save photo' }).click()
-        await expect(page.getByText('Your photo is saved.').last()).toBeVisible({ timeout: 15_000 })
-      } else if (hasPhotoNow) {
-        await page.getByRole('button', { name: 'Remove photo' }).click()
-        await expect(page.getByText('Your photo is removed.').last()).toBeVisible({ timeout: 15_000 })
+        const hasPhotoNow = (await avatarBox(page).locator('img').count()) > 0
+        if (originalPhoto) {
+          await page.locator('input[type="file"]').setInputFiles({
+            name: 'restored-avatar',
+            mimeType: originalPhoto.mimeType,
+            buffer: originalPhoto.buffer,
+          })
+          await page.getByRole('button', { name: 'Save photo' }).click()
+          await expect(page.getByText('Your photo is saved.').last()).toBeVisible({ timeout: 15_000 })
+        } else if (hasPhotoNow) {
+          await page.getByRole('button', { name: 'Remove photo' }).click()
+          await expect(page.getByText('Your photo is removed.').last()).toBeVisible({ timeout: 15_000 })
+        }
+      } finally {
+        // After the restore, so closing it can never hold the restore up.
+        await otherContext?.close()
       }
     }
   })
