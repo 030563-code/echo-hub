@@ -410,9 +410,6 @@ export function checkAmountCeiling(total: number, ceiling: number): AgentQuoteCo
 // Urgent pricing: the acceptance window and the words that go with it
 // ---------------------------------------------------------------------------
 
-/** The quote expires the day after an urgent one is raised. HubSpot's expiry is
- *  a date, so this is the nearest it can express a 24 hour window. */
-export const URGENT_EXPIRY_DAYS = 1
 export const URGENT_ACCEPT_WINDOW_MS = 24 * 60 * 60 * 1000
 export const URGENT_CAP_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
 /** One urgent-priced quote per deal per 30 days, and one reissue per urgent
@@ -461,6 +458,37 @@ export function formatSydneyDeadline(iso: string): string {
 
 export function urgentCommentLine(acceptBy: string): string {
   return `Urgent order price, valid until ${formatSydneyDeadline(acceptBy)} Sydney time. After that the standard price applies.`
+}
+
+/**
+ * The yyyy-mm-dd an urgent quote's hs_expiration_date must carry: the SYDNEY
+ * calendar date the acceptance deadline falls on.
+ *
+ * NOT "today plus one day". hs_expiration_date is a date with no timezone, and
+ * the Hub builds its ordinary expiry off the UTC date. Sydney is ten or eleven
+ * hours ahead, so between midnight and 10am Sydney the UTC date is still
+ * YESTERDAY there: a day count would expire the quote in HubSpot a full
+ * calendar day before the deadline printed on that same quote and in the email,
+ * throwing away most of the 24 hours the customer was promised, including the
+ * whole of the next Sydney morning.
+ *
+ * Deriving the date from acceptBy instead makes the three statements one
+ * statement. The deadline words (formatSydneyDeadline), this expiry and the
+ * Mailer's stamp all resolve the same instant in the same zone, so they cannot
+ * disagree. acceptBy is always 24 hours out, which is always the next Sydney
+ * day, daylight saving included.
+ */
+export function urgentExpiryDate(acceptBy: string): string {
+  const when = new Date(acceptBy)
+  if (Number.isNaN(when.getTime())) throw new Error('urgentExpiryDate needs a real timestamp')
+  const parts = new Intl.DateTimeFormat('en-AU', {
+    timeZone: 'Australia/Sydney',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(when)
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? ''
+  return `${get('year')}-${get('month')}-${get('day')}`
 }
 
 /** The comments block printed on the quote. List pricing gets the two fixed

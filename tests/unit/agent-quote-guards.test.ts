@@ -25,7 +25,7 @@ import {
   ANZ_QUOTATION_SENT_STAGE,
   CODE_STATUS,
   AGENT_QUOTE_COMMENTS,
-  URGENT_EXPIRY_DAYS,
+  urgentExpiryDate,
   type DealShape,
 } from '@/lib/agent-quote/guards'
 
@@ -355,6 +355,68 @@ describe('urgent pricing: the floor maths', () => {
   })
 })
 
+describe('urgent pricing: the HubSpot expiry date', () => {
+  it('is the SYDNEY calendar date of the acceptance deadline', () => {
+    // 05:15 UTC on 15 September is 3:15pm that afternoon in Sydney.
+    expect(urgentExpiryDate('2026-09-15T05:15:00.000Z')).toBe('2026-09-15')
+  })
+
+  it('does not expire a day early for a quote raised before 10am Sydney', () => {
+    // The finding, in one assertion. A quote raised 09:10 Sydney on Wednesday
+    // 16 September is 23:10 UTC on the 15th, so the UTC date is still the 15th
+    // and "UTC date plus one day" would have said 2026-09-16, a full calendar
+    // day before the 09:10 Thursday deadline printed on that same quote.
+    const acceptBy = '2026-09-16T23:10:00.000Z'
+    expect(formatSydneyDeadline(acceptBy)).toBe('9:10am Thursday 17 September 2026')
+    expect(urgentExpiryDate(acceptBy)).toBe('2026-09-17')
+  })
+
+  it('agrees with the printed deadline on the other side of the UTC day boundary', () => {
+    // 04:00 UTC is 2pm Sydney the same UTC day, the case that happened to work.
+    const acceptBy = '2026-09-17T04:00:00.000Z'
+    expect(formatSydneyDeadline(acceptBy)).toBe('2:00pm Thursday 17 September 2026')
+    expect(urgentExpiryDate(acceptBy)).toBe('2026-09-17')
+  })
+
+  it('follows the Sydney clock across daylight saving and a month end', () => {
+    // AEDT, UTC+11: 13:30 UTC on 31 October is 12:30am on 1 November in Sydney.
+    expect(urgentExpiryDate('2026-10-31T13:30:00.000Z')).toBe('2026-11-01')
+    // AEST, UTC+10: 14:30 UTC on 31 December is 1:30am on 1 January.
+    expect(urgentExpiryDate('2026-12-31T14:30:00.000Z')).toBe('2027-01-01')
+  })
+
+  it('is always the Sydney day after the quote, at every hour of the day', () => {
+    // The property the customer is promised: whatever hour Jack quotes at, the
+    // expiry HubSpot shows is the day the 24 hours run out in Sydney, and it is
+    // never the same day as the quote.
+    for (let hour = 0; hour < 24; hour += 1) {
+      const raisedAt = new Date(Date.UTC(2026, 8, 16, hour, 10, 0))
+      const acceptBy = acceptByFrom(raisedAt)
+      expect(urgentExpiryDate(acceptBy)).toBe(formatSydneyDate(raisedAt, 1))
+      expect(urgentExpiryDate(acceptBy)).not.toBe(formatSydneyDate(raisedAt, 0))
+    }
+  })
+
+  it('throws rather than putting a wrong date on a customer document', () => {
+    expect(() => urgentExpiryDate('soon')).toThrow(/real timestamp/)
+    expect(() => urgentExpiryDate('')).toThrow(/real timestamp/)
+  })
+})
+
+/** The Sydney yyyy-mm-dd `plusDays` after the Sydney day `when` falls on,
+ *  computed independently of the helper under test. */
+function formatSydneyDate(when: Date, plusDays: number): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Australia/Sydney',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(when)
+  const [y, m, d] = parts.split('-').map(Number)
+  const shifted = new Date(Date.UTC(y, m - 1, d + plusDays))
+  return shifted.toISOString().slice(0, 10)
+}
+
 describe('urgent pricing: the 24 hour window', () => {
   const now = new Date('2026-09-14T05:15:00.000Z')
 
@@ -376,9 +438,6 @@ describe('urgent pricing: the 24 hour window', () => {
     expect(checkUrgentCap(4)).toBe('URGENT_CAP')
   })
 
-  it('expires the HubSpot quote the next day', () => {
-    expect(URGENT_EXPIRY_DAYS).toBe(1)
-  })
 })
 
 describe('urgent pricing: the words on the quote', () => {

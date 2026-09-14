@@ -68,10 +68,11 @@ interface CreateQuoteParams {
   isCollection?: boolean
   isPreview?: boolean
   pdfBlob?: Blob // We can't pass Blob to server action directly, need FormData or base64
-  /** Days until the quote expires. Omitted means the house default of 60. The
-   *  ANZ agent's urgent quote passes 1, because the price it carries holds for
-   *  24 hours and HubSpot's expiry is a date rather than a timestamp. */
-  expiryDays?: number
+  /** An explicit yyyy-mm-dd expiry. Omitted means the house default of 60 days.
+   *  The ANZ agent's urgent quote passes the Sydney calendar date of its
+   *  acceptance deadline, because HubSpot's expiry is a date rather than a
+   *  timestamp and the deadline it has to agree with is an instant in Sydney. */
+  expiryDate?: string
   /** Set only by /api/agent/quote. Records the pricing mode, the acceptance
    *  deadline and the urgent quote a reissue replaces on the deal_quotes row. */
   agentQuote?: AgentQuoteStamp
@@ -601,7 +602,7 @@ export async function createQuote(params: CreateQuoteParams) {
     hubAmount: computedTotal,
     createdByUid: user.id,
     createdByLabel: senderEmail ?? 'Hub user',
-    expiryDays: params.expiryDays,
+    expiryDate: params.expiryDate,
     agentQuote: params.agentQuote,
   })
 

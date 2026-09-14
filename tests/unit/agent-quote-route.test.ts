@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { urgentCommentLine, AGENT_QUOTE_COMMENTS } from '@/lib/agent-quote/guards'
+import { urgentCommentLine, urgentExpiryDate, formatSydneyDeadline, AGENT_QUOTE_COMMENTS } from '@/lib/agent-quote/guards'
 
 /**
  * POST /api/agent/quote, the whole route with its collaborators mocked.
@@ -398,8 +398,8 @@ describe('inside the Jack session', () => {
       isPreview: false,
       agentQuote: { pricingMode: 'list', acceptBy: null, reissueOf: null, urgencyNote: null },
     })
-    // No expiryDays key at all on a list quote: the house 60 days stands.
-    expect(Object.keys(createQuote.mock.calls[0][0])).not.toContain('expiryDays')
+    // No expiryDate key at all on a list quote: the house 60 days stands.
+    expect(Object.keys(createQuote.mock.calls[0][0])).not.toContain('expiryDate')
     expect(body).toEqual({
       ok: true, code: 'CREATED', quoteReference: 'JA202600123', quoteNumber: 'JA202600123', quoteLink: publishedQuote.quoteLink,
       pdfLink: publishedQuote.pdfLink, amount: 10200, currency: 'AUD', expiresOn: '2026-10-14', dealQuoteId: publishedQuote.dealQuoteId,
@@ -453,7 +453,7 @@ describe('urgent pricing', () => {
       { productId: HOOKS, name: 'Echo Barrier Metal Hooks (Part of Fitting Kit)', quantity: 40, unitPrice: 5, total: 160, sku: 'HKNA', discountMode: 'amount', discountValue: 1 },
     ])
     expect(sent.totalAmount).toBe(8160)
-    expect(sent.expiryDays).toBe(1)
+    expect(sent.expiryDate).toBe(urgentExpiryDate(String(body.acceptBy)))
     expect(sent.agentQuote).toEqual({
       pricingMode: 'urgent',
       acceptBy: body.acceptBy,
@@ -472,6 +472,68 @@ describe('urgent pricing', () => {
     expect(createQuote.mock.calls[0][0].comments).toBe([...AGENT_QUOTE_COMMENTS, urgentCommentLine(acceptBy)].join('\n'))
     // The urgency note is the audit, never the document.
     expect(createQuote.mock.calls[0][0].comments).not.toContain('site starts Monday')
+  })
+
+  describe('the expiry HubSpot shows agrees with the deadline printed on the quote', () => {
+    // Only Date is faked. The route's collaborators are all mocked and resolve
+    // without a timer, so faking the clock alone keeps the run honest.
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    /** Raise an urgent quote at a fixed instant and read back the three things
+     *  that have to name the same Sydney day. */
+    async function urgentAt(raisedAt: string) {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date(raisedAt))
+      readyToQuote()
+      const { status, body } = await call(req(urgent()))
+      expect(status).toBe(200)
+      const acceptBy = String(body.acceptBy)
+      const sent = createQuote.mock.calls[0][0]
+      return {
+        acceptBy,
+        expiryDate: sent.expiryDate as string,
+        deadlineWords: formatSydneyDeadline(acceptBy),
+        // What the UTC day count used to produce: today in UTC, plus one day.
+        utcDatePlusOne: new Date(Date.parse(raisedAt) + 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      }
+    }
+
+    it('before 10am Sydney, where the UTC date is still yesterday there', async () => {
+      // 23:10 UTC on Tuesday 15 September is 9:10am Wednesday 16 in Sydney, so
+      // the price holds until 9:10am Thursday 17. The old day count read the
+      // UTC date (the 15th), added a day and expired the quote on the 16th, a
+      // full calendar day before the deadline printed on that same quote and
+      // in the email, including the whole of Geoff's Thursday morning.
+      const { expiryDate, deadlineWords, utcDatePlusOne } = await urgentAt('2026-09-15T23:10:00.000Z')
+      expect(deadlineWords).toBe('9:10am Thursday 17 September 2026')
+      expect(expiryDate).toBe('2026-09-17')
+      expect(utcDatePlusOne).toBe('2026-09-16')
+      expect(expiryDate).not.toBe(utcDatePlusOne)
+    })
+
+    it('after 10am Sydney, where the two agreed already', async () => {
+      // 04:00 UTC on Wednesday 16 September is 2pm that afternoon in Sydney.
+      const { expiryDate, deadlineWords, utcDatePlusOne } = await urgentAt('2026-09-16T04:00:00.000Z')
+      expect(deadlineWords).toBe('2:00pm Thursday 17 September 2026')
+      expect(expiryDate).toBe('2026-09-17')
+      expect(expiryDate).toBe(utcDatePlusOne)
+    })
+
+    it('at midnight Sydney, the far side of the same boundary', async () => {
+      // 14:00 UTC on 15 September is midnight on the 16th in Sydney (AEST).
+      const { expiryDate, deadlineWords } = await urgentAt('2026-09-15T14:00:00.000Z')
+      expect(deadlineWords).toBe('12:00am Thursday 17 September 2026')
+      expect(expiryDate).toBe('2026-09-17')
+    })
+
+    it('holds across daylight saving, when Sydney runs eleven hours ahead', async () => {
+      // 22:10 UTC on 5 November is 9:10am on the 6th in Sydney (AEDT, UTC+11).
+      const { expiryDate, deadlineWords } = await urgentAt('2026-11-05T22:10:00.000Z')
+      expect(deadlineWords).toBe('9:10am Saturday 7 November 2026')
+      expect(expiryDate).toBe('2026-11-07')
+    })
   })
 
   it('NO_FLOOR rather than a guessed price when a line has no floor', async () => {
@@ -544,7 +606,7 @@ describe('reissue', () => {
     ])
     expect(sent.totalAmount).toBe(10200)
     expect(sent.comments).toBe(AGENT_QUOTE_COMMENTS.join('\n'))
-    expect(Object.keys(sent)).not.toContain('expiryDays')
+    expect(Object.keys(sent)).not.toContain('expiryDate')
     expect(sent.agentQuote).toEqual({ pricingMode: 'list', acceptBy: null, reissueOf: lapsedUrgent.id, urgencyNote: null })
     expect(body).toMatchObject({ code: 'REISSUED', pricing: 'list', acceptBy: null, quoteLink: publishedQuote.quoteLink })
   })

@@ -7,7 +7,6 @@ import {
   ANZ_QUOTABLE_STAGES,
   ANZ_QUOTATION_SENT_STAGE,
   CODE_STATUS,
-  URGENT_EXPIRY_DAYS,
   acceptByFrom,
   amountCeiling,
   authorizeBearer,
@@ -26,6 +25,7 @@ import {
   parseAgentQuoteBody,
   quoteComments,
   quoteReferenceOf,
+  urgentExpiryDate,
   urgentPerUnitDiscounts,
   type AgentQuoteCode,
   type AgentQuoteLine,
@@ -408,8 +408,10 @@ async function createForJack(input: CreateForJackInput): Promise<NextResponse> {
     isCollection: false,
     isPreview: false,
     // The urgent price holds for 24 hours and HubSpot's expiry is a date, so
-    // the quote expires tomorrow. A list quote keeps the house 60 days.
-    ...(pricing === 'urgent' ? { expiryDays: URGENT_EXPIRY_DAYS } : {}),
+    // the quote expires on the SYDNEY day the deadline falls on. Derived from
+    // the same acceptBy the comment line and the email print, so the three can
+    // never name different days. A list quote keeps the house 60 days.
+    ...(pricing === 'urgent' && acceptBy ? { expiryDate: urgentExpiryDate(acceptBy) } : {}),
     agentQuote: { pricingMode: pricing, acceptBy, reissueOf: input.reissueOf, urgencyNote: input.urgencyNote },
   })
   if (!result.success) {

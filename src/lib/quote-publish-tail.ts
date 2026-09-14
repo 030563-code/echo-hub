@@ -115,9 +115,12 @@ export interface PublishQuoteContext {
   hubAmount: number
   createdByUid: string
   createdByLabel: string
-  /** Days from today to hs_expiration_date. Omitted means the house default
-   *  (QUOTE_EXPIRY_DAYS, 60). An urgent agent quote passes 1. */
-  expiryDays?: number
+  /** An explicit yyyy-mm-dd hs_expiration_date. Omitted means the house default
+   *  (today plus QUOTE_EXPIRY_DAYS, 60). Only an urgent agent quote passes one,
+   *  and it passes the SYDNEY date of its acceptance deadline: a day count off
+   *  the UTC date would expire the quote a calendar day before the deadline
+   *  printed on it whenever it is raised before 10am in Sydney. */
+  expiryDate?: string
   agentQuote?: AgentQuoteStamp
 }
 

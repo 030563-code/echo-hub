@@ -71,10 +71,14 @@ export async function runQuotePipeline(ctx: PublishQuoteContext): Promise<Publis
     }
   }
 
-  // Days is a parameter now, defaulting to the house 60 the moment it is
-  // omitted. Only the agent's urgent quote passes anything else (1), so every
-  // existing caller keeps the expiry it had.
-  const expiresOn = quoteExpiryDate(new Date().toISOString().slice(0, 10), ctx.expiryDays)
+  // The expiry date is an override now, defaulting to the house 60 days from
+  // the UTC date the moment it is omitted, so every existing caller keeps the
+  // expiry it had. Only the agent's urgent quote passes one, and it passes a
+  // DATE rather than a day count because its deadline is an instant in Sydney:
+  // a count off the UTC date expires the quote a calendar day early for the
+  // whole Sydney morning. An unparseable override is caught by
+  // validateQuoteInput below, before the row is claimed or HubSpot is called.
+  const expiresOn = ctx.expiryDate ?? quoteExpiryDate(new Date().toISOString().slice(0, 10))
   const createInput = {
     title: ctx.title,
     expirationDate: expiresOn,
