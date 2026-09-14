@@ -17,7 +17,7 @@ test.describe('Navigation + RBAC (privileged user)', () => {
   test('sidebar shows every workstream — and no Weeklies', async ({ page }) => {
     const nav = page.locator('aside')
     for (const label of ['Dashboard', 'Quotes', 'Purchase Orders', 'Bill of Materials', 'Transport', 'Warehousing/Stock']) {
-      await expect(nav.getByRole('link', { name: label })).toBeVisible()
+      await expect(nav.getByRole('link', { name: label, exact: true })).toBeVisible()
     }
     await expect(nav.getByRole('link', { name: 'Weeklies', exact: true })).toHaveCount(0)
   })

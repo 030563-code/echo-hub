@@ -3,15 +3,30 @@
 // page-state: none (the mobile drawer, which is chrome and closes itself on navigation)
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Menu, X } from 'lucide-react'
 import { Sidebar } from '@/components/nav/sidebar'
+import { OpenOnPhone } from '@/components/nav/open-on-phone'
+import { Avatar } from '@/components/profile/avatar'
 import { isStaging } from '@/lib/env'
 import type { CapabilityKey } from '@/lib/capabilities'
+
+/** Who is signed in, as the header and sidebar show them. Every field but the
+ *  id can be null: no email, no name set, no job title, or no photo. */
+export interface ShellProfile {
+  id: string
+  email: string | null
+  displayName: string | null
+  jobTitle: string | null
+  /** From avatarSrc(); null shows initials instead of a photo. */
+  avatarSrc: string | null
+}
 
 interface ShellProps {
   capabilities: CapabilityKey[]
   displayName: string
+  profile: ShellProfile
   children: React.ReactNode
 }
 
@@ -22,7 +37,7 @@ interface ShellProps {
  * state; `children` arrives as a prop from the server layout, so pages stay
  * server-rendered.
  */
-export function Shell({ capabilities, displayName, children }: ShellProps) {
+export function Shell({ capabilities, displayName, profile, children }: ShellProps) {
   const [open, setOpen] = useState(false)
   const pathname = usePathname()
 
@@ -67,6 +82,7 @@ export function Shell({ capabilities, displayName, children }: ShellProps) {
       <Sidebar
         capabilities={capabilities}
         displayName={displayName}
+        profile={profile}
         className={`transition-transform duration-200 ease-out lg:translate-x-0 ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
@@ -98,8 +114,19 @@ export function Shell({ capabilities, displayName, children }: ShellProps) {
               Echo Barrier Hub
             </h2>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="h-8 w-8 rounded-full bg-gray-200 border border-gray-300" />
+          {/* Both controls keep a 44px tap target on mobile (the hamburger's size).
+              On lg the negative margin keeps their 40px boxes from making the
+              header taller than the 32px circle that used to sit here. */}
+          <div className="flex items-center gap-1 lg:gap-2">
+            <OpenOnPhone className="lg:-my-1" />
+            <Link
+              href="/profile"
+              aria-label="Your profile"
+              title={profile.displayName?.trim() || profile.email || 'Your profile'}
+              className="flex h-11 w-11 lg:h-10 lg:w-10 lg:-my-1 items-center justify-center rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-echo-orange/50"
+            >
+              <Avatar src={profile.avatarSrc} name={profile.displayName} email={profile.email} size="sm" />
+            </Link>
           </div>
         </header>
 
