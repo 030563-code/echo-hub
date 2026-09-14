@@ -25,8 +25,11 @@ const PUBLIC_PATHS = ['/login', '/onboarding', '/auth/callback', '/manufacturing
 // would record the failure as success. Kept as an exact-match allowlist rather
 // than a blanket "/api" so a future API route cannot silently lose the session
 // gate by inheriting an exemption it never asked for. Each entry MUST enforce
-// its own auth (this one: Bearer MRP_CRON_SECRET, constant-time, fail-closed).
-const SELF_AUTHENTICATED_PATHS = ['/api/mrp/run']
+// its own auth, constant-time and fail-closed:
+//  - /api/mrp/run: Bearer MRP_CRON_SECRET (n8n cron).
+//  - /api/agent/quote: Bearer AGENT_QUOTE_SECRET or AGENT_QUOTE_SECRET_PREVIOUS
+//    (Bruce's Quote Sender in n8n), then a conversation binding check.
+const SELF_AUTHENTICATED_PATHS = ['/api/mrp/run', '/api/agent/quote']
 
 function isPublic(pathname: string): boolean {
   return (
