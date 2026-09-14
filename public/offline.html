@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>No connection. Echo Barrier Hub</title>
+    <style>
+      :root { color-scheme: light; }
+      body {
+        margin: 0; min-height: 100vh; display: grid; place-items: center;
+        background: #fff; color: #353433;
+        font-family: Roboto, system-ui, -apple-system, "Segoe UI", sans-serif;
+        padding: 24px;
+      }
+      .card { max-width: 30rem; text-align: center; }
+      img { width: 72px; height: 72px; border-radius: 16px; }
+      h1 { font-size: 1.35rem; margin: 24px 0 8px; }
+      p { margin: 0 0 8px; line-height: 1.55; color: #5b5a58; }
+      button {
+        margin-top: 20px; border: 0; border-radius: 8px; cursor: pointer;
+        background: #ff7026; color: #fff; font: inherit; font-weight: 600;
+        padding: 11px 22px;
+      }
+      button:hover { background: #f2641b; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <img src="/icon-192.png" alt="" />
+      <h1>No connection</h1>
+      <p>The Hub could not reach the server, so there is nothing to show.</p>
+      <p>
+        Stock, orders and invoices are never kept on this device, because a
+        figure from yesterday in a window that looks live is worse than no
+        figure at all.
+      </p>
+      <button onclick="location.reload()">Try again</button>
+    </div>
+  </body>
+</html>
