@@ -63,6 +63,82 @@ describe('mintJackClient', () => {
     expect(verifyOtp).not.toHaveBeenCalled()
   })
 
+  /**
+   * GoTrue holds ONE outstanding one-time token per user, so a second
+   * generateLink replaces the first and the first hash stops verifying. This
+   * is that behaviour, and it is what the race actually looked like.
+   */
+  function singleLiveToken() {
+    let live: string | null = null
+    let issued = 0
+    generateLink.mockImplementation(async () => {
+      live = `hash${++issued}`
+      return { data: { properties: { hashed_token: live }, user: { id: JACK_ID } }, error: null }
+    })
+    verifyOtp.mockImplementation(async ({ token_hash }: { token_hash: string }) => {
+      if (token_hash !== live) {
+        return { data: { session: null, user: null }, error: { message: 'Token has expired or is invalid' } }
+      }
+      live = null // spent: one-time means one time
+      return { data: { session: { access_token: token_hash }, user: { id: JACK_ID } }, error: null }
+    })
+    return { steal: () => { live = 'someone-elses-token' } }
+  }
+
+  it('two simultaneous mints both get a session, because they do not share a token', async () => {
+    singleLiveToken()
+    const [a, b] = await Promise.all([mintJackClient(), mintJackClient()])
+    expect(a.userId).toBe(JACK_ID)
+    expect(b.userId).toBe(JACK_ID)
+    // One link each, spent in turn. Before the queue the second generateLink
+    // landed while the first was still holding its hash, and the first mint
+    // died at 'verify'.
+    expect(generateLink).toHaveBeenCalledTimes(2)
+    expect(verifyOtp).toHaveBeenCalledTimes(2)
+  })
+
+  it('ten at once all succeed', async () => {
+    singleLiveToken()
+    const sessions = await Promise.all(Array.from({ length: 10 }, () => mintJackClient()))
+    expect(sessions.map((s) => s.userId)).toEqual(Array(10).fill(JACK_ID))
+    expect(verifyOtp).toHaveBeenCalledTimes(10)
+  })
+
+  it('asks for a fresh link when something outside this process took the token', async () => {
+    // The queue only covers one Node process. A second Netlify instance minting
+    // at the same moment is the case the retry is for.
+    const gotrue = singleLiveToken()
+    const verify = verifyOtp.getMockImplementation()!
+    let first = true
+    verifyOtp.mockImplementation(async (args: { token_hash: string }) => {
+      if (first) {
+        first = false
+        gotrue.steal()
+      }
+      return verify(args)
+    })
+    const session = await mintJackClient()
+    expect(session.userId).toBe(JACK_ID)
+    expect(generateLink).toHaveBeenCalledTimes(2)
+    expect(signOut).toHaveBeenCalledWith({ scope: 'local' })
+  })
+
+  it('gives up after three links rather than retrying for ever', async () => {
+    singleLiveToken()
+    verifyOtp.mockResolvedValue({ data: { session: null, user: null }, error: { message: 'Token has expired or is invalid' } })
+    await expect(mintJackClient()).rejects.toMatchObject({ step: 'verify' })
+    expect(generateLink).toHaveBeenCalledTimes(3)
+  })
+
+  it('a failed mint does not wedge the next one', async () => {
+    singleLiveToken()
+    verifyOtp.mockResolvedValueOnce({ data: { session: null, user: null }, error: { message: 'no' } })
+    generateLink.mockRejectedValueOnce(new Error('network'))
+    await expect(mintJackClient()).rejects.toThrow()
+    singleLiveToken()
+    await expect(mintJackClient()).resolves.toMatchObject({ userId: JACK_ID })
+  })
+
   it('signs out and refuses when the verified or current user is not Jack', async () => {
     verifyOtp.mockResolvedValue({ data: { session: { access_token: 'x' }, user: { id: 'other' } }, error: null })
     await expect(mintJackClient()).rejects.toMatchObject({ step: 'verify' })
