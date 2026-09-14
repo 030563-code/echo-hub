@@ -2,7 +2,7 @@
 -- korylyniwsqtsvzuzydg, then move this file up into supabase/migrations/.
 -- Never db push.
 --
--- Two pre-existing gaps, closed for every user (found while building Bruce's
+-- Two pre-existing gaps, closed for every user (found while building Jack's
 -- agent quote route).
 --
 -- 1. The onboarding re-scope. completeOnboarding (complete-onboarding.ts) treats

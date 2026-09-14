@@ -1,4 +1,4 @@
--- Rollback for pending/20260914120000_profiles_guard_display_name.sql.
+-- Rollback for pending/20260914140000_profiles_guard_display_name.sql.
 -- Run as ONE transaction (MCP execute_sql in one batch, or psql --single-transaction -f).
 --
 -- Restores the guard without the display_name check (the live definition read
