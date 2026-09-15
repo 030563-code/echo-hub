@@ -6,13 +6,22 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 }
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className = '', label, error, ...props }, ref) => {
+  ({ className = '', label, error, id, ...props }, ref) => {
+    // The label has to point at the input. Without it a screen reader announces
+    // an unlabelled box, and a password manager loses one of the signals it uses
+    // to work out what the field is for.
+    const generatedId = React.useId();
+    const inputId = id ?? generatedId;
+
     return (
       <div className="w-full">
         {label && (
-          <label className="block text-sm font-medium text-echo-dark mb-1">{label}</label>
+          <label htmlFor={inputId} className="block text-sm font-medium text-echo-dark mb-1">
+            {label}
+          </label>
         )}
         <input
+          id={inputId}
           ref={ref}
           className={`
             w-full bg-white border-b-2 border-echo-border text-echo-dark px-0 py-2.5

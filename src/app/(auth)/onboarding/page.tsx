@@ -30,7 +30,11 @@ export default async function OnboardingPage() {
 
   return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4">
-      <OnboardingForm defaultDisplayName={defaultDisplayName} suggestedPipelineId={suggestedPipelineId} />
+      <OnboardingForm
+        email={user.email ?? ''}
+        defaultDisplayName={defaultDisplayName}
+        suggestedPipelineId={suggestedPipelineId}
+      />
     </div>
   )
 }

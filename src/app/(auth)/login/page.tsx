@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
@@ -15,7 +14,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const router = useRouter()
   const supabase = createClient()
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -26,11 +24,15 @@ export default function LoginPage() {
     try {
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
       if (signInError) throw signInError
-      // The dashboard layout resolves capabilities + routes onboarding if needed.
-      router.replace('/')
+      // A full page load, not router.replace(). Safari and Chrome only offer to
+      // save a password when a form submit is followed by a real navigation, so
+      // a client-side route change here is why nobody is ever asked. The
+      // dashboard layout resolves capabilities + routes onboarding either way.
+      // `loading` deliberately stays true: the button must not flick back to
+      // "Sign In" while the next page loads.
+      window.location.assign('/')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err))
-    } finally {
       setLoading(false)
     }
   }
@@ -54,8 +56,17 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
+          {/* name + autoComplete are what a password manager matches on. Without
+              them Apple Passwords sees two anonymous boxes and offers nothing. */}
           <Input
+            id="email"
+            name="email"
             type="email"
+            autoComplete="username"
+            inputMode="email"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             placeholder="name@echobarrier.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -64,7 +75,10 @@ export default function LoginPage() {
           />
 
           <Input
+            id="current-password"
+            name="password"
             type="password"
+            autoComplete="current-password"
             placeholder="••••••••"
             value={password}
             onChange={(e) => setPassword(e.target.value)}

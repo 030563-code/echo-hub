@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import Image from 'next/image'
 import { Button } from '@/components/ui/button'
@@ -18,12 +17,12 @@ import { completeOnboarding } from '@/app/actions/onboarding/complete-onboarding
 import { PIPELINE_CONFIG } from '@/lib/pipeline-config'
 
 interface OnboardingFormProps {
+  email: string
   defaultDisplayName: string
   suggestedPipelineId?: string
 }
 
-export default function OnboardingForm({ defaultDisplayName, suggestedPipelineId }: OnboardingFormProps) {
-  const router = useRouter()
+export default function OnboardingForm({ email, defaultDisplayName, suggestedPipelineId }: OnboardingFormProps) {
   const [displayName, setDisplayName] = useState(defaultDisplayName)
   const [pipelineId, setPipelineId] = useState(suggestedPipelineId ?? '')
   const [password, setPassword] = useState('')
@@ -52,8 +51,10 @@ export default function OnboardingForm({ defaultDisplayName, suggestedPipelineId
       return
     }
 
-    toast.success('Welcome to the Echo Barrier Hub.')
-    router.replace('/')
+    // A full page load, not router.replace(). This is where the password is set
+    // for the first time, so it is the one moment Apple Passwords will offer to
+    // save it, and it only offers after a real navigation follows the submit.
+    window.location.assign('/')
   }
 
   return (
@@ -119,9 +120,27 @@ export default function OnboardingForm({ defaultDisplayName, suggestedPipelineId
           </div>
         )}
 
+        {/* Read-only, but a real field on purpose: a password manager needs a
+            username in the same form to know which account it is saving this
+            password against. Hiding it entirely is what leaves an unnamed entry. */}
+        <Input
+          label="Your Login Email"
+          id="username"
+          name="username"
+          type="email"
+          autoComplete="username"
+          value={email}
+          readOnly
+          className="border-gray-600 text-gray-400"
+        />
+
         <Input
           label="Password"
+          id="new-password"
+          name="new-password"
           type="password"
+          autoComplete="new-password"
+          minLength={8}
           placeholder="Min. 8 characters"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
@@ -131,7 +150,11 @@ export default function OnboardingForm({ defaultDisplayName, suggestedPipelineId
 
         <Input
           label="Confirm Password"
+          id="confirm-password"
+          name="confirm-password"
           type="password"
+          autoComplete="new-password"
+          minLength={8}
           placeholder="Repeat password"
           value={confirmPassword}
           onChange={(e) => setConfirmPassword(e.target.value)}
