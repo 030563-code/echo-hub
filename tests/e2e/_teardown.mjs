@@ -76,6 +76,7 @@ if (env.MFG_SUPABASE_URL && env.MFG_SUPABASE_SERVICE_ROLE_KEY) {
 // Test users (+ their grants/profile).
 for (const id of [s.buyerId, s.workerId]) {
   if (!id) continue
+  await sb.from('user_organisations').delete().eq('user_id', id)
   await sb.from('user_capabilities').delete().eq('user_id', id)
   await sb.from('profiles').delete().eq('id', id)
   await sb.auth.admin.deleteUser(id)

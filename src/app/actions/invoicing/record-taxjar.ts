@@ -47,7 +47,7 @@ export async function sendOrderToTaxJar(input: { invoiceId: string }): Promise<R
   if (!parsed.success) return { success: false, error: 'Invalid invoice id' }
   const { invoiceId } = parsed.data
 
-  const loaded = await loadInvoiceWithLines(invoiceId)
+  const loaded = await loadInvoiceWithLines(invoiceId, gate.auth.profile.organisations)
   if (!loaded.ok) return { success: false, error: loaded.error }
   const { invoice, lines } = loaded
 

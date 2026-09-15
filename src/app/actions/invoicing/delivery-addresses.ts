@@ -72,7 +72,7 @@ export async function saveDeliveryAddress(input: unknown): Promise<DeliveryAddre
   }
   const value = parsed.data
 
-  const loaded = await loadInvoiceWithLines(value.invoiceId)
+  const loaded = await loadInvoiceWithLines(value.invoiceId, gate.auth.profile.organisations)
   if (!loaded.ok) return { success: false, error: loaded.error }
   const invoice = loaded.invoice
 

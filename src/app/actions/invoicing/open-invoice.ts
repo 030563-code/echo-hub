@@ -14,6 +14,7 @@ import { buildDraftLines, type RawDealLine } from '@/lib/customer-invoice/build-
 import { fetchHubSpotLineDescriptions } from '@/lib/customer-invoice/line-descriptions'
 import { isUSDepot } from '@/lib/customer-invoice/constants'
 import { linesHash } from '@/lib/customer-invoice/hash'
+import { holdsOrganisation, orgForDepot, orgLabel } from '@/lib/organisations'
 import { xeroItemAccounts } from '@/lib/xero-hub'
 import {
   requireInvoicingManage,
@@ -89,9 +90,29 @@ export async function openInvoiceForDeal(input: {
     }
   }
 
+  // The deal's depot says which organisation invoices it. That organisation
+  // has to be one the caller holds, and, for now, has to be USA: Dean, 15 Sep
+  // 2026, the structure for every organisation now with USA the only one whose
+  // tax and Xero flow exists. Each of the others is its own follow-up, and
+  // until then the queue shows the deal and this is the answer.
   const depot = String(deal.depot_code ?? '').trim().toUpperCase()
+  const org = orgForDepot(depot)
+  if (!org) {
+    return { success: false, error: `This deal's depot (${depot || 'not set'}) belongs to no organisation the Hub knows, so it cannot be invoiced here.` }
+  }
+  if (!holdsOrganisation(gate.auth.profile.organisations, org)) {
+    return { success: false, error: 'This deal belongs to an organisation you do not hold.' }
+  }
+  if (org !== 'EB-USA') {
+    return {
+      success: false,
+      error: `Invoicing for ${orgLabel(org)} is not set up in the Hub yet. The deal is listed for reference; its invoice has to be raised outside the Hub for now.`,
+    }
+  }
+  // USA's depots are the two US ones by definition; this is the type's proof
+  // of it, and the refusal if the mapping and the constant ever disagree.
   if (!isUSDepot(depot)) {
-    return { success: false, error: `US invoicing only handles US-BAL and US-SBD deals (this deal's depot is ${depot || 'not set'}).` }
+    return { success: false, error: `US invoicing handles US-BAL and US-SBD deals; this deal's depot is ${depot}.` }
   }
   const currency = String(deal.currency ?? 'USD').trim().toUpperCase() || 'USD'
   if (currency !== 'USD') {
@@ -174,6 +195,7 @@ export async function openInvoiceForDeal(input: {
 
   const header = {
     hubspot_deal_id: dealId,
+    organisation_code: org,
     currency: 'USD',
     hubspot_company_id: companyIdClean || null,
     company_name: companyName ?? deal.deal_name ?? null,

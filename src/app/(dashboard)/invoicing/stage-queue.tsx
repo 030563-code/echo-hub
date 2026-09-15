@@ -3,9 +3,12 @@ import { redirect } from 'next/navigation'
 import { AlertCircle, FileText } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { getAuthorizedUser } from '@/lib/authz'
+import { activeOrganisation } from '@/lib/active-organisation.server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { INVOICE_STAGES, type CustomerInvoiceStatus, type InvoiceStage } from '@/lib/customer-invoice/constants'
+import { organisation } from '@/lib/organisations'
 import { InvoiceStatusChip } from './status-chip'
+import { NoOrganisationCard } from '@/components/organisations/no-organisation-card'
 
 /**
  * One stage of the invoicing pipeline as a worklist.
@@ -19,8 +22,6 @@ import { InvoiceStatusChip } from './status-chip'
  * The five pages were nearly byte-identical when written out separately, and
  * five copies of a queue are five places for the columns to drift.
  */
-
-const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 
 /** What a rep does next with anything sitting in this queue. */
 const NEXT_STEP: Record<CustomerInvoiceStatus, string> = {
@@ -57,12 +58,19 @@ export async function InvoiceStageQueue({ stage }: { stage: InvoiceStage }) {
     redirect('/')
   }
 
+  // The organisation being looked at goes into the query. Nothing is listed
+  // for a person who holds none.
+  const org = await activeOrganisation(auth)
+  if (!org) return <NoOrganisationCard title={stage.label} what="invoices" />
+  const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: organisation(org).currency })
+
   const admin = createAdminClient()
   const { data: invoices, error } = await admin
     .from('customer_invoices')
     .select(
       'id, hubspot_deal_id, invoice_number, holding_reference, status, company_name, subtotal, shipping_total, total, updated_at',
     )
+    .eq('organisation_code', org)
     .eq('status', stage.status)
     .order('updated_at', { ascending: false })
     .limit(200)

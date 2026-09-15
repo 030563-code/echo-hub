@@ -15,11 +15,17 @@ Two orthogonal axes:
   per user. Catalogue in [`src/lib/capabilities.ts`](./src/lib/capabilities.ts);
   nav + pages gate on it via [`src/lib/authz.ts`](./src/lib/authz.ts) and RLS
   enforces it via `public.has_capability()`. `admin` / `is_super_admin` imply all.
-- **Scope** (which rows): `profiles.pipeline_id` (region) + `allowed_depots`.
-  Quotes are scoped by region.
+- **Scope** (which rows): the **organisations** a person holds, one row per
+  organisation in `user_organisations` (super admins hold all). The seven Xero
+  companies and each module's mapping onto them live in
+  [`src/lib/organisations.ts`](./src/lib/organisations.ts); the one being looked
+  at is the `hub_org` cookie, switched from the sidebar and resolved by
+  `activeOrganisation()` against what the person holds. Every scoped page puts
+  the organisation's predicate in its query. `profiles.pipeline_id` (the rep's
+  own sales region) and `allowed_depots` still apply on top.
 
 Example — **Jillian (US)**: `quotes.view` + `quotes.create` + `po.create`
-(NOT `po.approve`), `pipeline_id` = USA SALES.
+(NOT `po.approve`), organisation `EB-USA`, `pipeline_id` = USA SALES.
 
 ## Security (non-negotiable)
 - RLS on every table from day 1. Anon/publishable key client-side only;

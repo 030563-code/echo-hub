@@ -1,6 +1,8 @@
 'use server'
 
 import { getAuthorizedUser } from '@/lib/authz'
+import { activeOrganisation } from '@/lib/active-organisation.server'
+import { orgLabel, pipelineForOrg } from '@/lib/organisations'
 import { hubspotFetch } from '@/lib/hubspot-client'
 import { resolveHubSpotOwnerId } from '@/lib/hubspot-owner'
 import { boardColumns, groupDealsByStage, type BoardColumn } from '@/lib/deals-board'
@@ -62,7 +64,6 @@ export interface GetBoardResult {
 
 export async function getDealsForBoard(input: {
   scope?: BoardScope
-  pipelineId?: string
   /** How far back to look. The board is for work in progress. */
   windowDays?: number
   /** Rep-set filters, folded into the SAME search call as everything else so
@@ -81,12 +82,20 @@ export async function getDealsForBoard(input: {
   if (!accessToken) return { success: false, error: 'HubSpot Access Token not configured' }
 
   const isAdmin = auth.profile.is_super_admin === true || auth.capabilities.has('admin')
-  // Scope and pipeline are forced server-side, never taken on trust: they are
-  // both URL parameters and widening either is exactly the thing to attempt.
+  // Scope is forced server-side, never taken on trust: it is a URL parameter
+  // and widening it is exactly the thing to attempt.
   const scope: BoardScope = isAdmin && input.scope === 'all' ? 'all' : 'mine'
-  const pipelineId = (isAdmin ? input.pipelineId : null) || auth.profile.pipeline_id || ''
+  // The pipeline is the active organisation's, for everyone. The organisation
+  // is resolved against what this person holds, so no parameter reaches
+  // another region's board; an admin switches organisation in the sidebar
+  // rather than picking a pipeline here.
+  const org = await activeOrganisation(auth)
+  if (!org) {
+    return { success: false, error: 'No organisation is assigned to your profile, so there is no pipeline to show.' }
+  }
+  const pipelineId = pipelineForOrg(org) ?? ''
   if (!pipelineId) {
-    return { success: false, error: 'Your profile has no region set, so there is no pipeline to show.' }
+    return { success: false, error: `${orgLabel(org)} has no sales pipeline, so there is no board to show.` }
   }
 
   // The owner filter is meaningless on a 'mine' board and actively harmful:

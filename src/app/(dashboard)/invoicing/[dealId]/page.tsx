@@ -6,6 +6,7 @@ import { sourceLinesHash } from '@/lib/customer-invoice/hash'
 import type { CustomerInvoiceLineRow, CustomerInvoiceRow } from '@/app/actions/invoicing/shared'
 import { getAcceptedAt, isAcceptedSinceCutover } from '@/app/actions/invoicing/shared'
 import { US_ACCEPTED_DEAL_STATUS, isUSDepot } from '@/lib/customer-invoice/constants'
+import { holdsOrganisation, orgForDepot } from '@/lib/organisations'
 import { OpenInvoiceButton } from '../open-invoice-button'
 import { InvoiceEditor } from './invoice-editor'
 import { InvoiceAttachments } from '@/components/invoicing/invoice-attachments'
@@ -40,6 +41,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     .maybeSingle()
 
   if (!deal && !invoice) notFound()
+
+  // The invoice's organisation, or the deal's depot's before one exists, has
+  // to be one this person holds. Same answer as a deal that does not exist:
+  // whether it does is not their business either.
+  const recordOrg = invoice ? String(invoice.organisation_code) : orgForDepot(deal?.depot_code as string | null)
+  if (!holdsOrganisation(auth.profile.organisations, recordOrg)) notFound()
 
   // Without an invoice, this page is only meaningful for a deal that is
   // actually invoiceable. Checking it here keeps the page consistent with what

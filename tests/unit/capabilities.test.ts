@@ -81,6 +81,26 @@ describe('navSections', () => {
     const ungrouped = NAV_ITEMS.filter((i) => !i.group).map((i) => i.href)
     expect(ungrouped).toEqual(['/'])
   })
+
+  it('names the organisation-scoped module behind every item that has one', () => {
+    // Dean, 15 Sep 2026: "a dropdown under each section". Dashboard is home,
+    // Bill of Materials and Warehousing/Stock are s.r.o. manufacturing, so
+    // those three carry no organisation list; everything else does.
+    const byHref = Object.fromEntries(NAV_ITEMS.map((i) => [i.href, i.module]))
+    expect(byHref).toEqual({
+      '/': undefined,
+      '/quotes': 'quotes',
+      '/invoicing': 'invoicing',
+      '/pricing': 'pricing',
+      '/calls': 'calls',
+      '/purchase-orders': 'purchase-orders',
+      '/bom': undefined,
+      '/transport': 'transport',
+      '/invoices': 'invoices',
+      '/mrp': undefined,
+      '/stock': 'stock',
+    })
+  })
 })
 
 describe('satisfiesRequirement', () => {

@@ -2,9 +2,12 @@ import { redirect } from 'next/navigation'
 import { AlertCircle, Inbox } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { getAuthorizedUser } from '@/lib/authz'
+import { activeOrganisation } from '@/lib/active-organisation.server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { depotLabel } from '@/lib/depot-constants'
-import { US_DEPOTS, type CustomerInvoiceStatus } from '@/lib/customer-invoice/constants'
+import type { CustomerInvoiceStatus } from '@/lib/customer-invoice/constants'
+import { depotsForOrg, orgLabel, organisation } from '@/lib/organisations'
+import { NoOrganisationCard } from '@/components/organisations/no-organisation-card'
 import { getAcceptedSinceCutover, isNotInvoiceableStage } from '@/app/actions/invoicing/shared'
 import { sourceLinesHash } from '@/lib/customer-invoice/hash'
 import { sanitizeUSAddress } from '@/lib/us-address'
@@ -27,8 +30,6 @@ interface QueueRow {
   invoiceNumber: string | null
 }
 
-const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
-
 export default async function AcceptedQueuePage() {
   const auth = await getAuthorizedUser()
   if (!auth.ok || !(auth.capabilities.has('invoicing.view') || auth.capabilities.has('invoicing.manage'))) {
@@ -36,6 +37,16 @@ export default async function AcceptedQueuePage() {
   }
 
   const canManage = auth.capabilities.has('invoicing.manage')
+
+  // The organisation being looked at decides the depots, and the depots go
+  // into the query. Dean, 15 Sep 2026: every organisation is listed, USA is
+  // the one whose invoicing flow exists; the others see their queue and cannot
+  // create an invoice here yet.
+  const org = await activeOrganisation(auth)
+  if (!org) return <NoOrganisationCard title="Accepted Quotes" what="accepted quotes" />
+  const depots = depotsForOrg(org)
+  const invoicingLive = org === 'EB-USA'
+  const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: organisation(org).currency })
 
   const admin = createAdminClient()
 
@@ -63,7 +74,7 @@ export default async function AcceptedQueuePage() {
     ]),
   )
 
-  const { data: deals, error } = acceptedIds.length === 0
+  const { data: deals, error } = acceptedIds.length === 0 || depots.length === 0
     ? { data: [], error: null }
     : await admin
         .from('deals_registry')
@@ -71,7 +82,7 @@ export default async function AcceptedQueuePage() {
           'hubspot_deal_id, deal_name, hubspot_company_id, depot_code, amount, quote_reference, line_items_raw, deal_status, delivery_street, delivery_city, delivery_state, delivery_zip, is_collection',
         )
         .in('hubspot_deal_id', acceptedIds)
-        .in('depot_code', [...US_DEPOTS])
+        .in('depot_code', [...depots])
         .limit(500)
 
   let rows: QueueRow[] = []
@@ -104,12 +115,16 @@ export default async function AcceptedQueuePage() {
     rows = stillWaiting.map((deal) => {
       const dealId = String(deal.hubspot_deal_id)
       const invoice = invoiceByDeal.get(dealId)
-      const addressOk = sanitizeUSAddress({
-        street: deal.delivery_street ?? '',
-        city: deal.delivery_city ?? '',
-        state: deal.delivery_state ?? '',
-        zip: deal.delivery_zip ?? '',
-      }).ok
+      // The address check is a US sales-tax check. Another organisation's
+      // deal is not held to it, because nothing here can tax it yet.
+      const addressOk =
+        !invoicingLive ||
+        sanitizeUSAddress({
+          street: deal.delivery_street ?? '',
+          city: deal.delivery_city ?? '',
+          state: deal.delivery_state ?? '',
+          zip: deal.delivery_zip ?? '',
+        }).ok
 
       let chip: QueueChip
       // A collected deal has no delivery address to be missing: the tax is
@@ -142,9 +157,19 @@ export default async function AcceptedQueuePage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Accepted Quotes</h1>
         <p className="text-gray-500 text-sm mt-1">
-          US quotes marked Quotation Accepted, waiting to be reviewed, taxed and invoiced.
+          {orgLabel(org)} quotes marked Quotation Accepted, waiting to be reviewed, taxed and invoiced.
         </p>
       </div>
+
+      {!invoicingLive && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="font-semibold">Invoicing for {orgLabel(org)} is not set up in the Hub yet.</p>
+          <p className="mt-1">
+            The queue is here for reference. Until {orgLabel(org)}&apos;s tax and Xero flow is built, its
+            invoices are raised outside the Hub.
+          </p>
+        </div>
+      )}
 
       {error ? (
         <Card className="p-6 border-red-200 bg-red-50">
@@ -156,7 +181,7 @@ export default async function AcceptedQueuePage() {
       ) : rows.length === 0 ? (
         <Card className="bg-white border-gray-200 p-10 text-center text-gray-500">
           <Inbox className="w-8 h-8 mx-auto mb-3 text-gray-300" />
-          <p className="font-medium text-gray-700">No accepted US quotes yet</p>
+          <p className="font-medium text-gray-700">No accepted {orgLabel(org)} quotes yet</p>
           <p className="text-sm mt-1">
             Deals appear here a minute or two after a rep marks them Quotation Accepted (they arrive via the
             HubSpot sync).
@@ -208,7 +233,7 @@ export default async function AcceptedQueuePage() {
                         <OpenInvoiceButton
                           dealId={row.dealId}
                           hasInvoice={row.chip !== 'new' && row.chip !== 'missing_address'}
-                          canManage={canManage}
+                          canManage={canManage && invoicingLive}
                         />
                       </div>
                     </td>
@@ -235,7 +260,7 @@ export default async function AcceptedQueuePage() {
                 <OpenInvoiceButton
                   dealId={row.dealId}
                   hasInvoice={row.chip !== 'new' && row.chip !== 'missing_address'}
-                  canManage={canManage}
+                  canManage={canManage && invoicingLive}
                 />
                 {canManage && <ExcludeFromQueueButton dealId={row.dealId} dealName={row.dealName} />}
               </Card>

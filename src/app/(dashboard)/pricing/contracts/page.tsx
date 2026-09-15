@@ -1,4 +1,7 @@
 import { requireCapability } from '@/lib/authz'
+import { activeOrganisation } from '@/lib/active-organisation.server'
+import { currenciesForOrg } from '@/lib/organisations'
+import { NoOrganisationCard } from '@/components/organisations/no-organisation-card'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getHubSpotProducts } from '@/app/actions/hubspot/getProducts'
 import { getContractPrices, getContractors, getListPrices } from '@/app/actions/pricing/get-pricing'
@@ -19,10 +22,15 @@ export default async function ContractPricesPage() {
   const auth = await requireCapability(['pricing.view', 'pricing.manage'])
   const canEdit = auth.capabilities.has('pricing.manage')
 
+  // The organisation being looked at decides the currency, in the query.
+  const org = await activeOrganisation(auth)
+  if (!org) return <NoOrganisationCard title="Contract prices" what="prices" />
+  const currencies = currenciesForOrg(org)
+
   const [contractors, prices, listPrices, catalogue] = await Promise.all([
     getContractors(),
-    getContractPrices(),
-    getListPrices(),
+    getContractPrices(currencies),
+    getListPrices(currencies),
     getHubSpotProducts(),
   ])
 
@@ -99,6 +107,7 @@ export default async function ContractPricesPage() {
         skus={skus}
         productNames={productNames}
         canEdit={canEdit}
+        currencies={[...currencies]}
         today={new Date().toISOString().slice(0, 10)}
       />
     </div>

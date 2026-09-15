@@ -54,7 +54,7 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
   const webhookUrl = process.env.N8N_CUSTOMER_INVOICE_WEBHOOK_URL
   if (!webhookUrl) return { success: false, error: 'The invoice webhook is not configured on the server.' }
 
-  const loaded = await loadInvoiceWithLines(invoiceId)
+  const loaded = await loadInvoiceWithLines(invoiceId, gate.auth.profile.organisations)
   if (!loaded.ok) return { success: false, error: loaded.error }
   const { invoice, lines } = loaded
 

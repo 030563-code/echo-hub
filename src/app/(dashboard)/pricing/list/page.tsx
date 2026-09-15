@@ -1,4 +1,7 @@
 import { requireCapability } from '@/lib/authz'
+import { activeOrganisation } from '@/lib/active-organisation.server'
+import { currenciesForOrg, orgLabel } from '@/lib/organisations'
+import { NoOrganisationCard } from '@/components/organisations/no-organisation-card'
 import { getListPrices } from '@/app/actions/pricing/get-pricing'
 import { getHubSpotProducts } from '@/app/actions/hubspot/getProducts'
 import { ListPricesClient } from './list-prices-client'
@@ -16,7 +19,13 @@ export default async function ListPricesPage() {
   const auth = await requireCapability(['pricing.view', 'pricing.manage'])
   const canEdit = auth.capabilities.has('pricing.manage')
 
-  const [prices, products] = await Promise.all([getListPrices(), getHubSpotProducts()])
+  // The organisation being looked at decides the currency, and the currency
+  // goes into the query: the USA page is USD prices, the Canada page CAD.
+  const org = await activeOrganisation(auth)
+  if (!org) return <NoOrganisationCard title="List prices" what="prices" />
+  const currencies = currenciesForOrg(org)
+
+  const [prices, products] = await Promise.all([getListPrices(currencies), getHubSpotProducts()])
   const catalogue = (products.data ?? [])
     .filter((p) => p.properties.hs_sku)
     .map((p) => ({
@@ -32,13 +41,14 @@ export default async function ListPricesPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">List prices</h1>
         <p className="text-sm text-gray-600 mt-1">
-          What the quote builder charges when a customer has no contract price.{' '}
+          What the quote builder charges a {orgLabel(org)} customer, in {currencies.join(', ')}, when there
+          is no contract price.{' '}
           {canEdit
             ? 'A floor is the lowest a discount may take the price.'
             : 'Read only. Ask Dave to change a price.'}
         </p>
       </div>
-      <ListPricesClient prices={prices} catalogue={catalogue} canEdit={canEdit} />
+      <ListPricesClient prices={prices} catalogue={catalogue} canEdit={canEdit} currencies={[...currencies]} />
     </div>
   )
 }

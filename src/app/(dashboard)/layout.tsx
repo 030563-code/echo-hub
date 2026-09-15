@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { Toaster } from 'sonner'
 import { getAuthorizedUser } from '@/lib/authz'
+import { activeOrganisation } from '@/lib/active-organisation.server'
 import { Shell, type ShellProfile } from '@/components/nav/shell'
 import { loadOwnProfile, type OwnProfile } from '@/lib/profile/load-own-profile'
 import { avatarSrc } from '@/lib/profile/avatar'
@@ -19,6 +20,7 @@ export default async function DashboardLayout({
   }
 
   const displayName = auth.user.email ?? 'User'
+  const activeOrg = await activeOrganisation(auth)
 
   // This layout wraps every dashboard page, so the header and sidebar must
   // render even when the profile read fails, including the window where this
@@ -43,7 +45,13 @@ export default async function DashboardLayout({
     <>
       {/* The responsive shell (fixed rail on lg+, hamburger drawer below) is a
           client component; children are passed through so pages stay server-rendered. */}
-      <Shell capabilities={[...auth.capabilities]} displayName={displayName} profile={profile}>
+      <Shell
+        capabilities={[...auth.capabilities]}
+        organisations={auth.profile.organisations}
+        activeOrg={activeOrg}
+        displayName={displayName}
+        profile={profile}
+      >
         {children}
       </Shell>
       <Toaster position="top-right" richColors />

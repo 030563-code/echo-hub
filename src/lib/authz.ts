@@ -5,6 +5,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { hubspotFetch, HubSpotConfigError } from '@/lib/hubspot-client'
 import { resolveHubSpotOwnerId } from '@/lib/hubspot-owner'
 import { CAPABILITY_KEYS, type CapabilityKey } from '@/lib/capabilities'
+import { ORG_CODES, isOrgCode, pipelineForOrg, sortOrgs, type OrgCode } from '@/lib/organisations'
 
 /**
  * Centralised server-side authorization for the Hub.
@@ -12,7 +13,9 @@ import { CAPABILITY_KEYS, type CapabilityKey } from '@/lib/capabilities'
  * Two axes:
  *  - CAPABILITY (what actions/modules): the `user_capabilities` table, surfaced
  *    here as a `Set<CapabilityKey>`. `admin` / `profiles.is_super_admin` imply all.
- *  - SCOPE (which rows): `profiles.pipeline_id` (region) + `allowed_depots`.
+ *  - SCOPE (which rows): the organisations the person holds (`user_organisations`,
+ *    every one for a super admin), plus `profiles.pipeline_id` (their own sales
+ *    region) and `allowed_depots`.
  *
  * Every server action must re-check capability here; never trust the client.
  */
@@ -20,6 +23,13 @@ import { CAPABILITY_KEYS, type CapabilityKey } from '@/lib/capabilities'
 export interface AuthzProfile {
   id: string
   is_super_admin: boolean
+  /**
+   * The organisations this person may see, in registry order. Every one of
+   * them for a super admin or an `admin` capability holder, otherwise their
+   * rows in user_organisations. Empty means they see nothing in any scoped
+   * module, and every caller must treat it that way.
+   */
+  organisations: OrgCode[]
   pipeline_id: string | null
   allowed_depots: string[]
   allowed_distributors: string[]
@@ -61,11 +71,12 @@ export async function getAuthorizedUser(): Promise<AuthzResult> {
 
   const isSuperAdmin = Boolean(profile.is_super_admin)
 
-  // Read the user's own capability rows (RLS permits reading own rows).
-  const { data: capRows } = await supabase
-    .from('user_capabilities')
-    .select('capability')
-    .eq('user_id', user.id)
+  // Read the user's own capability and organisation rows (RLS permits reading
+  // own rows). Together, because every page pays for this.
+  const [{ data: capRows }, { data: orgRows }] = await Promise.all([
+    supabase.from('user_capabilities').select('capability').eq('user_id', user.id),
+    supabase.from('user_organisations').select('organisation').eq('user_id', user.id),
+  ])
 
   const granted = new Set<CapabilityKey>(
     (capRows ?? [])
@@ -76,12 +87,20 @@ export async function getAuthorizedUser(): Promise<AuthzResult> {
   // `admin` capability or the super-admin flag implies every capability.
   const capabilities = isSuperAdmin || granted.has('admin') ? new Set(ALL_CAPABILITIES) : granted
 
+  // And every organisation. A row naming an organisation the code does not
+  // know is dropped, exactly as an unknown capability key is.
+  const organisations: OrgCode[] =
+    isSuperAdmin || granted.has('admin')
+      ? [...ORG_CODES]
+      : sortOrgs((orgRows ?? []).map((r) => String(r.organisation)).filter(isOrgCode))
+
   return {
     ok: true,
     user: { id: user.id, email: user.email ?? undefined },
     profile: {
       id: profile.id,
       is_super_admin: isSuperAdmin,
+      organisations,
       pipeline_id: profile.pipeline_id ?? null,
       allowed_depots: profile.allowed_depots ?? [],
       allowed_distributors: profile.allowed_distributors ?? [],
@@ -143,7 +162,9 @@ const DEAL_ID_RE = /^\d+$/
 /**
  * The deal-scope rule, shared by the read path (getDealDetails) and every
  * write (assertDealAccess). A non-admin may reach a deal they OWN in HubSpot,
- * or any deal in their own pipeline.
+ * any deal in their own pipeline, or any deal in the pipeline of an
+ * organisation they hold (the same rule the Quotes lists apply when an admin
+ * looks at an organisation's deals).
  *
  * Owner is in the rule because that is exactly how the deal LISTS are scoped:
  * getDealsByStage filters on hubspot_owner_id across the quote-request stages
@@ -159,10 +180,13 @@ const DEAL_ID_RE = /^\d+$/
 export async function isDealInScope(
   dealPipelineId: string | null,
   dealOwnerId: string | null,
-  profile: { pipeline_id: string | null },
+  profile: { pipeline_id: string | null; organisations?: readonly OrgCode[] },
   email?: string
 ): Promise<boolean> {
   if (profile.pipeline_id && dealPipelineId === profile.pipeline_id) return true
+  if (dealPipelineId && (profile.organisations ?? []).some((org) => pipelineForOrg(org) === dealPipelineId)) {
+    return true
+  }
   if (!dealOwnerId || !email) return false
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
   if (!accessToken) return false

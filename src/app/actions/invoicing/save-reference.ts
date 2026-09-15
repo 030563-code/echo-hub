@@ -72,7 +72,7 @@ export async function saveInvoiceReference(input: unknown): Promise<SaveReferenc
   }
   const { invoiceId, customer_po_number, delivery_location, delivery_requested_by } = parsed.data
 
-  const loaded = await loadInvoiceWithLines(invoiceId)
+  const loaded = await loadInvoiceWithLines(invoiceId, gate.auth.profile.organisations)
   if (!loaded.ok) return { success: false, error: loaded.error }
   const { invoice } = loaded
 

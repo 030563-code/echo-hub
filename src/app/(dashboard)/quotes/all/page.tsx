@@ -101,7 +101,10 @@ export default async function AllQuotesPage({
           // looks exactly like a bare arrival to the saved-filter restore, which
           // would redirect the user straight back to what they just cleared.
           hidden={{ scope }}
-          pipelines={Object.values(HUBSPOT_PIPELINES).map((p) => ({ id: p.id, label: p.label }))}
+          // Every rep's deals are pinned to the active organisation's pipeline, so
+          // the pipeline filter is only offered on a rep's own list, where it is
+          // not pinned and still means something.
+          pipelines={scope === 'mine' ? Object.values(HUBSPOT_PIPELINES).map((p) => ({ id: p.id, label: p.label })) : []}
           stages={stageOptions}
           ownerNameById={owners?.ownerNameById}
           showOwner={scope === 'all' && !!isAdmin}

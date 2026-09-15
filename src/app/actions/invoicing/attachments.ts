@@ -68,6 +68,7 @@ export type DownloadUrlResult = { success: true; url: string } | { success: fals
  * exception: nothing should accumulate against a document that was withdrawn.
  */
 async function loadEditableInvoice(invoiceId: string) {
+  // A read for a page that has already checked the invoice's organisation.
   const loaded = await loadInvoiceWithLines(invoiceId)
   if (!loaded.ok) return { ok: false as const, error: loaded.error }
   if (loaded.invoice.status === 'voided') {
@@ -243,7 +244,7 @@ export async function attachmentDownloadUrl(input: unknown): Promise<DownloadUrl
 
   // A voided invoice's files stay readable: withdrawing an invoice does not
   // make its paperwork unreadable, it only stops new files being added.
-  const loaded = await loadInvoiceWithLines(row.invoice_id as string)
+  const loaded = await loadInvoiceWithLines(row.invoice_id as string, gate.auth.profile.organisations)
   if (!loaded.ok) return { success: false, error: loaded.error }
 
   const { data, error: signError } = await admin.storage

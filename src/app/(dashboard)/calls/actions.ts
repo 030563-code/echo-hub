@@ -21,7 +21,7 @@ import { revalidatePath } from 'next/cache'
 import { getAuthorizedUser } from '@/lib/authz'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { hubspotFetch, HubSpotConfigError } from '@/lib/hubspot-client'
-import { officesForViewer } from '@/lib/calls/offices'
+import { officesForOrgs } from '@/lib/organisations'
 import { isMissedCall, isPlaceholderContact } from '@/lib/calls/link-state'
 import { isMissedReasonCode, missedReasonLabel, MISSED_REASON_CODES } from '@/lib/calls/missed-reasons'
 import { readContact } from '@/lib/calls/hubspot-contact'
@@ -61,7 +61,9 @@ async function gateCall(callId: string) {
   }
   if (!data) return { ok: false as const, error: 'That call is no longer in the Hub.' }
 
-  const offices = officesForViewer(auth.profile.pipeline_id, auth.profile.is_super_admin)
+  // Every office of every organisation this person holds, not only the one
+  // they are looking at: a rep may act on any call they can see.
+  const offices = officesForOrgs(auth.profile.organisations)
   if (!offices.includes(data.office as (typeof offices)[number])) {
     // Deliberately the same message as a missing call: whether a call exists in
     // another region is not this person's business either.

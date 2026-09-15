@@ -2,6 +2,8 @@
 
 import { createServerClient } from '@/lib/supabase/server'
 import { getAuthorizedUser, hasAnyCapability } from '@/lib/authz'
+import { activeOrganisation } from '@/lib/active-organisation.server'
+import { orgLabel, pipelineForOrg } from '@/lib/organisations'
 import { QUOTE_REQUEST_STAGES, QUOTATION_SENT_STAGES, CLOSED_WON_STAGES, QUOTATION_ACCEPTED_STAGES } from '@/lib/hubspot-constants'
 import type { HubSpotDeal } from '@/lib/hubspot-types'
 import { DEAL_LIST_PROPERTIES } from '@/lib/hubspot-types'
@@ -58,6 +60,21 @@ export async function getDealsByStage(
   const auth = await getAuthorizedUser()
   const isAdmin = auth.ok && (auth.profile.is_super_admin === true || auth.capabilities.has('admin'))
   const allReps = scope === 'all' && isAdmin
+
+  // Every rep's deals means every rep's deals IN THE ACTIVE ORGANISATION, so
+  // its pipeline is pinned into the search. A rep's own list stays pinned to
+  // the owner and not to a pipeline: a rep's own book is theirs wherever it
+  // sits (one rep's open deals span four pipelines), and hiding part of it
+  // behind an organisation would be the wrong kind of scope.
+  let orgPipeline: string | null = null
+  if (allReps && auth.ok) {
+    const org = await activeOrganisation(auth)
+    if (!org) return { success: false, error: 'No organisation is assigned to your profile.' }
+    orgPipeline = pipelineForOrg(org)
+    if (!orgPipeline) {
+      return { success: true, data: [], hasNextPage: false, isAdmin, notice: `${orgLabel(org)} has no sales pipeline, so there are no deals to list.` }
+    }
+  }
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
   if (!accessToken) {
@@ -127,6 +144,8 @@ export async function getDealsByStage(
       // Dropped only for an admin who asked for every rep. A non-admin, or an
       // admin who did not ask, still sees their own deals.
       ...(allReps ? [] : [{ propertyName: 'hubspot_owner_id', operator: 'EQ', value: ownerId }]),
+      // And every rep's deals are the active organisation's pipeline only.
+      ...(orgPipeline ? [{ propertyName: 'pipeline', operator: 'EQ', value: orgPipeline }] : []),
       ...stageFilters,
     ]
     // An admin viewing every rep can filter to one owner. On a 'mine' list the
@@ -146,9 +165,12 @@ export async function getDealsByStage(
       return { success: false, error: associations.error }
     }
 
+    // A pinned pipeline strips the rep's pipeline filter for the same reason
+    // the board does: a second EQ on a different value ANDs to an empty list
+    // rather than being ignored.
     const group = buildDealFilterGroup(
       pinned,
-      allReps ? dealFilters : { ...dealFilters, ownerId: '' },
+      allReps ? { ...dealFilters, pipelineId: '' } : { ...dealFilters, ownerId: '' },
       associations.resolved,
     )
     if (!group.ok) return { success: false, error: group.error }

@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { CURRENCY_NAME } from '@/lib/pipeline-config'
+import { currenciesForOrgs } from '@/lib/organisations'
 import { logPricingChange, requirePricingManage } from '@/app/actions/pricing/shared'
 import type { AuthzOk } from '@/lib/authz'
 
@@ -27,6 +28,16 @@ const HubSpotId = z.string().trim().regex(/^\d+$/, 'That is not a HubSpot record
 const Sku = z.string().trim().min(1).max(64).toUpperCase()
 const Currency = z.enum(CURRENCIES)
 const Money = z.number().nonnegative().max(1_000_000)
+
+/**
+ * A price is written in a currency, and a currency belongs to organisations.
+ * A pricing admin may only write prices in the currencies of organisations
+ * they hold; a super admin (Dave) holds them all.
+ */
+function currencyHeld(auth: AuthzOk, currency: string): boolean {
+  if (auth.profile.is_super_admin || auth.capabilities.has('admin')) return true
+  return currenciesForOrgs(auth.profile.organisations).includes(currency)
+}
 
 async function commit(
   auth: AuthzOk,
@@ -78,6 +89,9 @@ export async function saveListPrice(input: z.input<typeof ListPriceSchema>): Pro
   const parsed = ListPriceSchema.safeParse(input)
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid price' }
   const d = parsed.data
+  if (!currencyHeld(gate.auth, d.currency)) {
+    return { success: false, error: `${d.currency} prices belong to an organisation you do not hold.` }
+  }
 
   // Checked here as well as by the column constraint, so the admin gets a
   // sentence rather than a Postgres error string.
@@ -179,6 +193,9 @@ export async function saveContractPrice(input: z.input<typeof ContractPriceSchem
   const parsed = ContractPriceSchema.safeParse(input)
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid contract price' }
   const d = parsed.data
+  if (!currencyHeld(gate.auth, d.currency)) {
+    return { success: false, error: `${d.currency} prices belong to an organisation you do not hold.` }
+  }
 
   if (d.valid_from && d.valid_to && d.valid_to < d.valid_from) {
     return { success: false, error: 'The end date cannot be before the start date.' }
@@ -252,14 +269,16 @@ export async function saveDiscountCap(input: z.input<typeof DiscountCapSchema>):
     .maybeSingle()
   if (!target) return { success: false, error: 'That user does not have a Hub profile.' }
 
-  // A regional pricing admin sets caps for their own region only. Dave is a
-  // super admin so this never bites him, but it means the capability can be
-  // handed to a regional manager later without also handing them every rep.
+  // A regional pricing admin sets caps for the reps of their own organisations
+  // only. Dave is a super admin so this never bites him, but it means the
+  // capability can be handed to a regional manager later without also handing
+  // them every rep.
   const row = target as { pipeline_id: string | null; display_name: string | null }
   if (!gate.auth.profile.is_super_admin && !gate.auth.capabilities.has('admin')) {
-    if (row.pipeline_id !== gate.auth.profile.pipeline_id) {
-      return { success: false, error: 'That rep is in another region.' }
-    }
+    const { data: held } = await admin.from('user_organisations').select('organisation').eq('user_id', d.user_id)
+    const mine: readonly string[] = gate.auth.profile.organisations
+    const shared = (held ?? []).some((h) => mine.includes(String(h.organisation)))
+    if (!shared) return { success: false, error: 'That rep is in another organisation.' }
   }
 
   const { data: before } = await admin

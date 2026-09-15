@@ -31,7 +31,7 @@ export async function generateInvoicePdf(input: { invoiceId: string }): Promise<
   const parsed = Input.safeParse(input)
   if (!parsed.success) return { success: false, error: 'Invalid invoice id' }
 
-  const loaded = await loadInvoiceWithLines(parsed.data.invoiceId)
+  const loaded = await loadInvoiceWithLines(parsed.data.invoiceId, gate.auth.profile.organisations)
   if (!loaded.ok) return { success: false, error: loaded.error }
   const { invoice, lines } = loaded
 

@@ -103,7 +103,7 @@ export async function saveInvoiceDraft(input: z.infer<typeof Input>): Promise<Sa
   const keys = new Set(lines.map((l) => l.line_key))
   if (keys.size !== lines.length) return { success: false, error: 'Line keys must be unique.' }
 
-  const loaded = await loadInvoiceWithLines(invoiceId)
+  const loaded = await loadInvoiceWithLines(invoiceId, gate.auth.profile.organisations)
   if (!loaded.ok) return { success: false, error: loaded.error }
   const { invoice, lines: storedLines } = loaded
 

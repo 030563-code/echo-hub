@@ -14,6 +14,7 @@ import { CLOSED_LOST_STAGES } from '@/lib/hubspot-constants'
 import { buildFilingOrders, type ShipToAddress } from '@/lib/customer-invoice/tax-mapping'
 import { sanitizeUSAddress, normalizeUSState } from '@/lib/us-address'
 import { getAuthorizedUser, type AuthzOk } from '@/lib/authz'
+import { holdsOrganisation, type OrgCode } from '@/lib/organisations'
 import type { CustomerInvoiceStatus } from '@/lib/customer-invoice/constants'
 import type { USDepot } from '@/lib/customer-invoice/constants'
 
@@ -44,6 +45,9 @@ export interface CustomerInvoiceRow {
   /** Customer-facing EBUS number, null until the invoice is raised. */
   invoice_number: string | null
   raised_at: string | null
+  /** entities.code of the company invoicing: the outer scope of everything
+   *  about this row. Set from the deal's depot when the draft is built. */
+  organisation_code: string
   status: CustomerInvoiceStatus
   currency: string
   invoice_date: string | null
@@ -126,7 +130,18 @@ export async function requireInvoicingManage(): Promise<InvoicingAuth> {
   return { ok: true, auth }
 }
 
-export async function loadInvoiceWithLines(invoiceId: string): Promise<
+/**
+ * The invoice and its lines, for an action about to change it.
+ *
+ * `heldBy` is the caller's organisations. An invoice belonging to one they do
+ * not hold answers exactly as a missing one does: whether it exists is not
+ * their business either. Every action passes it; the one place it is omitted
+ * is a read the page has already scoped.
+ */
+export async function loadInvoiceWithLines(
+  invoiceId: string,
+  heldBy?: readonly OrgCode[],
+): Promise<
   { ok: true; invoice: CustomerInvoiceRow; lines: CustomerInvoiceLineRow[] } | { ok: false; error: string }
 > {
   const admin = createAdminClient()
@@ -137,6 +152,9 @@ export async function loadInvoiceWithLines(invoiceId: string): Promise<
     .maybeSingle()
   if (error) return { ok: false, error: 'Failed to load the invoice.' }
   if (!invoice) return { ok: false, error: 'Invoice not found.' }
+  if (heldBy && !holdsOrganisation(heldBy, (invoice as { organisation_code?: string }).organisation_code)) {
+    return { ok: false, error: 'Invoice not found.' }
+  }
 
   const { data: lines, error: linesError } = await admin
     .from('customer_invoice_lines')

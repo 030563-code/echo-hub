@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { formatMoney } from '@/lib/utils'
-import { CURRENCY_NAME } from '@/lib/pipeline-config'
 import { saveListPrice } from '@/app/actions/pricing/save-pricing'
 import type { ListPriceRecord } from '@/app/actions/pricing/get-pricing'
 import { EditRowDialog } from '../edit-row-dialog'
@@ -32,8 +31,8 @@ interface Draft {
   isActive: boolean
 }
 
-const CURRENCIES = Object.keys(CURRENCY_NAME)
-const EMPTY: Draft = { sku: '', currency: 'USD', productName: '', hsProductId: '', unitPrice: '', mapPrice: '', floorPrice: '', isActive: true }
+/** A blank draft in the active organisation's currency. */
+const empty = (currency: string): Draft => ({ sku: '', currency, productName: '', hsProductId: '', unitPrice: '', mapPrice: '', floorPrice: '', isActive: true })
 
 /** Blank means "not set", which is different from zero: a floor of 0 is a real
  *  floor that forbids giving the item away. */
@@ -49,11 +48,14 @@ function PriceFields({
   set,
   lockKey,
   catalogue,
+  currencies,
 }: {
   state: Draft
   set: (patch: Partial<Draft>) => void
   lockKey: boolean
   catalogue: CatalogueEntry[]
+  /** The active organisation's currencies: the only ones a price here can be in. */
+  currencies: string[]
 }) {
   return (
     <>
@@ -90,7 +92,7 @@ function PriceFields({
               onChange={(e) => set({ currency: e.target.value })}
               className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
             >
-              {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              {currencies.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           )}
         </div>
@@ -135,12 +137,14 @@ function PriceEditor({
   initial,
   lockKey,
   catalogue,
+  currencies,
   title,
   trigger,
 }: {
   initial: Draft
   lockKey: boolean
   catalogue: CatalogueEntry[]
+  currencies: string[]
   title: string
   trigger: React.ReactNode
 }) {
@@ -167,11 +171,11 @@ function PriceEditor({
         })
       }}
       onSaved={() => {
-        if (!lockKey) setState(EMPTY)
+        if (!lockKey) setState(empty(currencies[0] ?? state.currency))
         router.refresh()
       }}
     >
-      <PriceFields state={state} set={(patch) => setState({ ...state, ...patch })} lockKey={lockKey} catalogue={catalogue} />
+      <PriceFields state={state} set={(patch) => setState({ ...state, ...patch })} lockKey={lockKey} catalogue={catalogue} currencies={currencies} />
     </EditRowDialog>
   )
 }
@@ -180,10 +184,13 @@ export function ListPricesClient({
   prices,
   catalogue,
   canEdit,
+  currencies,
 }: {
   prices: ListPriceRecord[]
   catalogue: CatalogueEntry[]
   canEdit: boolean
+  /** The active organisation's currencies. A new price can only be in one of these. */
+  currencies: string[]
 }) {
   const catalogueBySku = new Map(catalogue.map((c) => [c.sku, c]))
 
@@ -192,9 +199,10 @@ export function ListPricesClient({
       {canEdit && (
         <div className="flex justify-end border-b border-gray-100 px-4 py-3">
           <PriceEditor
-            initial={EMPTY}
+            initial={empty(currencies[0] ?? 'USD')}
             lockKey={false}
             catalogue={catalogue}
+            currencies={currencies}
             title="Add a list price"
             trigger={<Button size="sm">Add a price</Button>}
           />
@@ -259,6 +267,7 @@ export function ListPricesClient({
                           }}
                           lockKey
                           catalogue={catalogue}
+                          currencies={currencies}
                           title={`${p.sku} (${p.currency})`}
                           trigger={<Button size="sm" variant="outline">Edit</Button>}
                         />

@@ -13,6 +13,8 @@
  * DB-reading helpers live in `@/lib/authz` (server-only).
  */
 
+import type { OrgModule } from '@/lib/organisations'
+
 export const CAPABILITY_KEYS = [
   'quotes.view',
   'quotes.create',
@@ -121,6 +123,14 @@ export interface NavItem {
   /** The heading this sits under. Omitted for top-level items such as
    *  Dashboard, which render above every group. */
   group?: NavGroup
+  /**
+   * The organisation-scoped module behind this item, when there is one. The
+   * sidebar lists the organisations the person holds under it (Dean, 15 Sep
+   * 2026: "a dropdown under each section"). Dashboard, Bill of Materials and
+   * Warehousing/Stock have none: the first is home, the other two are s.r.o.
+   * manufacturing and belong to no single organisation.
+   */
+  module?: OrgModule
 }
 
 /**
@@ -132,17 +142,17 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', href: '/', icon: 'LayoutDashboard', requires: [] },
 
-  { label: 'Quotes', href: '/quotes', icon: 'FileText', requires: ['quotes.view', 'quotes.create'], group: 'Sales and Accounting' },
-  { label: 'Invoicing', href: '/invoicing', icon: 'ReceiptText', requires: ['invoicing.view', 'invoicing.manage'], group: 'Sales and Accounting' },
-  { label: 'Pricing', href: '/pricing', icon: 'Tags', requires: ['pricing.view', 'pricing.manage'], group: 'Sales and Accounting' },
-  { label: 'Calls', href: '/calls', icon: 'Phone', requires: ['calls.view'], group: 'Sales and Accounting' },
+  { label: 'Quotes', href: '/quotes', icon: 'FileText', requires: ['quotes.view', 'quotes.create'], group: 'Sales and Accounting', module: 'quotes' },
+  { label: 'Invoicing', href: '/invoicing', icon: 'ReceiptText', requires: ['invoicing.view', 'invoicing.manage'], group: 'Sales and Accounting', module: 'invoicing' },
+  { label: 'Pricing', href: '/pricing', icon: 'Tags', requires: ['pricing.view', 'pricing.manage'], group: 'Sales and Accounting', module: 'pricing' },
+  { label: 'Calls', href: '/calls', icon: 'Phone', requires: ['calls.view'], group: 'Sales and Accounting', module: 'calls' },
 
-  { label: 'Purchase Orders', href: '/purchase-orders', icon: 'ShoppingCart', requires: ['po.view', 'po.create', 'po.approve'], group: 'Operations' },
+  { label: 'Purchase Orders', href: '/purchase-orders', icon: 'ShoppingCart', requires: ['po.view', 'po.create', 'po.approve'], group: 'Operations', module: 'purchase-orders' },
   { label: 'Bill of Materials', href: '/bom', icon: 'Layers', requires: ['bom.view'], group: 'Operations' },
-  { label: 'Transport', href: '/transport', icon: 'Truck', requires: ['transport.view'], group: 'Operations' },
-  { label: 'Invoices', href: '/invoices', icon: 'Receipt', requires: ['invoice.view'], group: 'Operations' },
+  { label: 'Transport', href: '/transport', icon: 'Truck', requires: ['transport.view'], group: 'Operations', module: 'transport' },
+  { label: 'Invoices', href: '/invoices', icon: 'Receipt', requires: ['invoice.view'], group: 'Operations', module: 'invoices' },
   { label: 'Warehousing/Stock', href: '/mrp', icon: 'Gauge', requires: ['mrp.view'], group: 'Operations' },
-  { label: 'Stock', href: '/stock', icon: 'Boxes', requires: ['stock.view', 'stock.edit'], group: 'Operations' },
+  { label: 'Stock', href: '/stock', icon: 'Boxes', requires: ['stock.view', 'stock.edit'], group: 'Operations', module: 'stock' },
 ]
 
 export interface NavSection {

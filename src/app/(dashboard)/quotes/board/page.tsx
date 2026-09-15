@@ -3,12 +3,10 @@ import { AlertCircle } from 'lucide-react'
 import { requireCapability } from '@/lib/authz'
 import { getDealsForBoard, type BoardScope } from '@/app/actions/hubspot/getDealsForBoard'
 import { DealsBoard } from '@/components/quotes/deals-board'
-import { PIPELINE_CONFIG } from '@/lib/pipeline-config'
 import { Card } from '@/components/ui/card'
 import { FilterNotice } from '@/components/quotes/filter-notice'
 import { DealFilterBar } from '@/components/quotes/deal-filter-bar'
 import { dealFiltersToQuery, parseBoardDealFilters } from '@/lib/deal-filters'
-import { HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
 import { withStoredQuotesFilters } from '@/lib/page-state-server'
 
 export const dynamic = 'force-dynamic'
@@ -22,9 +20,9 @@ export const dynamic = 'force-dynamic'
  * Replaces the Pending tab, which painted every row one grey badge reading
  * "Pending" whatever stage the deal was actually at.
  *
- * Scope and pipeline live in the URL so a view is linkable, and both are
- * re-decided server-side: a rep who edits either gets their own deals in their
- * own region back.
+ * Scope lives in the URL so a view is linkable, and is re-decided
+ * server-side: a rep who edits it gets their own deals back. The pipeline is
+ * the active organisation's (the sidebar switch), never a parameter here.
  */
 export default async function DealsBoardPage({
   searchParams,
@@ -39,21 +37,17 @@ export default async function DealsBoardPage({
 
   const windowDays = Number(params.window) || 60
 
-  // `pipeline` belongs to the board's own selector below, not to the filter
-  // bar. parseBoardDealFilters is what guarantees it never reaches the markup;
-  // its own doc comment explains what breaks otherwise.
+  // The board pins the active organisation's pipeline itself, so a `pipeline`
+  // filter never reaches the markup. parseBoardDealFilters is what guarantees
+  // that; its own doc comment explains what breaks otherwise.
   const dealFilters = parseBoardDealFilters(params)
 
-  // Dean asked the board to open on All reps and USA SALES rather than on the
-  // viewer's own region. Both defaults are safe to state here because
-  // getDealsForBoard re-decides them: a non-admin asking for 'all' is put back
-  // to 'mine', and a non-admin's pipeline argument is ignored in favour of
-  // their profile.
+  // Dean asked the board to open on All reps rather than on the viewer's own
+  // deals. Safe to state here because getDealsForBoard re-decides it: a
+  // non-admin asking for 'all' is put back to 'mine'.
   const scopeParam = typeof params.scope === 'string' ? params.scope : ''
-  const pipelineParam = typeof params.pipeline === 'string' ? params.pipeline : ''
   const result = await getDealsForBoard({
     scope: scopeParam === 'mine' ? 'mine' : 'all',
-    pipelineId: pipelineParam || HUBSPOT_PIPELINES.USA_SALES.id,
     windowDays,
     dealFilters,
   })
@@ -71,7 +65,6 @@ export default async function DealsBoardPage({
   const link = (next: Record<string, string>) => {
     const q = new URLSearchParams({
       scope,
-      ...(result.pipelineId ? { pipeline: result.pipelineId } : {}),
       window: String(windowDays),
       // Switching scope or window must not silently drop the filters, which
       // would look like the filter had been ignored.
@@ -110,25 +103,6 @@ export default async function DealsBoardPage({
               </Link>
             ))}
           </div>
-          {result.isAdmin && (
-            <form action="/quotes/board" method="get" className="flex items-center gap-1">
-              <input type="hidden" name="scope" value={scope} />
-              <input type="hidden" name="window" value={windowDays} />
-              {Object.entries(dealFiltersToQuery(dealFilters)).map(([name, value]) => (
-                <input key={name} type="hidden" name={name} value={value} />
-              ))}
-              <select
-                name="pipeline"
-                defaultValue={result.pipelineId}
-                className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900"
-              >
-                {PIPELINE_CONFIG.map((p) => (
-                  <option key={p.pipelineId} value={p.pipelineId}>{p.label}</option>
-                ))}
-              </select>
-              <button type="submit" className={chip(false)}>Go</button>
-            </form>
-          )}
         </div>
       </div>
 
@@ -137,7 +111,6 @@ export default async function DealsBoardPage({
         filters={dealFilters}
         hidden={{
           scope,
-          ...(result.pipelineId ? { pipeline: result.pipelineId } : {}),
           window: String(windowDays),
         }}
         stages={result.groups

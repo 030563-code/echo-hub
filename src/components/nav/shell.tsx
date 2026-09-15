@@ -11,6 +11,8 @@ import { OpenOnPhone } from '@/components/nav/open-on-phone'
 import { Avatar } from '@/components/profile/avatar'
 import { isStaging } from '@/lib/env'
 import type { CapabilityKey } from '@/lib/capabilities'
+import { organisation, type OrgCode } from '@/lib/organisations'
+import { FlagIcon } from '@/components/ui/flag-icon'
 
 /** Who is signed in, as the header and sidebar show them. Every field but the
  *  id can be null: no email, no name set, no job title, or no photo. */
@@ -25,6 +27,9 @@ export interface ShellProfile {
 
 interface ShellProps {
   capabilities: CapabilityKey[]
+  /** The organisations this person holds, and the one they are looking at. */
+  organisations: OrgCode[]
+  activeOrg: OrgCode | null
   displayName: string
   profile: ShellProfile
   children: React.ReactNode
@@ -37,7 +42,7 @@ interface ShellProps {
  * state; `children` arrives as a prop from the server layout, so pages stay
  * server-rendered.
  */
-export function Shell({ capabilities, displayName, profile, children }: ShellProps) {
+export function Shell({ capabilities, organisations, activeOrg, displayName, profile, children }: ShellProps) {
   const [open, setOpen] = useState(false)
   const pathname = usePathname()
 
@@ -81,6 +86,8 @@ export function Shell({ capabilities, displayName, profile, children }: ShellPro
 
       <Sidebar
         capabilities={capabilities}
+        organisations={organisations}
+        activeOrg={activeOrg}
         displayName={displayName}
         profile={profile}
         className={`transition-transform duration-200 ease-out lg:translate-x-0 ${
@@ -113,6 +120,17 @@ export function Shell({ capabilities, displayName, profile, children }: ShellPro
             <h2 className="text-base lg:text-lg font-bold text-gray-800 uppercase tracking-wide">
               Echo Barrier Hub
             </h2>
+            {/* Which organisation everything on this page belongs to. One for
+                the whole Hub, so it is said once, here, on every screen size. */}
+            {activeOrg && (
+              <span
+                data-testid="active-organisation"
+                className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 bg-gray-50 px-2.5 py-0.5 text-xs font-semibold text-gray-800"
+              >
+                <FlagIcon code={organisation(activeOrg).flag} />
+                {organisation(activeOrg).label}
+              </span>
+            )}
           </div>
           {/* Both controls keep a 44px tap target on mobile (the hamburger's size).
               On lg the negative margin keeps their 40px boxes from making the

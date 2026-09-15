@@ -35,7 +35,7 @@ async function findUserId(email) {
   }
 }
 
-async function ensureUser(u, { depots, caps }) {
+async function ensureUser(u, { depots, caps, orgs }) {
   let id
   const { data, error } = await sb.auth.admin.createUser({
     email: u.email,
@@ -61,6 +61,14 @@ async function ensureUser(u, { depots, caps }) {
     .from('user_capabilities')
     .insert(caps.map((c) => ({ user_id: id, capability: c })))
   if (ce) throw ce
+  // Which organisations the persona holds. Every scoped page fails closed
+  // without a row here, so a persona with none would see empty boards and the
+  // specs would read that as a regression.
+  await sb.from('user_organisations').delete().eq('user_id', id)
+  const { error: oe } = await sb
+    .from('user_organisations')
+    .insert(orgs.map((o) => ({ user_id: id, organisation: o })))
+  if (oe) throw oe
   return id
 }
 
@@ -99,10 +107,12 @@ async function makePo(leg, from, to, lines, poNumber) {
 
 const buyerId = await ensureUser(BUYER, {
   depots: ['ALL'],
+  orgs: ['EB-USA', 'EB-SRO', 'EB-GROUP'],
   caps: ['po.view', 'po.create', 'po.receive', 'bom.view', 'bom.edit', 'cost.view', 'quotes.view', 'transport.view', 'invoice.view', 'invoice.create'],
 })
 const workerId = await ensureUser(WORKER, {
   depots: null,
+  orgs: ['EB-SRO'],
   caps: ['po.view', 'po.receive', 'bom.view', 'invoice.view'],
 })
 

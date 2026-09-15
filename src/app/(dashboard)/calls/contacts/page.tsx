@@ -1,6 +1,7 @@
 import { requireCapability } from '@/lib/authz'
-import { officesForViewer } from '@/lib/calls/offices'
+import { activeOrganisation } from '@/lib/active-organisation.server'
 import { loadPlaceholderContacts } from '@/lib/calls/placeholders'
+import { officesForOrg } from '@/lib/organisations'
 import { PlaceholderContactsClient } from './contacts-client'
 
 // Read live from HubSpot: these records predate the Hub's call table, so they
@@ -9,7 +10,8 @@ export const dynamic = 'force-dynamic'
 
 export default async function PlaceholderContactsPage() {
   const auth = await requireCapability('calls.view')
-  const offices = officesForViewer(auth.profile.pipeline_id, auth.profile.is_super_admin)
+  const org = await activeOrganisation(auth)
+  const offices = org ? officesForOrg(org) : []
   const result = await loadPlaceholderContacts(offices)
 
   return (

@@ -10,13 +10,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { formatMoney } from '@/lib/utils'
 import { pickContractPrice } from '@/lib/pricing'
-import { CURRENCY_NAME } from '@/lib/pipeline-config'
 import { searchCompanies } from '@/app/actions/hubspot/searchCompanies'
 import { saveContractPrice, saveContractor } from '@/app/actions/pricing/save-pricing'
 import type { ContractPriceRecord, ContractorRow } from '@/app/actions/pricing/get-pricing'
 import { EditRowDialog } from '../edit-row-dialog'
 
-const CURRENCIES = Object.keys(CURRENCY_NAME)
 
 function num(value: string): number | null {
   const trimmed = value.trim()
@@ -170,11 +168,14 @@ function PriceEditor({
   productNames,
   presetSku,
   presetCurrency,
+  currencies,
   trigger,
 }: {
   contractor: ContractorRow
   existing?: ContractPriceRecord
   skus: string[]
+  /** The active organisation's currencies: the only ones a new price can be in. */
+  currencies: string[]
   /** SKU to the product name as it reads in HubSpot. A SKU with no list price
    *  simply has no entry, and the row falls back to showing its SKU alone. */
   productNames: Record<string, string>
@@ -187,7 +188,7 @@ function PriceEditor({
 }) {
   const router = useRouter()
   const [sku, setSku] = useState(existing?.sku ?? presetSku ?? '')
-  const [currency, setCurrency] = useState(existing?.currency ?? presetCurrency ?? 'USD')
+  const [currency, setCurrency] = useState(existing?.currency ?? presetCurrency ?? currencies[0] ?? 'USD')
   const [unitPrice, setUnitPrice] = useState(existing ? String(existing.unit_price ?? '') : '')
   const [validFrom, setValidFrom] = useState(existing?.valid_from ?? '')
   const [validTo, setValidTo] = useState(existing?.valid_to ?? '')
@@ -250,7 +251,7 @@ function PriceEditor({
               onChange={(e) => setCurrency(e.target.value)}
               className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
             >
-              {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              {currencies.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           )}
         </div>
@@ -303,11 +304,15 @@ export function ContractPricesClient({
   skus,
   productNames,
   canEdit,
+  currencies: orgCurrencies,
   today,
 }: {
   contractors: ContractorRow[]
   prices: ContractPriceRecord[]
   skus: string[]
+  /** The active organisation's currencies. The page has already narrowed
+   *  `prices` to them; a new price can only be in one of them. */
+  currencies: string[]
   /** SKU to the product name as it reads in HubSpot, resolved from the list
    *  prices the page already loads. */
   productNames: Record<string, string>
@@ -463,6 +468,7 @@ export function ContractPricesClient({
                                 existing={shown ?? undefined}
                                 presetSku={sku}
                                 presetCurrency={currency}
+                                currencies={orgCurrencies}
                                 skus={skus}
                                 productNames={productNames}
                                 trigger={

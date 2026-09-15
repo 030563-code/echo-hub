@@ -6,7 +6,8 @@ import {
   isWithheldCaller,
   linkReasons,
 } from '@/lib/calls/link-state'
-import { normaliseOffice, officesForViewer, OFFICES } from '@/lib/calls/offices'
+import { normaliseOffice, OFFICES } from '@/lib/calls/offices'
+import { officesForOrg, officesForOrgs } from '@/lib/organisations'
 import { MISSED_REASON_CODES, isMissedReasonCode, missedReasonLabel } from '@/lib/calls/missed-reasons'
 
 describe('a placeholder contact', () => {
@@ -115,25 +116,27 @@ describe('the missed-call reasons', () => {
 })
 
 describe('which offices a person sees', () => {
-  it('follows their pipeline', () => {
-    expect(officesForViewer('dfc85d9e-7eb9-4ade-a9cf-4e726cbcc9cc', false)).toEqual(['USA'])
-    expect(officesForViewer('2cfa0ec9-937b-44dc-9ee7-146d8745ab33', false)).toEqual(['UK'])
-    expect(officesForViewer('14520121', false)).toEqual(['ANZ'])
-    expect(officesForViewer('6f942aab-15a9-4cdb-a684-53e78b36c424', false)).toEqual(['Asia'])
+  // The organisation being looked at decides the offices (Dean, 15 Sep 2026:
+  // the calls tab is split by organisation like everything else), and a super
+  // admin holds every organisation, so they see every office.
+  it('follows the organisation', () => {
+    expect(officesForOrg('EB-USA')).toEqual(['USA'])
+    expect(officesForOrg('EB-UK')).toEqual(['UK'])
+    expect(officesForOrg('EB-AUSTRALIA')).toEqual(['ANZ'])
+    expect(officesForOrg('EB-GROUP')).toEqual(['Asia'])
   })
 
-  it('gives Euro Sales both of its offices', () => {
-    expect(officesForViewer('d739df20-18b4-4e4b-b183-943038071da1', false)).toEqual(['France', 'Spain'])
+  it('gives France both of its offices, and Canada the USA office it shares', () => {
+    expect(officesForOrg('EB-FRANCE')).toEqual(['France', 'Spain'])
+    expect(officesForOrg('EB-CANADA')).toEqual(['USA'])
   })
 
-  it('fails closed on no pipeline, and on one nobody has mapped', () => {
-    expect(officesForViewer(null, false)).toEqual([])
-    expect(officesForViewer('', false)).toEqual([])
-    expect(officesForViewer('a-pipeline-added-next-month', false)).toEqual([])
+  it('gives s.r.o. no office, because nobody phones the factory through the system', () => {
+    expect(officesForOrg('EB-SRO')).toEqual([])
   })
 
-  it('gives a super admin every office', () => {
-    expect(officesForViewer(null, true)).toEqual(OFFICES)
+  it('gives someone holding every organisation every office', () => {
+    expect(officesForOrgs(['EB-USA', 'EB-CANADA', 'EB-FRANCE', 'EB-SRO', 'EB-GROUP', 'EB-AUSTRALIA', 'EB-UK'])).toEqual(OFFICES)
   })
 })
 

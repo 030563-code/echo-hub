@@ -1,4 +1,5 @@
 import { requireCapability } from '@/lib/authz'
+import { activeOrganisation } from '@/lib/active-organisation.server'
 import { getDiscountCaps, getRepsForCaps } from '@/app/actions/pricing/get-pricing'
 import { PIPELINE_CONFIG } from '@/lib/pipeline-config'
 import { DiscountCapsClient } from './discount-caps-client'
@@ -17,9 +18,12 @@ export default async function DiscountCapsPage() {
   const auth = await requireCapability('pricing.manage')
   const isSuperAdmin = auth.profile.is_super_admin || auth.capabilities.has('admin')
 
+  // A regional pricing admin sets caps for the reps of the organisation they
+  // are looking at; a super admin sees everyone.
+  const org = await activeOrganisation(auth)
   const [caps, reps] = await Promise.all([
     getDiscountCaps(),
-    getRepsForCaps({ pipelineId: auth.profile.pipeline_id, isSuperAdmin }),
+    getRepsForCaps({ organisation: org, isSuperAdmin }),
   ])
 
   const pipelineLabel = (id: string | null) =>

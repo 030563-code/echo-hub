@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createServerClient } from '@/lib/supabase/server'
+import type { OrgCode } from '@/lib/organisations'
 import type { ContractPriceRow, DiscountCap, ListPriceRow } from '@/lib/pricing'
 
 /**
@@ -43,13 +44,13 @@ export interface DiscountCapRecord extends DiscountCap {
   updated_at: string
 }
 
-export async function getListPrices(): Promise<ListPriceRecord[]> {
+/** The list prices, in the given currencies only when a list is passed: an
+ *  organisation's page shows its own currency's prices and no other's. */
+export async function getListPrices(currencies?: readonly string[]): Promise<ListPriceRecord[]> {
   const supabase = await createServerClient()
-  const { data, error } = await supabase
-    .from('list_prices')
-    .select('*')
-    .order('sku', { ascending: true })
-    .order('currency', { ascending: true })
+  let query = supabase.from('list_prices').select('*')
+  if (currencies) query = query.in('currency', [...currencies])
+  const { data, error } = await query.order('sku', { ascending: true }).order('currency', { ascending: true })
   if (error) {
     console.error('getListPrices failed', error.message)
     return []
@@ -73,12 +74,11 @@ export async function getContractors(): Promise<ContractorRow[]> {
   return (data ?? []) as ContractorRow[]
 }
 
-export async function getContractPrices(): Promise<ContractPriceRecord[]> {
+export async function getContractPrices(currencies?: readonly string[]): Promise<ContractPriceRecord[]> {
   const supabase = await createServerClient()
-  const { data, error } = await supabase
-    .from('contract_prices')
-    .select('*')
-    .order('sku', { ascending: true })
+  let query = supabase.from('contract_prices').select('*')
+  if (currencies) query = query.in('currency', [...currencies])
+  const { data, error } = await query.order('sku', { ascending: true })
   if (error) {
     console.error('getContractPrices failed', error.message)
     return []
@@ -172,7 +172,8 @@ export interface RepRow {
  * everyone, which is how Dave uses it.
  */
 export async function getRepsForCaps(input: {
-  pipelineId: string | null
+  /** The organisation being looked at. A regional admin sees the reps who hold it. */
+  organisation: OrgCode | null
   isSuperAdmin: boolean
 }): Promise<RepRow[]> {
   const admin = createAdminClient()
@@ -183,16 +184,25 @@ export async function getRepsForCaps(input: {
   // caps page showed "no reps" to everyone including super admins and no cap
   // could ever be set. A rep with no cap cannot discount at all, so that was
   // the entire discounting feature, off.
-  let query = admin
-    .from('profiles')
-    .select('id, display_name, pipeline_id')
-    .order('display_name', { ascending: true })
+  let query = admin.from('profiles').select('id, display_name, pipeline_id')
   if (!input.isSuperAdmin) {
-    // A null pipeline would match nothing useful, so an unscoped admin sees an
-    // empty list and the page says why rather than showing the whole company.
-    query = query.eq('pipeline_id', input.pipelineId ?? '__none__')
+    // The reps who hold the organisation being looked at. No organisation, or
+    // nobody holding it, is an empty list the page explains, never the whole
+    // company.
+    if (!input.organisation) return []
+    const { data: holders, error: holdersError } = await admin
+      .from('user_organisations')
+      .select('user_id')
+      .eq('organisation', input.organisation)
+    if (holdersError) {
+      console.error('getRepsForCaps could not read user_organisations', holdersError.message)
+      return []
+    }
+    const ids = (holders ?? []).map((h) => String(h.user_id))
+    if (ids.length === 0) return []
+    query = query.in('id', ids)
   }
-  const { data, error } = await query
+  const { data, error } = await query.order('display_name', { ascending: true })
   if (error) {
     console.error('getRepsForCaps failed', error.message)
     return []
