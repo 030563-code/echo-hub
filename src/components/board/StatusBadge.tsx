@@ -58,6 +58,15 @@ const STATUS_CONFIG: Record<string, { label: string; hue: Hue }> = {
   customer_dispatch:     { label: "Dispatched",     hue: "teal" },
   material_consumed:     { label: "Consumed",       hue: "orange" },
   adjustment:            { label: "Adjustment",     hue: "zinc" },
+  // Calls: what the phone system logged, and whether a person has dealt with it
+  answered:              { label: "Answered",       hue: "green" },
+  voicemail:             { label: "Voicemail",      hue: "orange" },
+  department_notification: { label: "Department",   hue: "blue" },
+  other:                 { label: "Other",          hue: "zinc" },
+  needs_link:            { label: "Needs linking",  hue: "yellow" },
+  linked:                { label: "Linked",         hue: "emerald" },
+  no_contact:            { label: "No contact",     hue: "zinc" },
+  ignored:               { label: "Ignored",        hue: "zinc" },
 };
 
 const LIGHT: Record<Hue, string> = {

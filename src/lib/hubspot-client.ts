@@ -19,6 +19,9 @@ const MAX_BACKOFF_MS = 8000
 
 export class HubSpotConfigError extends Error {}
 
+/** HubSpot's two READ endpoints that are POSTs. Mirrored by the write guard. */
+export const POST_READ_ENDPOINTS = ['/search', '/batch/read'] as const
+
 export interface HubSpotFetchOptions extends Omit<RequestInit, 'cache'> {
   /** Number of retry attempts on 429/5xx. Default 3. */
   retries?: number
@@ -38,9 +41,15 @@ export async function hubspotFetch(url: string, options: HubSpotFetchOptions = {
 
   const { retries = DEFAULT_RETRIES, headers, body, ...rest } = options
 
-  // Staging kill switch: never mutate the live CRM. Reads (GET/HEAD) still pass.
+  // Staging kill switch: never mutate the live CRM. Reads still pass, and two of
+  // HubSpot's reads are POSTs: /search and /batch/read. Without that carve-out a
+  // page whose LIST is a search is simply blank on staging, which reads as a
+  // broken feature rather than a disabled write. The same two endpoints are the
+  // exception in tests/unit/hubspot-write-guard.test.ts, so the rule now lives
+  // in one place instead of two.
   const method = (rest.method ?? 'GET').toUpperCase()
-  if (externalCallsDisabled() && method !== 'GET' && method !== 'HEAD') {
+  const isPostRead = method === 'POST' && POST_READ_ENDPOINTS.some((endpoint) => url.includes(endpoint))
+  if (externalCallsDisabled() && method !== 'GET' && method !== 'HEAD' && !isPostRead) {
     throw new HubSpotConfigError(STAGING_SKIP_NOTE)
   }
 

@@ -53,7 +53,7 @@ describe('navSections', () => {
     const byGroup = Object.fromEntries(
       navSections(caps('admin')).map((s) => [s.group ?? 'top', s.items.map((i) => i.label)]),
     )
-    expect(byGroup['Sales and Accounting']).toEqual(['Quotes', 'Invoicing', 'Pricing'])
+    expect(byGroup['Sales and Accounting']).toEqual(['Quotes', 'Invoicing', 'Pricing', 'Calls'])
     // Invoices (commercial intercompany invoices, /invoices) joined Operations in the
     // operations merge. It is a different module from Invoicing (/invoicing), which is
     // US customer invoicing and stays under Sales and Accounting.

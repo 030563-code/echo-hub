@@ -1,8 +1,8 @@
-import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { runMrpEngine } from "@/lib/mrp/engine";
 import { createSupabaseEngineData } from "@/lib/mrp/engine-data";
+import { bearerAuthorized } from "@/lib/machine-auth";
 
 // ---------------------------------------------------------------------------
 // POST /api/mrp/run — the nightly MRP engine trigger (n8n cron → here).
@@ -17,16 +17,8 @@ import { createSupabaseEngineData } from "@/lib/mrp/engine-data";
 // is the run summary; per-SKU rows live in mrp_buffer_status_daily.
 // ---------------------------------------------------------------------------
 
-function authorized(header: string | null): boolean {
-  const secret = process.env.MRP_CRON_SECRET;
-  if (!secret) return false;
-  const expected = createHash("sha256").update(`Bearer ${secret}`).digest();
-  const got = createHash("sha256").update(header ?? "").digest();
-  return timingSafeEqual(expected, got);
-}
-
 export async function POST(request: Request) {
-  if (!authorized(request.headers.get("authorization"))) {
+  if (!bearerAuthorized(request.headers.get("authorization"), process.env.MRP_CRON_SECRET)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

@@ -18,7 +18,14 @@ import { join } from 'node:path'
  */
 // Actions AND API routes: a route handler can mutate HubSpot just as easily,
 // and /api/agent/quote is reachable by a machine caller with no session at all.
-const ROOTS = [join(process.cwd(), 'src/app/actions'), join(process.cwd(), 'src/app/api')]
+// The (dashboard) tree is here too, because a page can keep its own actions.ts
+// beside it: /calls does, and the contact MERGE it performs is the least
+// reversible write in the application. A guard that cannot see it is decoration.
+const ROOTS = [
+  join(process.cwd(), 'src/app/actions'),
+  join(process.cwd(), 'src/app/api'),
+  join(process.cwd(), 'src/app/(dashboard)'),
+]
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {

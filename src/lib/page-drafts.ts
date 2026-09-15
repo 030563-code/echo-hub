@@ -105,6 +105,23 @@ export function parseMaterialPriceDraft(raw: unknown): MaterialPriceDraft | null
 // belongs nowhere near these.
 // ---------------------------------------------------------------------------
 
+/**
+ * The call log: which filter the rep left it on, and the search box.
+ *
+ * Both fields default, so a row stored before a filter existed still parses and
+ * nobody loses their view the day a filter is added.
+ */
+export const callsViewSchema = z.object({
+  v: z.literal(1),
+  filter: z.enum(['needs_link', 'all', 'linked']).default('needs_link'),
+  q: z.string().max(200).default(''),
+})
+export type CallsView = z.infer<typeof callsViewSchema>
+export function parseCallsView(raw: unknown): CallsView | null {
+  const parsed = callsViewSchema.safeParse(raw)
+  return parsed.success ? parsed.data : null
+}
+
 /** A plain search box. */
 export const searchViewSchema = z.object({ v: z.literal(1), q: z.string().max(200) })
 export type SearchView = z.infer<typeof searchViewSchema>

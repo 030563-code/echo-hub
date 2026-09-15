@@ -33,6 +33,7 @@ export const CAPABILITY_KEYS = [
   'pricing.manage',
   'invoice.view',
   'invoice.create',
+  'calls.view',
   'admin',
 ] as const
 
@@ -65,6 +66,7 @@ export const CAPABILITIES: CapabilityMeta[] = [
   { key: 'pricing.manage', module: 'pricing', description: 'Edit list prices, contractors, contract prices and rep discount caps' },
   { key: 'invoice.view', module: 'invoices', description: 'View commercial invoices' },
   { key: 'invoice.create', module: 'invoices', description: 'Generate / issue commercial invoices (requires cost.view, values exposed)' },
+  { key: 'calls.view', module: 'calls', description: "See your region's call log with transcripts, and link a call to the right HubSpot contact" },
   { key: 'admin', module: 'admin', description: 'Full administrative access (implies all capabilities)' },
 ]
 
@@ -104,6 +106,7 @@ export const NAV_ICON_NAMES = [
   'Gauge',
   'Receipt',
   'Boxes',
+  'Phone',
 ] as const
 
 export type NavIconName = (typeof NAV_ICON_NAMES)[number]
@@ -132,6 +135,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Quotes', href: '/quotes', icon: 'FileText', requires: ['quotes.view', 'quotes.create'], group: 'Sales and Accounting' },
   { label: 'Invoicing', href: '/invoicing', icon: 'ReceiptText', requires: ['invoicing.view', 'invoicing.manage'], group: 'Sales and Accounting' },
   { label: 'Pricing', href: '/pricing', icon: 'Tags', requires: ['pricing.view', 'pricing.manage'], group: 'Sales and Accounting' },
+  { label: 'Calls', href: '/calls', icon: 'Phone', requires: ['calls.view'], group: 'Sales and Accounting' },
 
   { label: 'Purchase Orders', href: '/purchase-orders', icon: 'ShoppingCart', requires: ['po.view', 'po.create', 'po.approve'], group: 'Operations' },
   { label: 'Bill of Materials', href: '/bom', icon: 'Layers', requires: ['bom.view'], group: 'Operations' },

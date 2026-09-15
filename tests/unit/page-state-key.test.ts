@@ -46,6 +46,8 @@ describe('page keys', () => {
       'commercial-invoices:hs-codes',
       'invoices:hs-codes',
       'profile:details',
+      'calls:log',
+      'calls:contacts',
     ]) {
       expect(isPageKey(key), key).toBe(true)
     }
