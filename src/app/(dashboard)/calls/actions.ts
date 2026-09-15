@@ -25,6 +25,7 @@ import { officesForOrgs } from '@/lib/organisations'
 import { isMissedCall, isPlaceholderContact } from '@/lib/calls/link-state'
 import { isMissedReasonCode, missedReasonLabel, MISSED_REASON_CODES } from '@/lib/calls/missed-reasons'
 import { readContact } from '@/lib/calls/hubspot-contact'
+import { associateLikeHubSpot, callIdsOnContact, mergedObjectId } from '@/lib/calls/call-associations'
 
 export type CallActionResult<T = undefined> =
   | ({ success: true } & (T extends undefined ? { data?: undefined } : { data: T }))
@@ -193,7 +194,14 @@ export async function linkCallToContact(input: unknown): Promise<CallActionResul
     }
   }
 
-  // The merge itself.
+  // The calls on the placeholder, read before the merge moves them: they are
+  // what gets the company and the deals afterwards.
+  const callIds = await callIdsOnContact(call.hubspot_contact_id)
+
+  // The merge itself. HubSpot answers with the record that survives, under a
+  // NEW id; see mergedObjectId for why that id, not the one the rep clicked, is
+  // the one to keep.
+  let mergedId = contactId
   try {
     const response = await hubspotFetch('https://api.hubapi.com/crm/v3/objects/contacts/merge', {
       method: 'POST',
@@ -214,22 +222,27 @@ export async function linkCallToContact(input: unknown): Promise<CallActionResul
             : 'HubSpot refused the merge. Merge the two contacts by hand in HubSpot, then mark this call as linked.',
       }
     }
+    mergedId = await mergedObjectId(response, contactId)
   } catch (error) {
     if (error instanceof HubSpotConfigError) return { success: false, error: error.message }
     console.error('calls: the merge threw', { callId, error: error instanceof Error ? error.message : error })
     return { success: false, error: 'HubSpot could not be reached. Nothing was changed.' }
   }
 
+  // What HubSpot would have done had the rep logged the call by hand: the
+  // survivor's primary company and open deals go on every call that moved.
+  await associateLikeHubSpot(mergedId, callIds)
+
   const now = new Date().toISOString()
   const { error } = await g.admin
     .from('hub_calls')
     .update({
       link_state: 'linked',
-      linked_contact_id: contactId,
+      linked_contact_id: mergedId,
       merged_contact_id: call.hubspot_contact_id,
       // Point at the survivor, so the list stops showing a name that HubSpot no
       // longer has.
-      hubspot_contact_id: contactId,
+      hubspot_contact_id: mergedId,
       contact_firstname: target.contact.firstname,
       contact_lastname: target.contact.lastname,
       contact_email: target.contact.email,
@@ -256,8 +269,8 @@ export async function linkCallToContact(input: unknown): Promise<CallActionResul
   const { error: siblingError } = await g.admin
     .from('hub_calls')
     .update({
-      hubspot_contact_id: contactId,
-      linked_contact_id: contactId,
+      hubspot_contact_id: mergedId,
+      linked_contact_id: mergedId,
       merged_contact_id: call.hubspot_contact_id,
       link_state: 'linked',
       linked_by_uid: g.uid,
@@ -273,10 +286,10 @@ export async function linkCallToContact(input: unknown): Promise<CallActionResul
     console.error('calls: could not relink the other calls on that number', siblingError.message)
   }
 
-  await appendToCallBody(contactId, call.call_sid, `Linked to ${contactEmail} in the Echo Barrier Hub by ${g.who}.`)
+  await appendToCallBody(mergedId, call.call_sid, `Linked to ${contactEmail} in the Echo Barrier Hub by ${g.who}.`)
 
   revalidatePath('/calls')
-  return { success: true, data: { mergedInto: contactId } }
+  return { success: true, data: { mergedInto: mergedId } }
 }
 
 // ---------------------------------------------------------------------------
@@ -506,6 +519,10 @@ export async function linkPlaceholderToContact(input: unknown): Promise<CallActi
     }
   }
 
+  // The placeholder's calls, read before the merge moves them.
+  const callIds = await callIdsOnContact(placeholderId)
+
+  let mergedId = contactId
   try {
     const response = await hubspotFetch('https://api.hubapi.com/crm/v3/objects/contacts/merge', {
       method: 'POST',
@@ -526,6 +543,7 @@ export async function linkPlaceholderToContact(input: unknown): Promise<CallActi
             : 'HubSpot refused the merge. Merge the two contacts by hand in HubSpot.',
       }
     }
+    mergedId = await mergedObjectId(response, contactId)
   } catch (error) {
     if (error instanceof HubSpotConfigError) return { success: false, error: error.message }
     console.error('calls: the placeholder merge threw', error instanceof Error ? error.message : error)
@@ -534,13 +552,15 @@ export async function linkPlaceholderToContact(input: unknown): Promise<CallActi
 
   // Any calls the Hub already holds against that placeholder now belong to the
   // survivor. There may be none, which is the normal case for the backlog.
+  await associateLikeHubSpot(mergedId, callIds)
+
   const admin = createAdminClient()
   const now = new Date().toISOString()
   const { error } = await admin
     .from('hub_calls')
     .update({
-      hubspot_contact_id: contactId,
-      linked_contact_id: contactId,
+      hubspot_contact_id: mergedId,
+      linked_contact_id: mergedId,
       merged_contact_id: placeholderId,
       link_state: 'linked',
       linked_by_uid: auth.user.id,
@@ -554,5 +574,5 @@ export async function linkPlaceholderToContact(input: unknown): Promise<CallActi
   if (error) console.error('calls: merged, but could not relink the stored calls', error.message)
 
   revalidatePath('/calls')
-  return { success: true, data: { mergedInto: contactId } }
+  return { success: true, data: { mergedInto: mergedId } }
 }

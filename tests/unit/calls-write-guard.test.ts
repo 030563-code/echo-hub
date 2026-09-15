@@ -87,6 +87,24 @@ describe('the HubSpot contact merge', () => {
   })
 })
 
+describe('after the merge', () => {
+  const source = read(join(process.cwd(), ACTIONS))
+
+  it('keeps the id HubSpot returns, not the one the rep clicked, in both link paths', () => {
+    expect(source.match(/mergedId = await mergedObjectId\(response, contactId\)/g)?.length).toBe(2)
+    expect(source.match(/linked_contact_id: mergedId/g)?.length).toBe(3)
+    expect(source).not.toMatch(/linked_contact_id: contactId/)
+    expect(source.match(/mergedInto: mergedId/g)?.length).toBe(2)
+  })
+
+  it('gives the moved calls the company and deals HubSpot would have, reading the calls BEFORE the merge', () => {
+    expect(source.match(/associateLikeHubSpot\(mergedId, callIds\)/g)?.length).toBe(2)
+    const firstRead = source.indexOf('callIdsOnContact(')
+    expect(firstRead).toBeGreaterThan(-1)
+    expect(firstRead).toBeLessThan(source.indexOf('/contacts/merge'))
+  })
+})
+
 describe('the missed-call gate', () => {
   it('stops a missed call being linked before somebody says why', () => {
     const source = read(join(process.cwd(), ACTIONS))
