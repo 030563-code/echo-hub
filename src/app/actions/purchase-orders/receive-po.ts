@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
+import { poChainHeldBy } from "@/lib/po-organisations";
 import { buildReceiptMovements, type PoLineLite } from "@/lib/stock/movements";
 import { applyStockMovements } from "@/lib/stock/apply";
 import { settleDeliveredPO } from "@/lib/mrp/settle-po";
@@ -70,6 +71,9 @@ export async function recordReceipt(input: RecordReceiptInput): Promise<RecordRe
     .maybeSingle<POForReceive>();
 
   if (!po) return { success: false, error: "Purchase order not found" };
+  if (!(await poChainHeldBy(poId, auth.profile.organisations))) {
+    return { success: false, error: "Purchase order not found" };
+  }
   // Hub-owned rows only — never touch the legacy n8n flow's state (it has its own
   // 'approved' rows + state machine).
   if (po.source !== "hub") {

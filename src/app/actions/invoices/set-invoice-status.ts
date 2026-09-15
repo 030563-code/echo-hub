@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
+import { holdsOrganisation } from "@/lib/organisations";
 import { issueBlockedReason } from "@/lib/hs-codes";
 
 // Commercial-invoice lifecycle: draft → issued, and draft/issued → void.
@@ -46,12 +47,17 @@ export async function setInvoiceStatus(input: z.infer<typeof Schema>): Promise<S
   const admin = createAdminClient();
   const { data: inv, error: readErr } = await admin
     .from("commercial_invoices")
-    .select("id, status")
+    .select("id, status, seller_entity_code, buyer_entity_code")
     .eq("id", invoice_id)
     .maybeSingle();
   if (readErr || !inv) return { ok: false, error: "Invoice not found." };
+  const row = inv as { status: string; seller_entity_code: string; buyer_entity_code: string };
+  const held = auth.profile.organisations;
+  if (!holdsOrganisation(held, row.seller_entity_code) && !holdsOrganisation(held, row.buyer_entity_code)) {
+    return { ok: false, error: "Invoice not found." };
+  }
 
-  const current = (inv as { status: string }).status;
+  const current = row.status;
   const next = ALLOWED[current]?.[action];
   if (!next) return { ok: false, error: `Cannot ${action} an invoice that is '${current}'.` };
 

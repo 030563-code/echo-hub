@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
+import { poChainHeldBy } from "@/lib/po-organisations";
 import { chainNumber } from "@/lib/po-number";
 import type { PurchaseOrderLine } from "@/lib/erp-types";
 
@@ -69,6 +70,9 @@ export async function raiseManufacturingPo(
     .eq("id", parsed.data.sro_po_id)
     .maybeSingle<SroPo>();
   if (!sro) return { ok: false, error: "SRO order not found." };
+  if (!(await poChainHeldBy(sro.id, auth.profile.organisations))) {
+    return { ok: false, error: "SRO order not found." };
+  }
   if (sro.leg !== "EB_GROUP_TO_SRO") {
     return { ok: false, error: "A manufacturing order can only be raised against an SRO order." };
   }

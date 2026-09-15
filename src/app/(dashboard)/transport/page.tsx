@@ -1,4 +1,9 @@
+import { redirect } from "next/navigation";
 import { createServerClient } from "@/lib/supabase/server";
+import { getAuthorizedUser } from "@/lib/authz";
+import { activeOrganisation } from "@/lib/active-organisation.server";
+import { depotsForOrg, transportSeesAll } from "@/lib/organisations";
+import { NoOrganisationCard } from "@/components/organisations/no-organisation-card";
 import ShippingClient from "./transport-client";
 import type { ShipmentContent } from "@/lib/erp-types";
 import { groupBySpotId } from "@/lib/shipment-grouping";
@@ -7,11 +12,18 @@ export const dynamic = "force-dynamic";
 
 export default async function ShippingPage() {
   const supabase = await createServerClient();
+  const auth = await getAuthorizedUser();
+  if (!auth.ok) redirect("/");
 
-  const { data: shipments } = await supabase
-    .from("shipment_contents")
-    .select("*")
-    .order("eta", { ascending: true });
+  // Every container leaves s.r.o. and belongs to Group on the way, so those two
+  // see all of them; a depot's organisation sees what is bound for its depots.
+  const org = await activeOrganisation(auth);
+  if (!org) return <NoOrganisationCard title="Logistics & Shipping" what="shipments" />;
+  const query = supabase.from("shipment_contents").select("*");
+  const { data: shipments } = await (transportSeesAll(org)
+    ? query
+    : query.in("depot_destination", [...depotsForOrg(org)])
+  ).order("eta", { ascending: true });
 
   const items = (shipments ?? []) as ShipmentContent[];
 

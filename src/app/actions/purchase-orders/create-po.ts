@@ -7,6 +7,7 @@ import { deletePageState } from "@/lib/page-state-server";
 import { RAISE_PO_KEY } from "@/lib/page-drafts";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
+import { holdsOrganisation, orgForDepot } from "@/lib/organisations";
 import { depotHasPoSeries, PO_PREFIX_BY_DEPOT } from "@/lib/po-number";
 
 // ---------------------------------------------------------------------------
@@ -66,6 +67,11 @@ export async function createPurchaseOrder(input: CreatePOInput): Promise<CreateP
   const depotOk = profile.is_super_admin || depots.includes("ALL") || depots.includes(data.from_entity);
   if (!depotOk) {
     return { success: false, error: "You are not permitted to raise a PO for this depot" };
+  }
+  // And the depot's organisation has to be one the raiser holds. Super admins
+  // hold them all, so this only ever bites a scoped raiser.
+  if (!holdsOrganisation(profile.organisations, orgForDepot(data.from_entity))) {
+    return { success: false, error: "That depot belongs to an organisation you do not hold." };
   }
 
   // The database refuses a depot with no number series; say so plainly here

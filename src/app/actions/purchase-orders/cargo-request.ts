@@ -25,6 +25,7 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAuthorizedUser } from '@/lib/authz'
+import { poChainHeldBy } from '@/lib/po-organisations'
 import { sendDescription } from '@/lib/email-recipients'
 import { INCOTERMS, MODALITIES, CATEGORIES, DIRECTIONS, PACKAGE_TYPES, PICKUP_FROM } from '@/lib/cargo-request'
 import { notifyCargoPartnerReady } from '@/app/actions/purchase-orders/notify-cargo-partner'
@@ -194,6 +195,9 @@ async function authorise(input: unknown): Promise<Gate> {
     .eq('id', poId)
     .maybeSingle<{ po_number: string | null; leg: string; fulfilment_type: string | null }>()
   if (!po) return { ok: false, error: 'That purchase order no longer exists.' }
+  if (!(await poChainHeldBy(poId, auth.profile.organisations))) {
+    return { ok: false, error: 'That purchase order no longer exists.' }
+  }
 
   const draft = {
     ...parsed.data.draft,

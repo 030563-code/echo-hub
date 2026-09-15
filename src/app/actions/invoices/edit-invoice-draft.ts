@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
+import { holdsOrganisation } from "@/lib/organisations";
 import { reconcileInvoiceLines } from "@/lib/commercial-invoice";
 import { isValidHsCode, normaliseHsCode } from "@/lib/hs-codes";
 
@@ -65,11 +66,23 @@ export async function editInvoiceDraft(input: z.input<typeof Schema>): Promise<E
   // below checks draft again under the row lock, which is the check that holds.
   const { data: inv, error: readErr } = await admin
     .from("commercial_invoices")
-    .select("id, status, tax_total")
+    .select("id, status, tax_total, seller_entity_code, buyer_entity_code")
     .eq("id", invoice_id)
     .maybeSingle();
   if (readErr || !inv) return { ok: false, error: "Invoice not found." };
-  const header = inv as { id: string; status: string; tax_total: number | string };
+  const header = inv as {
+    id: string;
+    status: string;
+    tax_total: number | string;
+    seller_entity_code: string;
+    buyer_entity_code: string;
+  };
+  // Same answer as a missing invoice: one between organisations this person
+  // does not hold is not theirs to see either.
+  const held = auth.profile.organisations;
+  if (!holdsOrganisation(held, header.seller_entity_code) && !holdsOrganisation(held, header.buyer_entity_code)) {
+    return { ok: false, error: "Invoice not found." };
+  }
   if (header.status !== "draft") {
     return { ok: false, error: `Only a draft invoice can be edited (this one is '${header.status}'). Void it to re-issue.` };
   }

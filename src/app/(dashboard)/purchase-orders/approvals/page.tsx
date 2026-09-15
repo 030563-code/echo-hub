@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { requireCapability } from "@/lib/authz";
+import { activeOrganisation } from "@/lib/active-organisation.server";
+import { chainFilter, chainsForOrg } from "@/lib/po-organisations";
+import { NoOrganisationCard } from "@/components/organisations/no-organisation-card";
 import { createServerClient } from "@/lib/supabase/server";
 import { stripPurchaseOrderCosts } from "@/lib/price-visibility";
 import ApprovalsClient from "./approvals-client";
@@ -13,15 +16,24 @@ export default async function ApprovalsPage() {
   const canViewCost = auth.capabilities.has("cost.view");
   const supabase = await createServerClient();
 
+  // The organisation's chains only, same rule as the board.
+  const org = await activeOrganisation(auth);
+  if (!org) return <NoOrganisationCard title="PO Approvals" what="purchase orders" />;
+  const filter = chainFilter(await chainsForOrg(supabase, org));
+
   // All Hub-raised legs still awaiting approval, across the three tiers
   // (Depot → Group → SRO). n8n-raised rows (source='n8n') keep their own Slack
   // gate and never appear here.
-  const { data: pending } = await supabase
-    .from("purchase_orders")
-    .select("*, lines:purchase_order_lines(*)")
-    .eq("source", "hub")
-    .eq("status", "requested")
-    .order("created_at", { ascending: true });
+  const { data: pending } =
+    filter === null
+      ? { data: [] as PurchaseOrder[] }
+      : await supabase
+          .from("purchase_orders")
+          .select("*, lines:purchase_order_lines(*)")
+          .or(filter)
+          .eq("source", "hub")
+          .eq("status", "requested")
+          .order("created_at", { ascending: true });
 
   const orders = stripPurchaseOrderCosts((pending ?? []) as PurchaseOrder[], canViewCost);
 

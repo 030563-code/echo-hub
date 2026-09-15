@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase/server";
 import { getAuthorizedUser } from "@/lib/authz";
+import { poChainHeldBy } from "@/lib/po-organisations";
 import { externalCallsDisabled } from "@/lib/env";
 import { entityLabel } from "@/lib/depot-constants";
 import { snapshotSroPoCost } from "@/lib/bom";
@@ -106,6 +107,9 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
     .maybeSingle<POForDecision>();
 
   if (!po) return { success: false, error: "Purchase order not found" };
+  if (!(await poChainHeldBy(poId, auth.profile.organisations))) {
+    return { success: false, error: "Purchase order not found" };
+  }
   if (po.source !== "hub" || po.status !== "requested" || !(po.leg in NEXT_LEG)) {
     return { success: false, error: "This PO is not awaiting Hub approval." };
   }

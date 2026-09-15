@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
+import { poChainHeldBy } from "@/lib/po-organisations";
 
 // ---------------------------------------------------------------------------
 // PO file attachments. Objects live in the PRIVATE `po-attachments` bucket;
@@ -62,6 +63,9 @@ export async function uploadPoAttachment(formData: FormData): Promise<Attachment
   const supabase = await createServerClient();
   const { data: po } = await supabase.from("purchase_orders").select("id").eq("id", poId).maybeSingle();
   if (!po) return { success: false, error: "Purchase order not found" };
+  if (!(await poChainHeldBy(poId, auth.profile.organisations))) {
+    return { success: false, error: "Purchase order not found" };
+  }
 
   const safeName = file.name.replace(/[^\w.\-]+/g, "_").slice(0, 120) || "file";
   const path = `${poId}/${randomUUID()}-${safeName}`;
@@ -113,10 +117,13 @@ export async function getPoAttachmentUrl(
   const supabase = await createServerClient();
   const { data: att } = await supabase
     .from("po_attachments")
-    .select("storage_path")
+    .select("storage_path, po_id")
     .eq("id", attachmentId)
     .maybeSingle();
   if (!att) return { success: false, error: "Attachment not found" };
+  if (!(await poChainHeldBy(String(att.po_id), auth.profile.organisations))) {
+    return { success: false, error: "Attachment not found" };
+  }
 
   const admin = createAdminClient();
   const { data, error } = await admin.storage.from(BUCKET).createSignedUrl(att.storage_path, 300);
@@ -135,10 +142,13 @@ export async function deletePoAttachment(attachmentId: string): Promise<Attachme
   const supabase = await createServerClient();
   const { data: att } = await supabase
     .from("po_attachments")
-    .select("id, storage_path, uploaded_by_uid")
+    .select("id, storage_path, uploaded_by_uid, po_id")
     .eq("id", attachmentId)
     .maybeSingle();
   if (!att) return { success: false, error: "Attachment not found" };
+  if (!(await poChainHeldBy(String(att.po_id), auth.profile.organisations))) {
+    return { success: false, error: "Attachment not found" };
+  }
 
   // The uploader, an approver, or an admin may delete.
   const isOwner = att.uploaded_by_uid === auth.user.id;

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
+import { poChainHeldBy } from "@/lib/po-organisations";
 import { externalCallsDisabled } from "@/lib/env";
 import { resolveRecipients, sendDescription } from "@/lib/email-recipients";
 import { loadSroPoBom } from "@/lib/bom";
@@ -88,6 +89,9 @@ export async function sendManufacturingPoToBamida(
       lines?: Array<{ sku: string | null; product_name: string | null; quantity: number | null }>;
     }>();
   if (!po) return { ok: false, error: "Manufacturing order not found." };
+  if (!(await poChainHeldBy(poId, auth.profile.organisations))) {
+    return { ok: false, error: "Manufacturing order not found." };
+  }
   if (po.leg !== "SRO_TO_SUPPLIER") {
     return { ok: false, error: "Only a manufacturing order can be sent to Bamida." };
   }
@@ -292,6 +296,9 @@ export async function releaseBamidaSendClaim(
   }
   const parsed = Schema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  if (!(await poChainHeldBy(parsed.data.manufacturing_po_id, auth.profile.organisations))) {
+    return { ok: false, error: "Manufacturing order not found." };
+  }
 
   const { data: released, error } = await createAdminClient()
     .from("po_manufacturing")

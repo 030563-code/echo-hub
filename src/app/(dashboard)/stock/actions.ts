@@ -12,6 +12,7 @@
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { getAuthorizedUser } from '@/lib/authz'
+import { warehousesForOrgs, type OrgCode } from '@/lib/organisations'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { applyStockMovements, recordStockCount, type CountOutcome } from '@/lib/stock/apply'
 import { STOCK_WAREHOUSES } from '@/lib/stock/warehouses'
@@ -49,7 +50,12 @@ async function gate() {
   if (!auth.capabilities.has('stock.edit')) {
     return { ok: false as const, error: 'Forbidden: you need stock.edit to change stock' }
   }
-  return { ok: true as const, uid: auth.user.id }
+  return { ok: true as const, uid: auth.user.id, organisations: auth.profile.organisations }
+}
+
+/** A warehouse may only be counted or adjusted by someone holding its organisation. */
+function warehouseHeld(organisations: readonly OrgCode[], warehouse: string): boolean {
+  return warehousesForOrgs(organisations).includes(warehouse)
 }
 
 export async function recordStockCountAction(input: unknown): Promise<StockWriteResult<CountOutcome[]>> {
@@ -58,6 +64,9 @@ export async function recordStockCountAction(input: unknown): Promise<StockWrite
   const parsed = CountInput.safeParse(input)
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' }
   const { itemKind, warehouse, batchId, note, rows } = parsed.data
+  if (!warehouseHeld(g.organisations, warehouse)) {
+    return { success: false, error: 'That warehouse belongs to an organisation you do not hold.' }
+  }
 
   if (itemKind === 'finished' && rows.some((r) => !Number.isInteger(r.counted))) {
     return { success: false, error: 'Finished goods are counted in whole units' }
@@ -85,6 +94,9 @@ export async function recordStockAdjustmentAction(
   const parsed = AdjustInput.safeParse(input)
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' }
   const { itemKind, warehouse, sku, delta, note, refId } = parsed.data
+  if (!warehouseHeld(g.organisations, warehouse)) {
+    return { success: false, error: 'That warehouse belongs to an organisation you do not hold.' }
+  }
 
   if (itemKind === 'finished' && !Number.isInteger(delta)) {
     return { success: false, error: 'Finished goods move in whole units' }
@@ -127,6 +139,9 @@ export async function loadRowMovements(input: unknown): Promise<StockWriteResult
   const parsed = MovementsInput.safeParse(input)
   if (!parsed.success) return { success: false, error: 'Invalid input' }
   const { itemKind, warehouse, sku } = parsed.data
+  if (!warehouseHeld(auth.profile.organisations, warehouse)) {
+    return { success: false, error: 'That warehouse belongs to an organisation you do not hold.' }
+  }
   const rows = await loadMovements({ itemKind, warehouse, sku: sku.toUpperCase(), limit: 50 })
   return { success: true, data: rows }
 }

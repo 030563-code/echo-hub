@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { requireCapability } from "@/lib/authz";
+import { depotsForOrgs } from "@/lib/organisations";
 import { createServerClient } from "@/lib/supabase/server";
 import RaisePOForm from "./raise-po-form";
 import type { PoProductCatalogItem, PoDeliveryAddress, PoHsCode, ProductEntityCodes, PoTemplate } from "@/lib/erp-types";
@@ -42,12 +43,15 @@ export default async function RaisePOPage() {
     stockBySku[r.sku] = (stockBySku[r.sku] ?? 0) + (r.quantity_on_hand ?? 0);
   }
 
-  // The raising depot must be one of the caller's own (super-admin / ALL → all v1).
+  // The raising depot must be one of the caller's own (super-admin / ALL → all v1),
+  // and belong to an organisation they hold.
   const allowed = auth.profile.allowed_depots ?? [];
-  const depots =
+  const orgDepots = depotsForOrgs(auth.profile.organisations);
+  const depots = (
     auth.profile.is_super_admin || allowed.includes("ALL")
       ? V1_DEPOTS
-      : allowed.filter((d) => V1_DEPOTS.includes(d));
+      : allowed.filter((d) => V1_DEPOTS.includes(d))
+  ).filter((d) => orgDepots.includes(d));
 
   return (
     <div className="p-6 max-w-4xl mx-auto">

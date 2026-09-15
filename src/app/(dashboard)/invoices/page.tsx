@@ -1,5 +1,9 @@
+import { redirect } from "next/navigation";
 import { createServerClient } from "@/lib/supabase/server";
-import { getCapabilities } from "@/lib/authz";
+import { getAuthorizedUser } from "@/lib/authz";
+import { activeOrganisation } from "@/lib/active-organisation.server";
+import { depotsForOrg, transportSeesAll } from "@/lib/organisations";
+import { NoOrganisationCard } from "@/components/organisations/no-organisation-card";
 import { commercialInvoiceDocFromRecord, type CommercialInvoiceDoc } from "@/lib/commercial-invoice";
 import { stripCommercialInvoice } from "@/lib/price-visibility";
 import InvoicesClient from "./invoices-client";
@@ -16,7 +20,15 @@ export interface InvoiceListRow {
 
 export default async function InvoicesPage() {
   const supabase = await createServerClient();
-  const caps = await getCapabilities();
+  const auth = await getAuthorizedUser();
+  if (!auth.ok) redirect("/");
+  const caps = auth.capabilities;
+
+  // An intercompany invoice belongs to its seller and its buyer. The
+  // organisation being looked at sees the invoices it is a party to, and the
+  // containers it could invoice, same rule as Transport.
+  const org = await activeOrganisation(auth);
+  if (!org) return <NoOrganisationCard title="Commercial invoices" what="commercial invoices" />;
   const canViewCost = caps.has("cost.view");
   const canManage = caps.has("invoice.create");
   // Commercial invoices are created here now (moved off Transport). The container
@@ -24,15 +36,17 @@ export default async function InvoicesPage() {
   // gating as before decides who sees the panel and who can generate.
   const canViewInvoice = caps.has("invoice.view") || caps.has("invoice.create");
   const canCreateInvoice = caps.has("invoice.create") && canViewCost;
-  const { data: shipRows } = await supabase
-    .from("shipment_contents")
-    .select("*")
-    .order("eta", { ascending: true });
+  const shipQuery = supabase.from("shipment_contents").select("*");
+  const { data: shipRows } = await (transportSeesAll(org)
+    ? shipQuery
+    : shipQuery.in("depot_destination", [...depotsForOrg(org)])
+  ).order("eta", { ascending: true });
   const shipmentItems = (shipRows ?? []) as ShipmentContent[];
 
   const { data: invs } = await supabase
     .from("commercial_invoices")
     .select("*")
+    .or(`seller_entity_code.eq."${org}",buyer_entity_code.eq."${org}"`)
     .order("created_at", { ascending: false });
   const headers = (invs ?? []) as CommercialInvoice[];
 

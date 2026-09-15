@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase/server";
 import { getAuthorizedUser } from "@/lib/authz";
+import { poChainHeldBy } from "@/lib/po-organisations";
 import { LIFECYCLE_STAGE_KEYS } from "@/lib/po-lifecycle";
 
 // ---------------------------------------------------------------------------
@@ -36,6 +37,9 @@ export async function setPoStage(input: SetPoStageInput): Promise<SetPoStageResu
     return { success: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
   const { poId, stage } = parsed.data;
+  if (!(await poChainHeldBy(poId, auth.profile.organisations))) {
+    return { success: false, error: "Purchase order not found" };
+  }
 
   const supabase = await createServerClient();
   const { error } = await supabase.rpc("set_po_lifecycle_stage", { p_po_id: poId, p_stage: stage });

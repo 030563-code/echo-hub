@@ -225,6 +225,43 @@ export function transportSeesAll(code: OrgCode): boolean {
   return TRANSPORT_SEES_ALL.includes(code)
 }
 
+/** True when any of the organisations held sees every container. */
+export function transportSeesAllFor(held: readonly OrgCode[]): boolean {
+  return held.some(transportSeesAll)
+}
+
+/** The depots of several organisations together, without repeats. */
+export function depotsForOrgs(codes: readonly OrgCode[]): string[] {
+  return Array.from(new Set(codes.flatMap((code) => DEPOTS[code])))
+}
+
+/** The warehouses of several organisations together, without repeats. */
+export function warehousesForOrgs(codes: readonly OrgCode[]): string[] {
+  return Array.from(new Set(codes.flatMap((code) => WAREHOUSES[code])))
+}
+
+/** The purchase-order parties of several organisations together. */
+export function partiesForOrgs(codes: readonly OrgCode[]): string[] {
+  return Array.from(new Set(codes.flatMap((code) => partiesForOrg(code))))
+}
+
+/**
+ * True when any leg of a purchase-order chain names a party of one of the
+ * organisations held. A chain is seen whole by every organisation with a leg
+ * in it: a USA order's Group and s.r.o. legs are still that order.
+ */
+export function chainTouchesOrgs(
+  legs: readonly { from_entity: string | null; to_entity: string | null }[],
+  held: readonly OrgCode[],
+): boolean {
+  const parties = new Set(partiesForOrgs(held))
+  return legs.some(
+    (leg) =>
+      (leg.from_entity !== null && parties.has(leg.from_entity)) ||
+      (leg.to_entity !== null && parties.has(leg.to_entity)),
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Which organisations each module has anything for. This is what decides the
 // sub-list under a sidebar item, and what a page checks before it queries: an

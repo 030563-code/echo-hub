@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
+import { poChainHeldBy } from "@/lib/po-organisations";
 import { createCargoRequestDraft } from "@/lib/cargo-request-store";
 import { notifyReadyForShipment } from "@/app/actions/purchase-orders/notify-ready-for-shipment";
 import type { CargoLine } from "@/lib/cargo-request";
@@ -64,6 +65,9 @@ export async function fulfilFromSroStock(
       fulfilment_type: string | null;
     }>();
   if (!sro) return { ok: false, error: "SRO order not found." };
+  if (!(await poChainHeldBy(sro.id, auth.profile.organisations))) {
+    return { ok: false, error: "SRO order not found." };
+  }
   if (sro.leg !== "EB_GROUP_TO_SRO") {
     return { ok: false, error: "Only an SRO order can be fulfilled from SRO stock." };
   }

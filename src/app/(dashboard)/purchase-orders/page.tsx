@@ -1,8 +1,12 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Plus, ClipboardCheck } from "lucide-react";
 import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCapabilities } from "@/lib/authz";
+import { getAuthorizedUser } from "@/lib/authz";
+import { activeOrganisation } from "@/lib/active-organisation.server";
+import { chainFilter, chainsForOrg } from "@/lib/po-organisations";
+import { NoOrganisationCard } from "@/components/organisations/no-organisation-card";
 import { stripPurchaseOrderCosts } from "@/lib/price-visibility";
 import { effectiveStage } from "@/lib/po-lifecycle";
 import { getPoPdfData } from "@/lib/po-pdf-data";
@@ -13,13 +17,27 @@ export const dynamic = "force-dynamic";
 
 export default async function PurchasingPage() {
   const supabase = await createServerClient();
-  const caps = await getCapabilities();
+  const auth = await getAuthorizedUser();
+  if (!auth.ok) redirect("/");
+  const caps = auth.capabilities;
 
-  const { data: orders } = await supabase
-    .from("purchase_orders")
-    .select("*, lines:purchase_order_lines(*)")
-    .not("status", "eq", "cancelled")
-    .order("created_at", { ascending: false });
+  // The organisation being looked at decides which chains: the ones with a leg
+  // naming the company or one of its depots, loaded whole. Found first, then
+  // fetched, so the predicate is in the query and not in a filter over
+  // everything.
+  const org = await activeOrganisation(auth);
+  if (!org) return <NoOrganisationCard title="Supplier & PO Tracker" what="purchase orders" />;
+  const filter = chainFilter(await chainsForOrg(supabase, org));
+
+  const { data: orders } =
+    filter === null
+      ? { data: [] as PurchaseOrder[] }
+      : await supabase
+          .from("purchase_orders")
+          .select("*, lines:purchase_order_lines(*)")
+          .or(filter)
+          .not("status", "eq", "cancelled")
+          .order("created_at", { ascending: false });
 
   // Strip unit_price from the client payload for non-cost.view viewers — the board
   // doesn't render it, but it must not ship in the RSC payload either.

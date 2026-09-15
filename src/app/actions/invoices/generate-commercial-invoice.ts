@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
+import { holdsOrganisation } from "@/lib/organisations";
 import { buildCommercialInvoice, type CommercialInvoiceDoc, type CommercialInvoiceFx } from "@/lib/commercial-invoice";
 import { applyComposition, type CompositionRule, type HsCodeEntry } from "@/lib/invoice-composition";
 import { getFxRate } from "@/lib/fx-helper";
@@ -65,6 +66,11 @@ export async function generateCommercialInvoice(input: { container_ref: string; 
   const destinationCountry = parsed.data.destination_country?.toUpperCase() ?? null;
   const cfg = LEG_CONFIG[leg];
   const { user } = auth;
+  // The leg's seller or buyer has to be an organisation the caller holds.
+  const held = auth.profile.organisations;
+  if (!holdsOrganisation(held, cfg.seller) && !holdsOrganisation(held, cfg.buyer)) {
+    return { ok: false, error: "That leg is between organisations you do not hold." };
+  }
 
   const supabase = await createServerClient();
 

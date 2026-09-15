@@ -2,7 +2,8 @@
 
 import { z } from "zod";
 import { createServerClient } from "@/lib/supabase/server";
-import { hasCapability } from "@/lib/authz";
+import { hasCapability, getAuthorizedUser } from "@/lib/authz";
+import { depotsForOrgs, transportSeesAllFor } from "@/lib/organisations";
 import { revalidatePath } from "next/cache";
 import { getCargoToken, fetchSpotIds, fetchShipmentDetail, fetchShipmentFull } from "@/lib/cargo-client";
 import type { CargoEvent, RoutingPoint } from "@/lib/cargo-parse";
@@ -124,13 +125,21 @@ export type AddShipmentInput = z.infer<typeof AddShipmentSchema>;
 export async function addShipment(
   input: AddShipmentInput
 ): Promise<{ success: true; warning?: string } | { error: string }> {
-  if (!(await hasCapability('transport.view'))) {
+  const auth = await getAuthorizedUser();
+  if (!auth.ok) return { error: auth.error };
+  if (!auth.capabilities.has('transport.view')) {
     return { error: 'Forbidden: missing transport capability' };
   }
   const parsed = AddShipmentSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid input — check all required fields" };
 
   const d = parsed.data;
+  // A shipment is bound for a depot; recording one is for the organisations that
+  // own the depot, or for s.r.o. and Group, who see every container.
+  const held = auth.profile.organisations;
+  if (!transportSeesAllFor(held) && !depotsForOrgs(held).includes(d.depot_destination)) {
+    return { error: "That depot belongs to an organisation you do not hold." };
+  }
   const supabase = await createServerClient();
 
   // Resolve the reference to a real PO so the shipment structurally links back to

@@ -16,7 +16,8 @@ type Write = { table: string; op: string; payload: unknown }
 
 const db = vi.hoisted(() => ({
   capabilities: new Set<string>(['invoice.create', 'cost.view']),
-  invoice: null as { id: string; status: string; tax_total: number } | null,
+  invoice: null as { id: string; status: string; tax_total: number; seller_entity_code: string; buyer_entity_code: string } | null,
+  organisations: ['EB-SRO', 'EB-GROUP'] as string[],
   rpcResult: null as unknown,
   rpcError: null as { message: string } | null,
   rpcCalls: [] as { fn: string; args: Record<string, unknown> }[],
@@ -29,7 +30,7 @@ vi.mock('@/lib/authz', () => ({
   getAuthorizedUser: async () => ({
     ok: true,
     user: { id: '00000000-0000-4000-8000-000000000001', email: 'finance@example.com' },
-    profile: {},
+    profile: { organisations: db.organisations },
     capabilities: db.capabilities,
   }),
 }))
@@ -73,8 +74,9 @@ const lines = [
 ]
 
 beforeEach(() => {
+  db.organisations = ['EB-SRO', 'EB-GROUP']
   db.capabilities = new Set(['invoice.create', 'cost.view'])
-  db.invoice = { id: ID, status: 'draft', tax_total: 0 }
+  db.invoice = { id: ID, status: 'draft', tax_total: 0, seller_entity_code: 'EB-SRO', buyer_entity_code: 'EB-GROUP' }
   db.rpcResult = { ok: true, before: BEFORE }
   db.rpcError = null
   db.rpcCalls = []
@@ -82,6 +84,15 @@ beforeEach(() => {
 })
 
 describe('editing a commercial invoice draft', () => {
+  it('answers not found for an invoice between organisations the caller does not hold', async () => {
+    // Dean, 15 Sep 2026: the organisation is the outer scope of everything.
+    // The same words as a missing invoice, so nothing leaks about its existence.
+    db.organisations = ['EB-USA']
+    const res = await editInvoiceDraft({ invoice_id: ID, lines })
+    expect(res).toEqual({ ok: false, error: 'Invoice not found.' })
+    expect(db.rpcCalls).toHaveLength(0)
+  })
+
   it('replaces the lines and totals in one call to the locking function', async () => {
     const res = await editInvoiceDraft({ invoice_id: ID, lines })
     expect(res).toEqual({ ok: true, subtotal: 593.11, total: 593.11 })
@@ -134,7 +145,7 @@ describe('editing a commercial invoice draft', () => {
   })
 
   it('refuses an already-issued invoice before calling the function', async () => {
-    db.invoice = { id: ID, status: 'issued', tax_total: 0 }
+    db.invoice = { id: ID, status: 'issued', tax_total: 0, seller_entity_code: 'EB-SRO', buyer_entity_code: 'EB-GROUP' }
     const res = await editInvoiceDraft({ invoice_id: ID, lines })
     expect(res.ok).toBe(false)
     expect(db.rpcCalls).toEqual([])

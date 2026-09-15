@@ -18,7 +18,8 @@ type RpcCall = { fn: string; args: unknown }
 
 const db = vi.hoisted(() => ({
   capabilities: new Set<string>(['invoice.create']),
-  invoice: null as { id: string; status: string } | null,
+  invoice: null as { id: string; status: string; seller_entity_code: string; buyer_entity_code: string } | null,
+  organisations: ['EB-SRO', 'EB-GROUP'] as string[],
   rpcResult: null as unknown,
   rpcError: null as { message: string } | null,
   rpcCalls: [] as RpcCall[],
@@ -32,7 +33,7 @@ vi.mock('@/lib/authz', () => ({
   getAuthorizedUser: async () => ({
     ok: true,
     user: { id: '00000000-0000-4000-8000-000000000001' },
-    profile: {},
+    profile: { organisations: db.organisations },
     capabilities: db.capabilities,
   }),
 }))
@@ -81,8 +82,9 @@ import { setInvoiceStatus } from '@/app/actions/invoices/set-invoice-status'
 const ID = '0f1e2d3c-4b5a-4978-8796-a5b4c3d2e1f0'
 
 beforeEach(() => {
+  db.organisations = ['EB-SRO', 'EB-GROUP']
   db.capabilities = new Set(['invoice.create'])
-  db.invoice = { id: ID, status: 'draft' }
+  db.invoice = { id: ID, status: 'draft', seller_entity_code: 'EB-SRO', buyer_entity_code: 'EB-GROUP' }
   db.rpcResult = { ok: true, status: 'issued' }
   db.rpcError = null
   db.rpcCalls = []
@@ -91,6 +93,15 @@ beforeEach(() => {
 })
 
 describe('issuing a commercial invoice', () => {
+  it('answers not found for an invoice between organisations the caller does not hold', async () => {
+    // Dean, 15 Sep 2026: the organisation is the outer scope of everything.
+    // The same words as a missing invoice, so nothing leaks about its existence.
+    db.organisations = ['EB-USA']
+    const res = await setInvoiceStatus({ invoice_id: ID, action: 'issue' })
+    expect(res).toEqual({ ok: false, error: 'Invoice not found.' })
+    expect(db.rpcCalls).toHaveLength(0)
+  })
+
   it('issues through hub_issue_commercial_invoice and writes nothing itself', async () => {
     const res = await setInvoiceStatus({ invoice_id: ID, action: 'issue' })
     expect(res).toEqual({ ok: true, status: 'issued' })
@@ -160,7 +171,7 @@ describe('issuing a commercial invoice', () => {
   })
 
   it('still refuses an illegal jump before calling the function', async () => {
-    db.invoice = { id: ID, status: 'issued' }
+    db.invoice = { id: ID, status: 'issued', seller_entity_code: 'EB-SRO', buyer_entity_code: 'EB-GROUP' }
     const res = await setInvoiceStatus({ invoice_id: ID, action: 'issue' })
     expect(res.ok).toBe(false)
     expect(db.rpcCalls).toEqual([])

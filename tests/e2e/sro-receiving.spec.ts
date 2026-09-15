@@ -61,17 +61,24 @@ test.describe('SRO slice 4 — receiving, templates, numbering', () => {
   })
 
   test('the side panel shows the PO number as the headline (no Ref line for a root order)', async ({ page }) => {
-    await page.goto('/purchase-orders')
+    // The fixture is a Group-to-SRO order with no depot leg, so it is on the
+    // Group and SRO boards and not on USA's, which is where a buyer holding
+    // several organisations lands by default. Switch to Group first: it sees
+    // every Hub chain, because every chain runs through EB-GROUP.
+    await page.goto('/org/EB-GROUP?next=/purchase-orders')
+    await expect(page).toHaveURL(/\/purchase-orders$/)
     // Under the 2026-07-14 display contract the Hub-minted placeholder is never
     // shown; the fixture's own E2E number is real (doesn't match ^PO-\d+$) so it
     // IS the headline. bomPo has no parent_po_id (raised directly, not via the
     // approval chain) so reference_po_number is null — no "Ref:" second line.
     await page.getByText(s!.bomPo.po_number, { exact: true }).first().click()
-    // Scope to the slide-over panel itself (div.w-96 is unique to it on this
-    // page) — a broad `hasText` filter also matches the ancestor that wraps both
-    // the panel AND the still-visible board card behind it, which would make the
-    // po-number text match twice (strict-mode violation).
-    const panel = page.locator('div.w-96')
+    // Scope to the slide-over panel itself (the fixed right-hand drawer is
+    // unique on this page; its width class became sm:w-96 when the board went
+    // responsive, so it is found by position, not width) — a broad `hasText`
+    // filter also matches the ancestor that wraps both the panel AND the
+    // still-visible board card behind it, which would make the po-number text
+    // match twice (strict-mode violation).
+    const panel = page.locator('div.fixed.inset-y-0.right-0')
     await expect(panel.getByText(s!.bomPo.po_number, { exact: true })).toBeVisible()
     await expect(panel.getByText(/^Ref: /)).toHaveCount(0)
   })

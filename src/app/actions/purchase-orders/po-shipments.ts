@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
+import { partiesForOrgs } from "@/lib/organisations";
+import { partyFilter, poChainHeldBy } from "@/lib/po-organisations";
 import { getCargoToken, fetchSpotIds, fetchShipmentDetail } from "@/lib/cargo-client";
 
 // ---------------------------------------------------------------------------
@@ -79,6 +81,9 @@ export async function resolvePoShipment(poId: string): Promise<ResolveResult> {
     .eq("id", poId)
     .maybeSingle<PoRef>();
   if (!po) return { success: false, error: "Purchase order not found" };
+  if (!(await poChainHeldBy(poId, auth.profile.organisations))) {
+    return { success: false, error: "Purchase order not found" };
+  }
 
   try {
     const token = await getCargoToken();
@@ -105,10 +110,16 @@ export async function syncAllPoShipments(): Promise<SyncResult> {
     return { success: false, error: "Forbidden: missing transport capability" };
   }
 
+  // The sweep covers the legs of the caller's own organisations. Super admins
+  // hold every organisation, so for them this is every leg, as before.
+  const parties = partiesForOrgs(auth.profile.organisations);
+  if (parties.length === 0) return { success: true, checked: 0, resolved: 0 };
+
   const supabase = await createServerClient();
   const { data: pos } = await supabase
     .from("purchase_orders")
     .select("id, po_number")
+    .or(partyFilter(parties))
     .neq("status", "cancelled")
     .order("created_at", { ascending: false })
     .limit(60); // cap the per-run Cargo calls; the scheduled sweep will page later

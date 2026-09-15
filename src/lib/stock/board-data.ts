@@ -28,14 +28,21 @@ async function bookedChains(admin: Admin): Promise<Set<string>> {
   return new Set((pos ?? []).map((p) => String(p.master_ref ?? '')).filter(Boolean))
 }
 
-export async function loadFinishedBoard(now = new Date()): Promise<FinishedPosition[]> {
+/**
+ * The finished-goods positions, for the given warehouses only when a list is
+ * passed: an organisation's board shows its own warehouses and no other's. The
+ * committed and inbound figures are derived per warehouse, so the positions
+ * are filtered to the same list before they leave here.
+ */
+export async function loadFinishedBoard(now = new Date(), warehouses?: readonly string[]): Promise<FinishedPosition[]> {
   const admin = createAdminClient()
   const booked = await bookedChains(admin)
 
+  const levelColumns = 'warehouse_code, sku, product_name, quantity_on_hand, last_counted_at'
   const [levels, sroReady, bamida, invoiceLines, depotOrders] = await Promise.all([
-    admin
-      .from('warehouse_stock_levels')
-      .select('warehouse_code, sku, product_name, quantity_on_hand, last_counted_at'),
+    warehouses
+      ? admin.from('warehouse_stock_levels').select(levelColumns).in('warehouse_code', [...warehouses])
+      : admin.from('warehouse_stock_levels').select(levelColumns),
     admin
       .from('purchase_orders')
       .select('master_ref, parent_po_id, lines:purchase_order_lines(sku, quantity)')
@@ -105,7 +112,7 @@ export async function loadFinishedBoard(now = new Date()): Promise<FinishedPosit
     })),
   )
 
-  return deriveFinishedPositions(
+  const positions = deriveFinishedPositions(
     {
       levels: (levels.data ?? []).map((l) => ({
         warehouse_code: String(l.warehouse_code),
@@ -122,6 +129,7 @@ export async function loadFinishedBoard(now = new Date()): Promise<FinishedPosit
     },
     now,
   )
+  return warehouses ? positions.filter((p) => warehouses.includes(p.warehouse_code)) : positions
 }
 
 export interface MaterialPosition {
@@ -264,6 +272,9 @@ export interface MovementRow {
 
 export async function loadMovements(opts: {
   warehouse?: string
+  /** The organisation's warehouses: the outer scope, applied whether or not
+   *  one warehouse is picked within it. */
+  warehouses?: readonly string[]
   sku?: string
   itemKind?: ItemKind
   limit?: number
@@ -274,6 +285,7 @@ export async function loadMovements(opts: {
     .select('id, item_kind, warehouse_code, sku, kind, quantity, balance_after, ref_type, ref_id, estimated, note, created_by_uid, created_at')
     .order('created_at', { ascending: false })
     .limit(Math.min(Math.max(opts.limit ?? 50, 1), 500))
+  if (opts.warehouses) q = q.in('warehouse_code', [...opts.warehouses])
   if (opts.warehouse) q = q.eq('warehouse_code', opts.warehouse)
   if (opts.sku) q = q.eq('sku', opts.sku)
   if (opts.itemKind) q = q.eq('item_kind', opts.itemKind)

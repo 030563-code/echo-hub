@@ -2,7 +2,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { createServerClient } from '@/lib/supabase/server'
-import { getCapabilities } from '@/lib/authz'
+import { getAuthorizedUser } from '@/lib/authz'
+import { poChainHeldBy } from '@/lib/po-organisations'
 import { chainNumber, displayPoNumber, isFullyReceived, legLabel } from '@/lib/po-number'
 import { entityPoCurrency } from '@/lib/po-currency'
 import { entityLabel } from '@/lib/depot-constants'
@@ -52,7 +53,9 @@ export const dynamic = 'force-dynamic'
  */
 export default async function PurchaseOrderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const caps = await getCapabilities()
+  const auth = await getAuthorizedUser()
+  if (!auth.ok) notFound()
+  const caps = auth.capabilities
 
   const canAct = caps.has('po.create')
   const canApprove = caps.has('po.approve')
@@ -65,6 +68,9 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
 
   const detail = await loadPurchaseOrderDetail(id, canViewCost)
   if (!detail) notFound()
+  // An order from a chain none of this person's organisations has a leg in
+  // answers exactly as a missing one: whether it exists is not their business.
+  if (!(await poChainHeldBy(id, auth.profile.organisations))) notFound()
   const { po, chain, pdf, manufacturing } = detail
 
   // Exactly the conditions the rest of the Hub already uses, so this page and the
