@@ -163,7 +163,11 @@ export const HUBSPOT_PIPELINES = {
       QUALIFIED_TO_BUY: "39459179",
       PRESENTATION_SCHEDULED: "39459180",
       DECISION_MAKER_BOUGHT_IN: "39459181",
-      CONTRACT_SENT: "39459182",
+      // Named QUOTATION_SENT (HubSpot still labels it "Contract sent" until the
+      // portal is renamed) so createQuote and markQuoteSent find this pipeline's
+      // Quotation sent stage by key. Renamed, never duplicated: stage ids must
+      // stay distinct (tests/unit/hubspot-stage-labels.test.ts).
+      QUOTATION_SENT: "39459182",
       CLOSED_WON: "39459183",
       CLOSED_LOST: "39459184"
     }
@@ -219,7 +223,8 @@ export const QUOTATION_SENT_STAGES = [
   HUBSPOT_PIPELINES.DEMO_SALES.stages.QUOTATION_SENT,
   HUBSPOT_PIPELINES.UK_HIRE.stages.QUOTATION_RECEIVED,
   HUBSPOT_PIPELINES.UK_SALES.stages.QUOTATION_SENT,
-  HUBSPOT_PIPELINES.INTERNATIONAL_SALES.stages.QUOTATION_SENT
+  HUBSPOT_PIPELINES.INTERNATIONAL_SALES.stages.QUOTATION_SENT,
+  HUBSPOT_PIPELINES.AUSTRALIA_SALES.stages.QUOTATION_SENT
 ]
 
 export const QUOTATION_ACCEPTED_STAGES = [

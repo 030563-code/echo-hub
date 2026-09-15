@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { HUBSPOT_PIPELINES, STAGE_LABELS_BY_ID, stageLabel } from '@/lib/hubspot-constants'
+import { HUBSPOT_PIPELINES, STAGE_LABELS_BY_ID, QUOTATION_SENT_STAGES, stageLabel } from '@/lib/hubspot-constants'
 
 const USA = HUBSPOT_PIPELINES.USA_SALES
 
@@ -54,5 +54,26 @@ describe('stage labels', () => {
     const all = Object.values(HUBSPOT_PIPELINES).flatMap((p) => Object.values(p.stages))
     expect(new Set(all).size).toBe(all.length)
     expect(Object.keys(STAGE_LABELS_BY_ID).length).toBe(all.length)
+  })
+})
+
+describe('Australia Sales Quotation sent stage', () => {
+  // Jack, the ANZ AI sales agent, quotes into pipeline 14520121. createQuote and
+  // markQuoteSent find a pipeline's Quotation sent stage by a key containing
+  // QUOTATION_SENT, so the old CONTRACT_SENT key made both refuse for AU.
+  const au = HUBSPOT_PIPELINES.AUSTRALIA_SALES
+
+  it('names 39459182 as the Quotation sent stage', () => {
+    expect(au.id).toBe('14520121')
+    expect(au.stages.QUOTATION_SENT).toBe('39459182')
+    expect(stageLabel('14520121', '39459182')).toBe('Quotation Sent')
+  })
+
+  it('is a Quotation sent stage, so markQuoteSent never drags it backwards', () => {
+    expect(QUOTATION_SENT_STAGES).toContain('39459182')
+  })
+
+  it('carries no CONTRACT_SENT key any more', () => {
+    expect(Object.keys(au.stages)).not.toContain('CONTRACT_SENT')
   })
 })

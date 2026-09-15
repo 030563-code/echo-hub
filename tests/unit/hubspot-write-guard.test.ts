@@ -16,7 +16,9 @@ import { join } from 'node:path'
  * quietly. A file passes if it either goes through hubspotFetch or checks
  * externalCallsDisabled itself.
  */
-const ROOT = join(process.cwd(), 'src/app/actions')
+// Actions AND API routes: a route handler can mutate HubSpot just as easily,
+// and /api/agent/quote is reachable by a machine caller with no session at all.
+const ROOTS = [join(process.cwd(), 'src/app/actions'), join(process.cwd(), 'src/app/api')]
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
@@ -41,11 +43,12 @@ function mutatesHubSpot(source: string): boolean {
 }
 
 describe('every HubSpot mutation is behind the staging kill switch', () => {
-  const files = walk(ROOT)
+  const files = ROOTS.flatMap(walk)
 
   it('finds the action files at all, so a bad path cannot make this vacuously pass', () => {
     expect(files.length).toBeGreaterThan(20)
     expect(files.some((f) => f.endsWith('updateDealAmount.ts'))).toBe(true)
+    expect(files.some((f) => f.endsWith(join('api', 'agent', 'quote', 'route.ts')))).toBe(true)
   })
 
   it('leaves no mutation unguarded', () => {

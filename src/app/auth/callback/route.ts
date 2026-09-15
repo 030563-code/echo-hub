@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
+import { isAgentUserId } from '@/lib/agent-account'
 
 // OAuth / magic-link / invite callback. Exchanges the code for a session, then
 // routes: an invited user (carries hubspot_owner_id / team metadata, no profile
@@ -22,6 +23,14 @@ export async function GET(request: Request) {
   const {
     data: { user },
   } = await supabase.auth.getUser()
+
+  // Jack, the ANZ AI sales agent, may never hold a browser session. This is the
+  // door a magic link or a password recovery actually comes through, so the
+  // exchange is undone here rather than only refused later by the middleware.
+  if (isAgentUserId(user?.id)) {
+    await supabase.auth.signOut()
+    return NextResponse.redirect(`${origin}/login?error=agent_account`)
+  }
 
   // If the user has no profile row yet (or no region set), send them to onboarding.
   if (user) {

@@ -25,6 +25,8 @@ import {
 // helpers deliberately do NOT come back out of this module: exported from a
 // 'use server' file they would each become a callable server action.
 export type {
+  AgentQuoteStamp,
+  PublishFailureCode,
   PublishQuoteContext,
   PublishQuoteResult,
   PublishedQuote,
@@ -69,7 +71,14 @@ export async function runQuotePipeline(ctx: PublishQuoteContext): Promise<Publis
     }
   }
 
-  const expiresOn = quoteExpiryDate(new Date().toISOString().slice(0, 10))
+  // The expiry date is an override now, defaulting to the house 60 days from
+  // the UTC date the moment it is omitted, so every existing caller keeps the
+  // expiry it had. Only the agent's urgent quote passes one, and it passes a
+  // DATE rather than a day count because its deadline is an instant in Sydney:
+  // a count off the UTC date expires the quote a calendar day early for the
+  // whole Sydney morning. An unparseable override is caught by
+  // validateQuoteInput below, before the row is claimed or HubSpot is called.
+  const expiresOn = ctx.expiryDate ?? quoteExpiryDate(new Date().toISOString().slice(0, 10))
   const createInput = {
     title: ctx.title,
     expirationDate: expiresOn,
@@ -104,6 +113,18 @@ export async function runQuotePipeline(ctx: PublishQuoteContext): Promise<Publis
       line_items: ctx.lines,
       created_by_uid: ctx.createdByUid,
       created_by_label: ctx.createdByLabel,
+      // Written in the SAME insert as the row, never stamped on afterwards: a
+      // published urgent quote with no accept_by would look like a list quote
+      // to the reissue check and to the pipeline worker. Omitted entirely for a
+      // quote a person raises, which is every quote but the agent's.
+      ...(ctx.agentQuote
+        ? {
+            pricing_mode: ctx.agentQuote.pricingMode,
+            accept_by: ctx.agentQuote.acceptBy,
+            reissue_of: ctx.agentQuote.reissueOf,
+            urgency_note: ctx.agentQuote.urgencyNote,
+          }
+        : {}),
     })
     .select('id')
     .single()
@@ -112,6 +133,7 @@ export async function runQuotePipeline(ctx: PublishQuoteContext): Promise<Publis
     if (claimError?.code === '23505') {
       return {
         success: false,
+        code: 'IN_FLIGHT',
         error: 'A quote is already being generated for this deal. Give it a moment, then use Retry quote.',
       }
     }

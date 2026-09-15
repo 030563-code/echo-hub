@@ -1,12 +1,11 @@
 import 'server-only'
 import { createServerClient as createServerClientSSR } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { agentScopedClient } from '@/lib/supabase/agent-scope'
 
-// Server client — anon key + the request's session cookies. Used by every server
-// component, layout, and server action for session-scoped, RLS-enforced queries.
-export const createServerClient = async () => {
-  const cookieStore = await cookies()
+type CookieStore = Awaited<ReturnType<typeof cookies>>
 
+function cookieClient(cookieStore: CookieStore) {
   return createServerClientSSR(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -28,4 +27,19 @@ export const createServerClient = async () => {
       },
     }
   )
+}
+
+type ServerClient = ReturnType<typeof cookieClient>
+
+// Server client, anon key plus the request's session cookies. Used by every server
+// component, layout, and server action for session-scoped, RLS-enforced queries.
+export const createServerClient = async (): Promise<ServerClient> => {
+  // An agent route (no cookies) runs the quote chain inside runWithAgentClient.
+  // Checked BEFORE cookies(): a machine request has no cookie store to read, and
+  // a scope without a client throws here rather than falling back to cookies.
+  // See lib/supabase/agent-scope.ts.
+  const scoped = agentScopedClient()
+  if (scoped) return scoped as unknown as ServerClient
+
+  return cookieClient(await cookies())
 }

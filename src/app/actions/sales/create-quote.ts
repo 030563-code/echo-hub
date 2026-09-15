@@ -8,7 +8,7 @@ import { getProductSkus } from '@/app/actions/hubspot/getProductSkus'
 import { QUOTATION_SENT_STAGES, HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
 import { parseWinProbability, validateLineItems } from '@/lib/quote-math'
 import { priceCart, toRegistryLine } from '@/lib/quote-pricing'
-import { runQuotePipeline, type PublishedQuote } from '@/app/actions/sales/publish-quote'
+import { runQuotePipeline, type AgentQuoteStamp, type PublishedQuote } from '@/app/actions/sales/publish-quote'
 import { nextQuoteNumber } from '@/lib/hubspot-quote'
 import { quoteTemplateIdFor } from '@/lib/pipeline-config'
 import { splitFullName } from '@/lib/name'
@@ -19,6 +19,7 @@ import { assertDealAccess } from '@/lib/authz'
 import { deletePageState } from '@/lib/page-state-server'
 import { quoteBuilderKey } from '@/lib/quote-builder-draft'
 import { findOutOfScopeSkus } from '@/lib/quote-sku-scope'
+import { agentSenderEmail } from '@/lib/agent-account'
 
 interface QuoteLineItem {
   productId: string
@@ -67,6 +68,14 @@ interface CreateQuoteParams {
   isCollection?: boolean
   isPreview?: boolean
   pdfBlob?: Blob // We can't pass Blob to server action directly, need FormData or base64
+  /** An explicit yyyy-mm-dd expiry. Omitted means the house default of 60 days.
+   *  The ANZ agent's urgent quote passes the Sydney calendar date of its
+   *  acceptance deadline, because HubSpot's expiry is a date rather than a
+   *  timestamp and the deadline it has to agree with is an instant in Sydney. */
+  expiryDate?: string
+  /** Set only by /api/agent/quote. Records the pricing mode, the acceptance
+   *  deadline and the urgent quote a reissue replaces on the deal_quotes row. */
+  agentQuote?: AgentQuoteStamp
 }
 
 export async function createQuote(params: CreateQuoteParams) {
@@ -564,6 +573,14 @@ export async function createQuote(params: CreateQuoteParams) {
 
   const contactId = deal?.associations?.contacts?.results?.[0]?.id ?? null
   const senderName = splitFullName(profile.display_name || '')
+  // NOT user.email for the ANZ agent. Its Supabase LOGIN address
+  // (jack.agent@no-mail.echobarrier.com) is deliberately not deliverable, see
+  // lib/agent-account.ts, and this value is printed on the customer's quote as
+  // the person to reply to. So the agent's MAIL identity
+  // (jack.walker@echobarrier.com, JACK_SENDER_EMAIL) comes from configuration
+  // instead. Null for everyone else, meaning "no override", so a rep's quote
+  // carries exactly the address it always did.
+  const senderEmail = agentSenderEmail(user.id) ?? user.email ?? null
   const quoteResult = await runQuotePipeline({
     dealId: params.dealId,
     title: dealName,
@@ -580,17 +597,21 @@ export async function createQuote(params: CreateQuoteParams) {
     sender: {
       firstname: senderName.firstname,
       lastname: senderName.lastname,
-      email: user.email,
+      email: senderEmail,
       phone: profile.phone,
     },
     lines: pricedCart.lines,
     hubAmount: computedTotal,
     createdByUid: user.id,
-    createdByLabel: user.email ?? 'Hub user',
+    createdByLabel: senderEmail ?? 'Hub user',
+    expiryDate: params.expiryDate,
+    agentQuote: params.agentQuote,
   })
 
   if (!quoteResult.success) {
-    return { success: true, quoteReference, quoteError: quoteResult.error }
+    // The code travels with the message so a caller can branch on WHY without
+    // matching rep-facing text. Today the only one is IN_FLIGHT.
+    return { success: true, quoteReference, quoteError: quoteResult.error, quoteErrorCode: quoteResult.code }
   }
 
   return { success: true, quoteReference, quote: quoteResult.quote satisfies PublishedQuote }
