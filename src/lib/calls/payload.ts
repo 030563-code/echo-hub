@@ -14,6 +14,7 @@
 
 import { z } from 'zod'
 import { deriveLinkState, type LinkState } from './link-state'
+import { normaliseOffice } from './offices'
 
 /** What the phone system calls a call. Anything else becomes 'other'. */
 export const CALL_TYPES = ['answered', 'voicemail', 'department_notification', 'other'] as const
@@ -87,6 +88,10 @@ export function toCallAt(raw: string | null | undefined, now: Date): Date {
 
 function normaliseCallType(raw: string | null | undefined): CallType {
   const value = (raw ?? '').trim().toLowerCase()
+  // The department handlers send 'answered_notification' for a call that reached
+  // accounts or transport. It is the same thing as a department notification and
+  // belongs in the same bucket, rather than falling into 'other'.
+  if (value === 'answered_notification') return 'department_notification'
   return (CALL_TYPES as readonly string[]).includes(value) ? (value as CallType) : 'other'
 }
 
@@ -144,7 +149,10 @@ export function toCallRow(
   return {
     call_sid: payload.call_sid.trim(),
     recording_sid: nullIfBlank(payload.recording_sid),
-    office: nullIfBlank(payload.office) ?? 'Unknown',
+    // The handlers each name their own office ("United Kingdom", "France"), so
+    // the raw value is mapped to one name here. An office nobody has mapped is
+    // kept as sent, so it shows up rather than disappearing.
+    office: normaliseOffice(payload.office) ?? nullIfBlank(payload.office) ?? 'Unknown',
     department: nullIfBlank(payload.department) ?? 'unknown',
     call_type: normaliseCallType(payload.call_type),
     call_status: nullIfBlank(payload.call_status),

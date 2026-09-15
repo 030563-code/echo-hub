@@ -105,6 +105,32 @@ describe('the payload from the phone system', () => {
     expect(huge.success).toBe(false)
   })
 
+  it('files a department notification under one call type, whatever it is called', () => {
+    // The department handlers send 'answered_notification'; UK sends
+    // 'department_notification'. Same thing.
+    const row = toCallRow(callPayloadSchema.parse({ ...UK_DEPARTMENT, call_type: 'answered_notification' }), {
+      now: NOW,
+      contact: null,
+    })
+    expect(row.call_type).toBe('department_notification')
+  })
+
+  it('normalises the office name the handler happens to use', () => {
+    const row = toCallRow(callPayloadSchema.parse({ ...UK_VOICEMAIL, office: 'United Kingdom' }), {
+      now: NOW,
+      contact: null,
+    })
+    expect(row.office).toBe('UK')
+  })
+
+  it('keeps an unmapped office as sent, so the call is still visible', () => {
+    const row = toCallRow(callPayloadSchema.parse({ ...UK_VOICEMAIL, office: 'Germany' }), {
+      now: NOW,
+      contact: null,
+    })
+    expect(row.office).toBe('Germany')
+  })
+
   it('maps an unrecognised call type to other instead of dropping the call', () => {
     const row = toCallRow(callPayloadSchema.parse({ ...UK_VOICEMAIL, call_type: 'conference' }), {
       now: NOW,

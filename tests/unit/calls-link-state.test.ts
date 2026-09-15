@@ -6,7 +6,7 @@ import {
   isWithheldCaller,
   linkReasons,
 } from '@/lib/calls/link-state'
-import { officesForViewer, OFFICES } from '@/lib/calls/offices'
+import { normaliseOffice, officesForViewer, OFFICES } from '@/lib/calls/offices'
 import { MISSED_REASON_CODES, isMissedReasonCode, missedReasonLabel } from '@/lib/calls/missed-reasons'
 
 describe('a placeholder contact', () => {
@@ -134,5 +134,33 @@ describe('which offices a person sees', () => {
 
   it('gives a super admin every office', () => {
     expect(officesForViewer(null, true)).toEqual(OFFICES)
+  })
+})
+
+describe('the office name each handler sends', () => {
+  it('maps what the live handlers actually send', () => {
+    // Verified against the published workflows on 15 Sep 2026: the UK handlers
+    // send "United Kingdom", France sends "France", and the placeholder contacts
+    // in HubSpot carry "AUZ" for Australia.
+    expect(normaliseOffice('United Kingdom')).toBe('UK')
+    expect(normaliseOffice('France')).toBe('France')
+    expect(normaliseOffice('Spain')).toBe('Spain')
+    expect(normaliseOffice('Asia')).toBe('Asia')
+    expect(normaliseOffice('AUZ')).toBe('ANZ')
+    expect(normaliseOffice('Australia')).toBe('ANZ')
+    expect(normaliseOffice('USA')).toBe('USA')
+    expect(normaliseOffice('United States')).toBe('USA')
+  })
+
+  it('is not case or space sensitive', () => {
+    expect(normaliseOffice('  united kingdom ')).toBe('UK')
+  })
+
+  it('returns null for an office nobody has mapped, rather than guessing', () => {
+    // Guessing would show a customer's call to the wrong region. Null means the
+    // call is stored as sent and is visible to a super admin, who can add it.
+    expect(normaliseOffice('Germany')).toBeNull()
+    expect(normaliseOffice('')).toBeNull()
+    expect(normaliseOffice(null)).toBeNull()
   })
 })
