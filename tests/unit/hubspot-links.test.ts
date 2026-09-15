@@ -28,14 +28,17 @@ describe('hubspotRecordUrl', () => {
   })
 })
 
-describe('quote record URLs', () => {
-  it('uses the durable 0-14 object-type form for a HubSpot quote', () => {
-    // Phase B links the rep from the Hub to the quote it just published. The
-    // object-type path is the shape HubSpot has not broken; /quote/{id} is not
-    // a route that exists.
-    process.env.NEXT_PUBLIC_HUBSPOT_PORTAL_ID = '3882358'
-    const url = hubspotRecordUrl('quote', '42607942261')
-    expect(url).toBe('https://app.hubspot.com/contacts/3882358/record/0-14/42607942261')
+describe('quotes have no record URL', () => {
+  // record/0-14/{id} looked durable and opened nothing (Dean, 15 Sep 2026).
+  // The two quote surfaces link to the DEAL, where HubSpot shows the quote,
+  // and offer the quote's own public link beside it.
+  it('both quote surfaces link to the deal, never to a quote record', async () => {
+    const { readFile } = await import('node:fs/promises')
+    for (const file of ['src/components/quotes/quote-published-panel.tsx', 'src/components/quotes/deal-quotes-card.tsx']) {
+      const source = await readFile(file, 'utf8')
+      expect(source, file).toContain("hubspotRecordUrl('deal', dealId)")
+      expect(source, file).not.toContain("hubspotRecordUrl('quote'")
+    }
   })
 })
 

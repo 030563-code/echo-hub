@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { QUOTE_BRANDING } from '@/lib/pipeline-config'
 import {
   QUOTE_ASSOCIATION_TYPE_IDS,
   QUOTE_DRAFT_STATUS,
@@ -118,18 +119,16 @@ describe('buildQuoteLineItemInputs', () => {
     expect(built.map((l) => l.properties.hs_position_on_quote)).toEqual(['0', '1'])
   })
 
-  it('carries a percentage and a per-unit discount as DIFFERENT properties', () => {
+  it('never sends a discount property, whatever a caller still passes', () => {
+    // HubSpot prints hs_discount_percentage and discount on the customer's
+    // quote. The price on the wire is the price the customer pays, full stop.
     const built = buildQuoteLineItemInputs(lines, 'USD')
-    expect(built[0].properties.hs_discount_percentage).toBe('10')
-    expect(built[0].properties.discount).toBeUndefined()
-    expect(built[1].properties.discount).toBe('200.00')
-    expect(built[1].properties.hs_discount_percentage).toBeUndefined()
-  })
-
-  it('never sends both discount properties, which HubSpot would stack', () => {
-    const [built] = buildQuoteLineItemInputs([{ name: 'Both', quantity: 1, price: 100, hs_discount_percentage: 10, discount: 5 }], 'USD')
-    expect(built.properties.hs_discount_percentage).toBe('10')
-    expect(built.properties.discount).toBeUndefined()
+    for (const line of built) {
+      expect('hs_discount_percentage' in line.properties).toBe(false)
+      expect('discount' in line.properties).toBe(false)
+    }
+    expect(built[0].properties.price).toBe('178.00')
+    expect(built[1].properties.price).toBe('1200.00')
   })
 
   it('omits an empty optional rather than sending a blank that overwrites', () => {
@@ -147,6 +146,25 @@ describe('buildQuoteLineItemInputs', () => {
 })
 
 describe('buildQuoteCreateBody', () => {
+  it('stamps the rep as quote owner and the brand the editor would have applied', () => {
+    // Every API-made quote went out with no logo, no colour, no sender company
+    // and no quote owner, next to Jillian's own quotes that carry all four.
+    const { properties } = buildQuoteCreateBody({
+      title: 'White Cap', expirationDate: '2026-11-14', dealId: '65059648009', templateId: '237597084530',
+      ownerId: '82370091', branding: QUOTE_BRANDING,
+    })
+    expect(properties.hs_quote_owner_id).toBe('82370091')
+    expect(properties.hs_logo_url).toBe(QUOTE_BRANDING.logoUrl)
+    expect(properties.hs_primary_color).toBe('#005843')
+    expect(properties.hs_sender_company_name).toBe('Echo Barrier Group')
+    expect(properties.hs_sender_company_city).toBe('Dublin')
+  })
+
+  it('sends neither owner nor brand when the caller has none, rather than blanks that overwrite', () => {
+    const { properties } = buildQuoteCreateBody({ title: 'Bare', expirationDate: '2026-11-14', dealId: '1', ownerId: null })
+    for (const key of ['hs_quote_owner_id', 'hs_logo_url', 'hs_primary_color', 'hs_sender_company_name']) expect(key in properties).toBe(false)
+  })
+
   const base: QuoteCreateInput = {
     title: 'Test - UR',
     expirationDate: '2026-11-02',

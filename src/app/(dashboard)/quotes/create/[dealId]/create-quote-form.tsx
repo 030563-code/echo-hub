@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { productPickableForDepot } from '@/lib/quote-products'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -435,7 +436,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
       // Base list is either all products or restricted by depot
       let baseProducts = products
       if (allowedSkusForDepot.length > 0) {
-        baseProducts = products.filter(p => p.properties.hs_sku && allowedSkusForDepot.includes(p.properties.hs_sku))
+        baseProducts = products.filter(p => productPickableForDepot(p, allowedSkusForDepot))
       }
 
       if (productSearch) {
@@ -456,7 +457,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
              let newProducts = result.data.filter(apiP => !products.some(localP => localP.id === apiP.id))
              
              if (allowedSkusForDepot.length > 0) {
-               newProducts = newProducts.filter(p => p.properties.hs_sku && allowedSkusForDepot.includes(p.properties.hs_sku))
+               newProducts = newProducts.filter(p => productPickableForDepot(p, allowedSkusForDepot))
              }
 
              setFilteredProducts([...localResults, ...newProducts])

@@ -3,7 +3,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertDealAccess } from '@/lib/authz'
 import { hubspotFetch } from '@/lib/hubspot-client'
-import { quoteTemplateIdFor } from '@/lib/pipeline-config'
+import { quoteTemplateIdFor, QUOTE_BRANDING } from '@/lib/pipeline-config'
 import {
   buildQuoteCreateBody,
   buildQuoteLineItemInputs,
@@ -85,6 +85,8 @@ export async function runQuotePipeline(ctx: PublishQuoteContext): Promise<Publis
     quoteNumber: ctx.quoteNumber,
     comments: ctx.comments,
     sender: ctx.sender,
+    ownerId: ctx.ownerId ?? null,
+    branding: QUOTE_BRANDING,
     templateId,
     dealId: ctx.dealId,
     contactId: ctx.contactId,
@@ -183,8 +185,6 @@ async function runFromRow(
         name: line.name,
         quantity: line.quantity,
         price: line.priced.hubspot.price,
-        hs_discount_percentage: line.priced.hubspot.hs_discount_percentage ?? null,
-        discount: line.priced.hubspot.discount ?? null,
         hs_product_id: line.productId,
         hs_sku: line.sku,
         description: line.description,

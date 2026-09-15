@@ -1,6 +1,7 @@
 'use server'
 
 import { createServerClient } from '@/lib/supabase/server'
+import { resolveHubSpotOwnerId } from '@/lib/hubspot-owner'
 import { getDealDetails } from '@/app/actions/hubspot/getDealDetails'
 import { updateDealStage, getDistributorStageForPipeline } from '@/app/actions/hubspot/updateDealStage'
 import { addLineItemsToDeal } from '@/app/actions/hubspot/addLineItems'
@@ -441,8 +442,6 @@ export async function createQuote(params: CreateQuoteParams) {
           total: l.lineTotal,
           sku: l.sku,
           description: l.description,
-          discountPercentage: l.priced.hubspot.hs_discount_percentage,
-          discountPerUnit: l.priced.hubspot.discount,
         })),
         dealCurrencyForPricing,
       )
@@ -581,6 +580,11 @@ export async function createQuote(params: CreateQuoteParams) {
   // instead. Null for everyone else, meaning "no override", so a rep's quote
   // carries exactly the address it always did.
   const senderEmail = agentSenderEmail(user.id) ?? user.email ?? null
+  // The "Quote owner" HubSpot's editor stamps on a quote is the person who made
+  // it. Every API-made quote had none until 15 Sep 2026. Null when the sender
+  // has no HubSpot seat (the ANZ agent), which HubSpot accepts.
+  const hubspotToken = process.env.HUBSPOT_ACCESS_TOKEN
+  const ownerId = senderEmail && hubspotToken ? await resolveHubSpotOwnerId(senderEmail, hubspotToken) : null
   const quoteResult = await runQuotePipeline({
     dealId: params.dealId,
     title: dealName,
@@ -600,6 +604,7 @@ export async function createQuote(params: CreateQuoteParams) {
       email: senderEmail,
       phone: profile.phone,
     },
+    ownerId,
     lines: pricedCart.lines,
     hubAmount: computedTotal,
     createdByUid: user.id,

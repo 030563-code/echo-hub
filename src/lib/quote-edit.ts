@@ -126,21 +126,23 @@ export interface EditableCartLine {
  * which is the exact priced cart that was published.
  *
  * The rep's original entry is not stored, only its result, so the mode is
- * recovered from which HubSpot field the price carries. That mapping is exactly
- * the one priceLine produces: a percentage discount sets hs_discount_percentage
- * and leaves the base in `price`, and a cash discount sets `discount` per unit.
+ * recovered from the priced pair: a percentage lives in the registry's
+ * discount_percentage, a cash discount is the gap between list and net. Both
+ * generations of snapshot carry those. The older ones also carry the discount
+ * on the HubSpot shape, which stopped being sent on 15 Sep 2026 because the
+ * customer could see it; nothing here reads it.
  */
 export function snapshotToCartLines(lines: readonly PricedCartLine[]): EditableCartLine[] {
   return lines.map((line) => {
-    const percentage = line.priced.hubspot.hs_discount_percentage
-    const perUnit = line.priced.hubspot.discount
+    const percentage = line.priced.registry.discount_percentage
+    const perUnit = Math.round((line.priced.listUnitPrice - line.priced.netUnitPrice) * 100) / 100
 
     let discountMode: DiscountMode | undefined
     let discountValue: number | undefined
-    if (percentage != null && percentage > 0) {
+    if (percentage > 0) {
       discountMode = 'percent'
       discountValue = percentage
-    } else if (perUnit != null && perUnit > 0) {
+    } else if (perUnit > 0) {
       discountMode = 'amount'
       discountValue = perUnit
     }
@@ -153,7 +155,7 @@ export function snapshotToCartLines(lines: readonly PricedCartLine[]): EditableC
       quantity: line.quantity,
       // The pre-discount base, which is what the builder's price column holds
       // and what the server re-prices against.
-      unitPrice: line.priced.hubspot.price,
+      unitPrice: line.priced.listUnitPrice,
       total: line.lineTotal,
       ...(discountMode ? { discountMode, discountValue } : {}),
     }

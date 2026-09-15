@@ -100,7 +100,9 @@ export function QuotePublishedPanel({
   const [body, setBody] = useState(defaults.body)
   const [, startTransition] = useTransition()
 
-  const hubspotUrl = hubspotRecordUrl('quote', quote.quoteId)
+  // The deal, not the quote: HubSpot has no record page for a quote and the
+  // 0-14 path opened nothing. The quote itself is the "Open quote" button.
+  const hubspotUrl = hubspotRecordUrl('deal', dealId)
 
   function copyLink() {
     if (!quote.quoteLink) return
@@ -184,7 +186,7 @@ export function QuotePublishedPanel({
           <a href={hubspotUrl} target="_blank" rel="noopener noreferrer">
             <Button size="sm" variant="outline">
               <ExternalLink className="mr-1.5 h-4 w-4" />
-              View in HubSpot
+              Deal in HubSpot
             </Button>
           </a>
         )}

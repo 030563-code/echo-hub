@@ -1,4 +1,5 @@
 import { getDealDetails } from '@/app/actions/hubspot/getDealDetails'
+import { backfillQuoteLinks } from '@/lib/quote-link-backfill'
 import { createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { readPageState } from '@/lib/page-state-server'
@@ -107,12 +108,14 @@ export default async function QuoteRequestDetailsPage(props: {
   // deal_quotes is service-role only (the customer_invoices doctrine), and
   // getDealDetails above has already refused a deal outside this caller scope,
   // so the admin client is safe here and RLS has nothing to add.
-  const { data: dealQuoteRows } = await createAdminClient()
+  const admin = createAdminClient()
+  const { data: dealQuoteRows } = await admin
     .from('deal_quotes')
     .select('id, hubspot_quote_id, quote_number, title, status, failed_step, error_message, quote_link, pdf_link, amount, hub_amount, currency, expires_on, created_at, created_by_label, link_before_edit, edit_count, edited_at')
     .eq('hubspot_deal_id', params.id)
     .order('created_at', { ascending: false })
-  const dealQuotes = (dealQuoteRows ?? []) as DealQuoteRow[]
+  // A published quote whose public link HubSpot handed back late gets it here.
+  const dealQuotes = await backfillQuoteLinks(admin, (dealQuoteRows ?? []) as DealQuoteRow[])
 
   const supabase = await createServerClient()
   const { data: registryEntry } = await supabase

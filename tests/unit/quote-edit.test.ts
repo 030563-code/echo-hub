@@ -155,10 +155,18 @@ describe('republishBlockReason', () => {
 
 /** Build a priced line the way priceCart would have stored it. */
 function line(overrides: {
-  hubspot: PricedCartLine['priced']['hubspot']
+  list?: number
+  net?: number
+  pct?: number
+  /** What the OLD snapshots carried towards HubSpot: list price plus a
+   *  discount property. New snapshots carry the net price alone. */
+  hubspot?: { price: number; hs_discount_percentage?: number; discount?: number }
   quantity?: number
   lineTotal?: number
 }): PricedCartLine {
+  const list = overrides.list ?? 200
+  const net = overrides.net ?? 180
+  const pct = overrides.pct ?? 0
   return {
     productId: 'p1',
     name: 'Echo Barrier H9',
@@ -166,10 +174,10 @@ function line(overrides: {
     description: 'A panel',
     quantity: overrides.quantity ?? 2,
     priced: {
-      listUnitPrice: 200,
-      netUnitPrice: 180,
-      registry: { unit_price: 200, discount_percentage: 10 },
-      hubspot: overrides.hubspot,
+      listUnitPrice: list,
+      netUnitPrice: net,
+      registry: pct > 0 ? { unit_price: list, discount_percentage: pct } : { unit_price: net, discount_percentage: 0 },
+      hubspot: (overrides.hubspot ?? { price: net }) as PricedCartLine['priced']['hubspot'],
     },
     priceSource: 'list',
     contractCompanyId: null,
@@ -181,11 +189,14 @@ function line(overrides: {
 /**
  * These exist because seeding an edit from the DEAL's line items loses the
  * discount (mapInitialLineItems drops those fields), which would silently
- * republish a discounted quote at full price.
+ * republish a discounted quote at full price. Since 15 Sep 2026 HubSpot is
+ * sent the net price alone, so the discount has to come back from the priced
+ * pair, and the older snapshots that still carry a HubSpot discount must
+ * reconstruct the same way.
  */
 describe('snapshotToCartLines', () => {
-  it('recovers a percentage discount', () => {
-    const [cart] = snapshotToCartLines([line({ hubspot: { price: 200, hs_discount_percentage: 10 } })])
+  it('recovers a percentage discount from the registry percentage', () => {
+    const [cart] = snapshotToCartLines([line({ list: 200, net: 180, pct: 10 })])
     expect(cart.discountMode).toBe('percent')
     expect(cart.discountValue).toBe(10)
     // The base, not the net: the builder's price column and the server both
@@ -193,41 +204,42 @@ describe('snapshotToCartLines', () => {
     expect(cart.unitPrice).toBe(200)
   })
 
-  it('recovers a per-unit cash discount', () => {
-    const [cart] = snapshotToCartLines([line({ hubspot: { price: 200, discount: 20 } })])
+  it('recovers a per-unit cash discount from the gap between list and net', () => {
+    const [cart] = snapshotToCartLines([line({ list: 200, net: 180 })])
     expect(cart.discountMode).toBe('amount')
     expect(cart.discountValue).toBe(20)
+    expect(cart.unitPrice).toBe(200)
+  })
+
+  it('reconstructs an OLD snapshot, which still carries the discount on the HubSpot shape, identically', () => {
+    const [cash] = snapshotToCartLines([line({ list: 200, net: 180, hubspot: { price: 200, discount: 20 } })])
+    expect(cash).toMatchObject({ discountMode: 'amount', discountValue: 20, unitPrice: 200 })
+    const [pct] = snapshotToCartLines([line({ list: 200, net: 180, pct: 10, hubspot: { price: 200, hs_discount_percentage: 10 } })])
+    expect(pct).toMatchObject({ discountMode: 'percent', discountValue: 10, unitPrice: 200 })
   })
 
   it('leaves an undiscounted line with no discount fields at all', () => {
-    const [cart] = snapshotToCartLines([line({ hubspot: { price: 200 } })])
+    const [cart] = snapshotToCartLines([line({ list: 200, net: 200 })])
     expect(cart.discountMode).toBeUndefined()
     expect(cart.discountValue).toBeUndefined()
     expect('discountMode' in cart).toBe(false)
   })
 
-  it('treats a zero discount as no discount', () => {
-    const [pct] = snapshotToCartLines([line({ hubspot: { price: 200, hs_discount_percentage: 0 } })])
-    expect(pct.discountMode).toBeUndefined()
-    const [cash] = snapshotToCartLines([line({ hubspot: { price: 200, discount: 0 } })])
-    expect(cash.discountMode).toBeUndefined()
+  it('ignores a rounding hair between list and net', () => {
+    const [cart] = snapshotToCartLines([line({ list: 200, net: 199.999 })])
+    expect(cart.discountMode).toBeUndefined()
   })
 
-  it('prefers the percentage when both are somehow set', () => {
-    // priceLine only ever sets one, so this is a defensive tie-break rather
-    // than a real case. Percentage wins because that is what the registry
-    // stores alongside a base price.
-    const [cart] = snapshotToCartLines([
-      line({ hubspot: { price: 200, hs_discount_percentage: 10, discount: 20 } }),
-    ])
+  it('prefers the percentage when the pair could read both ways', () => {
+    // A percentage line also shows a gap between list and net; the registry
+    // percentage is the record of what the rep chose.
+    const [cart] = snapshotToCartLines([line({ list: 200, net: 170, pct: 10 })])
     expect(cart.discountMode).toBe('percent')
     expect(cart.discountValue).toBe(10)
   })
 
   it('carries identity, quantity and total through unchanged', () => {
-    const [cart] = snapshotToCartLines([
-      line({ hubspot: { price: 200 }, quantity: 3, lineTotal: 600 }),
-    ])
+    const [cart] = snapshotToCartLines([line({ list: 200, net: 200, quantity: 3, lineTotal: 600 })])
     expect(cart).toMatchObject({
       productId: 'p1',
       name: 'Echo Barrier H9',

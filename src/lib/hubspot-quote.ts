@@ -153,8 +153,6 @@ export interface QuoteLineItemInput {
   name: string
   quantity: number
   price: number
-  hs_discount_percentage?: number
-  discount?: number
   hs_product_id?: string | null
   hs_sku?: string | null
   description?: string | null
@@ -164,8 +162,6 @@ export interface QuoteLineItemSource {
   name?: string | null
   quantity?: number | string
   price?: number | string
-  hs_discount_percentage?: number | null
-  discount?: number | null
   hs_product_id?: string | null
   hs_sku?: string | null
   description?: string | null
@@ -182,20 +178,18 @@ function setIfPresent(target: Record<string, string>, key: string, value: string
 }
 
 function normaliseLine(line: QuoteLineItemSource): QuoteLineItemInput {
-  const percentage = roundCents(toMoney(line.hs_discount_percentage))
-  const perUnit = roundCents(toMoney(line.discount))
   return {
     name: String(line.name ?? '').trim(),
     // A missing or fractional quantity must not reach the wire: HubSpot derives
     // the line amount as price x quantity, so a 0 there is a free line on a
     // quote the customer sees. A wrong whole number is at least visible.
     quantity: Math.max(1, Math.round(toMoney(line.quantity))),
+    // The price the customer pays. A discount is never sent as a discount:
+    // HubSpot prints hs_discount_percentage and discount on the quote, and a
+    // list price with the MAP gap beside it went out to a customer that way on
+    // 15 Sep 2026. The rep's working stays in the Hub; the customer sees one
+    // number per line, as on a quote made in HubSpot itself.
     price: roundCents(toMoney(line.price)),
-    // HubSpot applies hs_discount_percentage and discount BOTH when both are
-    // present, stacking them, so the two are mutually exclusive. Percentage
-    // wins because that is what the builder's discount control produces.
-    hs_discount_percentage: percentage > 0 ? percentage : undefined,
-    discount: percentage <= 0 && perUnit > 0 ? perUnit : undefined,
   }
 }
 
@@ -232,11 +226,6 @@ export function buildQuoteLineItemInputs(
     // portal's company currency, which is EUR on this account. A USD quote whose
     // lines say EUR is a wrong number in front of a customer.
     if (currencyCode !== '') properties.hs_line_item_currency_code = currencyCode
-    if (item.hs_discount_percentage !== undefined) {
-      properties.hs_discount_percentage = String(item.hs_discount_percentage)
-    } else if (item.discount !== undefined) {
-      properties.discount = item.discount.toFixed(2)
-    }
     setIfPresent(properties, 'hs_product_id', line.hs_product_id)
     setIfPresent(properties, 'hs_sku', line.hs_sku)
     setIfPresent(properties, 'description', line.description)
@@ -263,6 +252,20 @@ export interface QuoteCreateInput {
   lineItemIds?: readonly string[]
   contactId?: string | null
   companyId?: string | null
+  /** The rep's HubSpot owner id: hs_quote_owner_id, the "Quote owner" the
+   *  editor sets to whoever made the quote. Unset on every API-made quote
+   *  until 15 Sep 2026. */
+  ownerId?: string | null
+  /** What HubSpot's editor stamps on a quote and the API does not: the account
+   *  logo, the brand colour and the sender company block. Without them a Hub
+   *  quote rendered with no logo and no colour next to the rep's own. */
+  branding?: QuoteBranding | null
+}
+
+export interface QuoteBranding {
+  logoUrl: string
+  primaryColor: string
+  senderCompany: { name: string; address: string; city: string; zip: string; country: string; domain: string }
 }
 
 export interface QuoteCreateBody {
@@ -275,7 +278,9 @@ export interface QuoteCreateBody {
  *
  * Deliberately NOT sent, because HubSpot computes or inherits each of them and
  * any value we pass is overridden or, worse, sticks and diverges from the deal:
- *   hubspot_owner_id   calculated from the associated deal's owner
+ *   hubspot_owner_id   calculated from the associated deal's owner (the QUOTE
+ *                      owner, hs_quote_owner_id, is a different property and
+ *                      IS sent: it is the rep, as the editor would set it)
  *   hs_domain, hs_locale, hs_language   inherited from the quote template
  *   hs_currency        inherited from the associated deal
  *   hs_quote_link, hs_pdf_download_link, hs_locked, hs_quote_amount   generated
@@ -302,6 +307,19 @@ export function buildQuoteCreateBody(input: QuoteCreateInput): QuoteCreateBody {
   setIfPresent(properties, 'hs_sender_lastname', input.sender?.lastname)
   setIfPresent(properties, 'hs_sender_email', input.sender?.email)
   setIfPresent(properties, 'hs_sender_phone', input.sender?.phone)
+  setIfPresent(properties, 'hs_quote_owner_id', input.ownerId)
+
+  if (input.branding) {
+    setIfPresent(properties, 'hs_logo_url', input.branding.logoUrl)
+    setIfPresent(properties, 'hs_primary_color', input.branding.primaryColor)
+    const company = input.branding.senderCompany
+    setIfPresent(properties, 'hs_sender_company_name', company.name)
+    setIfPresent(properties, 'hs_sender_company_address', company.address)
+    setIfPresent(properties, 'hs_sender_company_city', company.city)
+    setIfPresent(properties, 'hs_sender_company_zip', company.zip)
+    setIfPresent(properties, 'hs_sender_company_country', company.country)
+    setIfPresent(properties, 'hs_sender_company_domain', company.domain)
+  }
 
   const associations: QuoteCreateBody['associations'] = []
   const associate = (id: string | null | undefined, associationTypeId: number) => {

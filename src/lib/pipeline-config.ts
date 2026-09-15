@@ -173,8 +173,13 @@ export function allowedCurrenciesForPipeline(pipelineId: string | null | undefin
  * Before a second one is onboarded the id belongs on their profile row.
  */
 export const QUOTE_TEMPLATE_IDS: Record<string, string | null> = {
-  US: '454422093232', // "Jillian USA"
-  CAN: '456904456263', // "Jillian CAD"
+  // "Default Modern", the template every quote Jillian makes by hand in HubSpot
+  // uses (checked on her 9 to 15 Sep 2026 quotes). The custom "Jillian USA"
+  // (454422093232) and "Jillian CAD" (456904456263) templates print SKU and
+  // Image columns the customer was never meant to see; map them back here only
+  // once those columns are removed in HubSpot's template editor.
+  US: '237597084530',
+  CAN: '237597084530',
   // Australia (Jack, the ANZ AI sales agent). NULL ON PURPOSE until the
   // Australian template cloned from "Geoff USA" (447512623874) exists and its
   // own id is pasted here. While null, quoteTemplateIdFor('AU') returns null,
@@ -185,6 +190,28 @@ export const QUOTE_TEMPLATE_IDS: Record<string, string | null> = {
 
 /** The template id for a profile's template value, or null when there is none.
  *  Never guesses: publishing under the wrong branding is worse than refusing. */
+/**
+ * What a quote made by hand in HubSpot carries and an API-made one does not.
+ *
+ * Read off Jillian's own quotes on 15 Sep 2026: HubSpot's quote editor stamps
+ * the account logo, the brand colour and the sender company onto every quote,
+ * and none of it is inherited when the quote is created through the API. The
+ * Hub's quotes went out with no logo and no colour until this was added.
+ */
+export const QUOTE_BRANDING = {
+  logoUrl:
+    'https://3882358.fs1.hubspotusercontent-na1.net/hubfs/3882358/social-suggested-images/global-uploads.webflow.com624afe48f084f67763ef22fb624afe48f084f60380ef2348_LOGO%20ECHO%20BARRIER%20DARK-1.png',
+  primaryColor: '#005843',
+  senderCompany: {
+    name: 'Echo Barrier Group',
+    address: '41 Central Chambers',
+    city: 'Dublin',
+    zip: 'Dublin 2',
+    country: 'Ireland',
+    domain: 'www.echobarrier.com',
+  },
+} as const
+
 export function quoteTemplateIdFor(templateValue: string | null | undefined): string | null {
   const key = String(templateValue ?? '').trim().toUpperCase()
   return QUOTE_TEMPLATE_IDS[key] ?? null

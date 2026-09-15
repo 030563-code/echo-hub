@@ -8,17 +8,13 @@ interface LineItem {
   productId: string
   name: string
   quantity: number
-  /** The BASE price, before any discount. HubSpot derives the line amount from
-   *  price and its own discount property, so sending the net here as well would
-   *  discount it twice. */
+  /** The price the customer pays per unit. Never a list price with a discount
+   *  beside it: HubSpot prints the discount, and the deal's line items are what
+   *  HubSpot copies onto the next quote a rep makes by hand. */
   unitPrice: number
   total: number
   sku?: string
   description?: string
-  /** Exactly one of these, never both: HubSpot applies both when both are set
-   *  and the customer sees a doubly discounted line. */
-  discountPercentage?: number
-  discountPerUnit?: number
 }
 
 export async function addLineItemsToDeal(dealId: string, lineItems: LineItem[], currency?: string) {
@@ -112,13 +108,6 @@ export async function addLineItemsToDeal(dealId: string, lineItems: LineItem[], 
             // falls back to the portal's company currency, which is EUR on this
             // account, so a USD deal would carry EUR lines.
             ...(currencyCode ? { hs_line_item_currency_code: currencyCode } : {}),
-            // Percentage wins when both arrive, which is what the builder's own
-            // control produces. They are never sent together.
-            ...(item.discountPercentage && item.discountPercentage > 0
-              ? { hs_discount_percentage: String(item.discountPercentage) }
-              : item.discountPerUnit && item.discountPerUnit > 0
-                ? { discount: item.discountPerUnit.toFixed(2) }
-                : {}),
           },
         })),
       }),

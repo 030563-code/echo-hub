@@ -161,7 +161,8 @@ export function DealQuotesCard({
         <ul className="space-y-3">
           {quotes.map((quote) => {
             const chip = STATUS_CHIP[quote.status]
-            const hubspotUrl = hubspotRecordUrl('quote', quote.hubspot_quote_id)
+            // The deal, where HubSpot lists the quote; a quote has no record page.
+            const hubspotUrl = hubspotRecordUrl('deal', dealId)
             const total = quote.amount ?? quote.hub_amount
             return (
               <li key={quote.id} className="rounded border border-gray-100 bg-gray-50 p-3">
@@ -253,7 +254,7 @@ export function DealQuotesCard({
                     <a href={hubspotUrl} target="_blank" rel="noopener noreferrer">
                       <Button size="sm" variant="outline">
                         <ExternalLink className="mr-1.5 h-4 w-4" />
-                        In HubSpot
+                        Deal in HubSpot
                       </Button>
                     </a>
                   )}

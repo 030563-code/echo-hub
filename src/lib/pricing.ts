@@ -16,13 +16,14 @@
  *   - deals_registry.line_items_raw feeds buildDraftLines(), which bills
  *     quantity * unit_price * (1 - discount_percentage / 100), and the pending
  *     notify_quote_accepted trigger reads COALESCE(discount_percentage, 0).
- *   - a HubSpot line item models a percentage as price + hs_discount_percentage
- *     and a per-unit money discount as price + discount.
+ *   - a HubSpot line item gets ONE number, the net unit price the customer
+ *     pays. HubSpot prints hs_discount_percentage and discount on the quote,
+ *     and on 15 Sep 2026 a quote went out showing the list price with the MAP
+ *     gap as an $80 discount. Never again: the working stays in the Hub.
  * So a PERCENTAGE stores the base price plus the percentage, and an AMOUNT
  * stores the NET price with a zero percentage. The amount case deliberately
  * discards the discount on the registry side: billing the net directly leaves
  * the invoice module and the Xero trigger nothing to round differently.
- * HubSpot always receives the BASE price plus whichever discount property fits.
  */
 
 import { roundCents, toMoney } from '@/lib/quote-math'
@@ -263,8 +264,11 @@ export interface PricedLine {
   netUnitPrice: number
   /** deals_registry.line_items_raw + the customer invoice draft. */
   registry: { unit_price: number; discount_percentage: number }
-  /** A HubSpot line item's own properties. */
-  hubspot: { price: number; hs_discount_percentage?: number; discount?: number }
+  /** A HubSpot line item's own properties: the price the customer pays per
+   *  unit and nothing else. Dean, 15 Sep 2026, after a quote went out showing
+   *  list price with the MAP gap printed as a discount: the customer sees one
+   *  number per line. The list-versus-net working stays in the Hub. */
+  hubspot: { price: number }
 }
 
 /**
@@ -305,7 +309,7 @@ export function priceLine(basePrice: number | string, input: DiscountInput | nul
       listUnitPrice,
       netUnitPrice,
       registry: { unit_price: listUnitPrice, discount_percentage: value },
-      hubspot: { price: listUnitPrice, hs_discount_percentage: value },
+      hubspot: { price: netUnitPrice },
     }
   }
 
@@ -319,7 +323,7 @@ export function priceLine(basePrice: number | string, input: DiscountInput | nul
       listUnitPrice,
       netUnitPrice,
       registry: { unit_price: netUnitPrice, discount_percentage: 0 },
-      hubspot: { price: listUnitPrice, discount: perUnit },
+      hubspot: { price: netUnitPrice },
     }
   }
 

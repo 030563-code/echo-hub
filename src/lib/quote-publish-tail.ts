@@ -111,6 +111,8 @@ export interface PublishQuoteContext {
   comments?: string | null
   quoteNumber?: string
   sender: { firstname?: string | null; lastname?: string | null; email?: string | null; phone?: string | null }
+  /** The rep's HubSpot owner id, for hs_quote_owner_id. Null when unknown. */
+  ownerId?: string | null
   lines: readonly PricedCartLine[]
   hubAmount: number
   createdByUid: string
@@ -231,9 +233,13 @@ export async function publishAndReadBack(
   }
 
   // Step 6. Read back the link. HubSpot generates it during the state change
-  // and it is not always there on the first GET.
+  // and it is not always there on the first GET: 7 of the first 10 published
+  // quotes came back without one inside three reads 700ms apart, and the
+  // rep's Copy link button did nothing. Up to eight reads over about ten
+  // seconds here, and the deal page fills any that are still missing
+  // (backfillQuoteLinks) the next time it renders.
   let props: Record<string, string | null> = {}
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 8; attempt++) {
     const response = await hubspotFetch(
       `${HS}/crm/v3/objects/quotes/${quoteId}?properties=${QUOTE_READBACK_PROPERTIES.join(',')}`,
     )
@@ -242,7 +248,7 @@ export async function publishAndReadBack(
     }
     props = ((await response.json()) as { properties: Record<string, string | null> }).properties ?? {}
     if (props.hs_quote_link) break
-    if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 700))
+    if (attempt < 7) await new Promise((resolve) => setTimeout(resolve, 1500))
   }
 
   const amount = props.hs_quote_amount == null ? null : Number(props.hs_quote_amount)

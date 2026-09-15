@@ -157,25 +157,26 @@ describe('priceLine stores what each downstream system needs', () => {
     })
   }
 
-  it('sends HubSpot the BASE price plus a percentage, never the net', () => {
+  it('sends HubSpot the NET price and nothing else on a percentage discount', () => {
+    // Dean, 15 Sep 2026: a quote went to a customer showing the list price with
+    // the gap to MAP printed as an $80 discount. The customer sees one number.
     const line = priceLine(178, { mode: 'percent', value: 10 })
-    expect(line.hubspot).toEqual({ price: 178, hs_discount_percentage: 10 })
+    expect(line.hubspot).toEqual({ price: 160.2 })
     expect(line.registry).toEqual({ unit_price: 178, discount_percentage: 10 })
   })
 
-  it('sends HubSpot the base plus a per-unit discount, but stores the NET with no percentage', () => {
+  it('sends HubSpot the NET price on a per-unit discount, and stores the NET with no percentage', () => {
     // The amount mode deliberately hands the invoice an exact net so nothing
     // downstream can round the discount differently.
     const line = priceLine(178, { mode: 'amount', value: 11.11 })
-    expect(line.hubspot).toEqual({ price: 178, discount: 11.11 })
+    expect(line.hubspot).toEqual({ price: 166.89 })
     expect(line.registry).toEqual({ unit_price: 166.89, discount_percentage: 0 })
   })
 
-  it('never sends both discount properties, which HubSpot would stack', () => {
+  it('never carries a discount property towards HubSpot, whatever the mode', () => {
     for (const input of [{ mode: 'percent' as const, value: 10 }, { mode: 'amount' as const, value: 10 }]) {
       const { hubspot } = priceLine(178, input)
-      const present = [hubspot.hs_discount_percentage, hubspot.discount].filter((v) => v !== undefined)
-      expect(present).toHaveLength(1)
+      expect(Object.keys(hubspot)).toEqual(['price'])
     }
   })
 
@@ -190,7 +191,7 @@ describe('priceLine stores what each downstream system needs', () => {
   it('stops a per-unit discount at free instead of going negative', () => {
     const line = priceLine(178, { mode: 'amount', value: 500 })
     expect(line.netUnitPrice).toBe(0)
-    expect(line.hubspot.discount).toBe(178)
+    expect(line.hubspot.price).toBe(0)
   })
 
   it('treats a negative base price as corrupt data, not a credit note', () => {

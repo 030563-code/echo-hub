@@ -532,8 +532,6 @@ export async function republishEditedQuote(input: RepublishQuoteInput): Promise<
         name: line.name,
         quantity: line.quantity,
         price: line.priced.hubspot.price,
-        hs_discount_percentage: line.priced.hubspot.hs_discount_percentage ?? null,
-        discount: line.priced.hubspot.discount ?? null,
         hs_product_id: line.productId,
         hs_sku: line.sku,
         description: line.description,
@@ -690,8 +688,6 @@ async function resyncDeal(
       total: l.lineTotal,
       sku: l.sku,
       description: l.description,
-      discountPercentage: l.priced.hubspot.hs_discount_percentage,
-      discountPerUnit: l.priced.hubspot.discount,
     })),
     currency,
   )

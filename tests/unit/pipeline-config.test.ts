@@ -93,13 +93,13 @@ describe('USA SALES quote templates match what taxRegionForTemplate accepts', ()
 })
 
 describe('quote template ids', () => {
-  it('maps the two USA templates verified in the portal', () => {
-    expect(quoteTemplateIdFor('US')).toBe('454422093232')
-    expect(quoteTemplateIdFor('CAN')).toBe('456904456263')
+  it("maps US and CAN to Default Modern, the template Jillian's own quotes use", () => {
+    expect(quoteTemplateIdFor('US')).toBe('237597084530')
+    expect(quoteTemplateIdFor('CAN')).toBe('237597084530')
   })
 
   it('is forgiving about how the value is typed', () => {
-    expect(quoteTemplateIdFor('  us ')).toBe('454422093232')
+    expect(quoteTemplateIdFor('  us ')).toBe('237597084530')
   })
 
   it('has an AU key for the Australian template, never the Geoff USA id', () => {
