@@ -25,9 +25,18 @@ const FILTERS = [
   { key: 'linked', label: 'Linked' },
 ] as const
 
+/** The day a call came in, and the time, as two lines. "15 Sept, 10:08" alone
+ *  left a reader guessing at the year on anything older than a week. */
+function callDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+function callTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+}
+
 function when(iso: string): string {
-  const d = new Date(iso)
-  return d.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+  return `${callDate(iso)}, ${callTime(iso)}`
 }
 
 function duration(seconds: number | null): string {
@@ -111,13 +120,14 @@ export function CallLogClient({ calls, canSeeNothing }: { calls: CallListItem[];
       ) : (
         <Card className="overflow-hidden border-gray-200 bg-white p-0">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-sm">
+            <table className="w-full min-w-[1040px] text-sm">
               <thead>
                 <tr className="bg-gray-50 text-[10px] uppercase tracking-wider text-gray-500">
                   <th className="px-4 py-2.5 text-left font-medium">When</th>
                   <th className="px-3 py-2.5 text-left font-medium">Office</th>
                   <th className="px-3 py-2.5 text-left font-medium">From</th>
                   <th className="px-3 py-2.5 text-left font-medium">Contact</th>
+                  <th className="px-3 py-2.5 text-left font-medium">What was discussed</th>
                   <th className="px-3 py-2.5 text-left font-medium">Type</th>
                   <th className="px-3 py-2.5 text-right font-medium">Length</th>
                   <th className="px-3 py-2.5 text-left font-medium">State</th>
@@ -196,12 +206,29 @@ function CallRow({
         className={`cursor-pointer border-t border-gray-100 hover:bg-gray-50 ${open ? 'bg-gray-50' : ''}`}
         onClick={onToggle}
       >
-        <td className="px-4 py-2.5 whitespace-nowrap text-gray-900">{when(call.call_at)}</td>
+        <td className="px-4 py-2.5 whitespace-nowrap">
+          <span className="block text-gray-900">{callDate(call.call_at)}</span>
+          <span className="block text-xs tabular-nums text-gray-500">{callTime(call.call_at)}</span>
+        </td>
         <td className="px-3 py-2.5 text-gray-700">{call.office}</td>
         <td className="px-3 py-2.5 font-mono text-xs text-gray-700">{caller(call)}</td>
         <td className="px-3 py-2.5">
           <span className="block text-gray-900">{call.contactName ?? '—'}</span>
           <span className="block text-xs text-gray-500">{call.contact_email ?? 'no email'}</span>
+        </td>
+        <td className="px-3 py-2.5">
+          {/* The gist on the row, the whole thing in the panel. A department
+              notification carries no recording, so there is nothing to
+              summarise and saying so beats an empty cell. */}
+          {call.summary ? (
+            <span className="block max-w-sm truncate text-gray-700" title={call.summary}>
+              {call.summary}
+            </span>
+          ) : (
+            <span className="text-xs text-gray-400">
+              {call.call_type === 'department_notification' ? 'Not recorded' : 'No summary'}
+            </span>
+          )}
         </td>
         <td className="px-3 py-2.5">
           <StatusBadge status={call.call_type} />
@@ -217,7 +244,7 @@ function CallRow({
 
       {open && (
         <tr className="border-t border-gray-100 bg-gray-50/60">
-          <td colSpan={7} className="px-4 py-4">
+          <td colSpan={8} className="px-4 py-4">
             <div className="grid gap-4 lg:grid-cols-2">
               <div className="space-y-3">
                 {call.reasons.length > 0 && (
