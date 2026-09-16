@@ -200,7 +200,10 @@ describe('it fires when the order REACHES SRO, not when the leg is created', () 
   })
 
   it('lets a mail failure warn, never fail the approval', () => {
-    expect(source).toMatch(/if \(!notified\.sent && notified\.reason === "failed"\)[\s\S]{0,200}warning =/)
+    // Widened 16 Sep 2026. It used to pin reason === "failed" alone, which is
+    // exactly the hole that let a missing webhook URL approve an order on
+    // production while telling nobody the email had not gone.
+    expect(source).toMatch(/if \(!notified\.sent && notified\.reason !== "staging"\)[\s\S]{0,400}warning =/)
     expect(source).not.toMatch(/notifySroPoReady[\s\S]{0,500}return \{ success: false/)
   })
 })

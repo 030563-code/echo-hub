@@ -284,8 +284,17 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
         quantity: l.quantity,
       })),
     });
-    if (!notified.sent && notified.reason === "failed") {
-      warning = warning ?? "Approved + saved, but the email telling SRO the order is waiting did not send.";
+    // EVERY non-send is reported, not only a failed request. Until 16 Sep 2026
+    // this named "failed" alone, so a missing N8N_SRO_NOTIFY_WEBHOOK_URL made
+    // the email vanish with the approval looking entirely successful. Dean had
+    // to ask whether Juraj had been emailed, which is the question a screen
+    // should never leave open.
+    if (!notified.sent && notified.reason !== "staging") {
+      warning =
+        warning ??
+        (notified.reason === "not_configured"
+          ? "Approved and saved, but SRO were NOT emailed: the Hub has no SRO notification webhook configured. Tell whoever looks after the server."
+          : "Approved and saved, but the email telling SRO the order is waiting did not send.");
     }
   }
 
