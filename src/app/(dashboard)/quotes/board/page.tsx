@@ -1,6 +1,8 @@
+import { Suspense } from 'react'
 import Link from 'next/link'
 import { AlertCircle } from 'lucide-react'
 import { requireCapability } from '@/lib/authz'
+import { TableSkeleton } from '@/components/ui/table-skeleton'
 import { getDealsForBoard, type BoardScope } from '@/app/actions/hubspot/getDealsForBoard'
 import { DealsBoard } from '@/components/quotes/deals-board'
 import { Card } from '@/components/ui/card'
@@ -23,17 +25,22 @@ export const dynamic = 'force-dynamic'
  * Scope lives in the URL so a view is linkable, and is re-decided
  * server-side: a rep who edits it gets their own deals back. The pipeline is
  * the active organisation's (the sidebar switch), never a parameter here.
+ *
+ * STREAMED since 16 Sep 2026. HubSpot is in the US and the server is in
+ * London, so the deals search is the slowest thing on any Hub page. The
+ * heading, the scope and window chips go out at once; the board itself
+ * arrives inside a Suspense boundary when HubSpot answers. Nothing is
+ * cached and nothing is stale, the page simply stops waiting to start.
  */
 export default async function DealsBoardPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  await requireCapability(['quotes.view', 'quotes.create'])
+  const auth = await requireCapability(['quotes.view', 'quotes.create'])
   // A bare url means the sidebar, so read with the filters this rep last
   // chose. Anything explicit (a link, a bookmark, Clear) is obeyed as written.
   const params = await withStoredQuotesFilters(await searchParams)
-
 
   const windowDays = Number(params.window) || 60
 
@@ -43,25 +50,13 @@ export default async function DealsBoardPage({
   const dealFilters = parseBoardDealFilters(params)
 
   // Dean asked the board to open on All reps rather than on the viewer's own
-  // deals. Safe to state here because getDealsForBoard re-decides it: a
-  // non-admin asking for 'all' is put back to 'mine'.
+  // deals. The same rule getDealsForBoard applies, applied here too so the
+  // chips can render before HubSpot has answered: a non-admin asking for 'all'
+  // is put back to 'mine'.
+  const isAdmin = auth.profile.is_super_admin === true || auth.capabilities.has('admin')
   const scopeParam = typeof params.scope === 'string' ? params.scope : ''
-  const result = await getDealsForBoard({
-    scope: scopeParam === 'mine' ? 'mine' : 'all',
-    windowDays,
-    dealFilters,
-  })
+  const scope: BoardScope = isAdmin && scopeParam !== 'mine' ? 'all' : 'mine'
 
-  if (!result.success || !result.groups) {
-    return (
-      <Card className="bg-white border-gray-200">
-        <h1 className="text-lg font-semibold text-gray-900">Board</h1>
-        <p className="mt-2 text-sm text-red-700">{result.error}</p>
-      </Card>
-    )
-  }
-
-  const scope: BoardScope = result.scope ?? 'mine'
   const link = (next: Record<string, string>) => {
     const q = new URLSearchParams({
       scope,
@@ -90,7 +85,7 @@ export default async function DealsBoardPage({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {result.isAdmin && (
+          {isAdmin && (
             <div className="flex items-center gap-1">
               <Link href={link({ scope: 'mine' })} className={chip(scope === 'mine')}>My deals</Link>
               <Link href={link({ scope: 'all' })} className={chip(scope === 'all')}>All reps</Link>
@@ -106,11 +101,46 @@ export default async function DealsBoardPage({
         </div>
       </div>
 
+      <Suspense fallback={<TableSkeleton columns={5} rows={6} headings={['Stage', 'Deal', 'Company', 'Amount', 'Owner']} />}>
+        <BoardSection scope={scope} windowDays={windowDays} dealFilters={dealFilters} />
+      </Suspense>
+    </div>
+  )
+}
+
+/**
+ * The half of the page that waits on HubSpot. Everything above it has already
+ * been sent by the time this resolves.
+ */
+async function BoardSection({
+  scope,
+  windowDays,
+  dealFilters,
+}: {
+  scope: BoardScope
+  windowDays: number
+  dealFilters: ReturnType<typeof parseBoardDealFilters>
+}) {
+  const result = await getDealsForBoard({ scope, windowDays, dealFilters })
+
+  if (!result.success || !result.groups) {
+    return (
+      <Card className="bg-white border-gray-200">
+        <p className="text-sm text-red-700">{result.error}</p>
+      </Card>
+    )
+  }
+  // The action re-decides the scope; trust its answer over the URL for what
+  // the filter bar shows.
+  const shown: BoardScope = result.scope ?? scope
+
+  return (
+    <>
       <DealFilterBar
         action="/quotes/board"
         filters={dealFilters}
         hidden={{
-          scope,
+          scope: shown,
           window: String(windowDays),
         }}
         stages={result.groups
@@ -118,7 +148,7 @@ export default async function DealsBoardPage({
           .filter((c) => c.stageId !== '')
           .map((c) => ({ id: c.stageId, label: c.label }))}
         ownerNameById={result.owners?.ownerNameById}
-        showOwner={scope === 'all'}
+        showOwner={shown === 'all'}
       />
 
       <FilterNotice notice={result.notice} />
@@ -130,7 +160,7 @@ export default async function DealsBoardPage({
         </div>
       )}
 
-      <DealsBoard groups={result.groups} owners={result.owners} showOwner={scope === 'all'} />
+      <DealsBoard groups={result.groups} owners={result.owners} showOwner={shown === 'all'} />
 
       {result.truncated && (
         <p className="text-xs text-gray-500">
@@ -138,6 +168,6 @@ export default async function DealsBoardPage({
           full list.
         </p>
       )}
-    </div>
+    </>
   )
 }

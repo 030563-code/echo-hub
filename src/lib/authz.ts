@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { cache } from 'react'
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase/server'
 import { hubspotFetch, HubSpotConfigError } from '@/lib/hubspot-client'
@@ -54,8 +55,17 @@ export type AuthzResult = AuthzOk | AuthzErr
 
 const ALL_CAPABILITIES = new Set<CapabilityKey>(CAPABILITY_KEYS)
 
-/** Resolve the current session user, their profile, and their capability set. */
-export async function getAuthorizedUser(): Promise<AuthzResult> {
+/**
+ * Resolve the current session user, their profile, and their capability set.
+ *
+ * Wrapped in React's cache() on 16 Sep 2026: ONE lookup per request. The
+ * dashboard layout calls this, then the page calls it, then every server
+ * action on that page calls it again, and each call was three Supabase round
+ * trips (session, profile, then capabilities and organisations together).
+ * cache() dedupes within a single request and never across requests, so a
+ * grant revoked between two page loads is still seen on the second.
+ */
+export const getAuthorizedUser = cache(async function getAuthorizedUser(): Promise<AuthzResult> {
   const supabase = await createServerClient()
   const {
     data: { user },
@@ -123,7 +133,7 @@ export async function getAuthorizedUser(): Promise<AuthzResult> {
     },
     capabilities,
   }
-}
+})
 
 /** Just the capability set for the current user (empty if unauthenticated). */
 export async function getCapabilities(): Promise<Set<CapabilityKey>> {

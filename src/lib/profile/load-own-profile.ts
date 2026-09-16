@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { cache } from 'react'
+
 import { createServerClient } from '@/lib/supabase/server'
 
 /**
@@ -17,7 +19,8 @@ export interface OwnProfile {
   avatarUpdatedAt: string | null
 }
 
-export async function loadOwnProfile(userId: string): Promise<OwnProfile | null> {
+/** One read per request per user id (React cache()); the layout and the profile page both ask. */
+export const loadOwnProfile = cache(async function loadOwnProfile(userId: string): Promise<OwnProfile | null> {
   const supabase = await createServerClient()
   const { data, error } = await supabase
     .from('profiles')
@@ -31,4 +34,4 @@ export async function loadOwnProfile(userId: string): Promise<OwnProfile | null>
     bio: data.bio ?? null,
     avatarUpdatedAt: data.avatar_updated_at ?? null,
   }
-}
+})

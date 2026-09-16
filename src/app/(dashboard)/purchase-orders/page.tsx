@@ -52,68 +52,72 @@ export default async function PurchasingPage() {
   const canReceive = caps.has("po.receive");
   const canMoveStage = canApprove || canReceive;
 
-  // Attach received totals per line (partial-delivery progress).
+  // Everything below depends only on the orders already loaded, and on nothing
+  // else in this list, so it is fetched in ONE round of parallel requests rather
+  // than five in a row. Rewritten 16 Sep 2026 while chasing page latency: with
+  // the server next to the database each hop is small, but five small hops in
+  // sequence were still five, and the PDF data never needed the orders at all.
   const lineIds = all.flatMap((o) => (o.lines ?? []).map((l) => l.id));
-  if (lineIds.length) {
-    const { data: receipts } = await supabase
-      .from("po_line_receipts")
-      .select("po_line_id, qty_received")
-      .in("po_line_id", lineIds);
-    const recvByLine = new Map<string, number>();
-    for (const r of receipts ?? []) recvByLine.set(r.po_line_id, (recvByLine.get(r.po_line_id) ?? 0) + r.qty_received);
-    for (const o of all) for (const l of o.lines ?? []) l.qty_received = recvByLine.get(l.id) ?? 0;
-  }
-
-  // Attach files per PO.
   const poIds = all.map((o) => o.id);
-  if (poIds.length) {
-    const { data: atts } = await supabase
-      .from("po_attachments")
-      .select("id, po_id, storage_path, filename, content_type, size_bytes, uploaded_by_uid, created_at")
-      .in("po_id", poIds)
-      .order("created_at", { ascending: false });
-    const byPo = new Map<string, PoAttachment[]>();
-    for (const a of (atts ?? []) as PoAttachment[]) {
-      const arr = byPo.get(a.po_id) ?? [];
-      arr.push(a);
-      byPo.set(a.po_id, arr);
-    }
-    for (const o of all) o.attachments = byPo.get(o.id) ?? [];
+  const [receiptsRes, attsRes, shipRes, mfgRes, poPdfData] = await Promise.all([
+    lineIds.length
+      ? supabase.from("po_line_receipts").select("po_line_id, qty_received").in("po_line_id", lineIds)
+      : Promise.resolve({ data: [] as Array<{ po_line_id: string; qty_received: number }> }),
+    poIds.length
+      ? supabase
+          .from("po_attachments")
+          .select("id, po_id, storage_path, filename, content_type, size_bytes, uploaded_by_uid, created_at")
+          .in("po_id", poIds)
+          .order("created_at", { ascending: false })
+      : Promise.resolve({ data: [] as PoAttachment[] }),
+    poIds.length
+      ? supabase.from("po_shipments").select("*").in("po_id", poIds)
+      : Promise.resolve({ data: [] as PoShipment[] }),
+    // Service-role client: po_manufacturing is not reachable by anon or
+    // authenticated at all. Narrowed to the presentational columns.
+    poIds.length
+      ? createAdminClient()
+          .from("po_manufacturing")
+          .select("po_id, sent_at, sent_was_test, est_start, est_finish, finished_at")
+          .in("po_id", poIds)
+      : Promise.resolve({ data: [] as Array<{ po_id: string; sent_at: string | null; sent_was_test: boolean | null; est_start: string | null; est_finish: string | null; finished_at: string | null }> }),
+    // From/To party addresses + weekly FX for the branded PO PDF.
+    getPoPdfData(supabase),
+  ]);
+
+  // Received totals per line (partial-delivery progress).
+  const recvByLine = new Map<string, number>();
+  for (const r of receiptsRes.data ?? []) recvByLine.set(r.po_line_id, (recvByLine.get(r.po_line_id) ?? 0) + r.qty_received);
+  for (const o of all) for (const l of o.lines ?? []) l.qty_received = recvByLine.get(l.id) ?? 0;
+
+  // Files per PO.
+  const byPo = new Map<string, PoAttachment[]>();
+  for (const a of (attsRes.data ?? []) as PoAttachment[]) {
+    const arr = byPo.get(a.po_id) ?? [];
+    arr.push(a);
+    byPo.set(a.po_id, arr);
   }
+  for (const o of all) o.attachments = byPo.get(o.id) ?? [];
   const canManageAttachments = canCreate || canApprove || canReceive;
 
-  // Attach the auto-resolved Cargo Partner shipment per PO (SPOT ID + tracking).
-  if (poIds.length) {
-    const { data: shipRows } = await supabase.from("po_shipments").select("*").in("po_id", poIds);
-    const shipByPo = new Map<string, PoShipment>();
-    for (const sh of (shipRows ?? []) as PoShipment[]) shipByPo.set(sh.po_id, sh);
-    for (const o of all) o.shipment = shipByPo.get(o.id) ?? null;
-  }
+  // The auto-resolved Cargo Partner shipment per PO (SPOT ID + tracking).
+  const shipByPo = new Map<string, PoShipment>();
+  for (const sh of (shipRes.data ?? []) as PoShipment[]) shipByPo.set(sh.po_id, sh);
+  for (const o of all) o.shipment = shipByPo.get(o.id) ?? null;
   const canDetectShipment = caps.has("transport.view");
 
-  // Attach manufacturing progress per PO: sent, dates given, finished. Read with
-  // the service-role client because po_manufacturing is not reachable by anon or
-  // authenticated at all, and narrowed to the four presentational columns.
-  if (poIds.length) {
-    const { data: mfgRows } = await createAdminClient()
-      .from("po_manufacturing")
-      .select("po_id, sent_at, sent_was_test, est_start, est_finish, finished_at")
-      .in("po_id", poIds);
-    const mfgByPo = new Map<string, PoManufacturing>();
-    for (const m of mfgRows ?? []) {
-      mfgByPo.set(String(m.po_id), {
-        sent_at: m.sent_at ?? null,
-        sent_was_test: m.sent_was_test === true,
-        est_start: m.est_start ?? null,
-        est_finish: m.est_finish ?? null,
-        finished_at: m.finished_at ?? null,
-      });
-    }
-    for (const o of all) o.manufacturing = mfgByPo.get(o.id) ?? null;
+  // Manufacturing progress per PO: sent, dates given, finished.
+  const mfgByPo = new Map<string, PoManufacturing>();
+  for (const m of mfgRes.data ?? []) {
+    mfgByPo.set(String(m.po_id), {
+      sent_at: m.sent_at ?? null,
+      sent_was_test: m.sent_was_test === true,
+      est_start: m.est_start ?? null,
+      est_finish: m.est_finish ?? null,
+      finished_at: m.finished_at ?? null,
+    });
   }
-
-  // From/To party addresses + weekly FX for the branded PO PDF.
-  const poPdfData = await getPoPdfData(supabase);
+  for (const o of all) o.manufacturing = mfgByPo.get(o.id) ?? null;
 
   return (
     <div className="p-6">
