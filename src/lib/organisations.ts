@@ -101,18 +101,26 @@ export function holdsOrganisation(held: readonly OrgCode[], org: string | null |
 
 /**
  * The HubSpot sales pipeline whose deals belong to the organisation, or null
- * when it sells nothing through the Hub (s.r.o. manufactures).
+ * when it sells nothing through the Hub.
  *
- * Whole pipelines. Two organisations may share one (USA and Canada), and a
- * pipeline is never split by depot or currency between two organisations.
- * INTERNATIONAL SALES to Group and SRO having no pipeline are Dean's to
- * confirm.
+ * Whole pipelines. Two organisations may share one, and a pipeline is never
+ * split by depot or currency between two organisations. USA and Canada share
+ * USA SALES, and since 16 Sep 2026 France and SRO share EURO SALES.
+ *
+ * Dean, 16 Sep 2026, setting Juraj up: "he should also technically be able to
+ * see quotes and pricing the sales side but only for his pipeline." His pipeline
+ * is EURO SALES: HubSpot has him on the Europe team (32677, which this repo
+ * already maps to EURO SALES in pipeline-config.ts) owning 145 of its deals.
+ * The alternative was granting him France, which would have handed him France's
+ * depot, calls and invoicing queue as well, and he is SRO only. So SRO takes
+ * EURO SALES instead, which is the line the organisations note of 15 Sep wrote
+ * down in advance for exactly this case.
  */
 const QUOTES_PIPELINE: Record<OrgCode, string | null> = {
   'EB-USA': HUBSPOT_PIPELINES.USA_SALES.id,
   'EB-CANADA': HUBSPOT_PIPELINES.USA_SALES.id,
   'EB-FRANCE': HUBSPOT_PIPELINES.EURO_SALES.id,
-  'EB-SRO': null,
+  'EB-SRO': HUBSPOT_PIPELINES.EURO_SALES.id,
   'EB-GROUP': HUBSPOT_PIPELINES.INTERNATIONAL_SALES.id,
   'EB-AUSTRALIA': HUBSPOT_PIPELINES.AUSTRALIA_SALES.id,
   'EB-UK': HUBSPOT_PIPELINES.UK_SALES_NEW.id,

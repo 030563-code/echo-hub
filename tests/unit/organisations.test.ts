@@ -95,9 +95,16 @@ describe('whole pipelines and whole offices, never a split (Dean, 15 Sep 2026)',
     expect(orgsForPipeline(HUBSPOT_PIPELINES.USA_SALES.id)).toEqual(['EB-USA', 'EB-CANADA'])
   })
 
-  it('gives s.r.o. no sales pipeline: it manufactures', () => {
-    expect(pipelineForOrg('EB-SRO')).toBeNull()
-    expect(MODULE_ORGS.quotes).not.toContain('EB-SRO')
+  it('puts s.r.o. on EURO SALES, whole, the same pipeline as France', () => {
+    // Dean, 16 Sep 2026: Juraj sees "quotes and pricing the sales side but only
+    // for his pipeline", and his pipeline is EURO SALES. Sharing the whole
+    // pipeline is the USA-and-Canada pattern; splitting it would not be.
+    expect(pipelineForOrg('EB-SRO')).toBe(HUBSPOT_PIPELINES.EURO_SALES.id)
+    expect(pipelineForOrg('EB-FRANCE')).toBe(HUBSPOT_PIPELINES.EURO_SALES.id)
+    expect(orgsForPipeline(HUBSPOT_PIPELINES.EURO_SALES.id)).toEqual(['EB-FRANCE', 'EB-SRO'])
+    expect(MODULE_ORGS.quotes).toContain('EB-SRO')
+    // And it changes nothing else about s.r.o.: it still takes no calls.
+    expect(officesForOrg('EB-SRO')).toEqual([])
   })
 
   it('knows nothing about a pipeline nobody mapped', () => {
@@ -155,7 +162,7 @@ describe('which organisations a module lists', () => {
   })
 
   it('lists under Quotes only the organisations with a pipeline', () => {
-    expect(MODULE_ORGS.quotes).toEqual(['EB-USA', 'EB-CANADA', 'EB-FRANCE', 'EB-GROUP', 'EB-AUSTRALIA', 'EB-UK'])
+    expect(MODULE_ORGS.quotes).toEqual(ORG_CODES)
   })
 
   it('lists under Stock only the organisations holding stock', () => {
@@ -166,7 +173,8 @@ describe('which organisations a module lists', () => {
   it('shows a person only what they hold, in registry order', () => {
     expect(orgsForNavItem('invoicing', ['EB-UK', 'EB-USA'])).toEqual(['EB-USA', 'EB-UK'])
     expect(orgsForNavItem('stock', ['EB-UK', 'EB-USA'])).toEqual(['EB-USA'])
-    expect(orgsForNavItem('quotes', ['EB-SRO'])).toEqual([])
+    expect(orgsForNavItem('quotes', ['EB-SRO'])).toEqual(['EB-SRO'])
+    expect(orgsForNavItem('calls', ['EB-SRO'])).toEqual([])
     expect(orgsForNavItem(undefined, ORG_CODES)).toEqual([])
   })
 })
@@ -212,9 +220,11 @@ describe('nextPathAfterSwitch: where the header flag lands you', () => {
   })
 
   it('goes home from a page whose module does not have the organisation', () => {
-    // s.r.o. manufactures; it has no sales pipeline and no place under Quotes.
-    expect(nextPathAfterSwitch('/quotes', 'EB-SRO')).toBe('/')
-    expect(nextPathAfterSwitch('/quotes/deals/123', 'EB-SRO')).toBe('/')
+    // s.r.o. takes no calls, so there is no call log to switch it to.
+    expect(nextPathAfterSwitch('/calls', 'EB-SRO')).toBe('/')
+    expect(nextPathAfterSwitch('/calls/123', 'EB-SRO')).toBe('/')
+    // And Group holds no stock of its own.
+    expect(nextPathAfterSwitch('/stock', 'EB-GROUP')).toBe('/')
   })
 
   it('stays on a page that is not organisation-scoped at all', () => {
