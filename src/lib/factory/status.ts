@@ -10,13 +10,23 @@
  * Pure, so the test can pin the day boundary instead of racing it.
  */
 
+import { strings, type FactoryLocale } from './strings'
+
 export type FactoryStatus = 'awaiting_confirmation' | 'confirmed' | 'in_production' | 'finished'
 
-export const FACTORY_STATUS_LABELS: Record<FactoryStatus, string> = {
-  awaiting_confirmation: 'Awaiting your confirmation',
-  confirmed: 'Confirmed',
-  in_production: 'In production',
-  finished: 'Finished',
+/** The status in the manufacturer's language. */
+export function factoryStatusLabel(status: FactoryStatus, locale: FactoryLocale): string {
+  const t = strings(locale)
+  switch (status) {
+    case 'awaiting_confirmation':
+      return t.statusAwaitingConfirmation
+    case 'confirmed':
+      return t.statusConfirmed
+    case 'in_production':
+      return t.statusInProduction
+    case 'finished':
+      return t.statusFinished
+  }
 }
 
 export interface FactoryOrderProgress {
@@ -43,22 +53,42 @@ export function factoryStatus(
 }
 
 /**
- * The feed's availability word, in English.
+ * The feed's availability word, in the reader's language.
  *
  * Three values are live today (skladom 62, vypredane 48, posledne_kusy 2 on
- * 2026-09-16). Anything else passes through rather than being swallowed: a new
- * word from their system should be visible, not silently blank.
+ * 2026-09-16), and they arrive from their system in Slovak already. Anything
+ * else passes through rather than being swallowed: a new word from their system
+ * should be visible, not silently blank.
  */
-export function availabilityLabel(availability: string | null): string {
+export function availabilityLabel(availability: string | null, locale: FactoryLocale): string {
+  const t = strings(locale)
   switch ((availability ?? '').trim()) {
     case 'skladom':
-      return 'In stock'
+      return t.availabilityInStock
     case 'vypredane':
-      return 'Sold out'
+      return t.availabilitySoldOut
     case 'posledne_kusy':
-      return 'Last pieces'
+      return t.availabilityLastPieces
     default:
       return (availability ?? '').trim()
+  }
+}
+
+export type AvailabilityTone = 'sold_out' | 'last_pieces' | 'normal'
+
+/**
+ * How to colour that word. Keyed off the FEED's value, never off the label:
+ * comparing the rendered text to "Sold out" quietly lost its colour the moment
+ * the same row was rendered in Slovak.
+ */
+export function availabilityTone(availability: string | null): AvailabilityTone {
+  switch ((availability ?? '').trim()) {
+    case 'vypredane':
+      return 'sold_out'
+    case 'posledne_kusy':
+      return 'last_pieces'
+    default:
+      return 'normal'
   }
 }
 

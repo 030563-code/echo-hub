@@ -12,6 +12,7 @@ import {
   markFactoryFinished,
   saveFactoryDates,
 } from '@/app/actions/factory/orders'
+import { factoryDate, fill, strings, type FactoryLocale } from '@/lib/factory/strings'
 
 /**
  * The three steps, in the order Dean set out on 16 Sep 2026: download the
@@ -34,6 +35,7 @@ export function OrderSteps({
   estFinish,
   confirmedAt,
   finishedAt,
+  locale,
 }: {
   poId: string
   poNumber: string
@@ -41,7 +43,9 @@ export function OrderSteps({
   estFinish: string | null
   confirmedAt: string | null
   finishedAt: string | null
+  locale: FactoryLocale
 }) {
+  const t = strings(locale)
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [start, setStart] = useState(estStart ?? '')
@@ -85,7 +89,7 @@ export function OrderSteps({
         estStart: start === '' ? null : start,
         estFinish: finish === '' ? null : finish,
       })
-      setMessage(res.ok ? { kind: 'ok', text: 'Saved. Thank you.' } : { kind: 'error', text: res.error })
+      setMessage(res.ok ? { kind: 'ok', text: t.datesSaved } : { kind: 'error', text: res.error })
       if (res.ok) router.refresh()
     })
   }
@@ -115,36 +119,30 @@ export function OrderSteps({
 
   return (
     <div className="mt-8 space-y-4">
-      <Step number={1} title="Download the purchase order" done={false}>
-        <p className="text-sm text-gray-600">
-          This is purchase order {poNumber}, the document you would have had attached to the email.
-        </p>
+      <Step number={1} title={t.step1Title} done={false}>
+        <p className="text-sm text-gray-600">{fill(t.step1Body, { number: poNumber })}</p>
         <button
           onClick={download}
           disabled={pending}
           className="mt-4 inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-5 py-2 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 disabled:opacity-50"
         >
           <Download className="h-4 w-4" />
-          Download purchase order (PDF)
+          {t.step1Button}
         </button>
       </Step>
 
-      <Step number={2} title="Confirm the purchase order" done={isConfirmed}>
+      <Step number={2} title={t.step2Title} done={isConfirmed}>
         {isConfirmed ? (
           <>
             <p className="text-sm text-emerald-900">
-              Confirmed on {new Date(confirmedAt as string).toLocaleDateString('en-GB')}. We have your
-              dates and a confirmation email is on its way to you.
+              {fill(t.step2Confirmed, {
+                date: factoryDate(confirmedAt, locale, { day: 'numeric', month: 'short', year: 'numeric' }),
+              })}
             </p>
-            <p className="mt-3 text-sm text-gray-600">
-              You can still change these dates until the order is finished.
-            </p>
+            <p className="mt-3 text-sm text-gray-600">{t.step2StillEditable}</p>
           </>
         ) : (
-          <p className="text-sm text-gray-600">
-            Tell us when you expect to start and finish. We need both dates: they are what we plan
-            the shipping around, and they are quoted back to you in the confirmation email.
-          </p>
+          <p className="text-sm text-gray-600">{t.step2Body}</p>
         )}
 
         {!isFinished && (
@@ -152,7 +150,7 @@ export function OrderSteps({
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <label className="block">
                 <span className="text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Estimated start {isConfirmed ? '' : '(required)'}
+                  {t.labelEstimatedStart} {isConfirmed ? '' : t.required}
                 </span>
                 <input
                   type="date"
@@ -163,7 +161,7 @@ export function OrderSteps({
               </label>
               <label className="block">
                 <span className="text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Estimated finish {isConfirmed ? '' : '(required)'}
+                  {t.labelEstimatedFinish} {isConfirmed ? '' : t.required}
                 </span>
                 <input
                   type="date"
@@ -180,7 +178,7 @@ export function OrderSteps({
                 disabled={pending}
                 className="mt-4 rounded-lg border border-gray-300 bg-white px-5 py-2 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 disabled:opacity-50"
               >
-                {pending ? 'Saving...' : 'Save dates'}
+                {pending ? t.saving : t.saveDates}
               </button>
             ) : (
               <>
@@ -189,12 +187,10 @@ export function OrderSteps({
                   disabled={pending || !bothDates}
                   className="mt-4 rounded-lg bg-echo-orange px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-echo-orange-hover disabled:opacity-50"
                 >
-                  {pending ? 'Confirming...' : 'Confirm purchase order'}
+                  {pending ? t.confirming : t.confirmOrder}
                 </button>
                 {!bothDates && (
-                  <p className="mt-2 text-xs text-gray-500">
-                    Fill in both dates and the button turns on.
-                  </p>
+                  <p className="mt-2 text-xs text-gray-500">{t.bothDatesHint}</p>
                 )}
               </>
             )}
@@ -202,25 +198,24 @@ export function OrderSteps({
         )}
       </Step>
 
-      <Step number={3} title="Manufacturing finished" done={isFinished}>
+      <Step number={3} title={t.step3Title} done={isFinished}>
         {isFinished ? (
           <p className="text-sm text-emerald-900">
-            You marked this order finished on {new Date(finishedAt as string).toLocaleDateString('en-GB')}.
-            Echo Barrier have been told, and the barriers can be collected.
+            {fill(t.step3Done, {
+              date: factoryDate(finishedAt, locale, { day: 'numeric', month: 'short', year: 'numeric' }),
+            })}
           </p>
         ) : (
           <>
             <p className="text-sm text-gray-600">
-              Press this when you send us your invoice for this order.{' '}
-              <strong className="font-semibold text-gray-900">
-                We can only pay an invoice once its order is marked finished here
-              </strong>
-              , because this is how we know the barriers exist and can be collected.
+              {t.step3BodyLead}
+              <strong className="font-semibold text-gray-900">{t.step3BodyStrong}</strong>
+              {t.step3BodyTail}
             </p>
 
             {!isConfirmed ? (
               <p className="mt-4 rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
-                Confirm the purchase order first, with your estimated dates.
+                {t.step3ConfirmFirst}
               </p>
             ) : !confirming ? (
               <button
@@ -228,26 +223,24 @@ export function OrderSteps({
                 disabled={pending}
                 className="mt-4 rounded-md bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
               >
-                Manufacturing finished
+                {t.step3Button}
               </button>
             ) : (
               <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-4">
-                <p className="text-sm text-gray-900">
-                  Are the barriers on this order finished and ready to collect? This cannot be undone.
-                </p>
+                <p className="text-sm text-gray-900">{t.step3AreYouSure}</p>
                 <div className="mt-3 flex gap-2">
                   <button
                     onClick={finished}
                     disabled={pending}
                     className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
                   >
-                    {pending ? 'Saving...' : 'Yes, it is finished'}
+                    {pending ? t.saving : t.step3Yes}
                   </button>
                   <button
                     onClick={() => setConfirming(false)}
                     className="rounded-md px-4 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-100"
                   >
-                    Not yet
+                    {t.step3No}
                   </button>
                 </div>
               </div>

@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import {
-  FACTORY_STATUS_LABELS,
   availabilityLabel,
+  availabilityTone,
   factoryStatus,
+  factoryStatusLabel,
   feedIsStale,
 } from '@/lib/factory/status'
+import { FACTORY_LOCALES } from '@/lib/factory/strings'
 
 /**
  * The manufacturer's own view of where an order stands.
@@ -50,28 +52,46 @@ describe('factoryStatus', () => {
     ).toBe('finished')
   })
 
-  it('has a label for every status', () => {
-    for (const status of ['awaiting_confirmation', 'confirmed', 'in_production', 'finished'] as const) {
-      expect(FACTORY_STATUS_LABELS[status]).toBeTruthy()
+  it('has a label for every status, in every language', () => {
+    for (const locale of FACTORY_LOCALES) {
+      for (const status of ['awaiting_confirmation', 'confirmed', 'in_production', 'finished'] as const) {
+        expect(factoryStatusLabel(status, locale), `${locale}/${status}`).toBeTruthy()
+      }
     }
     // The first one is a question aimed at them, not a description of us.
-    expect(FACTORY_STATUS_LABELS.awaiting_confirmation).toBe('Awaiting your confirmation')
+    expect(factoryStatusLabel('awaiting_confirmation', 'en')).toBe('Awaiting your confirmation')
+    expect(factoryStatusLabel('awaiting_confirmation', 'sk')).toBe('Čaká na vaše potvrdenie')
   })
 })
 
 describe('availabilityLabel', () => {
   it('translates the three words the feed actually carries', () => {
     // Live on 2026-09-16: skladom 62, vypredane 48, posledne_kusy 2.
-    expect(availabilityLabel('skladom')).toBe('In stock')
-    expect(availabilityLabel('vypredane')).toBe('Sold out')
-    expect(availabilityLabel('posledne_kusy')).toBe('Last pieces')
+    expect(availabilityLabel('skladom', 'en')).toBe('In stock')
+    expect(availabilityLabel('vypredane', 'en')).toBe('Sold out')
+    expect(availabilityLabel('posledne_kusy', 'en')).toBe('Last pieces')
+  })
+
+  it('gives the feed its own word back in Slovak, properly spelled', () => {
+    expect(availabilityLabel('skladom', 'sk')).toBe('Skladom')
+    expect(availabilityLabel('vypredane', 'sk')).toBe('Vypredané')
+    expect(availabilityLabel('posledne_kusy', 'sk')).toBe('Posledné kusy')
   })
 
   it('passes anything else through rather than swallowing it', () => {
     // A new word from their system should be visible, not blank.
-    expect(availabilityLabel('nove_slovo')).toBe('nove_slovo')
-    expect(availabilityLabel(null)).toBe('')
-    expect(availabilityLabel('  skladom  ')).toBe('In stock')
+    for (const locale of FACTORY_LOCALES) {
+      expect(availabilityLabel('nove_slovo', locale)).toBe('nove_slovo')
+      expect(availabilityLabel(null, locale)).toBe('')
+    }
+    expect(availabilityLabel('  skladom  ', 'en')).toBe('In stock')
+  })
+
+  it('colours the row from the feed value, so the colour survives translation', () => {
+    expect(availabilityTone('vypredane')).toBe('sold_out')
+    expect(availabilityTone('posledne_kusy')).toBe('last_pieces')
+    expect(availabilityTone('skladom')).toBe('normal')
+    expect(availabilityTone(null)).toBe('normal')
   })
 })
 

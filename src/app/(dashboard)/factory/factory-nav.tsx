@@ -1,23 +1,26 @@
 'use client'
 
-// page-state: none (tabs are the URL)
+// page-state: none (tabs are the URL, and the language is a cookie)
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { LinkSpinner } from '@/components/nav/link-spinner'
+import { FACTORY_LOCALES, FACTORY_LOCALE_NAMES, strings, type FactoryLocale } from '@/lib/factory/strings'
 
-const TABS = [
-  { href: '/factory', label: 'Manufacturing' },
-  { href: '/factory/stock', label: 'Stock' },
-] as const
-
-/** The same sub-navigation bar Stock, Pricing and Invoicing use. */
-export function FactoryNav() {
+/** The same sub-navigation bar Stock, Pricing and Invoicing use, plus the
+ *  language switch, because these two tabs are the only ones translated. */
+export function FactoryNav({ locale }: { locale: FactoryLocale }) {
   const pathname = usePathname()
+  const t = strings(locale)
+  const tabs = [
+    { href: '/factory', label: t.navManufacturing },
+    { href: '/factory/stock', label: t.navStock },
+  ]
+
   return (
-    <nav aria-label="Factory" className="mb-6 border-b border-gray-200">
+    <nav aria-label="Factory" className="mb-6 flex items-end justify-between gap-4 border-b border-gray-200">
       <ul className="flex flex-nowrap overflow-x-auto -mx-4 px-4 gap-x-1 -mb-px sm:mx-0 sm:px-0 sm:flex-wrap sm:overflow-visible">
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           // Longest match, so an order page keeps Manufacturing lit and
           // /factory/stock does not light both.
           const active =
@@ -41,6 +44,30 @@ export function FactoryNav() {
             </li>
           )
         })}
+      </ul>
+
+      {/*
+        Plain anchors to a route handler, not a client toggle: the cookie is
+        httpOnly and every string on the page is rendered on the server, so the
+        whole tree has to come back. Same shape as the organisation switch.
+      */}
+      <ul className="mb-1.5 flex shrink-0 items-center gap-1" aria-label={t.language}>
+        {FACTORY_LOCALES.map((code) => (
+          <li key={code}>
+            <a
+              href={`/factory-lang/${code}?next=${encodeURIComponent(pathname)}`}
+              aria-current={code === locale ? 'true' : undefined}
+              title={FACTORY_LOCALE_NAMES[code]}
+              className={
+                code === locale
+                  ? 'rounded px-2 py-1 text-xs font-semibold uppercase tracking-wider text-gray-900'
+                  : 'rounded px-2 py-1 text-xs font-medium uppercase tracking-wider text-gray-400 hover:bg-gray-100 hover:text-gray-700'
+              }
+            >
+              {code}
+            </a>
+          </li>
+        ))}
       </ul>
     </nav>
   )

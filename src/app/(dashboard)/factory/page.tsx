@@ -1,5 +1,7 @@
 import { requireCapability } from '@/lib/authz'
 import { loadFactoryOrders } from '@/lib/factory/orders'
+import { factoryLocale } from '@/lib/factory/locale.server'
+import { strings } from '@/lib/factory/strings'
 import { FactoryOrdersTable } from './factory-orders-table'
 
 export const dynamic = 'force-dynamic'
@@ -13,18 +15,16 @@ export const dynamic = 'force-dynamic'
  */
 export default async function FactoryOrdersPage() {
   await requireCapability(['factory.view', 'factory.update'])
-  const orders = await loadFactoryOrders()
+  const [orders, locale] = await Promise.all([loadFactoryOrders(), factoryLocale()])
+  const t = strings(locale)
 
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Manufacturing</h1>
-        <p className="mt-1 text-sm text-gray-600">
-          Purchase orders sent to you. Open one to download it, confirm it with your dates, and mark
-          it finished when you invoice.
-        </p>
+        <h1 className="text-2xl font-bold text-gray-900">{t.ordersTitle}</h1>
+        <p className="mt-1 text-sm text-gray-600">{t.ordersIntro}</p>
       </div>
-      <FactoryOrdersTable rows={orders} />
+      <FactoryOrdersTable rows={orders} locale={locale} />
     </div>
   )
 }

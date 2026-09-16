@@ -1,3 +1,4 @@
+import type { FactoryStrings } from './strings'
 import 'server-only'
 
 /**
@@ -58,9 +59,11 @@ export async function applyManufacturingDates(
   poId: string,
   dates: { estStart: string | null; estFinish: string | null },
   actorUid: string | null,
+  /** The manufacturer's language, resolved by the action that called us. */
+  t: FactoryStrings,
 ): Promise<ManufacturingUpdateResult> {
   if (datesOutOfOrder(dates.estStart, dates.estFinish)) {
-    return { ok: false, error: 'The finish date cannot be before the start date.' }
+    return { ok: false, error: t.errFinishBeforeStart }
   }
 
   const { data: updated, error } = await admin
@@ -76,10 +79,10 @@ export async function applyManufacturingDates(
     .select('po_id')
   if (error) {
     console.error('applyManufacturingDates failed', error.message)
-    return { ok: false, error: 'The dates could not be saved. Please try again.' }
+    return { ok: false, error: t.errDatesNotSaved }
   }
   if (!updated || updated.length === 0) {
-    return { ok: false, error: 'This order is already marked finished, so its dates can no longer change.' }
+    return { ok: false, error: t.errAlreadyFinishedDates }
   }
 
   revalidateOrder(poId)
@@ -103,12 +106,13 @@ export async function confirmManufacturingOrder(
   poId: string,
   dates: { estStart: string | null; estFinish: string | null },
   actorUid: string | null,
+  t: FactoryStrings,
 ): Promise<ManufacturingUpdateResult & { confirmedAt?: string }> {
   if (!dates.estStart || !dates.estFinish) {
-    return { ok: false, error: 'Enter the estimated start and finish dates to confirm.' }
+    return { ok: false, error: t.errBothDatesRequired }
   }
   if (datesOutOfOrder(dates.estStart, dates.estFinish)) {
-    return { ok: false, error: 'The finish date cannot be before the start date.' }
+    return { ok: false, error: t.errFinishBeforeStart }
   }
 
   const confirmedAt = new Date().toISOString()
@@ -128,10 +132,10 @@ export async function confirmManufacturingOrder(
     .select('po_id')
   if (error) {
     console.error('confirmManufacturingOrder failed', error.message)
-    return { ok: false, error: 'The confirmation could not be saved. Please try again.' }
+    return { ok: false, error: t.errConfirmationNotSaved }
   }
   if (!confirmed || confirmed.length === 0) {
-    return { ok: false, error: 'This order has already been confirmed.' }
+    return { ok: false, error: t.errAlreadyConfirmed }
   }
 
   revalidateOrder(poId)
@@ -154,6 +158,7 @@ export async function finishManufacturingOrder(
   admin: Admin,
   poId: string,
   actorUid: string | null,
+  t: FactoryStrings,
 ): Promise<ManufacturingUpdateResult> {
   const finishedAtIso = new Date().toISOString()
   const { data: finished, error } = await admin
@@ -165,7 +170,7 @@ export async function finishManufacturingOrder(
     .select('po_id')
   if (error) {
     console.error('finishManufacturingOrder failed', error.message)
-    return { ok: false, error: 'That could not be saved. Please try again.' }
+    return { ok: false, error: t.errNotSaved }
   }
   if (!finished || finished.length === 0) {
     // Two ways to get no row, and they need different words.
@@ -175,9 +180,9 @@ export async function finishManufacturingOrder(
       .eq('po_id', poId)
       .maybeSingle<{ confirmed_at: string | null; finished_at: string | null }>()
     if (row && !row.confirmed_at) {
-      return { ok: false, error: 'Confirm the purchase order first, with your estimated dates.' }
+      return { ok: false, error: t.errConfirmFirst }
     }
-    return { ok: false, error: 'This order is already marked finished.' }
+    return { ok: false, error: t.errAlreadyFinished }
   }
 
   // NO lifecycle_stage write. Dean, 9 Sep: a finished order is "Ready for

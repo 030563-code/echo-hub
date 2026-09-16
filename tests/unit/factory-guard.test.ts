@@ -79,8 +79,8 @@ describe("every action is gated, because a 'use server' export is an endpoint", 
   it('asks for factory.update to write and factory.view to read', () => {
     // Three writes (dates, confirm, finished) and one read (the document).
     // `await gate(`, so gate's own signature line is not counted as a call.
-    expect((source.match(/await gate\([^)]*'factory\.update'\)/g) ?? []).length).toBe(3)
-    expect((source.match(/await gate\([^)]*'factory\.view'\)/g) ?? []).length).toBe(1)
+    expect((source.match(/await gate\([^)]*'factory\.update', t\)/g) ?? []).length).toBe(3)
+    expect((source.match(/await gate\([^)]*'factory\.view', t\)/g) ?? []).length).toBe(1)
   })
 
   it('takes nothing about the order except its id', () => {
@@ -95,7 +95,22 @@ describe("every action is gated, because a 'use server' export is an endpoint", 
   })
 
   it('answers the same way for an order that is not theirs as for one that does not exist', () => {
-    expect(source).toContain("const NOT_YOURS = 'This order is not available.'")
+    expect(source).toContain('error: t.errOrderNotYours')
+    // One refusal, used once, so the two cases cannot drift apart.
+    expect((source.match(/errOrderNotYours/g) ?? []).length).toBe(1)
+  })
+
+  it('says everything in the manufacturer\'s language, resolved once per call', () => {
+    // Four actions, four resolutions, and gate is handed the same table rather
+    // than reading the cookie again, so one call cannot answer in two languages.
+    expect((source.match(/await factoryStrings\(\)/g) ?? []).length).toBe(4)
+    expect(source).toContain('async function gate(poId: string, capability:')
+    expect(source).toContain('t: FactoryStrings)')
+    // No English left where the manufacturer can see it.
+    expect(source).not.toContain("'This order is not available.'")
+    expect(source).not.toContain("'Invalid order'")
+    expect(source).not.toContain("'Invalid dates'")
+    expect(source).not.toContain('Please contact Echo Barrier')
   })
 })
 
@@ -103,7 +118,7 @@ describe('the three steps hold their shape', () => {
   const source = read(UPDATES)
 
   it('refuses to confirm without both dates, because the dates ARE the confirmation', () => {
-    expect(source).toContain('Enter the estimated start and finish dates to confirm.')
+    expect(source).toContain('error: t.errBothDatesRequired')
     expect(source).toMatch(/if \(!dates\.estStart \|\| !dates\.estFinish\)/)
   })
 
@@ -115,7 +130,16 @@ describe('the three steps hold their shape', () => {
 
   it('refuses to finish an order nobody confirmed', () => {
     expect(source).toMatch(/\.not\('confirmed_at', 'is', null\)[\s\S]{0,120}\.is\('finished_at', null\)/)
-    expect(source).toContain('Confirm the purchase order first')
+    expect(source).toContain('error: t.errConfirmFirst')
+  })
+
+  it('speaks through the string table, never a literal the factory would read', () => {
+    // Every refusal in here reaches their screen, so none of them is a literal.
+    const refusals = source.match(/return \{ ok: false, error: [^,\n}]+/g) ?? []
+    expect(refusals.length).toBeGreaterThan(5)
+    for (const refusal of refusals) {
+      expect(refusal, refusal).toMatch(/error: t\.\w+/)
+    }
   })
 
   it('finishes exactly once, and the timestamp is taken before the fan-out', () => {

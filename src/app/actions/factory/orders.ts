@@ -32,6 +32,8 @@ import { getSupplierByCode } from '@/lib/suppliers'
 import { buildBamidaPo, type BamidaSupplier } from '@/lib/bamida-po'
 import { buildBamidaPoPdf } from '@/lib/bamida-po-pdf'
 import { displayPoNumber } from '@/lib/po-number'
+import { factoryStrings } from '@/lib/factory/locale.server'
+import type { FactoryStrings } from '@/lib/factory/strings'
 
 const PoId = z.object({ poId: z.string().uuid() })
 const DatesSchema = PoId.extend({ estStart: DateInput, estFinish: DateInput })
@@ -41,19 +43,24 @@ export type FactoryPdfResult =
   | { ok: true; filename: string; base64: string }
   | { ok: false; error: string }
 
-const NOT_YOURS = 'This order is not available.'
-
 /**
  * Session, capability, shape, then record. Returns the authorised user so the
  * caller can stamp who acted.
+ *
+ * Takes the resolved string table rather than reading the cookie itself, so one
+ * action resolves the language once and every refusal it can produce comes back
+ * in the same one.
  */
-async function gate(poId: string, capability: 'factory.view' | 'factory.update') {
+async function gate(poId: string, capability: 'factory.view' | 'factory.update', t: FactoryStrings) {
   const auth = await getAuthorizedUser()
   if (!auth.ok) return { ok: false as const, error: auth.error }
+  // Left in English on purpose: this one names a capability key and only
+  // appears if somebody calls the endpoint without holding it, which the screens
+  // themselves cannot do.
   if (!auth.capabilities.has(capability)) {
     return { ok: false as const, error: `Forbidden: missing ${capability} capability` }
   }
-  if (!(await factoryOrderVisible(poId))) return { ok: false as const, error: NOT_YOURS }
+  if (!(await factoryOrderVisible(poId))) return { ok: false as const, error: t.errOrderNotYours }
   return { ok: true as const, auth }
 }
 
@@ -63,10 +70,11 @@ export async function saveFactoryDates(input: {
   estStart: string | null
   estFinish: string | null
 }): Promise<FactoryActionResult> {
+  const { t } = await factoryStrings()
   const parsed = DatesSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid dates' }
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? t.errInvalidDates }
 
-  const gated = await gate(parsed.data.poId, 'factory.update')
+  const gated = await gate(parsed.data.poId, 'factory.update', t)
   if (!gated.ok) return { ok: false, error: gated.error }
 
   return applyManufacturingDates(
@@ -74,6 +82,7 @@ export async function saveFactoryDates(input: {
     parsed.data.poId,
     { estStart: parsed.data.estStart, estFinish: parsed.data.estFinish },
     gated.auth.user.id,
+    t,
   )
 }
 
@@ -90,10 +99,11 @@ export async function confirmFactoryOrder(input: {
   estStart: string | null
   estFinish: string | null
 }): Promise<FactoryActionResult> {
+  const { t } = await factoryStrings()
   const parsed = DatesSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid dates' }
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? t.errInvalidDates }
 
-  const gated = await gate(parsed.data.poId, 'factory.update')
+  const gated = await gate(parsed.data.poId, 'factory.update', t)
   if (!gated.ok) return { ok: false, error: gated.error }
 
   const admin = createAdminClient()
@@ -102,6 +112,7 @@ export async function confirmFactoryOrder(input: {
     parsed.data.poId,
     { estStart: parsed.data.estStart, estFinish: parsed.data.estFinish },
     gated.auth.user.id,
+    t,
   )
   if (!confirmed.ok) return confirmed
 
@@ -165,13 +176,14 @@ export async function confirmFactoryOrder(input: {
 
 /** Manufacturing finished. Refused until the order has been confirmed. */
 export async function markFactoryFinished(input: { poId: string }): Promise<FactoryActionResult> {
+  const { t } = await factoryStrings()
   const parsed = PoId.safeParse(input)
-  if (!parsed.success) return { ok: false, error: 'Invalid order' }
+  if (!parsed.success) return { ok: false, error: t.errInvalidOrder }
 
-  const gated = await gate(parsed.data.poId, 'factory.update')
+  const gated = await gate(parsed.data.poId, 'factory.update', t)
   if (!gated.ok) return { ok: false, error: gated.error }
 
-  return finishManufacturingOrder(createAdminClient(), parsed.data.poId, gated.auth.user.id)
+  return finishManufacturingOrder(createAdminClient(), parsed.data.poId, gated.auth.user.id, t)
 }
 
 /**
@@ -188,10 +200,11 @@ export async function markFactoryFinished(input: { poId: string }): Promise<Fact
  * cost snapshot and never crosses the boundary.
  */
 export async function downloadFactoryOrderPdf(input: { poId: string }): Promise<FactoryPdfResult> {
+  const { t } = await factoryStrings()
   const parsed = PoId.safeParse(input)
-  if (!parsed.success) return { ok: false, error: 'Invalid order' }
+  if (!parsed.success) return { ok: false, error: t.errInvalidOrder }
 
-  const gated = await gate(parsed.data.poId, 'factory.view')
+  const gated = await gate(parsed.data.poId, 'factory.view', t)
   if (!gated.ok) return { ok: false, error: gated.error }
 
   const admin = createAdminClient()
@@ -201,14 +214,14 @@ export async function downloadFactoryOrderPdf(input: { poId: string }): Promise<
     .eq('id', parsed.data.poId)
     .maybeSingle<{ po_number: string | null; parent_po_id: string | null }>()
   if (!po?.parent_po_id) {
-    return { ok: false, error: 'The document for this order is not available. Please contact Echo Barrier.' }
+    return { ok: false, error: t.errNoDocument }
   }
 
   // The bill of materials hangs off the PARENT order, which is what carries the
   // exploded lines the document is priced from.
   const bom = await loadSroPoBom(po.parent_po_id, admin)
   if (!bom) {
-    return { ok: false, error: 'The document for this order is not available. Please contact Echo Barrier.' }
+    return { ok: false, error: t.errNoDocument }
   }
 
   const supplierRow = await getSupplierByCode('BAMIDA, s.r.o.', admin).catch(() => null)
@@ -220,7 +233,7 @@ export async function downloadFactoryOrderPdf(input: { poId: string }): Promise<
 
   const document = buildBamidaPo(bom, new Date().toISOString().slice(0, 10), supplier, po.po_number)
   if (document.lines.length === 0) {
-    return { ok: false, error: 'The document for this order is not available. Please contact Echo Barrier.' }
+    return { ok: false, error: t.errNoDocument }
   }
 
   const pdf = await buildBamidaPoPdf(document)

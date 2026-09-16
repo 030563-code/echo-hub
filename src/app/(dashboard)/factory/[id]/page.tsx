@@ -4,7 +4,9 @@ import { ArrowLeft } from 'lucide-react'
 import { requireCapability } from '@/lib/authz'
 import { loadFactoryOrder } from '@/lib/factory/orders'
 import { displayPoNumber } from '@/lib/po-number'
-import { FACTORY_STATUS_LABELS, factoryStatus } from '@/lib/factory/status'
+import { factoryStatus, factoryStatusLabel } from '@/lib/factory/status'
+import { factoryLocale } from '@/lib/factory/locale.server'
+import { factoryDate, fill, strings } from '@/lib/factory/strings'
 import { OrderSteps } from './order-steps'
 
 export const dynamic = 'force-dynamic'
@@ -26,6 +28,8 @@ export default async function FactoryOrderPage({ params }: { params: Promise<{ i
   const order = await loadFactoryOrder(id)
   if (!order) notFound()
 
+  const locale = await factoryLocale()
+  const t = strings(locale)
   const status = factoryStatus(order)
   const shortages = (order.short_materials ?? []).flatMap((line) => line.short ?? [])
 
@@ -33,21 +37,23 @@ export default async function FactoryOrderPage({ params }: { params: Promise<{ i
     <div>
       <Link href="/factory" className="mb-4 inline-flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900">
         <ArrowLeft className="h-4 w-4" />
-        All orders
+        {t.backToOrders}
       </Link>
 
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-bold text-gray-900">
-          Purchase order {displayPoNumber(order.po_number)}
+          {fill(t.orderTitle, { number: displayPoNumber(order.po_number) })}
         </h1>
         <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-xs font-semibold text-gray-700">
-          {FACTORY_STATUS_LABELS[status]}
+          {factoryStatusLabel(status, locale)}
         </span>
       </div>
 
       {order.sent_at && (
         <p className="-mt-3 mb-6 text-sm text-gray-600">
-          Sent to you on {new Date(order.sent_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}.
+          {fill(t.sentOn, {
+            date: factoryDate(order.sent_at, locale, { day: 'numeric', month: 'long', year: 'numeric' }),
+          })}
         </p>
       )}
 
@@ -55,8 +61,8 @@ export default async function FactoryOrderPage({ params }: { params: Promise<{ i
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 text-[11px] uppercase tracking-wider text-gray-500">
-              <th className="px-4 py-2.5 text-left font-medium">Product</th>
-              <th className="px-4 py-2.5 text-right font-medium">Quantity</th>
+              <th className="px-4 py-2.5 text-left font-medium">{t.thProduct}</th>
+              <th className="px-4 py-2.5 text-right font-medium">{t.thQuantity}</th>
             </tr>
           </thead>
           <tbody>
@@ -72,7 +78,7 @@ export default async function FactoryOrderPage({ params }: { params: Promise<{ i
             {order.lines.length === 0 && (
               <tr>
                 <td colSpan={2} className="px-4 py-8 text-center text-gray-400">
-                  This order has no lines.
+                  {t.orderHasNoLines}
                 </td>
               </tr>
             )}
@@ -82,20 +88,15 @@ export default async function FactoryOrderPage({ params }: { params: Promise<{ i
 
       {shortages.length > 0 && (
         <div className="mt-6 rounded-lg border-l-4 border-amber-400 bg-amber-50 p-4">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-amber-900">
-            Materials your system showed as low
-          </h2>
-          <p className="mt-1 text-sm text-amber-900">
-            When we sent this order your stock feed suggested these might be short. Tell us if that
-            stops you building it.
-          </p>
+          <h2 className="text-xs font-bold uppercase tracking-wider text-amber-900">{t.shortagesTitle}</h2>
+          <p className="mt-1 text-sm text-amber-900">{t.shortagesIntro}</p>
           <table className="mt-3 w-full text-sm">
             <thead>
               <tr className="text-[11px] uppercase tracking-wider text-amber-800">
-                <th className="py-1 text-left font-medium">Material</th>
-                <th className="py-1 text-right font-medium">Needed</th>
-                <th className="py-1 text-right font-medium">In stock</th>
-                <th className="py-1 text-right font-medium">Short</th>
+                <th className="py-1 text-left font-medium">{t.thMaterial}</th>
+                <th className="py-1 text-right font-medium">{t.thNeeded}</th>
+                <th className="py-1 text-right font-medium">{t.thInStock}</th>
+                <th className="py-1 text-right font-medium">{t.thShort}</th>
               </tr>
             </thead>
             <tbody className="text-amber-900">
@@ -119,6 +120,7 @@ export default async function FactoryOrderPage({ params }: { params: Promise<{ i
         estFinish={order.est_finish}
         confirmedAt={order.confirmed_at}
         finishedAt={order.finished_at}
+        locale={locale}
       />
     </div>
   )
