@@ -1,16 +1,18 @@
 'use server'
 
 /**
- * Put this purchase order's PDF onto its Xero purchase order.
+ * Put this purchase order's PDF onto its Xero purchase order, after the fact.
  *
- * Dean, 16 Sep 2026: "is it possible to attach the Purchase order pdf in Xero
- * the same way we do it with the invoicing", and then the rule that shapes the
- * whole thing: "Make sure you dont reput the POs into Xero."
+ * The repair path. The document normally goes on inside the same n8n run that
+ * creates the Xero purchase order (decide-po sends it with the approval), so
+ * this is for an order that has no document: raised before this existed, or its
+ * attach failed while the order itself was created.
  *
- * So this attaches and nothing else. It refuses unless the Hub row already
- * carries the Xero purchase order id that the create workflow wrote back, and
- * the workflow it posts to has exactly one Xero call, an attachment PUT. No path
- * through here can create a purchase order.
+ * Dean, 16 Sep 2026: "Make sure you dont reput the POs into Xero." So this
+ * attaches and nothing else. It refuses unless the Hub row already carries the
+ * Xero purchase order id that the create run wrote back, and the webhook it
+ * posts to enters the workflow BELOW the Xero create, at the attachment step.
+ * No path through here can create a purchase order.
  */
 
 import { z } from 'zod'

@@ -8,6 +8,7 @@ import { poChainHeldBy } from "@/lib/po-organisations";
 import { externalCallsDisabled } from "@/lib/env";
 import { entityLabel } from "@/lib/depot-constants";
 import { snapshotSroPoCost } from "@/lib/bom";
+import { renderApprovalAttachment } from "@/lib/xero/attach-po-pdf";
 import { notifySroPoReady } from "./notify-sro";
 import type { PurchaseOrderLine } from "@/lib/erp-types";
 
@@ -202,6 +203,14 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
     warning = warning ?? `Sandbox: ${tier} PO approved and saved in the Hub — the Xero hand-off is disabled in staging.`;
   } else if (webhookUrl) {
     try {
+      // The purchase order document travels WITH the approval, so the same n8n
+      // run that creates the Xero purchase order attaches it the moment the id
+      // comes back. Dean, 16 Sep 2026: "The attach pdf to Xero should happen
+      // after the PO is created in the same execution not seperate workflows."
+      // Best effort by construction: renderApprovalAttachment returns null
+      // rather than throwing, so a document that will not render costs us the
+      // PDF and never the order.
+      const attachment = await renderApprovalAttachment(po.id);
       const res = await fetch(webhookUrl, {
         method: "POST",
         headers: {
@@ -230,6 +239,8 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
             hs_code: l.hs_code,
             unit_price: l.unit_price,
           })),
+          /** null = render failed; n8n creates the order and skips the attach. */
+          attachment,
         }),
         cache: "no-store",
       });

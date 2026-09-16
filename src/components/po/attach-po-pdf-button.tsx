@@ -11,6 +11,11 @@ import { attachPoPdf } from '@/app/actions/purchase-orders/attach-po-pdf'
 /**
  * Put this purchase order's PDF onto its Xero purchase order.
  *
+ * The REPAIR path. Approving an order normally attaches its document in the same
+ * n8n run that creates the Xero purchase order, so this button is for the orders
+ * that did not get one: the two raised before any of this existed, and any later
+ * one whose attach failed while the order itself went through.
+ *
  * Only shown once the Xero purchase order exists, because the id is what this
  * attaches to. Nothing here can create one: see attach-po-pdf.ts.
  */

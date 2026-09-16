@@ -1,25 +1,32 @@
 import 'server-only'
 
 /**
- * Put the Hub's purchase order PDF onto the matching Xero purchase order.
+ * The purchase order document that goes onto the Xero purchase order.
  *
  * Dean, 16 Sep 2026, having added the attachments scope to the Xero Try
  * credential: "is it possible to attach the Purchase order pdf in Xero the same
- * way we do it with the invoicing", then "Make sure you dont reput the POs into
- * Xero."
+ * way we do it with the invoicing", then the rule that shapes all of it, "Make
+ * sure you dont reput the POs into Xero", and then, on seeing a separate
+ * workflow and a button: "The attach pdf to Xero should happen after the PO is
+ * created in the same execution not seperate workflows."
  *
- * So this NEVER creates a purchase order. It renders bytes and hands them to a
- * webhook whose only Xero call is
+ * So the document travels WITH the approval. renderApprovalAttachment puts the
+ * bytes in the po-hub-approved payload, and the same n8n run that creates the
+ * Xero purchase order attaches them to it the moment the id is written back.
+ * There is no second call to make and nothing to remember to press.
+ *
+ * attachPoPdfToXero below is the repair path, and only that: for an order whose
+ * document did not go on (an attach that failed while the order itself was
+ * created, or an order raised before any of this existed). It refuses unless the
+ * Hub row already carries the Xero id, and the only Xero call at the other end is
  * PUT /PurchaseOrders/{PurchaseOrderID}/Attachments/{FileName}
  * (Xero's own spec: PUT creates the attachment, POST updates an existing one).
- * The purchase order must already exist and its id must already be on the Hub
- * row, written back by the workflow that created it. Nothing here can mint one.
+ * Neither path can mint a purchase order.
  *
  * Same shape as the invoice attachment in send-to-xero.ts: rendered server-side,
  * sent as base64 rather than a signed URL, because this is a server-to-server
  * post and not a client action payload.
  */
-
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getPoPdfData } from '@/lib/po-pdf-data'
 import { buildPoPdf, poPdfFilename } from '@/lib/po-pdf'
@@ -105,8 +112,10 @@ export async function attachPoPdfToXero(po: PurchaseOrder): Promise<AttachResult
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(process.env.N8N_XERO_PO_ATTACH_WEBHOOK_SECRET
-          ? { 'x-hub-secret': process.env.N8N_XERO_PO_ATTACH_WEBHOOK_SECRET }
+        // One workflow, so one header-auth credential: the repair webhook and
+        // the approval webhook sit on the same n8n workflow and share it.
+        ...(process.env.N8N_PO_APPROVED_WEBHOOK_SECRET
+          ? { 'x-hub-secret': process.env.N8N_PO_APPROVED_WEBHOOK_SECRET }
           : {}),
       },
       body: JSON.stringify({
@@ -137,5 +146,35 @@ export async function attachPoPdfToXero(po: PurchaseOrder): Promise<AttachResult
     }
   } finally {
     clearTimeout(timer)
+  }
+}
+
+/**
+ * The document for the approval payload, so n8n can attach it in the same run.
+ *
+ * Best effort, always: a purchase order document that will not render must never
+ * cost us the Xero purchase order, and it must never cost us an approval that has
+ * already been committed. A null here means the order still goes to Xero, just
+ * without its PDF, and the Attach PDF to Xero button on the order page puts it on
+ * afterwards.
+ *
+ * Takes an id rather than a row because the caller (decide-po) holds only the
+ * narrow shape it needs to make a decision, not the whole order.
+ */
+export async function renderApprovalAttachment(
+  poId: string,
+): Promise<{ filename: string; content_base64: string } | null> {
+  try {
+    const { data: po } = await createAdminClient()
+      .from('purchase_orders')
+      .select('*, lines:purchase_order_lines(*)')
+      .eq('id', poId)
+      .maybeSingle<PurchaseOrder>()
+    if (!po) return null
+    const { filename, base64 } = await renderPoPdfForXero(po)
+    return { filename, content_base64: base64 }
+  } catch (error) {
+    console.error('renderApprovalAttachment: the purchase order document did not render', error)
+    return null
   }
 }

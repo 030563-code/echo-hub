@@ -18,6 +18,15 @@ const code = (f: string) =>
 
 const LIB = 'src/lib/xero/attach-po-pdf.ts'
 const ACTION = 'src/app/actions/purchase-orders/attach-po-pdf.ts'
+const DECIDE = 'src/app/actions/purchase-orders/decide-po.ts'
+
+/** The body of one exported function, so a later export cannot answer for it. */
+const fn = (src: string, name: string) => {
+  const start = src.indexOf(`export async function ${name}`)
+  expect(start).toBeGreaterThan(-1)
+  const next = src.indexOf('\nexport ', start + 1)
+  return src.slice(start, next === -1 ? undefined : next)
+}
 
 describe('the attach path cannot create a purchase order', () => {
   const lib = code(LIB)
@@ -32,11 +41,12 @@ describe('the attach path cannot create a purchase order', () => {
   })
 
   it('refuses unless Xero already holds the order', () => {
-    expect(lib).toContain('!po.xero_po_id || !po.xero_tenant_id')
+    const repair = fn(lib, 'attachPoPdfToXero')
+    expect(repair).toContain('!po.xero_po_id || !po.xero_tenant_id')
     // The refusal comes before the render and before any post.
-    const guard = lib.indexOf('!po.xero_po_id')
-    expect(guard).toBeLessThan(lib.indexOf('renderPoPdfForXero(po)'))
-    expect(guard).toBeLessThan(lib.indexOf('fetch('))
+    const guard = repair.indexOf('!po.xero_po_id')
+    expect(guard).toBeLessThan(repair.indexOf('renderPoPdfForXero(po)'))
+    expect(guard).toBeLessThan(repair.indexOf('fetch('))
   })
 
   it('sends the tenant and the order id the Hub already holds, never a guess', () => {
@@ -80,5 +90,35 @@ describe('the purchase order PDF renders on the server as well as the browser', 
   it('a server render supplies its own logo, because there is no origin to fetch from', () => {
     expect(code('src/lib/pdf-brand.ts')).toContain('opts.logoDataUrl ?? (await loadLogoDataUrl())')
     expect(code(LIB)).toContain('logoDataUrl: await serverLogoDataUrl()')
+  })
+})
+
+describe('the document goes on in the same run that creates the order', () => {
+  const decide = code(DECIDE)
+  const lib = code(LIB)
+
+  it('approval carries the document, so n8n needs no second call', () => {
+    expect(decide).toContain('renderApprovalAttachment(po.id)')
+    expect(decide).toContain('attachment,')
+  })
+
+  it('renders only after the approval is committed, never before', () => {
+    const approved = decide.indexOf('hub_approve_po_leg')
+    expect(approved).toBeGreaterThan(-1)
+    expect(approved).toBeLessThan(decide.indexOf('renderApprovalAttachment(po.id)'))
+  })
+
+  it('a document that will not render costs the PDF, never the order', () => {
+    const render = fn(lib, 'renderApprovalAttachment')
+    expect(render).toContain('catch')
+    expect(render).toContain('return null')
+    // It renders and hands back bytes. It posts nowhere itself.
+    expect(render).not.toContain('fetch(')
+  })
+
+  it('approving still posts to exactly one webhook, the one that creates the order', () => {
+    expect(decide.match(/process\.env\.N8N_[A-Z_]*_URL/g) ?? []).toEqual([
+      'process.env.N8N_PO_APPROVED_WEBHOOK_URL',
+    ])
   })
 })
