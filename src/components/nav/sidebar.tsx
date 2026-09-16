@@ -12,7 +12,6 @@ import { NAV_ICONS } from '@/lib/nav-icons'
 import { organisation, orgsForNavItem, type OrgCode } from '@/lib/organisations'
 import { FlagIcon } from '@/components/ui/flag-icon'
 import { Button } from '@/components/ui/button'
-import { signOut } from '@/app/actions/sign-out'
 import { LinkSpinner } from '@/components/nav/link-spinner'
 import { Avatar } from '@/components/profile/avatar'
 import type { ShellProfile } from '@/components/nav/shell'
@@ -171,7 +170,12 @@ export function Sidebar({ capabilities, isExternal, organisations, activeOrg, di
             </span>
           </Link>
         </div>
-        <form action={signOut}>
+        {/* A plain POST to a route, not a Server Action: action ids are
+            content-hashed per build, so a tab opened before a deploy sent one
+            the new build did not have and the page died on "This page
+            couldn't load" (Dean, 16 Sep 2026). A URL survives a deploy, and
+            this also works before React has hydrated. */}
+        <form method="post" action="/sign-out">
           <Button
             variant="ghost"
             className="w-full justify-start text-red-500 hover:text-red-400 hover:bg-red-900/20 flex items-center"
