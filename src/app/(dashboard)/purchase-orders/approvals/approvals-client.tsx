@@ -68,7 +68,10 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
         toast.error(res.error);
       } else if (res.warning) {
         setNotice({ kind: "warn", text: res.warning });
-        toast.warning(res.warning);
+        // Stays until dismissed. This is the one that says an outside party
+        // was NOT told (the SRO email, 16 Sep 2026), and a warning about
+        // something that did not happen must not time out unread.
+        toast.warning(res.warning, { duration: Infinity });
       } else {
         const text = res.nextPoNumber
           ? `${res.tier} approved. The next tier was raised as ${res.nextPoNumber}.`

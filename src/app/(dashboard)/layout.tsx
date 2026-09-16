@@ -55,7 +55,13 @@ export default async function DashboardLayout({
       >
         {children}
       </Shell>
-      <Toaster position="top-right" richColors />
+      {/* Dean, 16 Sep 2026: "please make the hub messages stay longer it goes
+          past quick." Sonner's default is 4 seconds, which is not long enough to
+          read a sentence like "Sent to the test address, not Bamida" before it
+          goes. Ten, and a close button so a stack can be cleared by hand rather
+          than waited out. Set here because there are 165 toast call sites and a
+          default belongs in one place. */}
+      <Toaster position="top-right" richColors duration={10_000} closeButton />
     </>
   )
 }
