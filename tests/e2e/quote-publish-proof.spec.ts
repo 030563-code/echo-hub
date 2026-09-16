@@ -12,6 +12,12 @@ import { serviceClient } from './db-helpers'
  * SKU column and an Image column: "I also want a full E2E test with proof of
  * screenshot etc then delete the entire test deal afterwards."
  *
+ * 16 Sep 2026, having seen that quote as Jillian sent it: "the sku is fine in
+ * the quote." So the quote is back on her own "Jillian USA" template, whose SKU
+ * and Image columns are fixed in the template and render for every line. The
+ * kit stays one line and no discount property is ever sent; those two still
+ * hold below.
+ *
  * So this spec creates its own company, contact and deal, builds and PUBLISHES
  * a quote through the real UI as the admin persona, screenshots every step,
  * reads the result back through the HubSpot API and the customer's own page,
@@ -27,7 +33,7 @@ const PROOF_DIR = process.env.E2E_PROOF_DIR ?? 'test-results/proof'
 
 const USA_SALES = 'dfc85d9e-7eb9-4ade-a9cf-4e726cbcc9cc'
 const QUOTE_REQUEST_STAGE = '3f5e750b-c1cb-46b6-aa8e-cbed58d0b94c'
-const DEFAULT_MODERN_TEMPLATE = '237597084530'
+const JILLIAN_USA_TEMPLATE = '454422093232'
 const FITTING_KIT_PRODUCT_IDS = ['57786096', '138783', '1640211461']
 const LINE_ITEM_PROPS = ['name', 'hs_sku', 'price', 'quantity', 'amount', 'discount', 'hs_discount_percentage', 'hs_product_id']
 
@@ -209,7 +215,7 @@ test.describe.serial('quote publish proof', () => {
     expect(fx.quoteId, 'a quote on the deal').not.toBe('')
     const quote = await hs('GET', `/crm/v3/objects/quotes/${fx.quoteId}?properties=hs_status,hs_quote_link,hs_logo_url,hs_primary_color,hs_quote_owner_id,hs_sender_company_name&associations=quote_template`)
     expect(quote.json.properties.hs_status).toBe('APPROVAL_NOT_NEEDED')
-    expect(String(quote.json.associations?.['quote templates']?.results?.[0]?.id ?? quote.json.associations?.quote_template?.results?.[0]?.id)).toBe(DEFAULT_MODERN_TEMPLATE)
+    expect(String(quote.json.associations?.['quote templates']?.results?.[0]?.id ?? quote.json.associations?.quote_template?.results?.[0]?.id)).toBe(JILLIAN_USA_TEMPLATE)
     expect(quote.json.properties.hs_logo_url).toMatch(/^https:\/\//)
     expect(quote.json.properties.hs_primary_color).toBe('#005843')
     expect(quote.json.properties.hs_sender_company_name).toBe('Echo Barrier Group')
@@ -236,9 +242,13 @@ test.describe.serial('quote publish proof', () => {
     await customer.goto(fx.quoteLink!)
     await expect(customer.getByText(/Fitting Kit/).first()).toBeVisible({ timeout: 30_000 })
     const headers = (await customer.locator('th').allTextContents()).map((h) => h.trim())
-    expect(headers.join('|')).not.toMatch(/SKU|Image/)
+    // Her template's columns, fixed in the template. Both headers prove it is
+    // the Jillian USA template the customer is looking at.
+    expect(headers).toContain('SKU')
+    expect(headers).toContain('Image')
     await expect(customer.getByText(/discount/i)).toHaveCount(0)
-    await expect(customer.getByText('EBH9NA')).toHaveCount(0)
+    // The SKU is meant to show now (Dean, 16 Sep 2026).
+    await expect(customer.getByText('EBH9NA').first()).toBeVisible()
     await expect(customer.getByText('$245.00').first()).toBeVisible()
     await expect(customer.getByText('$325.00')).toHaveCount(0)
     await shot(customer, '05-customer-quote-page.png')

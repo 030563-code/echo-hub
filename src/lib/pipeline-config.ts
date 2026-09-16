@@ -173,13 +173,18 @@ export function allowedCurrenciesForPipeline(pipelineId: string | null | undefin
  * Before a second one is onboarded the id belongs on their profile row.
  */
 export const QUOTE_TEMPLATE_IDS: Record<string, string | null> = {
-  // "Default Modern", the template every quote Jillian makes by hand in HubSpot
-  // uses (checked on her 9 to 15 Sep 2026 quotes). The custom "Jillian USA"
-  // (454422093232) and "Jillian CAD" (456904456263) templates print SKU and
-  // Image columns the customer was never meant to see; map them back here only
-  // once those columns are removed in HubSpot's template editor.
-  US: '237597084530',
-  CAN: '237597084530',
+  // Jillian's own custom templates. They print a SKU column and an Image
+  // column, and both are fixed in the template: a line with no SKU renders an
+  // empty cell under the header, and the Image cell is an empty tag on every
+  // line, so no choice of fields the Hub sends can hide either (read off the
+  // rendered page of JR202600018, 16 Sep 2026).
+  //
+  // Dean, 16 Sep 2026, after seeing that quote as she sent it: "the sku is
+  // fine in the quote." So these are back. Between 15 and 16 Sep the mapping
+  // was "Default Modern" (237597084530), the template 43 of her last 44
+  // hand-made quotes used, chosen when the SKU column was still unwanted.
+  US: '454422093232',
+  CAN: '456904456263',
   // Australia (Jack, the ANZ AI sales agent). NULL ON PURPOSE until the
   // Australian template cloned from "Geoff USA" (447512623874) exists and its
   // own id is pasted here. While null, quoteTemplateIdFor('AU') returns null,
