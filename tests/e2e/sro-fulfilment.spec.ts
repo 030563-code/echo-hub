@@ -1,5 +1,4 @@
 import { test, expect, type Page } from "@playwright/test";
-import { createHash, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { adminCreds, login } from "./helpers";
 import { deletePurchaseOrdersByNotes, serviceClient } from "./db-helpers";
@@ -109,7 +108,6 @@ const creds = adminCreds();
 let stockPo: Fixture;
 let manufacturePo: Fixture;
 let bamidaPo: Fixture;
-let supplierLink = "";
 
 test.beforeAll(async () => {
   if (!sb || !creds) return;
@@ -118,17 +116,10 @@ test.beforeAll(async () => {
   // shortage block as well.
   manufacturePo = await makePo(sb, "EB_GROUP_TO_SRO", "EB-GROUP", "EB-SRO", 500, "E2EPO26005");
   // A Bamida order as it stands after Manufacture and before Send: a bare
-  // po_manufacturing row and the link the email would have carried.
+  // po_manufacturing row and nothing on it yet.
   bamidaPo = await makePo(sb, "SRO_TO_SUPPLIER", "EB-SRO", "SUPPLIER", 20, "E2EPO26006");
   const { error: mErr } = await sb.from("po_manufacturing").insert({ po_id: bamidaPo.id });
   if (mErr) throw mErr;
-  supplierLink = randomBytes(32).toString("base64url");
-  const { error: tErr } = await sb.from("manufacturing_access_tokens").insert({
-    token_hash: createHash("sha256").update(supplierLink).digest("hex"),
-    po_id: bamidaPo.id,
-    expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString(),
-  });
-  if (tErr) throw tErr;
 });
 
 test.afterAll(async () => {
@@ -283,63 +274,38 @@ test("the board waits for the estimated start date before saying Manufacturing i
   await sb!.from("po_manufacturing").update({ sent_at: null, est_start: null }).eq("po_id", bamidaPo.id);
 });
 
-test("the supplier link needs no login: dates save, finished is one-shot, a wrong link is refused", async ({
-  browser,
-}) => {
-  test.setTimeout(150_000);
-  const first = await browser.newContext({ baseURL: BASE_URL });
-  const a = await first.newPage();
-  await a.goto(`/manufacturing/${supplierLink}`);
-  await expect(a.getByRole("heading", { name: `Purchase order ${bamidaPo.po_number}` })).toBeVisible({
-    timeout: 30_000,
-  });
-  await expect(a.getByRole("button", { name: "Save dates" })).toBeEnabled();
-  await expect(a.getByRole("button", { name: "Manufacturing finished" })).toBeEnabled();
-  // Not a price anywhere on a supplier's screen.
-  await expect(a.getByText(/unit price|€|EUR/i)).toHaveCount(0);
-
-  await a.locator('input[type="date"]').nth(0).fill("2026-09-10");
-  await a.locator('input[type="date"]').nth(1).fill("2026-09-24");
-  await a.getByRole("button", { name: "Save dates" }).click();
-  await expect(a.getByText("Saved. Thank you.")).toBeVisible({ timeout: 15_000 });
-
-  // Two browsers press finished together. One wins; the other is told so.
-  const secondBrowser = await browser.newContext({ baseURL: BASE_URL });
-  const b = await secondBrowser.newPage();
-  await b.goto(`/manufacturing/${supplierLink}`);
-  await expect(b.getByRole("button", { name: "Manufacturing finished" })).toBeEnabled({ timeout: 30_000 });
-  for (const p of [a, b]) await p.getByRole("button", { name: "Manufacturing finished" }).click();
-  await Promise.all([
-    a.getByRole("button", { name: "Yes, it is finished" }).click(),
-    b.getByRole("button", { name: "Yes, it is finished" }).click(),
-  ]);
-  const won = /You marked this order finished on/;
-  const lost = "This order is already marked finished.";
-  await expect(a.getByText(won).or(a.getByText(lost))).toBeVisible({ timeout: 20_000 });
-  await expect(b.getByText(won).or(b.getByText(lost))).toBeVisible({ timeout: 20_000 });
-  const refusals = (await a.getByText(lost).count()) + (await b.getByText(lost).count());
-  expect(refusals).toBe(1);
+/**
+ * The factory finishing the order.
+ *
+ * Until 16 Sep 2026 this was a signed link with no login, and this spec drove
+ * it. That page is gone: the manufacturer confirms and finishes from their own
+ * Hub account now, and tests/e2e/factory-login.spec.ts drives that for real,
+ * including the one-shot race.
+ *
+ * What the tests BELOW are about is different: how the board and the purchase
+ * order page read an order once it is finished. So the state is stamped here
+ * through the service role rather than re-driving a flow another spec owns.
+ */
+test("the factory has confirmed and finished the order", async () => {
+  const { error } = await sb!
+    .from("po_manufacturing")
+    .update({
+      confirmed_at: new Date().toISOString(),
+      est_start: "2026-09-10",
+      est_finish: "2026-09-24",
+      finished_at: new Date().toISOString(),
+    })
+    .eq("po_id", bamidaPo.id);
+  expect(error).toBeNull();
 
   const { data: row } = await sb!
     .from("po_manufacturing")
     .select("finished_at, est_start, est_finish")
     .eq("po_id", bamidaPo.id)
     .single();
-  expect(row).not.toBeNull();
   expect(row!.finished_at).not.toBeNull();
   expect(row!.est_start).toBe("2026-09-10");
   expect(row!.est_finish).toBe("2026-09-24");
-
-  // Back on the link there is nothing left to press.
-  await a.reload();
-  await expect(a.getByText(won)).toBeVisible({ timeout: 30_000 });
-  await expect(a.getByRole("button", { name: "Manufacturing finished" })).toHaveCount(0);
-
-  await a.goto("/manufacturing/not-a-real-link");
-  await expect(a.getByText("This link is not valid.")).toBeVisible({ timeout: 30_000 });
-
-  await first.close();
-  await secondBrowser.close();
 });
 
 test("after Bamida press finished the board says Ready for shipment, NOT Shipping", async ({ page }) => {
