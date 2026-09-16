@@ -171,6 +171,7 @@ export default function FinishedBoard({ rows, canEdit }: { rows: FinishedPositio
           itemKind="finished"
           warehouse={selected.warehouse_code}
           sku={selected.sku}
+          canEdit={canEdit}
           title={`${selected.sku} at ${selected.warehouse_code}`}
           onClose={() => setSelected(null)}
         />

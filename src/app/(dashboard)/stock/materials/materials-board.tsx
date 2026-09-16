@@ -119,6 +119,7 @@ export default function MaterialsBoard({ rows, canEdit }: { rows: MaterialPositi
           itemKind="material"
           warehouse={SRO_WAREHOUSE}
           sku={selected.component_code}
+          canEdit={canEdit}
           title={`${selected.component_code} at ${SRO_WAREHOUSE}`}
           onClose={() => setSelected(null)}
         />
