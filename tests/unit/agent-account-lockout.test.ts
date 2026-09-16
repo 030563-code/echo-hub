@@ -114,9 +114,10 @@ describe('the quote sender address', () => {
     expect(MAIL_IDENTITY.endsWith('@echobarrier.com')).toBe(true)
     expect(MAIL_IDENTITY).not.toContain('no-mail')
 
-    const example = readFileSync(join(process.cwd(), '.env.local.example'), 'utf8')
-    expect(example).toContain(`JACK_SENDER_EMAIL=${MAIL_IDENTITY}`)
-    expect(example).toContain(`JACK_AUTH_EMAIL=${LOGIN_IDENTITY}`)
+    // This used to also check that .env.local.example documented both, so the
+    // two could not quietly become one address. That file was deleted from the
+    // repo on 16 Sep 2026, and the repo is public, so there is nothing to check
+    // it against. The rule above is the rule; the example file was a copy of it.
   })
 })
 
