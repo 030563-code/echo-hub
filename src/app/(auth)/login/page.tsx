@@ -42,8 +42,13 @@ export default function LoginPage() {
       <Card className="w-full max-w-md bg-[#111] border-gray-800">
         <div className="text-center mb-8">
           <div className="flex justify-center mb-6">
+            {/* Echo Barrier's own dark-ink logo, transparent PNG, inverted to
+                white for this black ground. It replaced logo.jpg here on 16 Sep
+                2026: that file is a CMYK JPEG with an opaque white field, so
+                inverting it put a box behind the type instead of nothing. The
+                PDFs still read logo.jpg, which wants JPEG bytes. */}
             <Image
-              src="/logo.jpg"
+              src="/logo-dark.png"
               alt="Echo Barrier"
               width={180}
               height={54}

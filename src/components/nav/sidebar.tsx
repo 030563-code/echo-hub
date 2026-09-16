@@ -63,7 +63,7 @@ export function Sidebar({ capabilities, isExternal, organisations, activeOrg, di
           className="flex flex-col items-center text-center rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-echo-orange/50"
         >
           <Image
-            src="/logo.jpg"
+            src="/logo-dark.png"
             alt=""
             width={160}
             height={48}

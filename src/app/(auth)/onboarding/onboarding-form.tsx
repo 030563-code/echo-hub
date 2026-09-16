@@ -62,7 +62,7 @@ export default function OnboardingForm({ email, defaultDisplayName, suggestedPip
       <div className="text-center mb-8">
         <div className="flex justify-center mb-6">
           <Image
-            src="/logo.jpg"
+            src="/logo-dark.png"
             alt="Echo Barrier"
             width={180}
             height={54}
