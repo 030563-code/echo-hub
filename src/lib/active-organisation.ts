@@ -15,7 +15,8 @@
  * active-organisation.server.ts.
  */
 
-import { isOrgCode, type OrgCode } from '@/lib/organisations'
+import { isOrgCode, moduleHasOrg, type OrgCode } from '@/lib/organisations'
+import { NAV_ITEMS, activeNavHref, type NavItem } from '@/lib/capabilities'
 
 export const ACTIVE_ORG_COOKIE = 'hub_org'
 
@@ -49,3 +50,26 @@ export function safeNextPath(raw: string | null | undefined): string {
   if (/[\s\0]/.test(value)) return '/'
   return value
 }
+
+/**
+ * Where the header switch lands after choosing an organisation.
+ *
+ * Dean, 16 Sep 2026: "you should be able to click on the flag at the top next
+ * to Echo Barrier Hub to change the current loaded country." The sidebar's
+ * per-module lists already do this, but each of those knows which module it is
+ * under and only offers the organisations that module has. The header flag
+ * sits above every module, so it has to work that out from the path.
+ *
+ * Stay on the current page when it is not organisation-scoped, or when its
+ * module covers the chosen organisation. Otherwise go to the dashboard: landing
+ * on Quotes for s.r.o., which has no sales pipeline, would be a page with
+ * nothing to show and no explanation.
+ */
+export function nextPathAfterSwitch(pathname: string, code: OrgCode, items: NavItem[] = NAV_ITEMS): string {
+  const path = safeNextPath(pathname)
+  const href = activeNavHref(path, items)
+  const item = href === null ? undefined : items.find((i) => i.href === href)
+  if (!item?.module) return path
+  return moduleHasOrg(item.module, code) ? path : '/'
+}
+

@@ -48,6 +48,50 @@ test.describe('Organisations (privileged user)', () => {
     await expect(page.getByText('Invoicing for Canada is not set up in the Hub yet.')).toHaveCount(0)
   })
 
+  test('the header flag switches organisation and keeps the page when it can', async ({ page }) => {
+    // Dean, 16 Sep 2026: "you should be able to click on the flag at the top
+    // next to Echo Barrier Hub to change the current loaded country."
+    await page.goto('/invoicing/accepted')
+    const badge = page.getByTestId('active-organisation')
+    await expect(badge).toHaveAttribute('aria-haspopup', 'menu')
+    await badge.click()
+    const menu = page.getByRole('menu', { name: 'Organisations' })
+    await expect(menu).toBeVisible()
+    for (const org of ALL_SEVEN) {
+      await expect(menu.getByRole('menuitem', { name: org, exact: true })).toBeVisible()
+    }
+    await menu.getByRole('menuitem', { name: 'Canada', exact: true }).click()
+    // Invoicing has Canada, so the page is kept.
+    await expect(page).toHaveURL(/\/invoicing\/accepted/)
+    await expect(page.getByTestId('active-organisation')).toHaveText(/Canada/)
+
+    await page.getByTestId('active-organisation').click()
+    await page.getByRole('menuitem', { name: 'USA', exact: true }).click()
+    await expect(page.getByTestId('active-organisation')).toHaveText(/USA/)
+  })
+
+  test('the header flag goes home when the page cannot show the chosen organisation', async ({ page }) => {
+    await page.goto('/quotes')
+    await page.getByTestId('active-organisation').click()
+    // s.r.o. has no sales pipeline, so Quotes has nothing to show for it.
+    await page.getByRole('menuitem', { name: 'SRO', exact: true }).click()
+    await expect(page).toHaveURL(/\/$/)
+    await expect(page.getByTestId('active-organisation')).toHaveText(/SRO/)
+
+    await page.getByTestId('active-organisation').click()
+    await page.getByRole('menuitem', { name: 'USA', exact: true }).click()
+    await expect(page.getByTestId('active-organisation')).toHaveText(/USA/)
+  })
+
+  test('the header menu closes on Escape without switching', async ({ page }) => {
+    const before = ((await page.getByTestId('active-organisation').textContent()) ?? '').trim()
+    await page.getByTestId('active-organisation').click()
+    await expect(page.getByRole('menu', { name: 'Organisations' })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('menu', { name: 'Organisations' })).toHaveCount(0)
+    await expect(page.getByTestId('active-organisation')).toHaveText(before)
+  })
+
   test('Quotes lists only the organisations with a sales pipeline', async ({ page }) => {
     await page.locator('aside').getByRole('link', { name: 'Quotes', exact: true }).click()
     await expect(page).toHaveURL(/\/quotes/)
@@ -67,10 +111,12 @@ test.describe('Organisations (single-organisation user)', () => {
 
   test('sees no organisation list, wears a badge, and cannot switch by URL', async ({ page }) => {
     await login(page, limited!)
-    // One organisation is nothing to choose between.
+    // One organisation is nothing to choose between: no sidebar lists, and the
+    // header badge is a plain badge, not a menu.
     await expect(page.locator('aside').getByRole('button', { name: /^Organisations for / })).toHaveCount(0)
     const badge = page.getByTestId('active-organisation')
     await expect(badge).toBeVisible()
+    await expect(badge).not.toHaveAttribute('aria-haspopup', 'menu')
     const before = ((await badge.textContent()) ?? '').trim()
 
     // Australia is Jack's, the AI agent's: no human persona holds it. The

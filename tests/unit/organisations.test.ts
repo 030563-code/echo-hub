@@ -21,7 +21,7 @@ import {
   transportSeesAll,
   warehousesForOrg,
 } from '@/lib/organisations'
-import { resolveActiveOrg, safeNextPath } from '@/lib/active-organisation'
+import { resolveActiveOrg, safeNextPath, nextPathAfterSwitch } from '@/lib/active-organisation'
 import { FLAG_CODES } from '@/components/ui/flag-icon'
 import { PIPELINE_CONFIG } from '@/lib/pipeline-config'
 import { DEPOT_MAPPING } from '@/lib/depot-constants'
@@ -199,5 +199,31 @@ describe('where the switch sends the browser', () => {
     for (const bad of ['//evil.example', 'https://evil.example', '/\\evil.example', 'javascript:alert(1)', '', null, '/x y']) {
       expect(safeNextPath(bad), String(bad)).toBe('/')
     }
+  })
+})
+
+describe('nextPathAfterSwitch: where the header flag lands you', () => {
+  // Dean, 16 Sep 2026: "you should be able to click on the flag at the top
+  // next to Echo Barrier Hub to change the current loaded country."
+
+  it('stays on a page whose module covers the chosen organisation', () => {
+    // Invoicing lists every organisation, so Canada keeps the page.
+    expect(nextPathAfterSwitch('/invoicing/accepted', 'EB-CANADA')).toBe('/invoicing/accepted')
+  })
+
+  it('goes home from a page whose module does not have the organisation', () => {
+    // s.r.o. manufactures; it has no sales pipeline and no place under Quotes.
+    expect(nextPathAfterSwitch('/quotes', 'EB-SRO')).toBe('/')
+    expect(nextPathAfterSwitch('/quotes/deals/123', 'EB-SRO')).toBe('/')
+  })
+
+  it('stays on a page that is not organisation-scoped at all', () => {
+    expect(nextPathAfterSwitch('/', 'EB-CANADA')).toBe('/')
+    expect(nextPathAfterSwitch('/profile', 'EB-SRO')).toBe('/profile')
+  })
+
+  it('never hands the route anything but a path on this site', () => {
+    expect(nextPathAfterSwitch('//evil.example', 'EB-CANADA')).toBe('/')
+    expect(nextPathAfterSwitch('https://evil.example/x', 'EB-CANADA')).toBe('/')
   })
 })

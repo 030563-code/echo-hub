@@ -11,8 +11,8 @@ import { OpenOnPhone } from '@/components/nav/open-on-phone'
 import { Avatar } from '@/components/profile/avatar'
 import { isStaging } from '@/lib/env'
 import type { CapabilityKey } from '@/lib/capabilities'
-import { organisation, type OrgCode } from '@/lib/organisations'
-import { FlagIcon } from '@/components/ui/flag-icon'
+import type { OrgCode } from '@/lib/organisations'
+import { OrganisationSwitcher } from '@/components/nav/organisation-switcher'
 
 /** Who is signed in, as the header and sidebar show them. Every field but the
  *  id can be null: no email, no name set, no job title, or no photo. */
@@ -124,15 +124,10 @@ export function Shell({ capabilities, isExternal, organisations, activeOrg, disp
               Echo Barrier Hub
             </h2>
             {/* Which organisation everything on this page belongs to. One for
-                the whole Hub, so it is said once, here, on every screen size. */}
+                the whole Hub, so it is said once, here, on every screen size.
+                Since 16 Sep 2026 it is also where you change it. */}
             {activeOrg && (
-              <span
-                data-testid="active-organisation"
-                className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 bg-gray-50 px-2.5 py-0.5 text-xs font-semibold text-gray-800"
-              >
-                <FlagIcon code={organisation(activeOrg).flag} />
-                {organisation(activeOrg).label}
-              </span>
+              <OrganisationSwitcher organisations={organisations} activeOrg={activeOrg} pathname={pathname} />
             )}
           </div>
           {/* Both controls keep a 44px tap target on mobile (the hamburger's size).
