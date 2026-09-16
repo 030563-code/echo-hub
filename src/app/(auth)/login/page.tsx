@@ -60,7 +60,12 @@ export default function LoginPage() {
           <p className="text-xs text-gray-500 mt-2 uppercase tracking-wider">Echo Barrier internal platform</p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-6">
+        {/* method="post", 16 Sep 2026: without it a submit that lands before
+            React has hydrated is a native GET, and the browser puts the email and
+            PASSWORD in the URL, the history and every request log on the way. Seen
+            happen on a slow connection. Once hydrated, onSubmit prevents the
+            default and this attribute never comes into play. */}
+        <form method="post" onSubmit={handleLogin} className="space-y-6">
           {/* name + autoComplete are what a password manager matches on. Without
               them Apple Passwords sees two anonymous boxes and offers nothing. */}
           <Input

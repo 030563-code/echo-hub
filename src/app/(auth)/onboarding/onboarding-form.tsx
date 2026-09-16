@@ -76,7 +76,12 @@ export default function OnboardingForm({ email, defaultDisplayName, suggestedPip
         <p className="text-gray-400 text-sm">Set up your account to get started</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      {/* method="post", 16 Sep 2026: without it a submit that lands before
+          React has hydrated is a native GET, and the browser puts the email and
+          PASSWORD in the URL, the history and every request log on the way. Seen
+          happen on a slow connection. Once hydrated, onSubmit prevents the
+          default and this attribute never comes into play. */}
+      <form method="post" onSubmit={handleSubmit} className="space-y-6">
         <Input
           label="Your Name"
           type="text"
