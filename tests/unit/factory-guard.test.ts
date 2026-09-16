@@ -237,10 +237,29 @@ describe('the confirmation email goes through the one switch', () => {
   it('sends nothing from the staging sandbox', () => {
     expect(source).toMatch(/externalCallsDisabled\(\)/)
   })
+
+  it('goes to the addresses the order was sent to, never to the login', () => {
+    // Dean, 16 Sep 2026: "cant we link an email to a PO by what Juraj put in in
+    // that step just before manufacturing?" One login may stand for several
+    // people and its address may be one nobody at the factory reads, so the
+    // receipt follows the order rather than whoever pressed the button.
+    const actions = read(ACTIONS)
+    expect(actions).toContain("select('intended_to, intended_cc, sent_to')")
+    expect(actions).toContain('to: addressedTo')
+    expect(code(ACTIONS)).not.toContain('auth.user.email')
+    expect(code(NOTIFY)).not.toContain('toEmail')
+  })
 })
 
 describe('the emailed purchase order became a notification', () => {
   const source = read('src/app/actions/purchase-orders/send-manufacturing-po.ts')
+
+  it('records who the order was really addressed to, not only where mail went', () => {
+    // sent_to is the test address while the switch is on. These two are what
+    // the confirmation email reads back, so they must be the real audience.
+    expect(source).toContain('intended_to: recipients.intended?.to ?? recipients.to')
+    expect(source).toContain('intended_cc: recipients.intended?.cc ?? recipients.cc')
+  })
 
   it('attaches nothing and mints no link', () => {
     // Dean, 16 Sep 2026: "not to have the pdf attached but rather link to the

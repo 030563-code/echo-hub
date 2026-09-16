@@ -112,6 +112,25 @@ export async function confirmFactoryOrder(input: {
     .eq('id', gated.auth.user.id)
     .maybeSingle<{ display_name: string | null }>()
 
+  // WHERE THE RECEIPT GOES. Dean, 16 Sep 2026: "cant we link an email to a PO
+  // by what Juraj put in in that step just before manufacturing?" It is on the
+  // row already: the addresses the order was sent to. The Hub account that
+  // pressed Confirm is deliberately not used, because one shared login may
+  // stand for several people and its address may be one nobody there reads.
+  const { data: addressed } = await admin
+    .from('po_manufacturing')
+    .select('intended_to, intended_cc, sent_to')
+    .eq('po_id', parsed.data.poId)
+    .maybeSingle<{
+      intended_to: string[] | null
+      intended_cc: string[] | null
+      sent_to: string[] | null
+    }>()
+
+  // sent_to covers an order sent before the intended lists existed: it is where
+  // that order's own email actually went.
+  const addressedTo = addressed?.intended_to?.length ? addressed.intended_to : (addressed?.sent_to ?? [])
+
   const told = await notifyPoConfirmed({
     poId: parsed.data.poId,
     poNumber: order?.po_number ?? null,
@@ -120,7 +139,8 @@ export async function confirmFactoryOrder(input: {
     estStart: parsed.data.estStart,
     estFinish: parsed.data.estFinish,
     lines: order?.lines ?? [],
-    toEmail: gated.auth.user.email ?? null,
+    to: addressedTo,
+    cc: addressed?.intended_cc ?? [],
   })
 
   if (told.sent) {

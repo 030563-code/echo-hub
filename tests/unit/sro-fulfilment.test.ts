@@ -57,7 +57,10 @@ describe('the Bamida send is claimed before anything leaves', () => {
   const source = read(SEND)
 
   it('claims with a conditional update on sent_at, not with a label', () => {
-    expect(source).toMatch(/\.update\(\{[\s\S]{0,400}sent_at: new Date\(\)[\s\S]{0,400}\}\)[\s\S]{0,120}\.is\("sent_at", null\)/)
+    // The windows bound how far apart the pieces may drift, nothing more. They
+    // were widened on 16 Sep 2026 when the claim began recording the order's
+    // real audience (intended_to / intended_cc) alongside where mail went.
+    expect(source).toMatch(/\.update\(\{[\s\S]{0,400}sent_at: new Date\(\)[\s\S]{0,700}\}\)[\s\S]{0,120}\.is\("sent_at", null\)/)
     expect(source).toContain('already been sent to Bamida')
   })
 

@@ -186,6 +186,11 @@ export async function sendManufacturingPoToBamida(
       sent_by_uid: auth.user.id,
       sent_to: recipients.to,
       sent_was_test: recipients.isTest,
+      // The real audience, which sent_to is not while the test switch is on.
+      // The confirmation email reads these back, so it reaches the people the
+      // order was addressed to and not whichever account pressed Confirm.
+      intended_to: recipients.intended?.to ?? recipients.to,
+      intended_cc: recipients.intended?.cc ?? recipients.cc,
       short_materials: shortMaterials.length > 0 ? shortMaterials : null,
     })
     .eq("po_id", poId)
