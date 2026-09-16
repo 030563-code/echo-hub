@@ -1,6 +1,5 @@
--- NOT APPLIED. Needs Dean's go-ahead. Apply via MCP apply_migration on
--- korylyniwsqtsvzuzydg, then move this file up into supabase/migrations/.
--- Never db push.
+-- APPLIED 2026-09-14 via MCP apply_migration on korylyniwsqtsvzuzydg. This file
+-- is the repo record of what ran. Never db push.
 --
 -- Two pre-existing gaps, closed for every user (found while building Jack's
 -- agent quote route).

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 /**
- * Pins the pending hardening migration (not applied until Dean says so).
+ * Pins the hardening migration, applied 2026-09-14.
  *
  * The rule: a non-super-admin cannot clear profiles.display_name, because a
  * blank name reopens onboarding, which rewrites pipeline, depots and templates
@@ -11,7 +11,7 @@ import { join } from 'node:path'
  * as anon's, since the PUBLIC grant alone kept anon able to call it.
  */
 
-const UP = 'supabase/migrations/pending/20260914160000_profiles_guard_display_name.sql'
+const UP = 'supabase/migrations/20260914160000_profiles_guard_display_name.sql'
 const DOWN = 'supabase/migrations/rollback/20260914160000_profiles_guard_display_name.down.sql'
 
 function code(path: string): string {
@@ -27,8 +27,8 @@ describe('profiles display_name guard migration', () => {
   const up = code(UP)
   const down = code(DOWN)
 
-  it('is marked as not applied and never pushed', () => {
-    expect(raw.startsWith("-- NOT APPLIED. Needs Dean's go-ahead.")).toBe(true)
+  it('records where it ran, and that it was never pushed', () => {
+    expect(raw.startsWith('-- APPLIED 2026-09-14 via MCP apply_migration')).toBe(true)
     expect(raw).toContain('Never db push.')
   })
 

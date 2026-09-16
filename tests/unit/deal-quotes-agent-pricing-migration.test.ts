@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 /**
- * Pins the pending urgent-pricing migration (not applied until Dean says so).
+ * Pins the urgent-pricing migration, applied 2026-09-14.
  *
  * Four nullable columns on deal_quotes: which price a Jack quote was, when the
  * urgent offer closes, which urgent quote a reissue replaces, and why a floor
@@ -11,7 +11,7 @@ import { join } from 'node:path'
  * rep raised is untouched by this in both directions.
  */
 
-const UP = 'supabase/migrations/pending/20260914161000_deal_quotes_agent_pricing.sql'
+const UP = 'supabase/migrations/20260914161000_deal_quotes_agent_pricing.sql'
 const DOWN = 'supabase/migrations/rollback/20260914161000_deal_quotes_agent_pricing.down.sql'
 
 function code(path: string): string {
@@ -27,8 +27,8 @@ describe('deal_quotes agent pricing migration', () => {
   const up = code(UP)
   const down = code(DOWN)
 
-  it('is marked as not applied and never pushed', () => {
-    expect(raw.startsWith("-- NOT APPLIED. Needs Dean's go-ahead")).toBe(true)
+  it('records where it ran, and that it was never pushed', () => {
+    expect(raw.startsWith('-- APPLIED 2026-09-14 via MCP apply_migration')).toBe(true)
     expect(raw).toContain('Never db push.')
     expect(raw).toContain('the same window as')
   })

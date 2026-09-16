@@ -1,8 +1,7 @@
--- NOT APPLIED. Needs Dean's go-ahead, and it MUST land in the same window as
--- the Jack cutover: /api/agent/quote writes these columns on every quote it
--- raises, so the Hub deploy and this file go together. Apply via MCP
--- apply_migration on korylyniwsqtsvzuzydg, then move this file up into
--- supabase/migrations/. Never db push.
+-- APPLIED 2026-09-14 via MCP apply_migration on korylyniwsqtsvzuzydg. It landed
+-- in the same window as the Jack cutover: /api/agent/quote writes these columns
+-- on every quote it raises, so the Hub deploy and this file went together. This
+-- file is the repo record of what ran. Never db push.
 --
 -- Urgent floor pricing for Jack, the ANZ AI sales agent (Dean, 2026-09-14).
 --
