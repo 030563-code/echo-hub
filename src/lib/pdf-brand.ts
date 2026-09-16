@@ -29,10 +29,20 @@ export async function loadLogoDataUrl(): Promise<string | null> {
 export async function drawBrandHeader(
   d: jsPDF,
   W: number,
-  opts: { title: string; refs: string[] }
+  opts: {
+    title: string;
+    refs: string[];
+    /**
+     * The wordmark, already read. Supplied by a SERVER caller, which cannot
+     * fetch("/logo.jpg") because there is no origin to fetch from; omitted in
+     * the browser, where loadLogoDataUrl does the fetch. Same shape the invoice
+     * renderer already uses (invoice-pdf.ts takes logoDataUrl as an input).
+     */
+    logoDataUrl?: string;
+  }
 ): Promise<number> {
   try {
-    const logo = await loadLogoDataUrl();
+    const logo = opts.logoDataUrl ?? (await loadLogoDataUrl());
     if (logo) d.addImage(logo, "JPEG", 14, 12, 46, 46 / LOGO_ASPECT);
   } catch {
     /* the logo is optional — the document still renders without it */

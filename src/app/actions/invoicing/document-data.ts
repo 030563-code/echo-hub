@@ -1,7 +1,7 @@
 import 'server-only'
+
+import { serverLogoDataUrl } from '@/lib/pdf-logo.server'
 import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
 import { buildInvoiceDocument } from '@/lib/customer-invoice/invoice-document'
 import { buildInvoicePdf, invoicePdfFilename } from '@/lib/customer-invoice/invoice-pdf'
 import {
@@ -35,22 +35,9 @@ import type { CustomerInvoiceRow, CustomerInvoiceLineRow } from './shared'
  * actions/invoicing/attachments.ts.
  */
 
-let logoCache: string | null | undefined
-
-/** The wordmark, read once off disk. `undefined` means not tried yet, `null`
- *  means tried and failed, and a failure must cost the logo rather than the
- *  invoice. */
-async function logoDataUrl(): Promise<string | undefined> {
-  if (logoCache !== undefined) return logoCache ?? undefined
-  try {
-    const bytes = await readFile(path.join(process.cwd(), 'public', 'logo.jpg'))
-    logoCache = `data:image/jpeg;base64,${bytes.toString('base64')}`
-  } catch (error) {
-    console.error('Invoice PDF: logo could not be read from public/logo.jpg', error)
-    logoCache = null
-  }
-  return logoCache ?? undefined
-}
+/** Moved to pdf-logo.server.ts on 16 Sep 2026, unchanged, when the purchase
+ *  order PDF needed the same read. One copy of "where the logo lives". */
+const logoDataUrl = serverLogoDataUrl
 
 export interface RenderedInvoice {
   bytes: Buffer

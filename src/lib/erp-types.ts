@@ -5,6 +5,11 @@ export interface PurchaseOrder {
   po_number: string;
   parent_po_id: string | null;
   master_ref: string | null;
+  /** Written back by the workflow that creates the Xero purchase order. Null
+   *  until it has, which is what stops anything trying to attach to nothing. */
+  xero_po_id?: string | null;
+  /** Which Xero organisation that purchase order lives in. */
+  xero_tenant_id?: string | null;
   leg: "DEPOT_TO_EB_GROUP" | "EB_GROUP_TO_SRO" | "SRO_TO_SUPPLIER" | "SRO_TO_CARGO";
   from_entity: string;
   to_entity: string;

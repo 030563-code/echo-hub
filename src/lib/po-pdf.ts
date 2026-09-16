@@ -17,6 +17,12 @@ export interface PoPdfOptions {
   fx: FxRates | null;
   /** Currency the stored unit_price is denominated in (the root depot's). */
   rootCurrency: Currency;
+  /**
+   * The wordmark, for a server-side render. The browser leaves this out and the
+   * header fetches it; the server has no origin to fetch from and reads it off
+   * disk instead.
+   */
+  logoDataUrl?: string;
 }
 
 // jsPDF's built-in Helvetica is WinAnsi (CP1252). Slovak/Czech carons outside
@@ -34,10 +40,23 @@ function pdfText(s: string | null | undefined): string {
 const party = (opts: PoPdfOptions, code: string): PdfParty =>
   opts.parties[code] ?? { name: code, lines: [] };
 
+/** The internal number, not the display value, which may read "Awaiting...". */
+export function poPdfFilename(po: PurchaseOrder): string {
+  return `${po.po_number.replace(/\s+/g, "")}.pdf`;
+}
+
 // Generates a branded PURCHASE ORDER PDF from a PO row on the board. Prices are
 // shown only for cost.view holders, in THIS leg's currency (converted from the
-// entered root-depot currency). Client-side (dynamic jsPDF import).
-export async function downloadPoPdf(po: PurchaseOrder, opts: PoPdfOptions): Promise<void> {
+// entered root-depot currency).
+//
+// PURE, and returns the document rather than saving it, since 16 Sep 2026: the
+// same bytes now have to be attached to the Xero purchase order, and bytes that
+// exist only inside a click handler in somebody's browser cannot be attached to
+// anything. Exactly the move bamida-po-pdf.ts made for the same reason. jsPDF is
+// imported dynamically so it stays out of the bundle until something renders,
+// which is what lets this run on the server and in the browser and produce the
+// same document either way.
+export async function buildPoPdf(po: PurchaseOrder, opts: PoPdfOptions) {
   const { default: jsPDF } = await import("jspdf");
   const autoTable = (await import("jspdf-autotable")).default;
   const d = new jsPDF();
@@ -60,6 +79,7 @@ export async function downloadPoPdf(po: PurchaseOrder, opts: PoPdfOptions): Prom
       `PO Number: ${pdfText(displayPoNumber(po.po_number))}`,
       `Date: ${(po.created_at ?? "").slice(0, 10)}`,
     ],
+    logoDataUrl: opts.logoDataUrl,
   });
 
   // From / To — full addresses, no "(buyer)"/"(supplier)" labels.
@@ -128,6 +148,11 @@ export async function downloadPoPdf(po: PurchaseOrder, opts: PoPdfOptions): Prom
     d.text(`Notes: ${pdfText(po.notes)}`, 14, y + 4, { maxWidth: W - 28 });
     d.setTextColor(0, 0, 0);
   }
-  // Filename uses the internal number (the display value may be "Awaiting…").
-  d.save(`${po.po_number.replace(/\s+/g, "")}.pdf`);
+  return d;
+}
+
+/** The browser half: build it, then hand it to the download. */
+export async function downloadPoPdf(po: PurchaseOrder, opts: PoPdfOptions): Promise<void> {
+  const d = await buildPoPdf(po, opts);
+  d.save(poPdfFilename(po));
 }

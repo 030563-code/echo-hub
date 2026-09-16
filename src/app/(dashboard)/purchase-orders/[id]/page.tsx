@@ -12,6 +12,7 @@ import { assessOrderCapability } from '@/lib/manufacturing-capability'
 import { loadPurchaseOrderDetail } from '@/lib/po-detail'
 import { loadCargoRequest, type CargoRequestRow } from '@/lib/cargo-request-store'
 import DownloadPoPdfButton from '@/components/po/download-po-pdf-button'
+import AttachPoPdfButton from '@/components/po/attach-po-pdf-button'
 import ShipmentSection from '@/components/po/shipment-section'
 import AttachmentsSection from '@/components/po/attachments-section'
 import CargoPoButton from '@/components/po/cargo-po-button'
@@ -193,13 +194,20 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
             </span>
           </div>
         </div>
-        <DownloadPoPdfButton
-          po={po}
-          canViewCost={canViewCost}
-          parties={pdf.parties}
-          fx={pdf.fx}
-          rootCurrency={rootCurrency}
-        />
+        <div className="w-full space-y-2 sm:w-56">
+          <DownloadPoPdfButton
+            po={po}
+            canViewCost={canViewCost}
+            parties={pdf.parties}
+            fx={pdf.fx}
+            rootCurrency={rootCurrency}
+          />
+          {/* Only once Xero holds the order. The id is what the PDF attaches
+              to, and nothing in that path can create a purchase order. */}
+          {canApprove && po.xero_po_id && (
+            <AttachPoPdfButton poId={po.id} poNumber={po.po_number} />
+          )}
+        </div>
       </div>
 
       {/* The other legs of the same order. Three purchase orders is the chain by
