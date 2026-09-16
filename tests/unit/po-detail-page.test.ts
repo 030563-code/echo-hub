@@ -77,7 +77,7 @@ describe('a Bamida order can still be sent before anything has happened to it', 
     // The regression this catches: a freshly raised Bamida order has no
     // po_manufacturing row, so keying the card on the row removed the very
     // button that sends it.
-    expect(PAGE).toMatch(/isManufacturingOrder\s*\?\s*\{ sentAt: null/)
+    expect(PAGE).toMatch(/isManufacturingOrder\s*\?\s*\{\s*sentAt: null/)
     expect(PAGE).toMatch(/\{isManufacturingOrder && progress && \(/)
   })
 })
@@ -100,7 +100,7 @@ describe('the loader does not leak', () => {
 
   it('reads the service-role table with the named columns and no more', () => {
     expect(LOADER).toMatch(
-      /\.select\('po_id, sent_at, sent_to, sent_was_test, est_start, est_finish, finished_at'\)/,
+      /\.select\('po_id, sent_at, sent_to, sent_was_test, est_start, est_finish, confirmed_at, confirmed_by_uid, finished_at, finished_by_uid'\)/,
     )
   })
 
@@ -113,7 +113,10 @@ describe('the loader does not leak', () => {
 
 describe('what leaves the company carries names, not our codes', () => {
   const PDF = read('src/lib/po-pdf.ts')
-  const SUPPLIER_PAGE = read('src/app/manufacturing/[token]/page.tsx')
+  // The manufacturer's own view of an order. It was a signed-link page
+  // outside the dashboard until 16 Sep 2026; it is a Hub page behind their
+  // own login now, and the rule it carries is the same one.
+  const SUPPLIER_PAGE = read('src/app/(dashboard)/factory/[id]/page.tsx')
 
   /**
    * Dean, 9 Sep 2026: the SKU "has nothing to do with them, it is an internal
@@ -166,9 +169,9 @@ describe('what leaves the company carries names, not our codes', () => {
     }
     // And the two payload builders that hand those modules their lines.
     expect(read('src/app/actions/purchase-orders/send-manufacturing-po.ts')).not.toMatch(/^\s+sku: l\.sku,$/m)
-    expect(read('src/app/actions/manufacturing/supplier-updates.ts')).not.toContain(
-      'purchase_order_lines(sku',
-    )
+    for (const f of ['src/lib/factory/updates.ts', 'src/lib/factory/orders.ts']) {
+      expect(read(f), `${f} carries a SKU into a payload`).not.toContain('purchase_order_lines(sku')
+    }
   })
 
   it('resolves every entity code to a name, in one place', () => {

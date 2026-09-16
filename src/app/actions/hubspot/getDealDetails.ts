@@ -51,6 +51,17 @@ export async function getDealDetails(dealId: string): Promise<GetDealDetailsResu
   }
   const { profile } = auth
 
+  // Module capability gate, as every sibling read has (getLineItems,
+  // getCompanyDetails, getContactDetails, getProductSkus). This one had only a
+  // session check and then scoped by profile.pipeline_id, so an account that
+  // had merely picked a region at onboarding could read every deal in it: name,
+  // amount, description, close date, owner, contact and company. It also
+  // reached HubSpot BEFORE the scope test, so a caller outside the region still
+  // spent our rate limit to be told "Deal not found".
+  if (!auth.capabilities.has('quotes.view') && !auth.capabilities.has('quotes.create')) {
+    return { success: false, error: 'Forbidden: missing quotes capability' }
+  }
+
   if (!dealId || !/^\d+$/.test(dealId)) {
     return { success: false, error: 'Invalid deal id' }
   }

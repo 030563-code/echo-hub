@@ -7,7 +7,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { ChevronDown, LogOut } from 'lucide-react'
-import { navSections, type CapabilityKey, type NavItem } from '@/lib/capabilities'
+import { activeNavHref, navSections, type CapabilityKey } from '@/lib/capabilities'
 import { NAV_ICONS } from '@/lib/nav-icons'
 import { organisation, orgsForNavItem, type OrgCode } from '@/lib/organisations'
 import { FlagIcon } from '@/components/ui/flag-icon'
@@ -19,6 +19,8 @@ import type { ShellProfile } from '@/components/nav/shell'
 
 interface SidebarProps {
   capabilities: CapabilityKey[]
+  /** An outside company's account: no Dashboard row. */
+  isExternal: boolean
   /** The organisations this person holds, in registry order. */
   organisations: OrgCode[]
   /** The one they are looking at, or null when they hold none. */
@@ -27,10 +29,6 @@ interface SidebarProps {
   profile: ShellProfile
   /** Positioning/visibility classes from the shell (off-canvas transform on mobile). */
   className?: string
-}
-
-function isWithin(pathname: string, item: NavItem): boolean {
-  return item.href === '/' ? pathname === '/' : pathname === item.href || pathname.startsWith(`${item.href}/`)
 }
 
 /**
@@ -43,10 +41,13 @@ function isWithin(pathname: string, item: NavItem): boolean {
  * Not <Link>: the header badge and every sub-list live in the layout, and the
  * whole tree has to re-render with the new organisation.
  */
-export function Sidebar({ capabilities, organisations, activeOrg, displayName, profile, className = '' }: SidebarProps) {
+export function Sidebar({ capabilities, isExternal, organisations, activeOrg, displayName, profile, className = '' }: SidebarProps) {
   const pathname = usePathname()
   const caps = new Set<CapabilityKey>(capabilities)
-  const sections = navSections(caps)
+  const sections = navSections(caps, { includeHome: !isExternal })
+  // The longest matching href, so /factory/stock lights Stock and not also
+  // Manufacturing.
+  const current = activeNavHref(pathname, sections.flatMap((s) => s.items))
 
   // A module's list opens with the module (you are in Quotes, so here are the
   // organisations for Quotes) and its chevron opens or closes it without
@@ -87,7 +88,7 @@ export function Sidebar({ capabilities, organisations, activeOrg, displayName, p
             )}
             {section.items.map((item) => {
               const Icon = NAV_ICONS[item.icon]
-              const active = isWithin(pathname, item)
+              const active = current === item.href
               // One organisation is nothing to choose between, so the list
               // only appears for two or more; the header badge says which one.
               const orgs = orgsForNavItem(item.module, organisations)

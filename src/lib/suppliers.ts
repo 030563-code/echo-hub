@@ -1,7 +1,11 @@
 import 'server-only'
 
 import { createServerClient } from '@/lib/supabase/server'
+import type { createAdminClient } from '@/lib/supabase/admin'
 import type { ItemCatalogEntry, PoSupplier } from '@/lib/erp-types'
+
+/** Either the caller's client or the service-role one. */
+type Reader = ReturnType<typeof createAdminClient>
 
 const SUPPLIER_COLS =
   'id, code, name, city, country, currency, address, tax_number, xero_contact_id, active'
@@ -17,9 +21,16 @@ export async function loadActiveSuppliers(): Promise<PoSupplier[]> {
   return (data ?? []) as PoSupplier[]
 }
 
-/** A single supplier by its catalogue code (active or not), or null. */
-export async function getSupplierByCode(code: string): Promise<PoSupplier | null> {
-  const supabase = await createServerClient()
+/**
+ * Pass a client to read as somebody other than the caller.
+ *
+ * The factory's own account holds none of the capabilities can_read_po() wants,
+ * and po_suppliers is staff-only since the factory-login migration, so the
+ * download action hands in the service-role client after its own gate. Default
+ * stays the caller's client, so every existing reader is unchanged.
+ */
+export async function getSupplierByCode(code: string, client?: Reader): Promise<PoSupplier | null> {
+  const supabase = client ?? (await createServerClient())
   const { data } = await supabase
     .from('po_suppliers')
     .select(SUPPLIER_COLS)

@@ -105,7 +105,9 @@ describe('installable app', () => {
     const mw = readFileSync(join(process.cwd(), 'src/middleware.ts'), 'utf8')
     const list = mw.match(/const PUBLIC_PATHS = \[([^\]]*)\]/)
     const paths = [...(list?.[1] ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1])
-    expect(paths).toEqual(['/login', '/onboarding', '/auth/callback', '/manufacturing', '/offline.html'])
+    // /manufacturing left on 16 Sep 2026: the factory has a Hub login now, so
+    // the signed-link page it exempted no longer exists.
+    expect(paths).toEqual(['/login', '/onboarding', '/auth/callback', '/offline.html'])
     // The worker itself and the manifest ride the matcher's extension list.
     expect(mw).toContain('webmanifest')
   })

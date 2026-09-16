@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  activeNavHref,
   CAPABILITIES,
   CAPABILITY_KEYS,
   NAV_GROUPS,
@@ -58,6 +59,9 @@ describe('navSections', () => {
     // operations merge. It is a different module from Invoicing (/invoicing), which is
     // US customer invoicing and stays under Sales and Accounting.
     expect(byGroup['Operations']).toEqual(['Purchase Orders', 'Bill of Materials', 'Transport', 'Invoices', 'Warehousing/Stock', 'Stock'])
+    // The manufacturer's two tabs. Dean, 16 Sep 2026: "Just a single tab only
+    // they can see which is the manufacturing tab and the stock tab".
+    expect(byGroup['Factory']).toEqual(['Manufacturing', 'Stock'])
   })
 
   it('drops a group entirely when every item in it is gated away', () => {
@@ -99,7 +103,41 @@ describe('navSections', () => {
       '/invoices': 'invoices',
       '/mrp': undefined,
       '/stock': 'stock',
+      // The factory is the other party to an order, not one of the seven Xero
+      // companies, so its tabs carry no organisation list.
+      '/factory': undefined,
+      '/factory/stock': undefined,
     })
+    // toEqual counts an undefined value as an absent key, so spell the two new
+    // hrefs out as well: without this the object above would still pass with
+    // them missing entirely.
+    expect(NAV_ITEMS.map((i) => i.href)).toContain('/factory')
+    expect(NAV_ITEMS.map((i) => i.href)).toContain('/factory/stock')
+  })
+})
+
+describe('the factory login sees two tabs and no way anywhere else', () => {
+  const caps = (...keys: CapabilityKey[]) => new Set<CapabilityKey>(keys)
+
+  it('drops the Dashboard row for an external account', () => {
+    const sections = navSections(caps('factory.view', 'factory.update'), { includeHome: false })
+    expect(sections.map((s) => s.group)).toEqual(['Factory'])
+    expect(sections[0].items.map((i) => i.label)).toEqual(['Manufacturing', 'Stock'])
+  })
+
+  it('keeps the Dashboard row for everybody else, so staff are unaffected', () => {
+    const sections = navSections(caps('factory.view'))
+    expect(sections[0].items.map((i) => i.label)).toEqual(['Dashboard'])
+  })
+
+  it('lights one nav row, the longest href that the path is inside', () => {
+    // A plain startsWith lit Manufacturing AND Stock on /factory/stock.
+    expect(activeNavHref('/factory/stock')).toBe('/factory/stock')
+    expect(activeNavHref('/factory')).toBe('/factory')
+    expect(activeNavHref('/factory/2f1c9a3e-0000-4000-8000-000000000000')).toBe('/factory')
+    expect(activeNavHref('/')).toBe('/')
+    expect(activeNavHref('/quotes/board')).toBe('/quotes')
+    expect(activeNavHref('/nowhere')).toBeNull()
   })
 })
 

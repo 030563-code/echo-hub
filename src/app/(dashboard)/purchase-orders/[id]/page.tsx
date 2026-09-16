@@ -121,7 +121,17 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
   const progress =
     manufacturing ??
     (isManufacturingOrder
-      ? { sentAt: null, sentTo: [], sentWasTest: false, estStart: null, estFinish: null, finishedAt: null }
+      ? {
+          sentAt: null,
+          sentTo: [],
+          sentWasTest: false,
+          estStart: null,
+          estFinish: null,
+          confirmedAt: null,
+          confirmedBy: null,
+          finishedAt: null,
+          finishedBy: null,
+        }
       : null)
 
   // Who the Bamida send would go to if nobody changes it. Read here rather than
@@ -393,8 +403,19 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
                 by={manufacturing.sentTo.join(', ') || null}
               />
             )}
+            {manufacturing?.confirmedAt && (
+              <TimelineItem
+                label="Factory confirmed the order"
+                date={manufacturing.confirmedAt}
+                by={manufacturing.confirmedBy}
+              />
+            )}
             {manufacturing?.finishedAt && (
-              <TimelineItem label="Bamida finished it" date={manufacturing.finishedAt} />
+              <TimelineItem
+                label={manufacturing.finishedBy ? 'Finished from the factory login' : 'Bamida finished it'}
+                date={manufacturing.finishedAt}
+                by={manufacturing.finishedBy}
+              />
             )}
             {cargo?.sentAt && (
               <TimelineItem

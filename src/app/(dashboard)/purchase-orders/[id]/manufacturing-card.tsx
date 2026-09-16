@@ -19,7 +19,10 @@ type Manufacturing = {
   sentWasTest: boolean
   estStart: string | null
   estFinish: string | null
+  confirmedAt: string | null
+  confirmedBy: string | null
   finishedAt: string | null
+  finishedBy: string | null
 }
 
 const date = (v: string | null) => (v ? new Date(v).toLocaleDateString('en-GB') : null)
@@ -98,6 +101,22 @@ export default function ManufacturingCard({
               <span className="text-gray-900">
                 {date(manufacturing.sentAt)} to {manufacturing.sentTo.join(', ')}
               </span>
+            )
+          }
+        />
+        <Row
+          icon={<CheckCircle2 className="w-4 h-4" />}
+          label="Confirmed by the factory"
+          value={
+            manufacturing.confirmedAt ? (
+              <span className="text-gray-900">
+                {date(manufacturing.confirmedAt)}
+                {manufacturing.confirmedBy ? ` by ${manufacturing.confirmedBy}` : ''}
+              </span>
+            ) : sent ? (
+              <span className="text-amber-700">waiting for them to confirm</span>
+            ) : (
+              <span className="text-gray-500">not yet</span>
             )
           }
         />

@@ -35,6 +35,8 @@ const PROFILE_COLUMNS = new Set([
   'job_title',
   'bio',
   'avatar_updated_at',
+  // 20260916100000_factory_login
+  'is_external',
   '*',
 ])
 

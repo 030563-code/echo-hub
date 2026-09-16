@@ -7,18 +7,18 @@ import { isAgentUserId } from '@/lib/agent-account'
 // matcher requires a session. This is the SESSION gate only — capability
 // (module-level) enforcement happens in each (dashboard) page via
 // requireCapability(), and RLS enforces row access server-side.
-// /manufacturing/<token> is the supplier's link. Bamida have no Hub account,
-// so a session gate here would show a factory a login page it can never pass.
-// The token IS the authorisation: it is resolved server-side on every request
-// and on every action, it names exactly one purchase order, and the page's
-// query selects no cost column at all. See lib/manufacturing-token.ts.
+// There is no /manufacturing exemption any more. It held the supplier's signed
+// link, which existed because the factory had no Hub account. They have one now
+// (Dean, 16 Sep 2026), so the orders, the document, the dates and the finished
+// button all sit behind /factory with a real session, and there is one door
+// with one set of rules instead of two.
 // /offline.html is the card the service worker shows when the network is gone.
 // It is a static file with no data on it, and the worker precaches it at
 // install time, which for most people happens on the login page: gated, it
 // would be fetched as a redirect and the login page would end up cached under
 // that name. Listed here rather than adding "html" to the matcher's extension
 // allowlist, so exactly one path is exempt instead of a shape of path.
-const PUBLIC_PATHS = ['/login', '/onboarding', '/auth/callback', '/manufacturing', '/offline.html']
+const PUBLIC_PATHS = ['/login', '/onboarding', '/auth/callback', '/offline.html']
 
 // Machine endpoints that carry their OWN authentication and must never be
 // session-gated: a cookieless caller (n8n cron) would otherwise be 307'd to

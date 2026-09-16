@@ -1,5 +1,6 @@
 import {
   Boxes,
+  Factory,
   FileText,
   Gauge,
   Layers,
@@ -10,6 +11,7 @@ import {
   ShoppingCart,
   Tags,
   Truck,
+  Warehouse,
   type LucideIcon,
 } from 'lucide-react'
 import type { NavIconName } from '@/lib/capabilities'
@@ -39,4 +41,6 @@ export const NAV_ICONS: Record<NavIconName, LucideIcon> = {
   Receipt,
   Boxes,
   Phone,
+  Factory,
+  Warehouse,
 }

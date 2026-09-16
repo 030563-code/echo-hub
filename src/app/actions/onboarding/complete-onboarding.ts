@@ -46,7 +46,7 @@ export async function completeOnboarding(
   // One-time guard: refuse to re-run once onboarding has set a display name.
   const { data: existing, error: existingErr } = await admin
     .from('profiles')
-    .select('display_name')
+    .select('display_name, is_external')
     .eq('id', user.id)
     .maybeSingle()
   if (existingErr) {
@@ -54,6 +54,13 @@ export async function completeOnboarding(
     return { success: false, error: 'Failed to load profile' }
   }
   if (existing?.display_name) {
+    return { success: false, error: 'Profile already configured' }
+  }
+  // An outside company never onboards itself. This form writes pipeline_id,
+  // allowed_depots and allowed_quote_templates through the admin client, which
+  // is Echo Barrier's sales structure and no business of theirs. Dean sets an
+  // external account up by hand.
+  if (existing?.is_external) {
     return { success: false, error: 'Profile already configured' }
   }
 

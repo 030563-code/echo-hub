@@ -11,13 +11,16 @@ export default async function OnboardingPage() {
 
   if (!user) redirect('/login')
 
-  // Already onboarded → straight to the dashboard.
+  // Already onboarded → straight to the dashboard. An external account goes the
+  // same way whatever its name says: this form offers a list of Echo Barrier
+  // sales regions with their depots, which is not a picklist an outside company
+  // should be looking at, let alone choosing from.
   const { data: profile } = await supabase
     .from('profiles')
-    .select('display_name')
+    .select('display_name, is_external')
     .eq('id', user.id)
     .maybeSingle()
-  if (profile?.display_name) redirect('/')
+  if (profile?.display_name || profile?.is_external) redirect('/')
 
   const meta = user.user_metadata ?? {}
   const defaultDisplayName =

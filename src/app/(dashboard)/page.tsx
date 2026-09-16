@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { ArrowRight } from 'lucide-react'
 import { getAuthorizedUser } from '@/lib/authz'
 import { navSections, type CapabilityKey } from '@/lib/capabilities'
@@ -7,6 +8,14 @@ import { NAV_ICONS } from '@/lib/nav-icons'
 export default async function DashboardHome() {
   const auth = await getAuthorizedUser()
   const caps = auth.ok ? auth.capabilities : new Set<CapabilityKey>()
+
+  // An outside company's account never sees this page. It lists our modules by
+  // name, and the only thing they can open is the Factory tab, so send them
+  // there. An external account with no factory capability falls through to the
+  // card below rather than looping against requireCapability's redirect('/').
+  if (auth.ok && auth.profile.is_external && (caps.has('factory.view') || caps.has('factory.update'))) {
+    redirect('/factory')
+  }
 
   // The same sections the sidebar draws, so the two agree by construction
   // rather than by both being edited. Dashboard is the one ungrouped item and

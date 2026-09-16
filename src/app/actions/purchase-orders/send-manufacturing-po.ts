@@ -6,16 +6,26 @@ import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
 import { poChainHeldBy } from "@/lib/po-organisations";
-import { externalCallsDisabled } from "@/lib/env";
+import { externalCallsDisabled, hubBaseUrl } from "@/lib/env";
 import { resolveRecipients, sendDescription } from "@/lib/email-recipients";
 import { loadSroPoBom } from "@/lib/bom";
 import { buildBamidaPo, type BamidaSupplier } from "@/lib/bamida-po";
-import { buildBamidaPoPdf, bamidaPoPdfFilename } from "@/lib/bamida-po-pdf";
 import { getSupplierByCode } from "@/lib/suppliers";
 import { assessOrderCapability } from "@/lib/manufacturing-capability";
-import { mintManufacturingLink } from "@/lib/manufacturing-token";
 
-// Email the manufacturing order to Bamida.
+// Tell the manufacturer a purchase order is waiting for them in the Hub.
+//
+// NO ATTACHMENT AND NO ONE-OFF LINK since 16 Sep 2026. Dean: "The purchase
+// order no longer goes via pdf in the email. They can download the purchase
+// order in the manufacturing tab next to the relevant one", and "not to have
+// the pdf attached but rather link to the hub with their login". So this is a
+// notification now, not a delivery: the document, the dates and the finished
+// button all live behind their own login, which means one copy of the order
+// that cannot drift from ours, and no emailed link to mislay or forward.
+//
+// The bill of materials is still read before anything is sent, because an order
+// whose document cannot be built is an order they cannot download, and telling
+// them about it would waste a trip.
 //
 // SENDING IS CLAIMED, NOT LABELLED. Writing sent_at afterwards and relabelling
 // the button "Resend" is a label: a double click, a retry or a page refresh
@@ -114,9 +124,11 @@ export async function sendManufacturingPoToBamida(
   }
   const bamidaCc = String(parsed.data.cc ?? "").trim() || process.env.BAMIDA_PO_CC;
 
-  // --- The document -------------------------------------------------------
+  // --- Can the document be built at all -----------------------------------
   // The BOM hangs off the PARENT SRO order, which is what carries the frozen
-  // cost snapshot and the exploded lines.
+  // cost snapshot and the exploded lines. Nothing here is emailed any more; it
+  // is read so that an order whose document would be empty is never announced,
+  // and for the pallet count the wording uses.
   const bom = await loadSroPoBom(po.parent_po_id);
   if (!bom) {
     return {
@@ -188,19 +200,6 @@ export async function sendManufacturingPoToBamida(
   }
 
   // --- Send ---------------------------------------------------------------
-  // The link Bamida come back to. Minted after the claim, so a losing caller
-  // never revokes the link the winning one just put in an email. Minting
-  // revokes any earlier live link for this order, which is what makes a
-  // deliberate resend leave exactly one working link behind.
-  const link = await mintManufacturingLink(poId, auth.user.id);
-  if (!link) {
-    await admin.from("po_manufacturing").update({ sent_at: null }).eq("po_id", poId);
-    return { ok: false, error: "The link for Bamida could not be created, so nothing was sent." };
-  }
-
-  const doc = await buildBamidaPoPdf(bamida);
-  const bytes = Buffer.from(doc.output("arraybuffer") as ArrayBuffer);
-
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   let failure: string | null = null;
@@ -226,9 +225,13 @@ export async function sendManufacturingPoToBamida(
         po_number: po.po_number,
         master_ref: po.master_ref,
         reference_po_number: po.reference_po_number,
-        /** Where Bamida record their dates and press finished. */
-        link: link.url,
-        link_expires_at: link.expiresAt,
+        /**
+         * Where they sign in, download the order, confirm it with their dates
+         * and later press finished. A plain Hub address behind their own
+         * login, so it does not expire, cannot be forwarded into somebody
+         * else's hands, and always shows the order as it stands now.
+         */
+        link: `${hubBaseUrl()}/factory/${po.id}`,
         pallets: bamida.pallets,
         /**
          * No SKU. `EBH9NA` is our own database code and means nothing to a
@@ -241,10 +244,6 @@ export async function sendManufacturingPoToBamida(
           quantity: l.quantity,
         })),
         short_materials: shortMaterials,
-        attachment: {
-          filename: bamidaPoPdfFilename(bamida),
-          content_base64: bytes.toString("base64"),
-        },
       }),
       signal: controller.signal,
       cache: "no-store",

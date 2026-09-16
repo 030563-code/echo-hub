@@ -36,6 +36,8 @@ export const CAPABILITY_KEYS = [
   'invoice.view',
   'invoice.create',
   'calls.view',
+  'factory.view',
+  'factory.update',
   'admin',
 ] as const
 
@@ -69,6 +71,8 @@ export const CAPABILITIES: CapabilityMeta[] = [
   { key: 'invoice.view', module: 'invoices', description: 'View commercial invoices' },
   { key: 'invoice.create', module: 'invoices', description: 'Generate / issue commercial invoices (requires cost.view, values exposed)' },
   { key: 'calls.view', module: 'calls', description: "See your region's call log with transcripts, and link a call to the right HubSpot contact" },
+  { key: 'factory.view', module: 'factory', description: "Open the Factory tabs: the purchase orders sent to the manufacturer, and their own material stock feed" },
+  { key: 'factory.update', module: 'factory', description: 'From the Factory tab, confirm a sent order with estimated dates and press Manufacturing finished' },
   { key: 'admin', module: 'admin', description: 'Full administrative access (implies all capabilities)' },
 ]
 
@@ -83,7 +87,7 @@ export const CAPABILITIES: CapabilityMeta[] = [
  * group whose every item is gated away renders nothing at all, heading
  * included, so a rep is not shown the name of a section they cannot open.
  */
-export const NAV_GROUPS = ['Sales and Accounting', 'Operations'] as const
+export const NAV_GROUPS = ['Sales and Accounting', 'Operations', 'Factory'] as const
 
 export type NavGroup = (typeof NAV_GROUPS)[number]
 
@@ -109,6 +113,8 @@ export const NAV_ICON_NAMES = [
   'Receipt',
   'Boxes',
   'Phone',
+  'Factory',
+  'Warehouse',
 ] as const
 
 export type NavIconName = (typeof NAV_ICON_NAMES)[number]
@@ -153,6 +159,13 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Invoices', href: '/invoices', icon: 'Receipt', requires: ['invoice.view'], group: 'Operations', module: 'invoices' },
   { label: 'Warehousing/Stock', href: '/mrp', icon: 'Gauge', requires: ['mrp.view'], group: 'Operations' },
   { label: 'Stock', href: '/stock', icon: 'Boxes', requires: ['stock.view', 'stock.edit'], group: 'Operations', module: 'stock' },
+
+  // The manufacturer's two tabs. Not organisation-scoped: the factory is not
+  // one of the seven Xero companies, it is the other party to an order. The
+  // route is /factory and the label is Manufacturing on purpose, because
+  // /manufacturing was the public token path.
+  { label: 'Manufacturing', href: '/factory', icon: 'Factory', requires: ['factory.view', 'factory.update'], group: 'Factory' },
+  { label: 'Stock', href: '/factory/stock', icon: 'Warehouse', requires: ['factory.view', 'factory.update'], group: 'Factory' },
 ]
 
 export interface NavSection {
@@ -168,11 +181,17 @@ export interface NavSection {
  * with no reachable items is dropped entirely rather than returned empty, so
  * callers never have to remember to check before rendering a heading.
  */
-export function navSections(caps: Set<CapabilityKey>): NavSection[] {
+export function navSections(
+  caps: Set<CapabilityKey>,
+  { includeHome = true }: { includeHome?: boolean } = {},
+): NavSection[] {
   const visible = NAV_ITEMS.filter((item) => satisfiesRequirement(caps, item.requires))
   const sections: NavSection[] = []
 
-  const ungrouped = visible.filter((item) => !item.group)
+  // Dashboard requires nothing, so capability alone can never hide it. An
+  // outside company has no business on a page that names our other modules,
+  // and lands on /factory instead, so the caller says so explicitly.
+  const ungrouped = includeHome ? visible.filter((item) => !item.group) : []
   if (ungrouped.length > 0) sections.push({ group: null, items: ungrouped })
 
   for (const group of NAV_GROUPS) {
@@ -188,4 +207,23 @@ export function satisfiesRequirement(caps: Set<CapabilityKey>, requires: Capabil
   if (caps.has('admin')) return true
   if (requires.length === 0) return true
   return requires.some((r) => caps.has(r))
+}
+
+/**
+ * Which nav row is the current one: the longest href that the path is inside.
+ *
+ * A plain startsWith lights every ancestor, so /factory/stock would highlight
+ * both Manufacturing (/factory) and Stock (/factory/stock). Home is exact:
+ * every path starts with "/".
+ */
+export function activeNavHref(pathname: string, items: NavItem[] = NAV_ITEMS): string | null {
+  let best: string | null = null
+  for (const item of items) {
+    const isMatch =
+      item.href === '/'
+        ? pathname === '/'
+        : pathname === item.href || pathname.startsWith(`${item.href}/`)
+    if (isMatch && (best === null || item.href.length > best.length)) best = item.href
+  }
+  return best
 }

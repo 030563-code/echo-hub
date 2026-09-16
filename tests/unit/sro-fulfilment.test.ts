@@ -185,7 +185,7 @@ describe('Ready for shipment reaches BOTH machines, and the migration is the hal
   })
 
   it('stops the finish button stamping a stage, so the SPOT id can still move the card', () => {
-    const src = read('src/app/actions/manufacturing/supplier-updates.ts')
+    const src = read('src/lib/factory/updates.ts')
     // A PERSISTED stage outranks derivation. Writing one here froze the card at
     // Shipping and made "Shipping only once it is booked" unreachable.
     expect(src).not.toMatch(/lifecycle_stage:\s*'shipping'/)
@@ -193,7 +193,7 @@ describe('Ready for shipment reaches BOTH machines, and the migration is the hal
   })
 
   it('clears the parent SRO leg, which is what said Manufacturing about finished barriers', () => {
-    const src = read('src/app/actions/manufacturing/supplier-updates.ts')
+    const src = read('src/lib/factory/updates.ts')
     expect(src).toMatch(/update\(\{ status: 'ready_for_shipment' \}\)/)
     // Compare-and-set, so a leg somebody already moved on is not dragged back.
     expect(src).toMatch(/\.eq\('status', 'in_manufacturing'\)/)

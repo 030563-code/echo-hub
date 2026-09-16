@@ -228,9 +228,16 @@ export async function loadManufacturingPoNumbers(sroPoIds: string[]): Promise<Re
  * carries, so this is usually a single row read with no manufacturing round
  * trip. Only an order predating the snapshot column needs a live explosion, and
  * that path is the same one loadSroPoBoms uses.
+ *
+ * Pass a client to read as somebody other than the caller: the factory's
+ * download action hands in the service-role client after its own gate, because
+ * that account holds none of the capabilities can_read_po() wants.
  */
-export async function loadSroPoBom(poId: string): Promise<SroPoBom | null> {
-  const supabase = await createServerClient()
+export async function loadSroPoBom(
+  poId: string,
+  client?: ReturnType<typeof import('@/lib/supabase/admin').createAdminClient>,
+): Promise<SroPoBom | null> {
+  const supabase = client ?? (await createServerClient())
   const { data: po } = await supabase
     .from('purchase_orders')
     .select(

@@ -31,14 +31,23 @@ const DEFAULT_MODERN_TEMPLATE = '237597084530'
 const FITTING_KIT_PRODUCT_IDS = ['57786096', '138783', '1640211461']
 const LINE_ITEM_PROPS = ['name', 'hs_sku', 'price', 'quantity', 'amount', 'discount', 'hs_discount_percentage', 'hs_product_id']
 
-async function hs(method: string, path: string, body?: unknown): Promise<{ status: number; json: any }> {
+/**
+ * HubSpot's response shape differs per endpoint and this spec walks five of
+ * them, so the body is typed loosely on purpose and every read below asserts
+ * what it expects. Named rather than inline `any` so the looseness is one
+ * declaration with a reason, not a habit.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type HubSpotBody = any
+
+async function hs(method: string, path: string, body?: unknown): Promise<{ status: number; json: HubSpotBody }> {
   const res = await fetch(`https://api.hubapi.com${path}`, {
     method,
     headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   const text = await res.text()
-  let json: any = null
+  let json: HubSpotBody = null
   try { json = text ? JSON.parse(text) : null } catch { json = { raw: text.slice(0, 200) } }
   return { status: res.status, json }
 }

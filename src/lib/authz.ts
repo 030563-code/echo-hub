@@ -23,6 +23,8 @@ import { ORG_CODES, isOrgCode, pipelineForOrg, sortOrgs, type OrgCode } from '@/
 export interface AuthzProfile {
   id: string
   is_super_admin: boolean
+  /** An account belonging to an outside company (the manufacturer). */
+  is_external: boolean
   /**
    * The organisations this person may see, in registry order. Every one of
    * them for a super admin or an `admin` capability holder, otherwise their
@@ -62,14 +64,18 @@ export async function getAuthorizedUser(): Promise<AuthzResult> {
 
   const { data: profile, error } = await supabase
     .from('profiles')
-    .select('id, is_super_admin, pipeline_id, allowed_depots, allowed_distributors, allowed_quote_templates')
+    .select('id, is_super_admin, is_external, pipeline_id, allowed_depots, allowed_distributors, allowed_quote_templates')
     .eq('id', user.id)
     .maybeSingle()
 
   if (error) return { ok: false, error: 'Failed to load user profile' }
   if (!profile) return { ok: false, error: 'User profile not found' }
 
-  const isSuperAdmin = Boolean(profile.is_super_admin)
+  // An outside company's account. Everything below clamps on this rather than
+  // trusting the rows: a capability granted to it by mistake, or a super-admin
+  // flag set by mistake, must not widen what it can reach.
+  const isExternal = profile.is_external === true
+  const isSuperAdmin = !isExternal && Boolean(profile.is_super_admin)
 
   // Read the user's own capability and organisation rows (RLS permits reading
   // own rows). Together, because every page pays for this.
@@ -84,13 +90,21 @@ export async function getAuthorizedUser(): Promise<AuthzResult> {
       .filter((c): c is CapabilityKey => ALL_CAPABILITIES.has(c))
   )
 
-  // `admin` capability or the super-admin flag implies every capability.
-  const capabilities = isSuperAdmin || granted.has('admin') ? new Set(ALL_CAPABILITIES) : granted
+  // `admin` capability or the super-admin flag implies every capability. An
+  // external account gets neither, and keeps only its factory keys.
+  const capabilities = isExternal
+    ? new Set<CapabilityKey>([...granted].filter((c) => c.startsWith('factory.')))
+    : isSuperAdmin || granted.has('admin')
+      ? new Set(ALL_CAPABILITIES)
+      : granted
 
   // And every organisation. A row naming an organisation the code does not
   // know is dropped, exactly as an unknown capability key is.
-  const organisations: OrgCode[] =
-    isSuperAdmin || granted.has('admin')
+  // An external account holds none, ever: the Factory pages are not scoped by
+  // organisation, and every other module reads this list to decide what to show.
+  const organisations: OrgCode[] = isExternal
+    ? []
+    : isSuperAdmin || granted.has('admin')
       ? [...ORG_CODES]
       : sortOrgs((orgRows ?? []).map((r) => String(r.organisation)).filter(isOrgCode))
 
@@ -100,6 +114,7 @@ export async function getAuthorizedUser(): Promise<AuthzResult> {
     profile: {
       id: profile.id,
       is_super_admin: isSuperAdmin,
+      is_external: isExternal,
       organisations,
       pipeline_id: profile.pipeline_id ?? null,
       allowed_depots: profile.allowed_depots ?? [],

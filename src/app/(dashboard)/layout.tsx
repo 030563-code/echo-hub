@@ -47,6 +47,7 @@ export default async function DashboardLayout({
           client component; children are passed through so pages stay server-rendered. */}
       <Shell
         capabilities={[...auth.capabilities]}
+        isExternal={auth.profile.is_external}
         organisations={auth.profile.organisations}
         activeOrg={activeOrg}
         displayName={displayName}

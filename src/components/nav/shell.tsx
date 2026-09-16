@@ -27,6 +27,8 @@ export interface ShellProfile {
 
 interface ShellProps {
   capabilities: CapabilityKey[]
+  /** An outside company's account: no home row, and nothing else to switch. */
+  isExternal: boolean
   /** The organisations this person holds, and the one they are looking at. */
   organisations: OrgCode[]
   activeOrg: OrgCode | null
@@ -42,7 +44,7 @@ interface ShellProps {
  * state; `children` arrives as a prop from the server layout, so pages stay
  * server-rendered.
  */
-export function Shell({ capabilities, organisations, activeOrg, displayName, profile, children }: ShellProps) {
+export function Shell({ capabilities, isExternal, organisations, activeOrg, displayName, profile, children }: ShellProps) {
   const [open, setOpen] = useState(false)
   const pathname = usePathname()
 
@@ -86,6 +88,7 @@ export function Shell({ capabilities, organisations, activeOrg, displayName, pro
 
       <Sidebar
         capabilities={capabilities}
+        isExternal={isExternal}
         organisations={organisations}
         activeOrg={activeOrg}
         displayName={displayName}

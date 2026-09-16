@@ -48,7 +48,12 @@ export type ManufacturingProgress = {
   sentWasTest: boolean
   estStart: string | null
   estFinish: string | null
+  /** When the factory accepted the order in the Hub, with both dates. */
+  confirmedAt: string | null
+  confirmedBy: string | null
   finishedAt: string | null
+  /** Null when it came through the old emailed link rather than a Hub login. */
+  finishedBy: string | null
 }
 
 export type PurchaseOrderDetail = {
@@ -107,7 +112,7 @@ export async function loadPurchaseOrderDetail(
   // authenticated at all, and narrowed to the presentational columns.
   const { data: mfg } = await createAdminClient()
     .from('po_manufacturing')
-    .select('po_id, sent_at, sent_to, sent_was_test, est_start, est_finish, finished_at')
+    .select('po_id, sent_at, sent_to, sent_was_test, est_start, est_finish, confirmed_at, confirmed_by_uid, finished_at, finished_by_uid')
     .eq('po_id', po.id)
     .maybeSingle()
   // The board's four presentational columns hang off the order, exactly as they
@@ -122,6 +127,23 @@ export async function loadPurchaseOrderDetail(
       }
     : null
 
+  // Who at the factory confirmed it, and who pressed finished. Two ids, one
+  // lookup, and only when there is something to look up: an order finished
+  // through the old emailed link carries neither.
+  const actorIds = [mfg?.confirmed_by_uid, mfg?.finished_by_uid].filter(
+    (id): id is string => typeof id === 'string' && id.length > 0,
+  )
+  const names = new Map<string, string>()
+  if (actorIds.length) {
+    const { data: people } = await createAdminClient()
+      .from('profiles')
+      .select('id, display_name')
+      .in('id', Array.from(new Set(actorIds)))
+    for (const person of people ?? []) {
+      if (person.display_name) names.set(person.id, person.display_name)
+    }
+  }
+
   const manufacturing: ManufacturingProgress | null = mfg
     ? {
         sentAt: mfg.sent_at ?? null,
@@ -129,7 +151,10 @@ export async function loadPurchaseOrderDetail(
         sentWasTest: mfg.sent_was_test === true,
         estStart: mfg.est_start ?? null,
         estFinish: mfg.est_finish ?? null,
+        confirmedAt: mfg.confirmed_at ?? null,
+        confirmedBy: mfg.confirmed_by_uid ? (names.get(mfg.confirmed_by_uid) ?? null) : null,
         finishedAt: mfg.finished_at ?? null,
+        finishedBy: mfg.finished_by_uid ? (names.get(mfg.finished_by_uid) ?? null) : null,
       }
     : null
 
