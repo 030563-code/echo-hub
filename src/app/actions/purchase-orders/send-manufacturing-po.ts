@@ -12,6 +12,7 @@ import { loadSroPoBom } from "@/lib/bom";
 import { buildBamidaPo, type BamidaSupplier } from "@/lib/bamida-po";
 import { getSupplierByCode } from "@/lib/suppliers";
 import { assessOrderCapability } from "@/lib/manufacturing-capability";
+import { addressesFrom, type SendPreview } from "@/lib/send-preview";
 
 // Tell the manufacturer a purchase order is waiting for them in the Hub.
 //
@@ -72,16 +73,27 @@ export type SendManufacturingPoResult =
   | { ok: true; description: string; wasTest: boolean; short: boolean }
   | { ok: false; error: string };
 
-export async function sendManufacturingPoToBamida(
-  input: z.infer<typeof Schema>,
-): Promise<SendManufacturingPoResult> {
+/**
+ * Everything the send works out BEFORE it claims anything or contacts n8n.
+ *
+ * Split out on 16 Sep 2026 so that the confirmation dialog and the send itself
+ * are the same reasoning. A preview computed by a second, similar-looking
+ * function is a preview that can quietly stop describing the send, and the one
+ * time it matters is the time somebody is relying on it.
+ *
+ * The return type is inferred rather than declared, so a field added to the plan
+ * reaches both callers without a type to keep in step.
+ */
+async function planManufacturingSend(input: z.infer<typeof Schema>) {
   const auth = await getAuthorizedUser();
-  if (!auth.ok) return { ok: false, error: auth.error };
+  if (!auth.ok) return { ok: false as const, error: auth.error };
   if (!auth.capabilities.has("po.create")) {
-    return { ok: false, error: "Forbidden: missing po.create capability" };
+    return { ok: false as const, error: "Forbidden: missing po.create capability" };
   }
   const parsed = Schema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  if (!parsed.success) {
+    return { ok: false as const, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
   const poId = parsed.data.manufacturing_po_id;
 
   const supabase = await createServerClient();
@@ -98,31 +110,48 @@ export async function sendManufacturingPoToBamida(
       reference_po_number: string | null;
       lines?: Array<{ sku: string | null; product_name: string | null; quantity: number | null }>;
     }>();
-  if (!po) return { ok: false, error: "Manufacturing order not found." };
+  if (!po) return { ok: false as const, error: "Manufacturing order not found." };
   if (!(await poChainHeldBy(poId, auth.profile.organisations))) {
-    return { ok: false, error: "Manufacturing order not found." };
+    return { ok: false as const, error: "Manufacturing order not found." };
   }
   if (po.leg !== "SRO_TO_SUPPLIER") {
-    return { ok: false, error: "Only a manufacturing order can be sent to Bamida." };
+    return { ok: false as const, error: "Only a manufacturing order can be sent to Bamida." };
   }
   if (!po.parent_po_id) {
-    return { ok: false, error: "This manufacturing order has no SRO order behind it." };
+    return { ok: false as const, error: "This manufacturing order has no SRO order behind it." };
   }
 
   const webhookUrl = String(process.env.N8N_BAMIDA_PO_WEBHOOK_URL ?? "").trim();
-  if (!webhookUrl) return { ok: false, error: "The Bamida webhook is not configured on the server." };
+  if (!webhookUrl) return { ok: false as const, error: "The Bamida webhook is not configured on the server." };
   if (externalCallsDisabled()) {
-    return { ok: false, error: "Sandbox (staging): nothing is sent to Bamida from here." };
+    return { ok: false as const, error: "Sandbox (staging): nothing is sent to Bamida from here." };
   }
 
   const bamidaTo = String(parsed.data.to ?? "").trim() || String(process.env.BAMIDA_PO_TO ?? "").trim();
   if (!bamidaTo) {
     return {
-      ok: false,
+      ok: false as const,
       error: "Nobody to send it to. Type an address, or set BAMIDA_PO_TO on the server.",
     };
   }
   const bamidaCc = String(parsed.data.cc ?? "").trim() || process.env.BAMIDA_PO_CC;
+
+  // WHERE EACH ADDRESS CAME FROM, decided here because here is where the choice
+  // is made. Attributing them afterwards by matching against the settings would
+  // mislabel the first address somebody types that is also configured.
+  const typedTo = String(parsed.data.to ?? "").trim();
+  const typedCc = String(parsed.data.cc ?? "").trim();
+  const real = {
+    to: typedTo
+      ? addressesFrom(typedTo, "typed", "the Send to box")
+      : addressesFrom(process.env.BAMIDA_PO_TO, "server", "BAMIDA_PO_TO"),
+    cc: typedCc
+      ? addressesFrom(typedCc, "typed", "the Copy to box")
+      : addressesFrom(process.env.BAMIDA_PO_CC, "server", "BAMIDA_PO_CC"),
+    // Never on any screen. A blind copy nobody remembers is the whole reason
+    // this dialog prints every address.
+    bcc: addressesFrom(process.env.BAMIDA_PO_BCC, "server", "BAMIDA_PO_BCC"),
+  };
 
   // --- Can the document be built at all -----------------------------------
   // The BOM hangs off the PARENT SRO order, which is what carries the frozen
@@ -132,7 +161,7 @@ export async function sendManufacturingPoToBamida(
   const bom = await loadSroPoBom(po.parent_po_id);
   if (!bom) {
     return {
-      ok: false,
+      ok: false as const,
       error: "The bill of materials for this order could not be read, so there is nothing to send.",
     };
   }
@@ -148,7 +177,7 @@ export async function sendManufacturingPoToBamida(
   const bamida = buildBamidaPo(bom, new Date().toISOString().slice(0, 10), supplier, po.po_number);
   if (bamida.lines.length === 0) {
     return {
-      ok: false,
+      ok: false as const,
       error: "This order explodes to no BOM lines, so the document would be empty. Check the SKU to model mapping.",
     };
   }
@@ -159,13 +188,81 @@ export async function sendManufacturingPoToBamida(
     .filter((l) => l.shortages.length > 0)
     .map((l) => ({ sku: l.sku, quantity: l.quantity, short: l.shortages }));
 
-  // --- Claim the send BEFORE anything leaves ------------------------------
-  const admin = createAdminClient();
   const recipients = resolveRecipients({
     to: bamidaTo,
     cc: bamidaCc,
     bcc: process.env.BAMIDA_PO_BCC,
   });
+
+  return {
+    ok: true as const,
+    plan: { po, poId, webhookUrl, recipients, real, pallets: bamida.pallets, shortMaterials, actorId: auth.user.id },
+  };
+}
+
+/**
+ * What pressing Send is about to do, for the dialog that asks whether to.
+ *
+ * Dean, 16 Sep 2026: "add second confirmation before sending to Manufacturing on
+ * the email and the contents of the email ... along with CC everything and where
+ * it comes from."
+ *
+ * It CLAIMS NOTHING and POSTS NOTHING. Every gate the send passes, this passes
+ * first, because an export of a 'use server' file is a callable endpoint and
+ * this one reads an order's lines.
+ */
+export async function previewManufacturingPoSend(
+  input: z.infer<typeof Schema>,
+): Promise<{ ok: true; preview: SendPreview } | { ok: false; error: string }> {
+  const planned = await planManufacturingSend(input);
+  if (!planned.ok) return { ok: false, error: planned.error };
+  const { po, recipients, real, pallets, shortMaterials } = planned.plan;
+
+  const lines = (po.lines ?? []).map((l) => ({
+    name: l.product_name ?? "Unnamed product",
+    quantity: l.quantity === null ? "" : String(l.quantity),
+  }));
+
+  const warnings: string[] = [];
+  if (shortMaterials.length > 0) {
+    warnings.push(
+      `The email will also tell them that ${shortMaterials.length} ${shortMaterials.length === 1 ? "line is" : "lines are"} short of materials.`,
+    );
+  }
+  if (real.cc.length === 0) {
+    warnings.push("Nobody is copied on this email.");
+  }
+
+  return {
+    ok: true,
+    preview: {
+      what: "a purchase order to the manufacturer",
+      to: real.to,
+      cc: real.cc,
+      bcc: real.bcc,
+      isTest: recipients.isTest,
+      instead: recipients.intended,
+      facts: [
+        { label: "Purchase order", value: po.po_number },
+        ...(po.reference_po_number ? [{ label: "Their reference", value: po.reference_po_number }] : []),
+        { label: "Pallets", value: String(pallets) },
+        { label: "They open", value: `${hubBaseUrl()}/factory/${po.id}`, wide: true },
+      ],
+      lines,
+      warnings,
+    },
+  };
+}
+
+export async function sendManufacturingPoToBamida(
+  input: z.infer<typeof Schema>,
+): Promise<SendManufacturingPoResult> {
+  const planned = await planManufacturingSend(input);
+  if (!planned.ok) return { ok: false, error: planned.error };
+  const { po, poId, webhookUrl, recipients, pallets, shortMaterials, actorId } = planned.plan;
+
+  // --- Claim the send BEFORE anything leaves ------------------------------
+  const admin = createAdminClient();
 
   // Make sure the row exists, without claiming anything. A row may already be
   // here from an earlier send that was deliberately released.
@@ -183,7 +280,7 @@ export async function sendManufacturingPoToBamida(
     .from("po_manufacturing")
     .update({
       sent_at: new Date().toISOString(),
-      sent_by_uid: auth.user.id,
+      sent_by_uid: actorId,
       sent_to: recipients.to,
       sent_was_test: recipients.isTest,
       // The real audience, which sent_to is not while the test switch is on.
@@ -237,7 +334,7 @@ export async function sendManufacturingPoToBamida(
          * else's hands, and always shows the order as it stands now.
          */
         link: `${hubBaseUrl()}/factory/${po.id}`,
-        pallets: bamida.pallets,
+        pallets,
         /**
          * No SKU. `EBH9NA` is our own database code and means nothing to a
          * factory, so it does not travel: not printed, and not carried in the

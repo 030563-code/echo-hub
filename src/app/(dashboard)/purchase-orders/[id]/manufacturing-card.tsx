@@ -1,8 +1,8 @@
 'use client'
 
-// page-state: none (a busy flag and a resend confirmation. Both are gone the
-// moment the action returns, and the durable record is the po_manufacturing row
-// the server writes.)
+// page-state: none (a busy flag, a resend confirmation and the send preview.
+// All are gone the moment the action returns, and the durable record is the
+// po_manufacturing row the server writes.)
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
@@ -10,8 +10,11 @@ import { toast } from 'sonner'
 import { Mail, CheckCircle2, Clock } from 'lucide-react'
 import {
   sendManufacturingPoToBamida,
+  previewManufacturingPoSend,
   releaseBamidaSendClaim,
 } from '@/app/actions/purchase-orders/send-manufacturing-po'
+import SendConfirmDialog from '@/components/po/send-confirm-dialog'
+import type { SendPreview } from '@/lib/send-preview'
 
 type Manufacturing = {
   sentAt: string | null
@@ -56,9 +59,31 @@ export default function ManufacturingCard({
   // falls back to the server's configured list rather than sending to nobody.
   const [to, setTo] = useState(defaultTo)
   const [cc, setCc] = useState(defaultCc)
+  // The confirmation, added 16 Sep 2026. Nothing reaches the factory until
+  // somebody has read who it goes to, which is the one thing a person can get
+  // wrong here now that the address is typed rather than configured.
+  const [confirming, setConfirming] = useState(false)
+  const [preview, setPreview] = useState<SendPreview | null>(null)
+  const [loadingPreview, setLoadingPreview] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
 
   const sent = manufacturing.sentAt !== null
   const finished = manufacturing.finishedAt !== null
+
+  /** Work out what would be sent, then show it. Nothing is claimed or posted. */
+  function askToSend() {
+    setConfirming(true)
+    setPreview(null)
+    setPreviewError(null)
+    setLoadingPreview(true)
+    void previewManufacturingPoSend({ manufacturing_po_id: poId, to, cc })
+      .then((res) => {
+        if (res.ok) setPreview(res.preview)
+        else setPreviewError(res.error)
+      })
+      .catch(() => setPreviewError('That could not be worked out. Please try again.'))
+      .finally(() => setLoadingPreview(false))
+  }
 
   function send() {
     startTransition(async () => {
@@ -66,6 +91,7 @@ export default function ManufacturingCard({
       if (!res.ok) toast.error(res.error)
       else if (res.short) toast.warning(`${res.description}. They were told which materials are short.`)
       else toast.success(res.description)
+      setConfirming(false)
       router.refresh()
     })
   }
@@ -192,7 +218,7 @@ export default function ManufacturingCard({
         <div className="mt-5 flex flex-wrap gap-2">
           {!sent && (
             <button
-              onClick={send}
+              onClick={askToSend}
               disabled={pending}
               className="px-5 py-2 bg-echo-orange hover:bg-echo-orange-hover text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
             >
@@ -241,6 +267,17 @@ export default function ManufacturingCard({
           Bamida have finished this order, so it can no longer be sent or reopened.
         </p>
       )}
+
+      <SendConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        preview={preview}
+        loading={loadingPreview}
+        pending={pending}
+        error={previewError}
+        confirmLabel="Send it"
+        onConfirm={send}
+      />
 
       {!canAct && (
         <p className="mt-5 text-xs text-gray-400">Read only. You need po.create to send this order.</p>

@@ -27,6 +27,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { externalCallsDisabled, hubBaseUrl } from '@/lib/env'
 import { resolveRecipients, type ResolvedRecipients } from '@/lib/email-recipients'
+import { addressesFrom, type PreviewAddress } from '@/lib/send-preview'
 import { SHIPPER, PICKUP_PARTIES, OFFICE_IN_CHARGE, type CargoDraft } from '@/lib/cargo-request'
 import { entityLabel } from '@/lib/depot-constants'
 
@@ -57,6 +58,42 @@ export function defaultCargoRecipients(): { to: string; cc: string } {
     to: String(process.env.CARGO_NOTIFY_TO ?? '').trim(),
     cc: String(process.env.CARGO_NOTIFY_CC ?? '').trim() || DEFAULT_CC,
   }
+}
+
+/**
+ * The audience for a cargo request, in ONE place.
+ *
+ * Both the send and the confirmation dialog that precedes it call this, so the
+ * addresses a person approves are the addresses that get the email. Two similar
+ * lines in two files is how a dialog ends up describing a send that no longer
+ * works that way.
+ */
+export function cargoRecipients(draft: CargoDraft): ResolvedRecipients {
+  return resolveRecipients({ to: draft.to, cc: draft.cc })
+}
+
+/**
+ * Where the addresses on a request came from, for the confirmation dialog.
+ *
+ * Unlike the manufacturing send, these arrive as one string off the form and
+ * the server cannot know whether a person edited them. So this reports what the
+ * value MATCHES, which is what a reader actually needs: an address that matches
+ * a server setting can be changed in Netlify, and one that matches nothing was
+ * put there by hand on this screen.
+ */
+export function describeCargoAddresses(value: string, field: 'to' | 'cc'): PreviewAddress[] {
+  const typed = String(value ?? '').trim()
+  if (!typed) return []
+  const configured = String(process.env[field === 'to' ? 'CARGO_NOTIFY_TO' : 'CARGO_NOTIFY_CC'] ?? '').trim()
+  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
+
+  if (configured && same(typed, configured)) {
+    return addressesFrom(typed, 'server', field === 'to' ? 'CARGO_NOTIFY_TO' : 'CARGO_NOTIFY_CC')
+  }
+  if (field === 'cc' && same(typed, DEFAULT_CC)) {
+    return addressesFrom(typed, 'built-in', 'the Hub default')
+  }
+  return addressesFrom(typed, 'typed', 'this request')
 }
 
 /**
@@ -119,7 +156,7 @@ export async function notifyCargoPartnerReady(
   if (!webhookUrl) return { sent: false, reason: 'not_configured' }
   if (!String(draft.to ?? '').trim()) return { sent: false, reason: 'not_configured' }
 
-  const recipients = resolveRecipients({ to: draft.to, cc: draft.cc })
+  const recipients = cargoRecipients(draft)
   const payload = buildCargoNotifyPayload(meta, draft, recipients)
 
   const controller = new AbortController()

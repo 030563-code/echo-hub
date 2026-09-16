@@ -11,7 +11,7 @@ const MIGRATION = 'supabase/migrations/20260908130000_po_manufacturing.sql'
 const APPROVE = 'supabase/migrations/20260908120000_sro_fulfilment_no_auto_mint.sql'
 
 describe("every export is gated, because a 'use server' export is an endpoint", () => {
-  for (const file of [RAISE, STOCK, SEND]) {
+  for (const file of [RAISE, STOCK]) {
     it(`${file} checks a capability on every action`, () => {
       const source = read(file)
       const actions = source.match(/export async function (\w+)/g) ?? []
@@ -20,6 +20,45 @@ describe("every export is gated, because a 'use server' export is an endpoint", 
       expect((source.match(/capabilities\.has\("po\.create"\)/g) ?? []).length).toBe(actions.length)
     })
   }
+
+  /**
+   * SEND is counted differently because two of its exports share one gate.
+   *
+   * Since 16 Sep 2026 the send and the confirmation dialog that precedes it are
+   * the same reasoning, held in planManufacturingSend, so a one-gate-per-export
+   * count no longer describes the file. The rule is unchanged and asserted more
+   * tightly here: the planner gates, and no export starts work without reaching
+   * a gate, its own or the planner's.
+   */
+  it(`${SEND} gates every export, its own or the shared planner's`, () => {
+    const source = read(SEND)
+
+    const names = [...source.matchAll(/export async function (\w+)/g)].map((m) => m[1]).sort()
+    expect(names).toEqual([
+      'previewManufacturingPoSend',
+      'releaseBamidaSendClaim',
+      'sendManufacturingPoToBamida',
+    ])
+
+    // The planner is defined before any export, so the chunks below cannot
+    // borrow its gate by accident.
+    expect(source.indexOf('async function planManufacturingSend')).toBeLessThan(
+      source.indexOf('export async function'),
+    )
+    expect(source).toMatch(
+      /async function planManufacturingSend[\s\S]{0,300}getAuthorizedUser\(\)[\s\S]{0,200}capabilities\.has\("po\.create"\)/,
+    )
+
+    for (const chunk of source.split('export async function ').slice(1)) {
+      const name = chunk.slice(0, chunk.indexOf('('))
+      const gated = /getAuthorizedUser\(\)/.test(chunk) || /planManufacturingSend\(/.test(chunk)
+      expect(gated, `${name} reaches no capability check`).toBe(true)
+    }
+
+    // Exactly two gates: the planner's, and the one in releaseBamidaSendClaim.
+    expect((source.match(/getAuthorizedUser\(\)/g) ?? []).length).toBe(2)
+    expect((source.match(/capabilities\.has\("po\.create"\)/g) ?? []).length).toBe(2)
+  })
 })
 
 describe('the fulfilment decision is made once', () => {

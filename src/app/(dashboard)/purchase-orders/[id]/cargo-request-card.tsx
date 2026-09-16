@@ -2,7 +2,8 @@
 
 // page-state: none (the durable copy is the po_cargo_request row. Save writes
 // the whole draft to that table, so nothing typed here is ever the only copy of
-// itself for longer than one edit.)
+// itself for longer than one edit. The send confirmation is a dialog that dies
+// with the click.)
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
@@ -11,7 +12,10 @@ import { Ship, AlertTriangle } from 'lucide-react'
 import {
   saveCargoRequest,
   approveAndSendCargoRequest,
+  previewCargoRequestSend,
 } from '@/app/actions/purchase-orders/cargo-request'
+import SendConfirmDialog from '@/components/po/send-confirm-dialog'
+import type { SendPreview } from '@/lib/send-preview'
 import {
   INCOTERMS,
   MODALITIES,
@@ -52,6 +56,13 @@ export default function CargoRequestCard({ poId, canAct, draft, sentAt, sentTo, 
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [form, setForm] = useState<CargoDraft>(draft)
+  // The confirmation, added 16 Sep 2026. This is the send that cannot be taken
+  // back: nothing in the Hub clears sent_at on a cargo request, so once the
+  // forwarder has it that is that.
+  const [confirming, setConfirming] = useState(false)
+  const [preview, setPreview] = useState<SendPreview | null>(null)
+  const [loadingPreview, setLoadingPreview] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
   const sent = sentAt !== null
 
   const set = <K extends keyof CargoDraft>(key: K, value: CargoDraft[K]) =>
@@ -66,11 +77,32 @@ export default function CargoRequestCard({ poId, canAct, draft, sentAt, sentTo, 
     })
   }
 
+  /**
+   * Work out what would be sent, then show it. Claims nothing, posts nothing.
+   *
+   * It previews the form as it stands, which is what Approve and send posts, so
+   * the thing read in the dialog is the thing that goes.
+   */
+  function askToSend() {
+    setConfirming(true)
+    setPreview(null)
+    setPreviewError(null)
+    setLoadingPreview(true)
+    void previewCargoRequestSend({ po_id: poId, draft: form })
+      .then((res) => {
+        if (res.ok) setPreview(res.preview)
+        else setPreviewError(res.error)
+      })
+      .catch(() => setPreviewError('That could not be worked out. Please try again.'))
+      .finally(() => setLoadingPreview(false))
+  }
+
   function send() {
     startTransition(async () => {
       const res = await approveAndSendCargoRequest({ po_id: poId, draft: form })
       if (!res.ok) toast.error(res.error)
       else toast.success(res.description)
+      setConfirming(false)
       router.refresh()
     })
   }
@@ -323,7 +355,7 @@ export default function CargoRequestCard({ poId, canAct, draft, sentAt, sentTo, 
           {canAct ? (
             <div className="mt-5 flex flex-wrap items-center gap-2">
               <button
-                onClick={send}
+                onClick={askToSend}
                 disabled={pending}
                 className="px-5 py-2 bg-echo-orange hover:bg-echo-orange-hover text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
               >
@@ -347,6 +379,17 @@ export default function CargoRequestCard({ poId, canAct, draft, sentAt, sentTo, 
           )}
         </>
       )}
+
+      <SendConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        preview={preview}
+        loading={loadingPreview}
+        pending={pending}
+        error={previewError}
+        confirmLabel="Approve and send"
+        onConfirm={send}
+      />
     </div>
   )
 }

@@ -28,7 +28,13 @@ import { getAuthorizedUser } from '@/lib/authz'
 import { poChainHeldBy } from '@/lib/po-organisations'
 import { sendDescription } from '@/lib/email-recipients'
 import { INCOTERMS, MODALITIES, CATEGORIES, DIRECTIONS, PACKAGE_TYPES, PICKUP_FROM } from '@/lib/cargo-request'
-import { notifyCargoPartnerReady } from '@/app/actions/purchase-orders/notify-cargo-partner'
+import {
+  notifyCargoPartnerReady,
+  cargoRecipients,
+  describeCargoAddresses,
+} from '@/app/actions/purchase-orders/notify-cargo-partner'
+import { PICKUP_PARTIES } from '@/lib/cargo-request'
+import type { SendPreview } from '@/lib/send-preview'
 
 /** No SKU: our database codes do not go to a forwarder. Zod drops a stored one. */
 const Line = z.object({
@@ -94,6 +100,76 @@ export async function saveCargoRequest(input: z.infer<typeof Input>): Promise<Ca
 
   revalidatePath(`/purchase-orders/${gate.poId}`)
   return { ok: true, description: 'Saved. Nothing has been sent yet.' }
+}
+
+/**
+ * What pressing Approve and send is about to do, for the dialog that asks.
+ *
+ * Dean, 16 Sep 2026: "confirmation before sending to Cargo partner along with CC
+ * everything and where it comes from."
+ *
+ * This is the send that cannot be taken back: nothing in the Hub can clear
+ * po_cargo_request.sent_at, so once a forwarder has the request that is that.
+ * It CLAIMS NOTHING and POSTS NOTHING, and it passes the same gate the send
+ * does, because every export of this file is a callable endpoint.
+ */
+export async function previewCargoRequestSend(
+  input: z.infer<typeof Input>,
+): Promise<{ ok: true; preview: SendPreview } | { ok: false; error: string }> {
+  const gate = await authorise(input)
+  if (!gate.ok) return { ok: false, error: gate.error }
+  const { draft } = gate
+
+  const recipients = cargoRecipients(draft)
+  const pallets = draft.lines.reduce((n, l) => n + (l.pallets ?? 0), 0)
+
+  const warnings: string[] = []
+  if (!String(draft.to ?? '').trim()) {
+    warnings.push('There is no address to send this to, so nothing can go out yet.')
+  }
+  if (!draft.delivery_term) {
+    warnings.push('No Incoterm. The email will ask Cargo Partner for one rather than assume who pays.')
+  }
+  if (!draft.consignee_name.trim() || !draft.consignee_address.trim()) {
+    warnings.push('The delivery party is incomplete, so the forwarder will have to come back and ask.')
+  }
+  warnings.push('Once this has gone it cannot be edited or sent again from the Hub.')
+
+  return {
+    ok: true,
+    preview: {
+      what: 'a collection request to the freight forwarder',
+      to: describeCargoAddresses(draft.to, 'to'),
+      cc: describeCargoAddresses(draft.cc, 'cc'),
+      // The forwarder email carries no blind copy: notifyCargoPartnerReady
+      // resolves `to` and `cc` only.
+      bcc: [],
+      isTest: recipients.isTest,
+      instead: recipients.intended,
+      facts: [
+        { label: 'Reference', value: draft.general_reference },
+        { label: 'Cargo ready', value: draft.cargo_readiness_date },
+        { label: 'Incoterm', value: draft.delivery_term ?? 'not given' },
+        { label: 'Pieces', value: `${draft.pieces} x ${draft.package_type_code}` },
+        ...(pallets > 0 ? [{ label: 'Pallets', value: String(pallets) }] : []),
+        {
+          label: 'Route',
+          value: `${draft.main_modality} / ${draft.main_category} / ${draft.business_direction}`,
+        },
+        {
+          label: 'Collect from',
+          value: `${PICKUP_PARTIES[draft.pickup_from].name}, account ${PICKUP_PARTIES[draft.pickup_from].account}`,
+        },
+        { label: 'Deliver to', value: draft.consignee_name || 'not named' },
+        { label: 'Description', value: draft.description },
+      ],
+      lines: draft.lines.map((l) => ({
+        name: l.product_name ?? 'Unnamed product',
+        quantity: l.quantity === null ? '' : String(l.quantity),
+      })),
+      warnings,
+    },
+  }
 }
 
 /** Release it. One conditional update claims the send before anything is posted. */
