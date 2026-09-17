@@ -8,6 +8,7 @@ import { getAuthorizedUser } from "@/lib/authz";
 import { poChainHeldBy } from "@/lib/po-organisations";
 import { specDocumentStatus } from "@/lib/po-spec-store";
 import { factoryLogin, loadSendContacts, resolveSelection } from "@/lib/send-contacts";
+import { factoryGuideAttachment } from "@/lib/factory-guide";
 import { externalCallsDisabled, hubBaseUrl } from "@/lib/env";
 import { resolveRecipients, sendDescription } from "@/lib/email-recipients";
 import { loadSroPoBom } from "@/lib/bom";
@@ -396,6 +397,14 @@ export async function sendManufacturingPoToBamida(
          * so removing the variable from Netlify turns this off with no deploy.
          */
         login,
+        /**
+         * The Slovak guide, on every order. Dean, 17 Sep 2026: "can you attache the pdf document
+         * you made to each email if possible?"
+         *
+         * Best effort and fetched after the claim: null when it cannot be read, and the email goes
+         * without it. A guide must never be the reason a purchase order does not reach the factory.
+         */
+        attachment: await factoryGuideAttachment(),
         pallets,
         /**
          * No SKU. `EBH9NA` is our own database code and means nothing to a

@@ -19,6 +19,8 @@ import { serviceClient, deletePurchaseOrdersByNotes } from './db-helpers'
 const TAG = 'GUIDE CAPTURE FIXTURE'
 const PASSWORD = 'guide-capture-passw0rd!'
 const OUT = process.env.GUIDE_OUT ?? '/tmp/guide'
+/** 'sk' for the factory's own copy, 'en' for the one we read. */
+const LOCALE = process.env.GUIDE_LOCALE === 'en' ? 'en' : 'sk'
 const sb = serviceClient()
 
 let userId = ''
@@ -178,7 +180,7 @@ test.afterAll(async () => {
   }
 })
 
-test('capture the three steps in Slovak', async ({ page }) => {
+test('capture the three steps', async ({ page }) => {
   test.skip(!sb, 'no service-role key in .env.local')
   test.skip(
     process.env.NEXT_PUBLIC_HUB_ENV !== 'staging',
@@ -189,7 +191,8 @@ test('capture the three steps in Slovak', async ({ page }) => {
 
   // --- sign in ------------------------------------------------------------
   await page.goto('/login')
-  await page.getByPlaceholder('name@echobarrier.com').fill(email)
+  // The screenshot shows the address THEY will type, not the throwaway this capture signs in with.
+  await page.getByPlaceholder('name@echobarrier.com').fill('sklad@bamida.sk')
   await page.getByPlaceholder('••••••••').fill(PASSWORD)
   await annotate(page, [
     { at: page.getByPlaceholder('name@echobarrier.com'), n: 1, where: 'right' },
@@ -199,19 +202,31 @@ test('capture the three steps in Slovak', async ({ page }) => {
   await shot(page, '01-login')
 
   await page.evaluate(() => document.querySelectorAll('[data-guide-overlay]').forEach((n) => n.remove()))
+  await page.getByPlaceholder('name@echobarrier.com').fill(email)
   await page.getByRole('button', { name: /Sign In/i }).click()
   await page.waitForURL((u) => new URL(u).pathname === '/factory', { timeout: 40_000 })
+  await page.context().addCookies([
+    { name: 'factory_lang', value: LOCALE, url: page.url() },
+  ])
+  await page.reload()
 
   // --- the list -----------------------------------------------------------
-  await expect(page.getByRole('heading', { name: 'Výroba' })).toBeVisible({ timeout: 20_000 })
+  const T = LOCALE === 'sk'
+    ? { orders: 'Výroba', download: /Stiahnuť objednávku/, confirm: 'Potvrdiť objednávku',
+        finished: 'Výroba dokončená', step1: 'Stiahnite si objednávku', done: /Potvrdené|Potvrdená/i,
+        yes: /Áno/i }
+    : { orders: 'Manufacturing', download: /Download purchase order/, confirm: 'Confirm purchase order',
+        finished: 'Manufacturing finished', step1: 'Download the purchase order', done: /Confirmed/i,
+        yes: /Yes/i }
+  await expect(page.getByRole('heading', { name: T.orders })).toBeVisible({ timeout: 20_000 })
   await annotate(page, [{ at: page.locator('table tbody tr').first(), n: 1, where: 'left' }])
   await shot(page, '02-orders-list')
 
   // --- the order, nothing done yet ----------------------------------------
   await page.goto(`/factory/${orderId}`)
-  await expect(page.getByText('Stiahnite si objednávku')).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText(T.step1)).toBeVisible({ timeout: 20_000 })
   await annotate(page, [
-    { at: page.getByRole('button', { name: /Stiahnuť objednávku/ }), n: 1, where: 'right' },
+    { at: page.getByRole('button', { name: T.download }), n: 1, where: 'right' },
     { at: page.locator('input[type="date"]').first(), n: 2, where: 'above' },
     { at: page.locator('input[type="date"]').nth(1), n: 3, where: 'above' },
   ])
@@ -223,21 +238,21 @@ test('capture the three steps in Slovak', async ({ page }) => {
   await dates.nth(0).fill('2026-09-29')
   await dates.nth(1).fill('2026-10-17')
   await annotate(page, [
-    { at: page.getByRole('button', { name: 'Potvrdiť objednávku' }), n: 4, where: 'right' },
+    { at: page.getByRole('button', { name: T.confirm }), n: 4, where: 'right' },
   ])
   await shot(page, '04-dates-filled')
 
   // --- confirmed ----------------------------------------------------------
   await page.evaluate(() => document.querySelectorAll('[data-guide-overlay]').forEach((n) => n.remove()))
-  await page.getByRole('button', { name: 'Potvrdiť objednávku' }).click()
-  await expect(page.getByText(/Potvrdené|Potvrdená/i).first()).toBeVisible({ timeout: 30_000 })
-  await annotate(page, [{ at: page.getByRole('button', { name: 'Výroba dokončená' }), n: 5, where: 'right' }])
+  await page.getByRole('button', { name: T.confirm }).click()
+  await expect(page.getByText(T.done).first()).toBeVisible({ timeout: 30_000 })
+  await annotate(page, [{ at: page.getByRole('button', { name: T.finished }), n: 5, where: 'right' }])
   await shot(page, '05-confirmed')
 
   // --- finished -----------------------------------------------------------
   await page.evaluate(() => document.querySelectorAll('[data-guide-overlay]').forEach((n) => n.remove()))
-  await page.getByRole('button', { name: 'Výroba dokončená' }).first().click()
-  const yes = page.getByRole('button', { name: /Áno|Yes/i }).first()
+  await page.getByRole('button', { name: T.finished }).first().click()
+  const yes = page.getByRole('button', { name: T.yes }).first()
   if (await yes.isVisible().catch(() => false)) await yes.click()
   await page.waitForTimeout(3000)
   await shot(page, '06-finished')

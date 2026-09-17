@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolveSelection, type SendContact } from '@/lib/send-contacts'
 
@@ -174,5 +174,41 @@ describe('the sign-in block in the factory emails', () => {
   it('is not in the send preview, which is about recipients and contents', () => {
     const preview = send.slice(send.indexOf('export async function previewManufacturingPoSend'))
     expect(preview.slice(0, 1200)).not.toContain('login')
+  })
+})
+
+describe('the guide is attached, and can never stop an order', () => {
+  // Dean, 17 Sep 2026: "can you attache the pdf document you made to each email if possible?"
+  const lib = readFileSync(join(process.cwd(), 'src/lib/factory-guide.ts'), 'utf8')
+  const send = readFileSync(
+    join(process.cwd(), 'src/app/actions/purchase-orders/send-manufacturing-po.ts'),
+    'utf8',
+  )
+  const confirm = readFileSync(
+    join(process.cwd(), 'src/app/actions/factory/notify-po-confirmed.ts'),
+    'utf8',
+  )
+
+  it('is on the order email and the confirmation', () => {
+    expect(send).toContain('attachment: await factoryGuideAttachment()')
+    expect(confirm).toContain('attachment: meta.attachment ?? null')
+  })
+
+  it('returns null rather than throwing, on every failure', () => {
+    // 🔴 A guide that cannot be read must never be why a purchase order does not reach the factory.
+    expect(lib).toContain('if (!res.ok) return null')
+    expect(lib).toContain('} catch {\n    return null')
+    expect(lib).toContain('const controller = new AbortController()')
+  })
+
+  it('refuses anything that is not actually a PDF', () => {
+    // An error page fetched from our own site is 200 and is not a guide.
+    expect(lib).toContain("bytes.subarray(0, 4).toString() !== '%PDF'")
+    expect(lib).toContain('bytes.length < 10_000')
+  })
+
+  it('ships the file the helper asks for', () => {
+    expect(existsSync(join(process.cwd(), 'public/guides/navod-pre-vyrobu.pdf'))).toBe(true)
+    expect(lib).toContain("'/guides/navod-pre-vyrobu.pdf'")
   })
 })

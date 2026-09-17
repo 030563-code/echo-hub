@@ -290,13 +290,21 @@ describe('the emailed purchase order became a notification', () => {
     expect(source).toContain('intended_cc: recipients.intended?.cc ?? recipients.cc')
   })
 
-  it('attaches nothing and mints no link', () => {
-    // Dean, 16 Sep 2026: "not to have the pdf attached but rather link to the
-    // hub with their login".
+  it('does not attach the PURCHASE ORDER, and mints no link', () => {
+    // Dean, 16 Sep 2026: "not to have the pdf attached but rather link to the hub with their
+    // login". That is about the ORDER document, which would otherwise be a second copy able to
+    // drift from the one in the Hub. It is still true.
+    //
+    // 🔴 The guide IS attached, since 17 Sep: "can you attache the pdf document you made to each
+    // email if possible?" A guide cannot drift from an order because it describes neither.
     const body = code('src/app/actions/purchase-orders/send-manufacturing-po.ts')
-    expect(body).not.toContain('attachment')
+    expect(body).not.toContain('buildBamidaPoPdf')
+    expect(body).not.toContain('bamida-po-pdf')
     expect(body).not.toContain('mintManufacturingLink')
     expect(body).not.toContain('link_expires_at')
+    // The only attachment is the guide, and it comes from the helper that can only return null.
+    expect(body).toContain('attachment: await factoryGuideAttachment()')
+    expect((body.match(/attachment/g) ?? []).length).toBe(1)
   })
 
   it('points at the order inside the Hub', () => {

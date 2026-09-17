@@ -29,6 +29,7 @@ import {
 import { notifyPoConfirmed } from '@/app/actions/factory/notify-po-confirmed'
 import { renderSupplierDocument } from '@/lib/bamida-po-document'
 import { factoryLogin, loadSendContacts } from '@/lib/send-contacts'
+import { factoryGuideAttachment } from '@/lib/factory-guide'
 import { factoryStrings } from '@/lib/factory/locale.server'
 import type { FactoryStrings } from '@/lib/factory/strings'
 
@@ -152,6 +153,7 @@ export async function confirmFactoryOrder(input: {
     // Same sign-in block as the order email. This is the one that asks them to
     // come back later and press finished, which is when it is needed.
     login: factoryLogin(await loadSendContacts('manufacturing')),
+    attachment: await factoryGuideAttachment(),
   })
 
   if (told.sent) {

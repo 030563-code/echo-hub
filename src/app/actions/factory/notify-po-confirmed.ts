@@ -45,6 +45,8 @@ export interface PoConfirmedMeta {
   to: string[]
   /** Sign-in details to print, or null when no password is configured. */
   login?: { email: string; password: string } | null
+  /** The Slovak guide, or null when it could not be read. */
+  attachment?: { filename: string; content_base64: string } | null
   /** Any further manufacturer contacts copied on the purchase order. */
   cc: string[]
 }
@@ -82,6 +84,9 @@ export function buildPoConfirmedPayload(meta: PoConfirmedMeta, recipients: Resol
      * BAMIDA_PASSWORD is unset, and the composer then prints nothing.
      */
     login: meta.login ?? null,
+
+    /** The same guide as the order email. Best effort: null simply prints no attachment. */
+    attachment: meta.attachment ?? null,
 
     /**
      * No SKU. `EBH9NA` is our own database code and means nothing to a factory,
