@@ -33,10 +33,12 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { loadSroPoBom } from '@/lib/bom'
 import { getSupplierByCode } from '@/lib/suppliers'
-import { buildBamidaPo, type BamidaSupplier } from '@/lib/bamida-po'
+import { buildBamidaPo, DEFAULT_SUPPLIER, type BamidaSupplier } from '@/lib/bamida-po'
 import { buildBamidaPoPdf } from '@/lib/bamida-po-pdf'
-import { buildSupplierSpec } from '@/lib/supplier-spec'
-import { loadModelSpecs } from '@/lib/model-spec'
+import { BUYER } from '@/lib/bamida-po'
+import { STANDARD_PRINTING } from '@/lib/supplier-spec'
+import { specFromDraft } from '@/lib/po-spec-draft'
+import { loadSpecDocument, specActorNames } from '@/lib/po-spec-store'
 import { buildSupplierSpecPdf } from '@/lib/supplier-spec-pdf'
 import { buildTransportOrderPdf } from '@/lib/transport-order-pdf'
 import { loadCargoRequest } from '@/lib/cargo-request-store'
@@ -144,13 +146,32 @@ export async function renderSupplierDocument(
   const root = group?.parent_po_id ? await read(group.parent_po_id) : null
   const destination = root?.from_entity ? entityLabel(root.from_entity) : null
 
-  // The manufacturing specification per model, which is the detail Juraj asked
-  // for. A failed read returns an empty map and the document degrades to the
-  // materials and pallet count it printed before, rather than the factory
-  // getting no order at all.
-  const specs = await loadModelSpecs(admin)
-  const spec = buildSupplierSpec(bom, today, supplier, po.po_number ?? '', destination, specs)
-  if (spec.products.length === 0) return { ok: false, reason: 'no_lines' }
+  // WHAT PRINTS IS WHAT WAS SAVED. loadSpecDocument returns the order's own
+  // edited document where one exists and a fresh generation where it does not,
+  // so the factory and the office are never looking at two different sheets and
+  // a confirmed document cannot move underneath the signature that is on it.
+  const document = await loadSpecDocument(poId, destination)
+  if (!document || document.draft.products.length === 0) return { ok: false, reason: 'no_lines' }
+
+  // The one name on the face of the document, resolved only when there is one
+  // to resolve.
+  const names = await specActorNames([document.confirmedByUid])
+  const approval =
+    document.confirmedAt && document.confirmedByUid
+      ? {
+          at: document.confirmedAt.slice(0, 10),
+          by: names.get(document.confirmedByUid) ?? 'Echo Barrier',
+        }
+      : null
+
+  const spec = specFromDraft(document.draft, {
+    specNumber: po.po_number ?? '',
+    date: today,
+    supplier: supplier ?? DEFAULT_SUPPLIER,
+    buyer: BUYER,
+    printing: STANDARD_PRINTING,
+    approval,
+  })
   const pdf = await buildSupplierSpecPdf(spec)
   return {
     ok: true,

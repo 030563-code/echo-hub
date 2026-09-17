@@ -13,6 +13,7 @@
  */
 
 import type { BamidaPo } from '@/lib/bamida-po'
+import { registerUnicodeFont } from '@/lib/pdf-font'
 
 const eur2 = (v: number) => v.toLocaleString('en-GB', { minimumFractionDigits: 2 })
 
@@ -20,10 +21,14 @@ export async function buildBamidaPoPdf(bamida: BamidaPo): Promise<import('jspdf'
   const { default: jsPDF } = await import('jspdf')
   const autoTable = (await import('jspdf-autotable')).default
   const doc = new jsPDF()
+  // 🔴 The core Helvetica jsPDF ships is CP1252 and has no Slovak caron
+  // letters: it printed "pod>a" for "podľa" and dropped the C in "Čierna" on
+  // documents that go to a Slovak supplier. See pdf-font.ts.
+  const font = registerUnicodeFont(doc)
   const W = doc.internal.pageSize.width
   const priced = bamida.priced
 
-  doc.setFont('helvetica', 'bold')
+  doc.setFont(font, 'bold')
   doc.setFontSize(16)
   // NOT "OBJEDNÁVKOVÝ LIST" any more. That is the name of the -1 specification
   // (supplier-spec-pdf.ts), which is the document the factory actually builds
@@ -34,10 +39,10 @@ export async function buildBamidaPoPdf(bamida: BamidaPo): Promise<import('jspdf'
   doc.text(`${priced ? 'ACCOUNTING ORDER' : 'BOM'} ${bamida.poNumber}`, W / 2, 22, { align: 'center' })
 
   doc.setFontSize(9)
-  doc.setFont('helvetica', 'bold')
+  doc.setFont(font, 'bold')
   doc.text('Supplier', 14, 34)
   doc.text('Buyer', W / 2 + 6, 34)
-  doc.setFont('helvetica', 'normal')
+  doc.setFont(font, 'normal')
   doc.text([bamida.supplier.name, ...bamida.supplier.address], 14, 39)
   doc.text([bamida.buyer.name, ...bamida.buyer.address, `Tax: ${bamida.buyer.taxNumber}`], W / 2 + 6, 39)
   // No reference line: bamida.reference is the Hub's master_ref, an internal
@@ -58,8 +63,8 @@ export async function buildBamidaPoPdf(bamida: BamidaPo): Promise<import('jspdf'
     startY: 76,
     head,
     body,
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [40, 40, 40] },
+    styles: { font, fontSize: 9, overflow: 'linebreak' },
+    headStyles: { font, fontStyle: 'bold', fillColor: [40, 40, 40] },
     columnStyles: priced ? { 5: { halign: 'right' }, 6: { halign: 'right' }, 7: { halign: 'right' } } : {},
   })
 
@@ -68,7 +73,7 @@ export async function buildBamidaPoPdf(bamida: BamidaPo): Promise<import('jspdf'
     doc.setFontSize(9)
     doc.text(`SUBTOTAL (EUR)   ${eur2(bamida.subtotal ?? 0)}`, W - 14, finalY + 8, { align: 'right' })
     doc.text(`TAX (EUR)   ${eur2(bamida.tax ?? 0)}`, W - 14, finalY + 14, { align: 'right' })
-    doc.setFont('helvetica', 'bold')
+    doc.setFont(font, 'bold')
     doc.text(`TOTAL INCL. TAX (EUR)   ${eur2(bamida.total ?? 0)}`, W - 14, finalY + 21, { align: 'right' })
   }
 

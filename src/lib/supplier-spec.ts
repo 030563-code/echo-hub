@@ -38,6 +38,17 @@ export interface SupplierSpecMaterial {
   total: number
 }
 
+/**
+ * One printed line of the Specification table: what it is called and what it
+ * says. Deliberately label-and-value rather than a fixed field list, because
+ * the editor lets Juraj add a row the Hub has no column for, and the printer
+ * must not need a code change to print it.
+ */
+export interface SupplierSpecRow {
+  label: string
+  value: string
+}
+
 export interface SupplierSpecProduct {
   model: string
   name: string
@@ -53,6 +64,22 @@ export interface SupplierSpecProduct {
    * requirements" to whoever is building from it.
    */
   spec: ModelSpec | null
+  /**
+   * The Specification table as rows, resolved from `spec` by
+   * `specificationRows`. The printer reads THIS and never the ModelSpec, so an
+   * edited document prints exactly what was saved, including rows that
+   * correspond to no column.
+   */
+  specRows: SupplierSpecRow[]
+  /** The bullets under Specific requirements: graphics notes then requirements. */
+  bullets: string[]
+  /**
+   * Which document the standing values were read off, printed in the line that
+   * says whether anybody has confirmed them. Held separately from `spec` so an
+   * edited document keeps its provenance after the ModelSpec is out of the
+   * picture.
+   */
+  sourceDocument: string | null
 }
 
 export interface SupplierSpecPacking {
@@ -72,6 +99,14 @@ export interface SupplierSpec {
   packing: SupplierSpecPacking
   /** Standard unless somebody tells us otherwise: the Hub holds no other print spec. */
   printing: string
+  /**
+   * Who signed this document off and when, or null while it is unsigned.
+   *
+   * Dean, 17 Sep 2026: "That way nothing goes unsigned." A generated document
+   * is evidence; a document somebody in the office has read and confirmed is an
+   * instruction, and the face of the PDF says which one the factory is holding.
+   */
+  approval: { at: string; by: string } | null
 }
 
 
@@ -100,6 +135,47 @@ export const STANDARD_PRINTING = 'Standard'
 
 const round3 = (v: number) => Math.round(v * 1000) / 1000
 
+/** Join the parts of a row that the templates keep in separate columns. */
+const pair = (a: string | null, b: string | null) => [a, b].filter(Boolean).join(' / ') || null
+
+/**
+ * The Specification table for one model, in the order Bamida's own
+ * OBJEDNAVKOVY LIST lists it.
+ *
+ * Only fields the Hub actually holds are emitted. A blank row on a factory
+ * document reads as "no requirement", and that is not what an empty database
+ * column means, so an absent value means an absent row.
+ */
+export function specificationRows(s: ModelSpec): SupplierSpecRow[] {
+  const rows: SupplierSpecRow[] = []
+  const add = (label: string, value: string | null) => {
+    if (value) rows.push({ label, value })
+  }
+  add('Dimensions', s.dimensions)
+  add('PVC', pair(pair(s.pvcType, s.pvcColour), s.pvcRal ? `RAL ${s.pvcRal}` : null))
+  add('Mesh (sieťka)', pair(s.meshType, s.meshColour))
+  add('Goretex', pair(s.goretexType, s.goretexColour))
+  add('Infill (materiál výplne)', pair(s.infillType, s.infillDimensions))
+  add('Thread (nite)', pair(s.threadType, s.threadColour))
+  add('Reflective strips', pair(s.reflectiveType, s.reflectiveColour))
+  add('Rings (krúžky)', s.rings)
+  add('Buckles (pracky)', s.buckles)
+  add('Graphics', s.graphicsPrint)
+  add('Graphics with logo', s.graphicsWithLogo)
+  add('Pallet type', s.palletType)
+  add('Frame (konštrukcia)', s.construction)
+  add('Pallet height', s.maxPalletHeight)
+  add('Pack (balenie)', s.packConfig)
+  add('Include (pribaliť)', s.includeWithOrder)
+  add('Note', s.notes)
+  return rows
+}
+
+/** Graphics notes first, then the standing requirements, as the templates read. */
+export function specificationBullets(s: ModelSpec): string[] {
+  return [...s.graphicsNotes, ...s.specificRequirements].map((b) => b.trim()).filter(Boolean)
+}
+
 export function buildSupplierSpec(
   po: SroPoBom,
   isoDate: string,
@@ -118,6 +194,7 @@ export function buildSupplierSpec(
 
   for (const line of po.lines) {
     if (!line.model_code) continue
+    const model = specs.get(line.model_code) ?? null
     const packSize = packSizeFor(line.model_code)
     const linePallets = Math.ceil(line.quantity / packSize)
     pallets += linePallets
@@ -136,7 +213,10 @@ export function buildSupplierSpec(
           perUnit: round3(c.qty),
           total: round3(c.qty * line.quantity),
         })),
-      spec: specs.get(line.model_code) ?? null,
+      spec: model,
+      sourceDocument: model?.sourceDocument ?? null,
+      specRows: model ? specificationRows(model) : [],
+      bullets: model ? specificationBullets(model) : [],
     })
   }
 
@@ -149,5 +229,6 @@ export function buildSupplierSpec(
     products,
     packing: { pallets, palletCovers: pallets, metalFrames: pallets },
     printing: STANDARD_PRINTING,
+    approval: null,
   }
 }

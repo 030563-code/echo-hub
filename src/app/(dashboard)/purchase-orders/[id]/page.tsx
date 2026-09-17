@@ -11,6 +11,7 @@ import { deriveStage, effectiveStage, stageLabel } from '@/lib/po-lifecycle'
 import { assessOrderCapability } from '@/lib/manufacturing-capability'
 import { loadPurchaseOrderDetail } from '@/lib/po-detail'
 import { loadCargoRequest, type CargoRequestRow } from '@/lib/cargo-request-store'
+import { specActorNames, specDocumentStatus } from '@/lib/po-spec-store'
 import DownloadPoPdfButton from '@/components/po/download-po-pdf-button'
 import AttachPoPdfButton from '@/components/po/attach-po-pdf-button'
 import ShipmentSection from '@/components/po/shipment-section'
@@ -63,6 +64,9 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
   const canReceive = caps.has('po.receive')
   const canViewCost = caps.has('cost.view')
   const canViewBom = caps.has('bom.view')
+  // Editing what the factory is told to build sits behind the same capability as the bill of
+  // materials itself. Juraj and the Operations account hold it; sales and production do not.
+  const canEditSpec = caps.has('bom.edit')
   const canDetectShipment = caps.has('transport.view')
   const canManageAttachments = canAct || canApprove || canReceive
   const canMoveStage = canApprove || canReceive
@@ -95,6 +99,13 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
   // Only work out what Bamida could build when somebody is about to decide. The
   // figure costs four queries and is meaningless anywhere else on this page.
   const capability = awaitingFulfilment && canViewBom ? await assessOrderCapability(po.lines ?? []) : null
+
+  // Whether the -1 has been written and signed. One row read, and only on the leg that has a
+  // specification at all: every other leg prints the generic document.
+  const specStatus = isManufacturingOrder ? await specDocumentStatus(id) : null
+  const specConfirmedBy = specStatus?.confirmedByUid
+    ? ((await specActorNames([specStatus.confirmedByUid])).get(specStatus.confirmedByUid) ?? null)
+    : null
 
   // The stock branch. EB-SRO has never held a counted figure, so this reads as
   // "never counted" rather than as a zero that looks like a fact.
@@ -203,6 +214,25 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
             fx={pdf.fx}
             rootCurrency={rootCurrency}
           />
+          {/* The -1 is generated, but a generated document is evidence and a checked one is an
+              instruction. Dean, 17 Sep 2026: "That way nothing goes unsigned." */}
+          {isManufacturingOrder && (
+            <Link
+              href={`/purchase-orders/${po.id}/specification`}
+              className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-center text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+            >
+              {canEditSpec ? 'Edit specification' : 'View specification'}
+            </Link>
+          )}
+          {specStatus && (
+            <p className="text-center text-xs text-gray-500">
+              {specStatus.confirmedAt
+                ? `Specification confirmed${specConfirmedBy ? ` by ${specConfirmedBy}` : ''}`
+                : specStatus.saved
+                  ? 'Specification saved, not yet confirmed'
+                  : 'Specification not yet checked'}
+            </p>
+          )}
           {/* Only once Xero holds the order. The id is what the PDF attaches
               to, and nothing in that path can create a purchase order. */}
           {canApprove && po.xero_po_id && (

@@ -130,22 +130,34 @@ describe('guard: the specification document tells the truth about itself', () =>
     expect(pdf).toContain('Check before building')
   })
 
+  it('prints who signed it once somebody has', () => {
+    // Dean, 17 Sep 2026: "That way nothing goes unsigned." A name and a date, or
+    // the warning. Never neither.
+    expect(pdf).toContain('Specification confirmed by ${spec.approval.by}')
+  })
+
   it('says when it holds no specification at all rather than printing nothing', () => {
     expect(pdf).toContain('No manufacturing specification held for')
   })
 
+  it('decides what to say from what it PRINTED, not from a database field', () => {
+    // An edited document has no ModelSpec behind it and is still a specification;
+    // keying off `spec === null` would have called every hand-written one empty.
+    expect(pdf).toContain('product.specRows.length > 0 || product.bullets.length > 0')
+    expect(pdf).not.toContain('product.spec === null')
+  })
+
   it('does not print the "Standard" placeholder alongside a real graphics spec', () => {
-    // Where a spec exists its Graphics row says what is printed. Repeating
-    // "Standard" underneath would contradict it.
-    expect(pdf).toContain("spec.products.every((p) => p.spec === null)")
+    expect(pdf).toContain('spec.products.every((p) => p.specRows.length === 0)')
   })
 
   it('renders the fields Juraj asked for', () => {
     for (const label of ['PVC', 'Mesh (sieťka)', 'Goretex', 'Infill (materiál výplne)',
       'Thread (nite)', 'Reflective strips', 'Rings (krúžky)', 'Buckles (pracky)',
-      'Pallet type', 'Pallet height', 'Pack (balenie)', 'Include (pribaliť)', 'Specific requirements']) {
-      expect(pdf).toContain(label)
+      'Pallet type', 'Pallet height', 'Pack (balenie)', 'Include (pribaliť)']) {
+      expect(lib).toContain(label)
     }
+    expect(pdf).toContain('Specific requirements')
   })
 
   it('only imports the specification type, never the server-only module, into the pure builder', () => {
@@ -153,5 +165,28 @@ describe('guard: the specification document tells the truth about itself', () =>
     // every unit test that exercises this module.
     expect(lib).toContain("import type { ModelSpec } from '@/lib/model-spec'")
     expect(lib).not.toMatch(/^import \{[^}]*\} from '@\/lib\/model-spec'/m)
+  })
+
+  it('draws nothing without a width, which is what ran off the page', () => {
+    // 🔴 Every bare doc.text(x, y) with no maxWidth is an overflow waiting for a
+    // longer value. The only unbounded calls left are the centred headings and
+    // the footer, which are fixed-length by construction.
+    expect(pdf).toContain('doc.splitTextToSize')
+    expect(pdf).toContain('maxWidth: CONTENT_W')
+    // Column widths are stated so a cell wraps at a width this file chose.
+    expect(pdf).toContain('cellWidth: SPEC_LABEL_W')
+    expect(pdf).toContain("overflow: 'linebreak'")
+  })
+
+  it('uses a font that can spell Slovak', () => {
+    // 🔴 Core Helvetica is CP1252 and printed "pod>a" for "podľa" and dropped the
+    // C of "Čierna" on the sheet the factory builds from.
+    expect(pdf).toContain("import { registerUnicodeFont } from '@/lib/pdf-font'")
+    expect(pdf).not.toContain("'helvetica'")
+    for (const file of ['src/lib/bamida-po-pdf.ts', 'src/lib/transport-order-pdf.ts']) {
+      const source = readFileSync(join(process.cwd(), file), 'utf8')
+      expect(source, file).toContain('registerUnicodeFont(doc)')
+      expect(source, file).not.toContain("'helvetica'")
+    }
   })
 })

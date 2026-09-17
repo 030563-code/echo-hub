@@ -22,6 +22,7 @@ import {
   palletsForQuantity,
   type CargoDraft,
 } from '@/lib/cargo-request'
+import { registerUnicodeFont } from '@/lib/pdf-font'
 
 export interface TransportOrder {
   orderNumber: string
@@ -35,28 +36,32 @@ export async function buildTransportOrderPdf(order: TransportOrder): Promise<imp
   const { default: jsPDF } = await import('jspdf')
   const autoTable = (await import('jspdf-autotable')).default
   const doc = new jsPDF()
+  // 🔴 The core Helvetica jsPDF ships is CP1252 and has no Slovak caron
+  // letters: it printed "pod>a" for "podľa" and dropped the C in "Čierna" on
+  // documents that go to a Slovak supplier. See pdf-font.ts.
+  const font = registerUnicodeFont(doc)
   const W = doc.internal.pageSize.width
   const d = order.draft
   const pickup = PICKUP_PARTIES[d.pickup_from]
 
-  doc.setFont('helvetica', 'bold')
+  doc.setFont(font, 'bold')
   doc.setFontSize(16)
   doc.text('TRANSPORT ORDER', W / 2, 16, { align: 'center' })
   doc.setFontSize(10)
   doc.text(`SHIPMENT REQUEST ${order.orderNumber}`, W / 2, 22, { align: 'center' })
 
   doc.setFontSize(9)
-  doc.setFont('helvetica', 'bold')
+  doc.setFont(font, 'bold')
   doc.text('Collect from', 14, 34)
   doc.text('Shipper and principal', W / 2 + 6, 34)
-  doc.setFont('helvetica', 'normal')
+  doc.setFont(font, 'normal')
   doc.text([pickup.name, `Account ${pickup.account}`, ...pickup.address], 14, 39)
   doc.text([SHIPPER.name, `Account ${SHIPPER.account}`, ...SHIPPER.address], W / 2 + 6, 39)
 
-  doc.setFont('helvetica', 'bold')
+  doc.setFont(font, 'bold')
   doc.text('Deliver to', 14, 62)
   doc.text('Office in charge', W / 2 + 6, 62)
-  doc.setFont('helvetica', 'normal')
+  doc.setFont(font, 'normal')
   doc.text(
     [d.consignee_name || 'Not recorded', ...(d.consignee_address ? d.consignee_address.split('\n') : [])],
     14,
@@ -79,8 +84,8 @@ export async function buildTransportOrderPdf(order: TransportOrder): Promise<imp
       // and the forwarder's email says the same thing when it is not set.
       ['Incoterm', d.delivery_term ?? 'To be confirmed by Echo Barrier'],
     ],
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [40, 40, 40] },
+    styles: { font, fontSize: 9, overflow: 'linebreak' },
+    headStyles: { font, fontStyle: 'bold', fillColor: [40, 40, 40] },
     columnStyles: { 1: { halign: 'right' } },
   })
 
@@ -96,16 +101,16 @@ export async function buildTransportOrderPdf(order: TransportOrder): Promise<imp
       qty(l.quantity),
       qty(l.pallets ?? palletsForQuantity(l.quantity)),
     ]),
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [40, 40, 40] },
+    styles: { font, fontSize: 9, overflow: 'linebreak' },
+    headStyles: { font, fontStyle: 'bold', fillColor: [40, 40, 40] },
     columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
   })
 
   if (d.notes?.trim()) {
     const afterCargo = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? 160
-    doc.setFont('helvetica', 'bold')
+    doc.setFont(font, 'bold')
     doc.text('Note from Echo Barrier', 14, afterCargo + 12)
-    doc.setFont('helvetica', 'normal')
+    doc.setFont(font, 'normal')
     doc.text(doc.splitTextToSize(d.notes.trim(), W - 28), 14, afterCargo + 17)
   }
 
