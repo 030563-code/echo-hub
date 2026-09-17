@@ -96,6 +96,15 @@ export async function renderSupplierDocument(
     // -2. Its content is the shipment request, drafted the moment the barriers
     // existed, so there is nothing to print before then. No bill of materials
     // is involved, which is why this answers before that read.
+    //
+    // 🔴 THIS IS THE ONLY EBSRO<n>-2 THERE IS. Until 17 Sep 2026 a "Raise cargo
+    // PO" button also created a real SRO_TO_CARGO purchase order row, and
+    // hub_mint_po_number numbers those EBSRO<n>-2 as well: two different objects
+    // could carry one number and say different things. Dean: "Shipping document
+    // raised from -1 is the real one. Raise Cargo PO should probably be
+    // removed." The button and its action are gone. The leg is still understood
+    // by the type, the numbering function and the board so that a row from
+    // before then would still render, but nothing can make another one.
     const cargo = await loadCargoRequest(poId)
     if (!cargo) return { ok: false, reason: 'no_shipment' }
     const number = sroDocumentNumber(group?.po_number, 'Shipping') ?? po.po_number ?? ''

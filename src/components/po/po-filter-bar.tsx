@@ -37,7 +37,10 @@ const STATUSES: Array<{ value: string; label: string }> = [
   { value: 'cancelled', label: 'Cancelled' },
 ]
 
-const LEGS = ['DEPOT_TO_EB_GROUP', 'EB_GROUP_TO_SRO', 'SRO_TO_SUPPLIER', 'SRO_TO_CARGO']
+// SRO_TO_CARGO is deliberately absent. Nothing can raise one since 17 Sep 2026, so the option
+// would never match a row. The leg itself is still understood everywhere else, so an order from
+// before then still renders on the board; it just cannot be filtered for.
+const LEGS = ['DEPOT_TO_EB_GROUP', 'EB_GROUP_TO_SRO', 'SRO_TO_SUPPLIER']
 
 const FULFILMENT = [
   { value: 'stock', label: 'From stock' },

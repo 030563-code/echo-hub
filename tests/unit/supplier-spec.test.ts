@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
+import { execSync } from 'node:child_process'
 import { join } from 'node:path'
+import { sroDocumentNumber } from '@/lib/po-number'
 import { buildSupplierSpec, STANDARD_PRINTING } from '@/lib/supplier-spec'
 import type { ModelSpec } from '@/lib/model-spec'
 import type { SroPoBom, SroPoBomLine } from '@/lib/erp-types'
@@ -188,5 +190,41 @@ describe('guard: the specification document tells the truth about itself', () =>
       expect(source, file).toContain('registerUnicodeFont(doc)')
       expect(source, file).not.toContain("'helvetica'")
     }
+  })
+})
+
+describe('guard: the shipping order is a document, never a second purchase order', () => {
+  // 🔴 Two things used to be able to carry the number EBSRO<n>-2: this document,
+  // derived from the group order's number, and a real SRO_TO_CARGO purchase
+  // order row whose number hub_mint_po_number derives the same way. Dean,
+  // 17 Sep 2026: "Shipping document raised from -1 is the real one. Raise Cargo
+  // PO should probably be removed."
+  const files = [
+    'src/app/actions/purchase-orders/raise-cargo-po.ts',
+    'src/components/po/cargo-po-button.tsx',
+  ]
+
+  it('has no way to raise a cargo purchase order', () => {
+    for (const file of files) {
+      expect(existsSync(join(process.cwd(), file)), `${file} is back`).toBe(false)
+    }
+  })
+
+  it('has no caller left behind either', () => {
+    for (const dir of ['src/app', 'src/components', 'src/lib']) {
+      const hits = execSync(
+        `grep -rl "raiseCargoPo\\|CargoPoButton" ${dir} || true`,
+        { cwd: process.cwd(), encoding: 'utf8' },
+      ).trim()
+      expect(hits, `${dir} still references the removed cargo PO`).toBe('')
+    }
+  })
+
+  it('still derives the shipping document number from the group order', () => {
+    // The document keeps the -2 suffix. That is the whole point: there is now
+    // exactly one thing wearing it.
+    expect(sroDocumentNumber('EBGRP8001', 'Shipping')).toBe('EBSRO8001-2')
+    expect(sroDocumentNumber('EBGRP8001', 'Manufacturing')).toBe('EBSRO8001-1')
+    expect(sroDocumentNumber('EBGRP8001', 'Accounting')).toBe('EBSRO8001-3')
   })
 })

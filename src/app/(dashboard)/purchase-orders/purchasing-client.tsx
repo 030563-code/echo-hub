@@ -9,7 +9,6 @@ import KanbanBoard from "@/components/board/KanbanBoard";
 import BoardTable from "@/components/board/BoardTable";
 import StatusBadge from "@/components/board/StatusBadge";
 import AttachmentsSection from "@/components/po/attachments-section";
-import CargoPoButton from "@/components/po/cargo-po-button";
 import DetailSection from "@/components/po/detail-section";
 import DownloadPoPdfButton from "@/components/po/download-po-pdf-button";
 import ReceiveModal from "@/components/po/receive-modal";
@@ -402,7 +401,6 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
               {selected.delivered_at && <TimelineItem label="Delivered" date={selected.delivered_at} />}
             </DetailSection>
 
-            {canDetectShipment && selected.leg === "EB_GROUP_TO_SRO" && <CargoPoButton po={selected} />}
 
             <ShipmentSection po={selected} canDetect={canDetectShipment} />
 

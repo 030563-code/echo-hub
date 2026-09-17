@@ -16,7 +16,6 @@ import DownloadPoPdfButton from '@/components/po/download-po-pdf-button'
 import AttachPoPdfButton from '@/components/po/attach-po-pdf-button'
 import ShipmentSection from '@/components/po/shipment-section'
 import AttachmentsSection from '@/components/po/attachments-section'
-import CargoPoButton from '@/components/po/cargo-po-button'
 import PoPurposeTag from '@/components/po/po-purpose-tag'
 import TimelineItem from '@/components/po/timeline-item'
 import DetailSection from '@/components/po/detail-section'
@@ -403,11 +402,6 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
             Shipment
           </h2>
           <ShipmentSection po={po} canDetect={canDetectShipment} />
-          {awaitingFulfilment && canDetectShipment && (
-            <div className="mt-4">
-              <CargoPoButton po={po} />
-            </div>
-          )}
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-white p-5">
