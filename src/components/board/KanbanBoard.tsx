@@ -131,6 +131,21 @@ function POCard({
   /** Group's order on SRO, once SRO have taken it on. */
   const approvedSro =
     order.leg === "EB_GROUP_TO_SRO" && order.status !== "requested" && order.status !== "rejected";
+  /**
+   * How the order is being fulfilled, shown on the order that is DOING it.
+   *
+   * Dean, 17 Sep 2026: "the manufacture tag should also really sit on the SRO-
+   * supplier PO not on the GRP- sro PO." The supplier order exists only because
+   * SRO chose to manufacture, so it wears the tag; its parent is left with
+   * Approved. On the stock branch there is no child order to wear anything, so
+   * the SRO order keeps From Stock itself.
+   */
+  const fulfilment =
+    order.leg === "SRO_TO_SUPPLIER"
+      ? "manufacture"
+      : order.leg === "EB_GROUP_TO_SRO" && order.fulfilment_type === "manufacture"
+        ? null
+        : order.fulfilment_type;
 
   return (
     <div
@@ -171,10 +186,10 @@ function POCard({
           The Approved sticker is Dean's, 17 Sep 2026: once manufacturing starts
           the SRO order goes back to the Group → S.R.O column, so the card has to
           say for itself that it was accepted rather than still waiting. */}
-      {(approvedSro || order.fulfilment_type) && (
+      {(approvedSro || fulfilment) && (
         <div className="mb-2 flex flex-wrap items-center gap-1">
           {approvedSro && <StatusBadge status="approved" />}
-          {order.fulfilment_type && <StatusBadge status={order.fulfilment_type} />}
+          {fulfilment && <StatusBadge status={fulfilment} />}
         </div>
       )}
 

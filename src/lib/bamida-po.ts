@@ -55,12 +55,12 @@ const PRINT_TAX = 20 // printing taxed 20% (PO-00001385)
 
 // Fallback used only if po_suppliers can't be read (graceful degradation). The
 // live supplier block comes from po_suppliers (code 'BAMIDA, s.r.o.').
-const DEFAULT_SUPPLIER: BamidaSupplier = {
+export const DEFAULT_SUPPLIER: BamidaSupplier = {
   name: 'BAMIDA, s.r.o.',
   address: ['Košická 28', '080 01 Prešov', 'Slovakia'],
   taxNumber: 'SK2022392372',
 }
-const BUYER = {
+export const BUYER = {
   name: 'Echo Barrier s.r.o.',
   address: ['Sturova 3/6', 'Kosice', '04001', 'Slovakia'],
   taxNumber: 'SK2023291600',

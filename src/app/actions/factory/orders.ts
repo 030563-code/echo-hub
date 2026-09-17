@@ -27,7 +27,7 @@ import {
   type ManufacturingUpdateResult,
 } from '@/lib/factory/updates'
 import { notifyPoConfirmed } from '@/app/actions/factory/notify-po-confirmed'
-import { renderBamidaPoDocument } from '@/lib/bamida-po-document'
+import { renderSupplierDocument } from '@/lib/bamida-po-document'
 import { factoryStrings } from '@/lib/factory/locale.server'
 import type { FactoryStrings } from '@/lib/factory/strings'
 
@@ -203,7 +203,9 @@ export async function downloadFactoryOrderPdf(input: { poId: string }): Promise<
   const gated = await gate(parsed.data.poId, 'factory.view', t)
   if (!gated.ok) return { ok: false, error: gated.error }
 
-  const document = await renderBamidaPoDocument(parsed.data.poId)
+  // The SPECIFICATION, never the priced one. What the factory builds from, and
+  // the only one of the two that carries no prices at all.
+  const document = await renderSupplierDocument(parsed.data.poId, 'specification')
   if (!document.ok) return { ok: false, error: t.errNoDocument }
   return document
 }

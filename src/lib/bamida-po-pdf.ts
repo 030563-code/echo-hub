@@ -25,9 +25,13 @@ export async function buildBamidaPoPdf(bamida: BamidaPo): Promise<import('jspdf'
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(16)
-  doc.text(priced ? 'OBJEDNÁVKOVÝ LIST' : 'BOM / SPECIFICATION', W / 2, 16, { align: 'center' })
+  // NOT "OBJEDNÁVKOVÝ LIST" any more. That is the name of the -1 specification
+  // (supplier-spec-pdf.ts), which is the document the factory actually builds
+  // from; this is the -3 accounting order. Both carrying the same Slovak title
+  // was the confusion Juraj ran into.
+  doc.text(priced ? 'PURCHASE ORDER' : 'BOM / SPECIFICATION', W / 2, 16, { align: 'center' })
   doc.setFontSize(10)
-  doc.text(`${priced ? 'PURCHASE ORDER' : 'BOM'} ${bamida.poNumber}`, W / 2, 22, { align: 'center' })
+  doc.text(`${priced ? 'ACCOUNTING ORDER' : 'BOM'} ${bamida.poNumber}`, W / 2, 22, { align: 'center' })
 
   doc.setFontSize(9)
   doc.setFont('helvetica', 'bold')

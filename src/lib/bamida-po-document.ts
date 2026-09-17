@@ -1,19 +1,24 @@
 import 'server-only'
 
 /**
- * The supplier purchase order document, rendered from a PO id.
+ * The two documents a supplier order produces, rendered from a PO id.
  *
- * Dean, 17 Sep 2026: "the PO that is from SRO to BAMIDA should have the format
- * that is currently in the Bill Of Materials Bamida PO." So the SRO_TO_SUPPLIER
- * leg no longer prints the generic three-tier document. It prints the same
- * thing the Bill of Materials page has always shown and the manufacturer
- * already downloads: buildBamidaPo, priced from the parent order's exploded
- * bill of materials, in buildBamidaPoPdf's layout.
+ * The numbering scheme of 14 Sep 2026 has always said what these are:
+ *   EBSRO8001-1  manufacturing order to the supplier  (SPECIFICATION, no prices)
+ *   EBSRO8001-2  shipping order to Cargo Partner
+ *   EBSRO8001-3  accounting order to the supplier     (PRICED)
  *
- * One builder for all three places that need it (the Bill of Materials page
- * builds its own from a BOM it already holds; this is for the two that start
- * from a purchase order id), so the factory and the office are looking at the
- * same document rather than two that drift.
+ * Until 17 Sep the Hub printed the priced document as -1 and never produced a
+ * -3 at all, which is what Juraj was asking about when he wanted "the PO with
+ * material composition and printing specifications". Dean: "move the price
+ * version to -3 then and -1 the specification document."
+ *
+ * One order, two documents, two numbers on their faces. No new row and no new
+ * leg: -3 is derived from the Group order's number by sroDocumentNumber, which
+ * is exactly what that function was written for.
+ *
+ * The specification carries no prices at all, so it needs no cost.view. The
+ * priced one is the accounting document and does.
  *
  * SERVICE-ROLE by necessity: loadSroPoBom and getSupplierByCode read with the
  * caller's client by default, and the factory account holds none of the
@@ -30,28 +35,49 @@ import { loadSroPoBom } from '@/lib/bom'
 import { getSupplierByCode } from '@/lib/suppliers'
 import { buildBamidaPo, type BamidaSupplier } from '@/lib/bamida-po'
 import { buildBamidaPoPdf } from '@/lib/bamida-po-pdf'
-import { displayPoNumber } from '@/lib/po-number'
+import { buildSupplierSpec } from '@/lib/supplier-spec'
+import { buildSupplierSpecPdf } from '@/lib/supplier-spec-pdf'
+import { displayPoNumber, sroDocumentNumber } from '@/lib/po-number'
+import { entityLabel } from '@/lib/depot-constants'
+
+/** -1 or -3. */
+export type SupplierDocumentKind = 'specification' | 'priced'
 
 /** Why a document could not be made. The caller turns this into words, because
  *  the factory reads its refusals in Slovak and the office reads them in English. */
-export type BamidaPoDocumentRefusal = 'no_parent' | 'no_bom' | 'no_lines'
+export type SupplierDocumentRefusal = 'no_parent' | 'no_bom' | 'no_lines'
 
-export type BamidaPoDocumentResult =
+export type SupplierDocumentResult =
   | { ok: true; filename: string; base64: string }
-  | { ok: false; reason: BamidaPoDocumentRefusal }
+  | { ok: false; reason: SupplierDocumentRefusal }
 
-export async function renderBamidaPoDocument(poId: string): Promise<BamidaPoDocumentResult> {
+type Row = {
+  po_number: string | null
+  parent_po_id: string | null
+  from_entity: string | null
+  delivery_address: string | null
+}
+
+export async function renderSupplierDocument(
+  poId: string,
+  kind: SupplierDocumentKind,
+): Promise<SupplierDocumentResult> {
   const admin = createAdminClient()
+  const read = async (id: string) =>
+    (
+      await admin
+        .from('purchase_orders')
+        .select('po_number, parent_po_id, from_entity, delivery_address')
+        .eq('id', id)
+        .maybeSingle<Row>()
+    ).data ?? null
 
-  const { data: po } = await admin
-    .from('purchase_orders')
-    .select('po_number, parent_po_id')
-    .eq('id', poId)
-    .maybeSingle<{ po_number: string | null; parent_po_id: string | null }>()
+  const po = await read(poId)
   // The bill of materials hangs off the PARENT order, which is what carries the
-  // exploded lines the document is priced from.
+  // exploded lines the document is built from.
   if (!po?.parent_po_id) return { ok: false, reason: 'no_parent' }
 
+  const group = await read(po.parent_po_id)
   const bom = await loadSroPoBom(po.parent_po_id, admin)
   if (!bom) return { ok: false, reason: 'no_bom' }
 
@@ -65,17 +91,34 @@ export async function renderBamidaPoDocument(poId: string): Promise<BamidaPoDocu
       ? { name: supplierRow.name, address: addressLines, taxNumber: supplierRow.tax_number ?? undefined }
       : undefined
 
-  const document = buildBamidaPo(bom, new Date().toISOString().slice(0, 10), supplier, po.po_number)
-  if (document.lines.length === 0) return { ok: false, reason: 'no_lines' }
+  const today = new Date().toISOString().slice(0, 10)
 
-  const pdf = await buildBamidaPoPdf(document)
-  const bytes = Buffer.from(pdf.output('arraybuffer') as ArrayBuffer)
-  // Not bamidaPoPdfFilename: that one leads with the manufacturer's name, and
-  // nothing on their side of the Hub carries it. The order number is what both
-  // sides recognise anyway.
+  if (kind === 'priced') {
+    // -3, derived from the Group order's number. An order raised before the
+    // scheme has no derivable number, so it keeps the one it carries.
+    const number = sroDocumentNumber(group?.po_number, 'Accounting') ?? po.po_number
+    const document = buildBamidaPo(bom, today, supplier, number)
+    if (document.lines.length === 0) return { ok: false, reason: 'no_lines' }
+    const pdf = await buildBamidaPoPdf(document)
+    return {
+      ok: true,
+      filename: `Purchase-order-${displayPoNumber(number)}.pdf`,
+      base64: Buffer.from(pdf.output('arraybuffer') as ArrayBuffer).toString('base64'),
+    }
+  }
+
+  // -1, the order's own number: the specification IS the manufacturing order.
+  // Where the barriers end up, so the factory can pack and label to it. The
+  // depot order at the root of the chain is what knows.
+  const root = group?.parent_po_id ? await read(group.parent_po_id) : null
+  const destination = root?.from_entity ? entityLabel(root.from_entity) : null
+
+  const spec = buildSupplierSpec(bom, today, supplier, po.po_number ?? '', destination)
+  if (spec.products.length === 0) return { ok: false, reason: 'no_lines' }
+  const pdf = await buildSupplierSpecPdf(spec)
   return {
     ok: true,
-    filename: `Purchase-order-${displayPoNumber(po.po_number)}.pdf`,
-    base64: bytes.toString('base64'),
+    filename: `Specification-${displayPoNumber(po.po_number)}.pdf`,
+    base64: Buffer.from(pdf.output('arraybuffer') as ArrayBuffer).toString('base64'),
   }
 }
