@@ -26,6 +26,17 @@ interface SidebarProps {
   activeOrg: OrgCode | null
   displayName: string
   profile: ShellProfile
+  /**
+   * Nav labels to use instead of the built-in English, keyed by href.
+   *
+   * 🔴 The factory's pages are Slovak by default but the RAIL beside them said Manufacturing and
+   * Stock in English, because the nav registry is one hardcoded list for the whole Hub. A
+   * Slovak-speaking factory read an English sidebar next to a Slovak page. The strings already
+   * existed in factory/strings.ts; nothing was using them.
+   */
+  navLabels?: Record<string, string>
+  /** Sign out, in the viewer's own language. */
+  signOutLabel?: string
   /** Positioning/visibility classes from the shell (off-canvas transform on mobile). */
   className?: string
 }
@@ -40,7 +51,7 @@ interface SidebarProps {
  * Not <Link>: the header badge and every sub-list live in the layout, and the
  * whole tree has to re-render with the new organisation.
  */
-export function Sidebar({ capabilities, isExternal, organisations, activeOrg, displayName, profile, className = '' }: SidebarProps) {
+export function Sidebar({ capabilities, isExternal, organisations, activeOrg, displayName, profile, navLabels, signOutLabel, className = '' }: SidebarProps) {
   const pathname = usePathname()
   const caps = new Set<CapabilityKey>(capabilities)
   const sections = navSections(caps, { includeHome: !isExternal })
@@ -102,7 +113,7 @@ export function Sidebar({ capabilities, isExternal, organisations, activeOrg, di
                   >
                     <Link href={item.href} className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3">
                       <Icon className="w-5 h-5 shrink-0" />
-                      <span className="font-medium truncate">{item.label}</span>
+                      <span className="font-medium truncate">{navLabels?.[item.href] ?? item.label}</span>
                       {/* useLinkStatus must be a child of Link, hence the separate LinkSpinner component */}
                       <LinkSpinner className="ml-auto" />
                     </Link>
@@ -181,7 +192,7 @@ export function Sidebar({ capabilities, isExternal, organisations, activeOrg, di
             className="w-full justify-start text-red-500 hover:text-red-400 hover:bg-red-900/20 flex items-center"
           >
             <LogOut className="w-4 h-4 mr-2" />
-            Sign Out
+            {signOutLabel ?? 'Sign Out'}
           </Button>
         </form>
       </div>

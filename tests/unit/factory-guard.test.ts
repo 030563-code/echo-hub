@@ -170,8 +170,13 @@ describe('the three steps hold their shape', () => {
     const emailed = actions.indexOf('notifyPoConfirmed(')
     expect(confirmed).toBeGreaterThan(-1)
     expect(emailed).toBeGreaterThan(confirmed)
-    // And a failed email never unwrites a confirmation we already have.
-    expect(actions).toContain('Confirmed, and we have your dates.')
+    // And a failed email never unwrites a confirmation we already have. The wording moved into the
+    // strings table on 17 Sep, because it was the last English sentence that could reach a Slovak
+    // screen: it said "Confirmed, and we have your dates" on a page that is otherwise all Slovak.
+    expect(actions).toContain('t.errConfirmEmailFailed')
+    const strings = read('src/lib/factory/strings.ts')
+    expect(strings).toContain('Confirmed, and we have your dates.')
+    expect(strings).toContain('Potvrdené, vaše termíny máme.')
   })
 })
 

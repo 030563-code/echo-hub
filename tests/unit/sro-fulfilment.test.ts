@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const read = (f: string) => readFileSync(join(process.cwd(), f), 'utf8')
@@ -126,8 +126,10 @@ describe('the Bamida send is claimed before anything leaves', () => {
     // to enter email addresses for to and CC which will append to the existing
     // ones". The factory's address and the four internal copies are decided on
     // the server and merged in FIRST, so no input can drop a recipient.
-    expect(source).toContain('const bamidaTo = mergeAddresses(FACTORY_CONTACT, typedTo)')
-    expect(source).toContain('const bamidaCc = mergeAddresses(factoryCopyTo(), typedCc)')
+    // Recipients come from the send_contact book, resolved on the server. Required rows are merged
+    // in whatever the browser sends; typed addresses only ever add.
+    expect(source).toContain('resolveSelection(book, parsed.data.contact_ids ?? []')
+    expect(source).toContain('const bamidaTo = chosen.to')
     expect(source).not.toContain('BAMIDA_PO_TO')
     // The old shape, a typed value OR the configured one, is what allowed replacing.
     expect(source).not.toMatch(/parsed\.data\.to \?\? ""\)\.trim\(\) \|\|/)
@@ -160,8 +162,8 @@ describe('the Hub decides who gets the email, not n8n', () => {
     // The address is now fixed on the server, but it STILL goes through
     // resolveRecipients so the test override wins and nothing reaches the real
     // factory while anybody is trying things out.
-    expect(source).toContain('const bamidaTo = mergeAddresses(FACTORY_CONTACT, typedTo)')
-    expect(source).toContain('const bamidaCc = mergeAddresses(factoryCopyTo(), typedCc)')
+    expect(source).toContain('const bamidaTo = chosen.to')
+    expect(source).toContain('const bamidaCc = chosen.cc')
     expect(source).toMatch(/resolveRecipients\(\{[\s\S]{0,120}to: bamidaTo,[\s\S]{0,60}cc: bamidaCc,/)
     expect(source).toContain('intended: recipients.intended')
   })
@@ -344,30 +346,29 @@ describe('A draft written before a field existed still opens the page', () => {
 })
 
 describe('one point of contact at the manufacturer', () => {
-  // Dean, 17 Sep 2026: "here is the absolute point of contact to Bamida /
-  // sklad@bamida.sk / It should no longer be an editable field. In the future
-  // everything ... will go to him."
-  const contact = read('src/lib/factory-contact.ts')
+  // Dean, 17 Sep 2026: "here is the absolute point of contact to Bamida / sklad@bamida.sk / It
+  // should no longer be an editable field", then, the same day and after Operations listed the
+  // seven addresses they actually use: "readd the ability to enter email addresses ... which will
+  // append to the existing ones".
+  //
+  // 🔴 factory-contact.ts is GONE. The constants it held became rows in send_contact, because a
+  // hardcoded four could not express that seven people at the factory are on every order and that
+  // the forwarder's contact depends on sea or air. The rules live in send-contacts.test.ts now;
+  // what is kept here is that this file's own send reads the book and the screen says so.
   const card = read('src/app/(dashboard)/purchase-orders/[id]/manufacturing-card.tsx')
 
-  it('holds the address in one place', () => {
-    expect(contact).toContain("export const FACTORY_CONTACT = 'sklad@bamida.sk'")
+  it('has no hardcoded address list left behind', () => {
+    expect(existsSync(join(process.cwd(), 'src/lib/factory-contact.ts'))).toBe(false)
+    expect(read(SEND)).not.toContain('FACTORY_CONTACT')
+    expect(read(SEND)).toContain('loadSendContacts("manufacturing")')
   })
 
-  it('shows the standing addresses read only and offers extras that ADD to them', () => {
-    expect(card).toContain('{contact}')
-    expect(card).toContain('alwaysCopied.map')
-    expect(card).toContain('Always goes to')
-    expect(card).toContain('Always copied to')
-    expect(card).toContain('not instead of them')
+  it('shows who gets it, with the required rows locked', () => {
+    expect(card).toContain('Who gets this order')
+    expect(card).toContain('alwaysCopied' in {} ? 'never' : 'contacts')
+    expect(card).toContain('checked={c.isRequired || picked.includes(c.id)}')
+    expect(card).toContain('cannot be removed here')
     expect(card).toContain('Also send to')
     expect(card).toContain('Also copy to')
-  })
-
-  it('still routes through the one test switch rather than adding a second', () => {
-    // A hard-coded address that skipped resolveRecipients would email the real
-    // factory during testing, which is the thing that switch exists to stop.
-    expect(contact).toContain('HUB_EMAIL_TEST_RECIPIENT')
-    expect(contact).not.toMatch(/process\.env\.BAMIDA_PO_TO/)
   })
 })

@@ -69,7 +69,7 @@ export async function saveFactoryDates(input: {
 }): Promise<FactoryActionResult> {
   const { t } = await factoryStrings()
   const parsed = DatesSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? t.errInvalidDates }
+  if (!parsed.success) return { ok: false, error: t.errInvalidDates }
 
   const gated = await gate(parsed.data.poId, 'factory.update', t)
   if (!gated.ok) return { ok: false, error: gated.error }
@@ -98,7 +98,7 @@ export async function confirmFactoryOrder(input: {
 }): Promise<FactoryActionResult> {
   const { t } = await factoryStrings()
   const parsed = DatesSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? t.errInvalidDates }
+  if (!parsed.success) return { ok: false, error: t.errInvalidDates }
 
   const gated = await gate(parsed.data.poId, 'factory.update', t)
   if (!gated.ok) return { ok: false, error: gated.error }
@@ -169,8 +169,7 @@ export async function confirmFactoryOrder(input: {
   console.error('confirmFactoryOrder email not sent', parsed.data.poId, told.reason)
   return {
     ok: false,
-    error:
-      'Confirmed, and we have your dates. The confirmation email could not be sent, so keep this page as your record.',
+    error: t.errConfirmEmailFailed,
   }
 }
 

@@ -153,6 +153,10 @@ export interface FactoryStrings {
   errAlreadyFinished: string
   errOrderNotYours: string
   errInvalidDates: string
+  /** Confirmed, but the receipt could not be emailed. They still confirmed. */
+  errConfirmEmailFailed: string
+  /** Shown in the rail. The factory reads its own language everywhere, sign out included. */
+  navSignOut: string
   errInvalidOrder: string
   errNoDocument: string
 }
@@ -252,6 +256,9 @@ const en: FactoryStrings = {
   errAlreadyFinished: 'This order is already marked finished.',
   errOrderNotYours: 'This order is not available.',
   errInvalidDates: 'Invalid dates',
+  errConfirmEmailFailed:
+    'Confirmed, and we have your dates. The confirmation email could not be sent, so keep this page as your record.',
+  navSignOut: 'Sign Out',
   errInvalidOrder: 'Invalid order',
   errNoDocument: 'The document for this order is not available. Please contact Echo Barrier.',
 }
@@ -350,7 +357,10 @@ const sk: FactoryStrings = {
   errConfirmFirst: 'Najprv potvrďte objednávku a zadajte predpokladané termíny.',
   errAlreadyFinished: 'Táto objednávka je už označená ako dokončená.',
   errOrderNotYours: 'Táto objednávka nie je dostupná.',
-  errInvalidDates: 'Neplatné termíny',
+  errInvalidDates: 'Neplatné termíny. Použite formát 2026-09-30.',
+  errConfirmEmailFailed:
+    'Potvrdené, vaše termíny máme. Potvrdzovací e-mail sa nepodarilo odoslať, preto si túto stránku ponechajte ako doklad.',
+  navSignOut: 'Odhlásiť sa',
   errInvalidOrder: 'Neplatná objednávka',
   errNoDocument: 'Dokument k tejto objednávke nie je dostupný. Kontaktujte prosím Echo Barrier.',
 }

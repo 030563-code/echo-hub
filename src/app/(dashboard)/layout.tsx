@@ -5,6 +5,8 @@ import { activeOrganisation } from '@/lib/active-organisation.server'
 import { Shell, type ShellProfile } from '@/components/nav/shell'
 import { loadOwnProfile, type OwnProfile } from '@/lib/profile/load-own-profile'
 import { avatarSrc } from '@/lib/profile/avatar'
+import { factoryLocale } from '@/lib/factory/locale.server'
+import { strings } from '@/lib/factory/strings'
 
 export default async function DashboardLayout({
   children,
@@ -41,6 +43,17 @@ export default async function DashboardLayout({
     avatarSrc: avatarSrc(auth.user.id, own?.avatarUpdatedAt ?? null),
   }
 
+  // An outside company reads its rail in its own language. Internal accounts keep English.
+  const factoryChrome = auth.profile.is_external
+    ? await (async () => {
+        const t = strings(await factoryLocale())
+        return {
+          labels: { '/factory': t.navManufacturing, '/factory/stock': t.navStock },
+          signOut: t.navSignOut,
+        }
+      })()
+    : null
+
   return (
     <>
       {/* The responsive shell (fixed rail on lg+, hamburger drawer below) is a
@@ -48,6 +61,8 @@ export default async function DashboardLayout({
       <Shell
         capabilities={[...auth.capabilities]}
         isExternal={auth.profile.is_external}
+        navLabels={factoryChrome?.labels}
+        signOutLabel={factoryChrome?.signOut}
         organisations={auth.profile.organisations}
         activeOrg={activeOrg}
         displayName={displayName}
