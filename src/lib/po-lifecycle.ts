@@ -1,4 +1,5 @@
 import type { PurchaseOrder } from "./erp-types";
+import { poDocumentNumber, poOrderNumber } from "./po-number";
 
 /**
  * The PO board's leg-based lifecycle kanban.
@@ -148,4 +149,33 @@ export function effectiveStage(
   today: string = todayIso(),
 ): LifecycleStage {
   return isLifecycleStage(po.lifecycle_stage) ? po.lifecycle_stage : deriveStage(po, today);
+}
+
+/**
+ * The number on a supplier order's CARD: whichever of its three documents is
+ * live where the card is sitting.
+ *
+ * Dean, 17 Sep 2026: "the SRO PO on the kanban board appears as EBSR8XXX",
+ * then "the PO that appears in Sent to Manufacturing and Manufacturing in
+ * Progress is the -1 PO and the PO that appears under ready for shipment is the
+ * -2 PO as well as under Shipping."
+ *
+ * So the suffix is not decoration, it says which document the order is being
+ * worked through right now. Before it goes anywhere it is just the order,
+ * EBSRO8001, and the drawer behind it holds all three.
+ *
+ * Every other leg shows its own number, which has no suffix to choose between.
+ */
+export function poCardNumber(
+  po: Pick<PurchaseOrder, "leg" | "po_number">,
+  stage: LifecycleStage,
+): string {
+  if (po.leg !== "SRO_TO_SUPPLIER") return po.po_number ?? "";
+  if (stage === "sent_manufacturing" || stage === "manufacturing") {
+    return poDocumentNumber(po.po_number, "Manufacturing") ?? po.po_number ?? "";
+  }
+  if (stage === "ready_for_shipment" || stage === "shipping") {
+    return poDocumentNumber(po.po_number, "Shipping") ?? po.po_number ?? "";
+  }
+  return poOrderNumber(po.po_number);
 }

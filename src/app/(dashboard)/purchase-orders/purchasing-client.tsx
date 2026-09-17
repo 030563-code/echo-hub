@@ -20,7 +20,7 @@ import PoFilterBar from "@/components/po/po-filter-bar";
 import { applyPoFilters, type PoFilters } from "@/lib/po-filters";
 import { cn, formatRelative } from "@/lib/utils";
 import { syncAllPoShipments } from "@/app/actions/purchase-orders/po-shipments";
-import { chainNumber, isFullyReceived, legLabel, displayPoNumber } from "@/lib/po-number";
+import { chainNumber, isFullyReceived, legLabel, displayPoNumber, poOrderNumber } from "@/lib/po-number";
 import type { PdfParty } from "@/lib/po-pdf";
 import { entityPoCurrency, type FxRates } from "@/lib/po-currency";
 import { entityLabel } from "@/lib/depot-constants";
@@ -289,7 +289,7 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
         <div className="fixed inset-y-0 right-0 w-full max-w-md sm:w-96 bg-white border-l border-gray-200 z-50 flex flex-col shadow-2xl">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
             <div>
-              <p className="font-mono text-echo-orange font-medium">{displayPoNumber(selected.po_number)}</p>
+              <p className="font-mono text-echo-orange font-medium">{displayPoNumber(poOrderNumber(selected.po_number))}</p>
               {selected.reference_po_number && (
                 <p className="text-xs text-gray-400">Ref: {displayPoNumber(selected.reference_po_number)}</p>
               )}

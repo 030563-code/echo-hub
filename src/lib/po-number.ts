@@ -55,6 +55,7 @@ export function poPrefixForDepot(depot: string): string {
 
 const NEW_SCHEME = /^(?:EB(?:USA|CAN|FRA|AUS|GRP)\d+|EBSRO\d+-[123])$/
 const SRO_SUFFIX = /^EBSRO\d+-([123])$/
+const SRO_SUFFIX_TAIL = /-[123]$/
 const GROUP_NUMBER = /^EBGRP(\d+)$/
 
 export type PoNumberPurpose = 'Manufacturing' | 'Shipping' | 'Accounting'
@@ -79,6 +80,36 @@ export function poNumberPurpose(poNumber: string | null | undefined): PoNumberPu
   const m = poNumber?.trim().match(SRO_SUFFIX)
   if (!m) return null
   return m[1] === '1' ? 'Manufacturing' : m[1] === '2' ? 'Shipping' : 'Accounting'
+}
+
+/**
+ * The ORDER's number, with any document suffix taken off: EBSRO8001-1 is a
+ * document of order EBSRO8001.
+ *
+ * Dean, 17 Sep 2026: "the SRO PO on the kanban board appears as EBSR8XXX
+ * whatever the number is ... Then when you click on that PO it is split up into
+ * manufacturing PO, priced PO, Shipping PO." One order on the board; the
+ * suffixes belong to the three documents inside it, and each document still
+ * prints its own number on its own face.
+ *
+ * Anything that is not an s.r.o. document number passes straight through.
+ */
+export function poOrderNumber(poNumber: string | null | undefined): string {
+  const value = String(poNumber ?? '').trim()
+  return SRO_SUFFIX.test(value) ? value.replace(SRO_SUFFIX_TAIL, '') : value
+}
+
+/**
+ * Another document of the SAME s.r.o. order: EBSRO8001-1 asked for Shipping is
+ * EBSRO8001-2. Null for a number that is not an s.r.o. one, so a chain raised
+ * before the scheme keeps whatever it carries.
+ */
+export function poDocumentNumber(
+  poNumber: string | null | undefined,
+  purpose: PoNumberPurpose,
+): string | null {
+  const base = poOrderNumber(poNumber)
+  return /^EBSRO\d+$/.test(base) ? `${base}-${PURPOSE_SUFFIX[purpose]}` : null
 }
 
 /**

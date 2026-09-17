@@ -4,7 +4,7 @@ import { ArrowLeft } from 'lucide-react'
 import { createServerClient } from '@/lib/supabase/server'
 import { getAuthorizedUser } from '@/lib/authz'
 import { poChainHeldBy } from '@/lib/po-organisations'
-import { chainNumber, displayPoNumber, isFullyReceived, legLabel } from '@/lib/po-number'
+import { chainNumber, displayPoNumber, isFullyReceived, legLabel, poOrderNumber } from '@/lib/po-number'
 import { entityPoCurrency } from '@/lib/po-currency'
 import { entityLabel } from '@/lib/depot-constants'
 import { deriveStage, effectiveStage, stageLabel } from '@/lib/po-lifecycle'
@@ -169,7 +169,8 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'Varela Round, sans-serif' }}>
-              {displayPoNumber(po.po_number)}
+              {/* The ORDER. Its three documents are the buttons in the panel. */}
+              {displayPoNumber(poOrderNumber(po.po_number))}
             </h1>
             <PoPurposeTag poNumber={po.po_number} />
           </div>

@@ -13,6 +13,8 @@ import {
 import { entityPoCurrency, type FxRates } from "@/lib/po-currency";
 import type { PurchaseOrder } from "@/lib/erp-types";
 
+type Kind = "generic" | "specification" | "priced" | "shipping";
+
 /** Hand the browser bytes the server built. The document is made per request and
  *  never sits at an address somebody could guess, so there is no link to give. */
 function save(res: Extract<SupplierPoPdfResult, { ok: true }>) {
@@ -32,11 +34,19 @@ function save(res: Extract<SupplierPoPdfResult, { ok: true }>) {
 /**
  * Shared by the purchase order board drawer and the single order page.
  *
- * A supplier order produces TWO documents and this offers both, because they go
- * to different people for different reasons (Dean, 17 Sep 2026):
- *   -1 Specification  what the factory builds from. No prices anywhere, so
+ * Dean, 17 Sep 2026: "the SRO PO on the kanban board appears as EBSR8XXX ...
+ * Then when you click on that PO it is split up into manufacturing PO, priced
+ * PO, Shipping PO. Shipping PO will be greyed out until the manufacturing is
+ * finished."
+ *
+ * So one s.r.o. order, three documents:
+ *   -1 Manufacturing  what the factory builds from. No figures on it at all, so
  *                     anyone who can see the order can print it.
- *   -3 Priced order   the accounting document. cost.view only.
+ *   -3 Priced         the accounting document. cost.view only.
+ *   -2 Shipping       the transport order. Its content is the shipment request,
+ *                     which is drafted when the barriers are finished, so before
+ *                     then there is nothing to print and the button says why.
+ *                     It BOOKS NOTHING; printing is not sending.
  * Every other leg keeps the one generic document it always had.
  */
 export default function DownloadPoPdfButton({
@@ -52,10 +62,13 @@ export default function DownloadPoPdfButton({
   fx: FxRates | null;
   rootCurrency: ReturnType<typeof entityPoCurrency>;
 }) {
-  const [busy, setBusy] = useState<null | "generic" | "specification" | "priced">(null);
+  const [busy, setBusy] = useState<null | Kind>(null);
   const isSupplierOrder = po.leg === "SRO_TO_SUPPLIER";
+  // The shipment request is drafted the moment the barriers exist, which is the
+  // finished stamp. Before it there is no transport order to print.
+  const shippingReady = Boolean(po.manufacturing?.finished_at);
 
-  async function run(kind: "generic" | "specification" | "priced") {
+  async function run(kind: Kind) {
     setBusy(kind);
     try {
       if (kind === "generic") {
@@ -73,7 +86,7 @@ export default function DownloadPoPdfButton({
     }
   }
 
-  const face = (kind: "generic" | "specification" | "priced", label: string) => (
+  const face = (kind: Kind, label: string) => (
     <>
       {busy === kind ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />} {label}
     </>
@@ -94,12 +107,23 @@ export default function DownloadPoPdfButton({
   return (
     <div className="space-y-2">
       <button onClick={() => run("specification")} disabled={busy !== null} className={primary}>
-        {face("specification", "Specification (PDF)")}
+        {face("specification", "Manufacturing PO (PDF)")}
       </button>
       {canViewCost && (
         <button onClick={() => run("priced")} disabled={busy !== null} className={secondary}>
-          {face("priced", "Priced order (PDF)")}
+          {face("priced", "Priced PO (PDF)")}
         </button>
+      )}
+      <button
+        onClick={() => run("shipping")}
+        disabled={busy !== null || !shippingReady}
+        title={shippingReady ? undefined : "Available once manufacturing is finished"}
+        className={secondary}
+      >
+        {face("shipping", "Shipping PO (PDF)")}
+      </button>
+      {!shippingReady && (
+        <p className="text-xs text-gray-500">The shipping order appears once manufacturing is finished.</p>
       )}
     </div>
   );

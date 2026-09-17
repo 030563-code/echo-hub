@@ -7,7 +7,7 @@ import { ChevronDown, ChevronUp, Package, Clock, GripVertical } from "lucide-rea
 import { cn } from "@/lib/utils";
 import StatusBadge from "./StatusBadge";
 import { displayPoNumber, legLabel } from "@/lib/po-number";
-import { LIFECYCLE_STAGES, effectiveStage, stageLabel, type LifecycleStage } from "@/lib/po-lifecycle";
+import { LIFECYCLE_STAGES, effectiveStage, poCardNumber, stageLabel, type LifecycleStage } from "@/lib/po-lifecycle";
 import type { PurchaseOrder } from "@/lib/erp-types";
 import { formatRelative } from "@/lib/utils";
 
@@ -128,6 +128,9 @@ function POCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const lines = order.lines ?? [];
+  // Which of its documents this order is being worked through right now. The
+  // column filter derives the same stage, so the two cannot disagree.
+  const cardNumber = poCardNumber(order, effectiveStage(order));
   /** Group's order on SRO, once SRO have taken it on. */
   const approvedSro =
     order.leg === "EB_GROUP_TO_SRO" && order.status !== "requested" && order.status !== "rejected";
@@ -166,7 +169,7 @@ function POCard({
             <GripVertical className="w-3.5 h-3.5 text-gray-300 group-hover:text-gray-500 flex-shrink-0 mt-0.5 transition-colors" />
           )}
           <div className="min-w-0">
-            <p className="text-xs font-mono text-echo-orange font-medium truncate">{displayPoNumber(order.po_number)}</p>
+            <p className="text-xs font-mono text-echo-orange font-medium truncate">{displayPoNumber(cardNumber)}</p>
             {order.reference_po_number && (
               <p className="text-[10px] text-gray-400 font-mono truncate">Ref: {displayPoNumber(order.reference_po_number)}</p>
             )}

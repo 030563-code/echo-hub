@@ -37,15 +37,25 @@ import { buildBamidaPo, type BamidaSupplier } from '@/lib/bamida-po'
 import { buildBamidaPoPdf } from '@/lib/bamida-po-pdf'
 import { buildSupplierSpec } from '@/lib/supplier-spec'
 import { buildSupplierSpecPdf } from '@/lib/supplier-spec-pdf'
+import { buildTransportOrderPdf } from '@/lib/transport-order-pdf'
+import { loadCargoRequest } from '@/lib/cargo-request-store'
 import { displayPoNumber, sroDocumentNumber } from '@/lib/po-number'
 import { entityLabel } from '@/lib/depot-constants'
 
-/** -1 or -3. */
-export type SupplierDocumentKind = 'specification' | 'priced'
+/**
+ * The three documents behind one s.r.o. order.
+ *
+ * Dean, 17 Sep 2026: "the SRO PO on the kanban board appears as EBSR8XXX ...
+ * Then when you click on that PO it is split up into manufacturing PO, priced
+ * PO, Shipping PO. Shipping PO will be greyed out until the manufacturing is
+ * finished." The greying is the caller's; here a shipping document simply has
+ * no shipment request behind it until the barriers exist.
+ */
+export type SupplierDocumentKind = 'specification' | 'priced' | 'shipping'
 
 /** Why a document could not be made. The caller turns this into words, because
  *  the factory reads its refusals in Slovak and the office reads them in English. */
-export type SupplierDocumentRefusal = 'no_parent' | 'no_bom' | 'no_lines'
+export type SupplierDocumentRefusal = 'no_parent' | 'no_bom' | 'no_lines' | 'no_shipment'
 
 export type SupplierDocumentResult =
   | { ok: true; filename: string; base64: string }
@@ -78,6 +88,26 @@ export async function renderSupplierDocument(
   if (!po?.parent_po_id) return { ok: false, reason: 'no_parent' }
 
   const group = await read(po.parent_po_id)
+
+  if (kind === 'shipping') {
+    // -2. Its content is the shipment request, drafted the moment the barriers
+    // existed, so there is nothing to print before then. No bill of materials
+    // is involved, which is why this answers before that read.
+    const cargo = await loadCargoRequest(poId)
+    if (!cargo) return { ok: false, reason: 'no_shipment' }
+    const number = sroDocumentNumber(group?.po_number, 'Shipping') ?? po.po_number ?? ''
+    const pdf = await buildTransportOrderPdf({
+      orderNumber: number,
+      date: new Date().toISOString().slice(0, 10),
+      draft: cargo.draft,
+    })
+    return {
+      ok: true,
+      filename: `Transport-order-${displayPoNumber(number)}.pdf`,
+      base64: Buffer.from(pdf.output('arraybuffer') as ArrayBuffer).toString('base64'),
+    }
+  }
+
   const bom = await loadSroPoBom(po.parent_po_id, admin)
   if (!bom) return { ok: false, reason: 'no_bom' }
 

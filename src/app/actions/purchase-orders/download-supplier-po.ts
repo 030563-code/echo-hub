@@ -13,9 +13,10 @@
  * from the parent order's exploded bill of materials, which the page does not
  * hold and which no client should be handed.
  *
- * Two documents, one order. `specification` is -1, what the factory builds from,
- * with no figures on it at all. `priced` is -3, the accounting document, and the
- * only one that needs cost.view.
+ * Three documents, one order. `specification` is -1, what the factory builds
+ * from; `shipping` is -2, the transport order, which books nothing and only
+ * exists once the barriers do; `priced` is -3, the accounting document and the
+ * only one of the three that needs cost.view.
  */
 
 import { z } from 'zod'
@@ -25,7 +26,7 @@ import { renderSupplierDocument, type SupplierDocumentKind } from '@/lib/bamida-
 
 const Input = z.object({
   poId: z.string().uuid('Invalid PO id'),
-  kind: z.enum(['specification', 'priced']),
+  kind: z.enum(['specification', 'priced', 'shipping']),
 })
 
 export type SupplierPoPdfResult =
@@ -62,9 +63,11 @@ export async function downloadSupplierPoPdf(input: {
       error:
         document.reason === 'no_parent'
           ? 'This order has no parent order, so there is no bill of materials behind it.'
-          : document.reason === 'no_bom'
-            ? 'The bill of materials for this order could not be read.'
-            : 'The bill of materials produced no lines for this order.',
+          : document.reason === 'no_shipment'
+            ? 'There is no shipment request for this order yet. One is drafted when the barriers are finished.'
+            : document.reason === 'no_bom'
+              ? 'The bill of materials for this order could not be read.'
+              : 'The bill of materials produced no lines for this order.',
     }
   }
   return document

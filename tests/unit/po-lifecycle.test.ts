@@ -5,6 +5,7 @@ import {
   deriveStage,
   effectiveStage,
   isLifecycleStage,
+  poCardNumber,
   stageLabel,
 } from "@/lib/po-lifecycle";
 import type { PoManufacturing, PurchaseOrder } from "@/lib/erp-types";
@@ -251,5 +252,40 @@ describe("finished outranks sent, because a stamp is not a typed date", () => {
     expect(
       deriveStage(po("SRO_TO_SUPPLIER", "approved", null, mfg({ est_start: "2026-09-01", est_finish: "2026-09-30" })), "2026-10-05"),
     ).toBe("sro");
+  });
+});
+
+describe("the number on a supplier order's card says which document is live", () => {
+  // Dean, 17 Sep 2026: "the SRO PO on the kanban board appears as EBSR8XXX",
+  // and "the PO that appears in Sent to Manufacturing and Manufacturing in
+  // Progress is the -1 PO and the PO that appears under ready for shipment is
+  // the -2 PO as well as under Shipping."
+  const sro = { leg: "SRO_TO_SUPPLIER" as const, po_number: "EBSRO8001-1" };
+
+  it("is the bare order before it has gone anywhere", () => {
+    expect(poCardNumber(sro, "sro")).toBe("EBSRO8001");
+  });
+
+  it("is the -1 while it is with the factory", () => {
+    expect(poCardNumber(sro, "sent_manufacturing")).toBe("EBSRO8001-1");
+    expect(poCardNumber(sro, "manufacturing")).toBe("EBSRO8001-1");
+  });
+
+  it("is the -2 once the barriers are made and moving", () => {
+    expect(poCardNumber(sro, "ready_for_shipment")).toBe("EBSRO8001-2");
+    expect(poCardNumber(sro, "shipping")).toBe("EBSRO8001-2");
+  });
+
+  it("leaves every other leg's number alone, suffix or no suffix", () => {
+    expect(poCardNumber({ leg: "EB_GROUP_TO_SRO", po_number: "EBGRP8001" }, "group_sro")).toBe("EBGRP8001");
+    expect(poCardNumber({ leg: "DEPOT_TO_EB_GROUP", po_number: "EBUSA8001" }, "depot_group")).toBe("EBUSA8001");
+  });
+
+  it("keeps an older chain's number exactly as it is", () => {
+    // PO-001-1 predates the scheme and has no -2 to derive, so it stays put
+    // rather than becoming a number no order carries.
+    const old = { leg: "SRO_TO_SUPPLIER" as const, po_number: "PO-001-1" };
+    expect(poCardNumber(old, "shipping")).toBe("PO-001-1");
+    expect(poCardNumber(old, "manufacturing")).toBe("PO-001-1");
   });
 });
