@@ -28,7 +28,7 @@ You're building the **Echo Barrier Hub**. You're in its repo, `echo-barrier-hub`
 2. **Quotes module** — port the quote-create flow from `echo-barrier-sales-hub`, with the mandatory **probability-of-close** field, wired to Supabase `deals_registry`. Make it Jillian-ready.
 3. **ERP modules** — Transport (port ERP `/shipping` + the Cargo Partner general-reference→SPOT-ID lookup), Purchase Orders, BOM, MRP.
 4. **Weeklies** tracker (Mondays/Tuesdays/Wednesdays).
-5. **Security pass + deploy** — RLS everywhere, service_role server-side only, no IDOR → Netlify at `quotes.echobarrier.com`.
+5. **Security pass + deploy** — RLS everywhere, service_role server-side only, no IDOR → Netlify at `hub.echobarrier.com`.
 
 **Security is non-negotiable:** the previous sales-hub leaked its service_role key in a public repo and shipped permissive RLS with IDOR. RLS on every table from day 1; anon/publishable key client-side; service_role server-side only, never committed; authorize every action server-side.
 

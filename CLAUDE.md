@@ -6,7 +6,7 @@ The **Echo Barrier Hub** is the unified internal operating platform for Echo Bar
 Full vision + decisions: Obsidian → `Echo Barrier/Echo Barrier Hub — Vision & Build Plan.md`.
 
 ## The goal of this build
-**Connect the existing Quotes and ERP platforms onto this Hub.** First deliverable: the **Quotes module live for Jillian (US)** at `quotes.echobarrier.com`.
+**Connect the existing Quotes and ERP platforms onto this Hub.** First deliverable: the **Quotes module live for Jillian (US)**. The Hub is served at `hub.echobarrier.com`.
 
 ## The existing apps to connect (siblings, same parent dir `../`)
 | App | Local path | Stack | What it is |
@@ -59,4 +59,4 @@ component holding `useState` must either use those hooks or carry a
 fails CI otherwise. Read `docs/page-state.md` before adding a screen.
 
 ## Deploy
-Netlify → `quotes.echobarrier.com` (Cloudflare DNS, grey-cloud CNAME). Do the security pass **before** any real user. See Obsidian `Echo Barrier/CORTEX/Dean's Runbook — Technical Steps.md` §C–D.
+Netlify → `hub.echobarrier.com` (Cloudflare DNS, grey-cloud CNAME). The authority for this is `hubBaseUrl()` in `src/lib/env.ts`, which every outbound link uses; `quotes.echobarrier.com` was the original kickoff plan and does not exist. Do the security pass **before** any real user. See Obsidian `Echo Barrier/CORTEX/Dean's Runbook — Technical Steps.md` §C–D.

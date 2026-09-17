@@ -1,7 +1,7 @@
 # Echo Barrier Hub — Deployment Guide
 
 Move the Hub onto **Echo Barrier's GitHub**, deploy on **Echo Barrier's Netlify**,
-and serve it at **quotes.echobarrier.com** via Cloudflare DNS.
+and serve it at **hub.echobarrier.com** via Cloudflare DNS.
 
 > Placeholders to fill in: `<EB_GH>` = Echo Barrier's GitHub org/username ·
 > `<SITE>` = the Netlify site name (e.g. `echo-barrier-hub`) → its auto URL is
@@ -93,8 +93,8 @@ URL and confirm it loads `/login`.
 ### 2.4 Tell Supabase about the new origin (commonly missed)
 Supabase Dashboard → project `korylyniwsqtsvzuzydg` → **Authentication → URL
 Configuration**:
-- **Site URL:** `https://quotes.echobarrier.com`
-- **Redirect URLs:** add both `https://quotes.echobarrier.com/**` and
+- **Site URL:** `https://hub.echobarrier.com`
+- **Redirect URLs:** add both `https://hub.echobarrier.com/**` and
   `https://<SITE>.netlify.app/**` (the latter for testing before DNS).
 
 Without this, login/onboarding/`/auth/callback` redirects will fail in production.
@@ -104,7 +104,7 @@ Without this, login/onboarding/`/auth/callback` redirects will fail in productio
 ## 3. Subdomain: Cloudflare → Netlify
 
 ### 3.1 Netlify side
-Site → **Domain management → Add a domain** → `quotes.echobarrier.com` → Add.
+Site → **Domain management → Add a domain** → `hub.echobarrier.com` → Add.
 Netlify shows the target to point at (a `<SITE>.netlify.app` CNAME).
 
 ### 3.2 Cloudflare side (`echobarrier.com` zone)
@@ -117,13 +117,13 @@ Pages)** — edit or delete it, then ensure:
 
 ### 3.3 SSL
 Back in Netlify Domain management, once DNS resolves it auto-provisions a Let's
-Encrypt cert (a few minutes). Optionally set `quotes.echobarrier.com` as the
+Encrypt cert (a few minutes). Optionally set `hub.echobarrier.com` as the
 **primary domain** and enable **Force HTTPS**.
 
 ---
 
 ## 4. Post-deploy verification
-1. Open `https://quotes.echobarrier.com` → redirects to `/login` over HTTPS.
+1. Open `https://hub.echobarrier.com` → redirects to `/login` over HTTPS.
 2. Log in (admin) → dashboard shows all modules; a scoped user (Jillian) sees only Quotes.
 3. Quotes: requests queue loads (HubSpot), the quote builder shows the
    probability-of-close field. Transport: Cargo Partner lookup works. BOM: shows
