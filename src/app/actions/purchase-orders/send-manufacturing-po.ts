@@ -7,7 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
 import { poChainHeldBy } from "@/lib/po-organisations";
 import { specDocumentStatus } from "@/lib/po-spec-store";
-import { loadSendContacts, resolveSelection } from "@/lib/send-contacts";
+import { factoryLogin, loadSendContacts, resolveSelection } from "@/lib/send-contacts";
 import { externalCallsDisabled, hubBaseUrl } from "@/lib/env";
 import { resolveRecipients, sendDescription } from "@/lib/email-recipients";
 import { loadSroPoBom } from "@/lib/bom";
@@ -243,7 +243,7 @@ async function planManufacturingSend(input: z.infer<typeof Schema>) {
 
   return {
     ok: true as const,
-    plan: { po, poId, webhookUrl, recipients, real, pallets: bamida.pallets, shortMaterials, actorId: auth.user.id },
+    plan: { po, poId, webhookUrl, recipients, real, pallets: bamida.pallets, shortMaterials, login: factoryLogin(book), actorId: auth.user.id },
   };
 }
 
@@ -306,7 +306,7 @@ export async function sendManufacturingPoToBamida(
 ): Promise<SendManufacturingPoResult> {
   const planned = await planManufacturingSend(input);
   if (!planned.ok) return { ok: false, error: planned.error };
-  const { po, poId, webhookUrl, recipients, pallets, shortMaterials, actorId } = planned.plan;
+  const { po, poId, webhookUrl, recipients, pallets, shortMaterials, login, actorId } = planned.plan;
 
   // --- Claim the send BEFORE anything leaves ------------------------------
   const admin = createAdminClient();
@@ -381,6 +381,21 @@ export async function sendManufacturingPoToBamida(
          * else's hands, and always shows the order as it stands now.
          */
         link: `${hubBaseUrl()}/factory/${po.id}`,
+        /**
+         * 🔴 THE SIGN-IN, INCLUDING THE PASSWORD, ON DEAN'S EXPLICIT INSTRUCTION,
+         * 17 Sep 2026: "better to include the password in that email everytime I
+         * will inject it as a netlify variable called BAMIDA_PASSWORD".
+         *
+         * I argued against it twice and he decided. The consequence, written down
+         * rather than argued again: this email reaches ten people, and from here
+         * anybody holding one of them, or forwarded one, can sign in as the
+         * factory, and it does not expire. It is also then in the n8n execution
+         * data for this workflow and in the sent folder.
+         *
+         * Null when BAMIDA_PASSWORD is unset, and the composer prints nothing,
+         * so removing the variable from Netlify turns this off with no deploy.
+         */
+        login,
         pallets,
         /**
          * No SKU. `EBH9NA` is our own database code and means nothing to a

@@ -43,6 +43,8 @@ export interface PoConfirmedMeta {
   lines: Array<{ product_name: string | null; quantity: number | null }>
   /** The manufacturer's own addresses, as the purchase order was addressed. */
   to: string[]
+  /** Sign-in details to print, or null when no password is configured. */
+  login?: { email: string; password: string } | null
   /** Any further manufacturer contacts copied on the purchase order. */
   cc: string[]
 }
@@ -67,6 +69,19 @@ export function buildPoConfirmedPayload(meta: PoConfirmedMeta, recipients: Resol
     confirmed_by: meta.confirmedBy,
     est_start: meta.estStart,
     est_finish: meta.estFinish,
+
+    /**
+     * 🔴 The sign-in, password included, on Dean's instruction of 17 Sep 2026.
+     * See the note on the same field in send-manufacturing-po.ts: I argued
+     * against it twice and he decided, and the consequence is that anybody
+     * holding or forwarded one of these emails can sign in as the factory.
+     *
+     * It is on the CONFIRMATION as well as the order because this is the email
+     * that asks them to come back and press Manufacturing finished, and "later"
+     * is exactly when they will have lost the password. Null when
+     * BAMIDA_PASSWORD is unset, and the composer then prints nothing.
+     */
+    login: meta.login ?? null,
 
     /**
      * No SKU. `EBH9NA` is our own database code and means nothing to a factory,

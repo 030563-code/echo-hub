@@ -124,6 +124,31 @@ export function resolveSelection(
 }
 
 /**
+ * How the factory signs in: the address the login is under, and the password if one is configured.
+ *
+ * 🔴 Dean, 17 Sep 2026: "better to include the password in that email everytime I will inject it as
+ * a netlify variable called BAMIDA_PASSWORD". I argued against emailing it and he has decided,
+ * twice. What is worth writing down is the consequence rather than the argument: the order email
+ * goes to ten people, and from here anybody holding one of those emails, or forwarded one, can sign
+ * in as the factory. The password does not expire, so that stays true until it is changed.
+ *
+ * Two things keep it as small as it can be. It is only included when the variable is SET, so
+ * removing it from Netlify turns this off with no deploy. And the login it exposes is an external
+ * account that can read its own stock feed and its own orders and nothing else, which was proved
+ * when the account was made.
+ *
+ * The address is the book's required `to` contact rather than a second setting, so the login
+ * printed in the email can never drift from the desk the email is addressed to.
+ */
+export function factoryLogin(contacts: readonly SendContact[]): { email: string; password: string } | null {
+  const password = String(process.env.BAMIDA_PASSWORD ?? '').trim()
+  if (!password) return null
+  const email = contacts.find((c) => c.field === 'to' && c.isRequired)?.address
+  if (!email) return null
+  return { email, password }
+}
+
+/**
  * Add a contact to the book, or bring a retired one back.
  *
  * Never required and never pre-ticked: a row added from a send screen is somebody's answer to one
