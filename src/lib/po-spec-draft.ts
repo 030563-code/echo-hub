@@ -87,7 +87,6 @@ export function specFromDraft(
     supplier: BamidaSupplier
     buyer: SupplierSpec['buyer']
     printing: string
-    approval: SupplierSpec['approval']
   },
 ): SupplierSpec {
   return {
@@ -112,7 +111,6 @@ export function specFromDraft(
     })),
     packing: draft.packing,
     printing: header.printing,
-    approval: header.approval,
   }
 }
 

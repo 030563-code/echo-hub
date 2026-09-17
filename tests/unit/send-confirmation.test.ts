@@ -140,7 +140,8 @@ describe('a preview claims nothing and posts nothing', () => {
     // Since 17 Sep 2026 nothing is typed at all: the manufacturer has one fixed
     // point of contact, so every line is attributed to where it was decided.
     expect(source).toContain('"the manufacturer\'s point of contact"')
-    expect(source).toContain('addressesFrom(bamidaCc, "server", "BAMIDA_PO_CC")')
+    expect(source).toContain('addressesFrom(process.env.BAMIDA_PO_CC, "server", "BAMIDA_PO_CC")')
+    expect(source).toContain('"always copied"')
     expect(source).not.toContain('"the Send to box"')
   })
 })

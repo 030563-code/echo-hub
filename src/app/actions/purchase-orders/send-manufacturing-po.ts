@@ -7,14 +7,14 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
 import { poChainHeldBy } from "@/lib/po-organisations";
 import { specDocumentStatus } from "@/lib/po-spec-store";
-import { FACTORY_CONTACT, factoryCopyTo } from "@/lib/factory-contact";
+import { ALWAYS_COPIED, FACTORY_CONTACT, factoryCopyTo, mergeAddresses } from "@/lib/factory-contact";
 import { externalCallsDisabled, hubBaseUrl } from "@/lib/env";
 import { resolveRecipients, sendDescription } from "@/lib/email-recipients";
 import { loadSroPoBom } from "@/lib/bom";
 import { buildBamidaPo, type BamidaSupplier } from "@/lib/bamida-po";
 import { getSupplierByCode } from "@/lib/suppliers";
 import { assessOrderCapability } from "@/lib/manufacturing-capability";
-import { addressesFrom, type SendPreview } from "@/lib/send-preview";
+import { addressesFrom, type PreviewAddress, type SendPreview } from "@/lib/send-preview";
 
 // Tell the manufacturer a purchase order is waiting for them in the Hub.
 //
@@ -53,18 +53,24 @@ import { addressesFrom, type SendPreview } from "@/lib/send-preview";
 // Bamida's address would email a factory while the Hub believed everything was
 // going to the test address.
 
-// 🔴 THE RECIPIENT IS NOT AN INPUT.
+// 🔴 EXTRA ADDRESSES ADD. THEY NEVER REPLACE.
 //
-// Dean, 9 Sep 2026, asked for typeable addresses because Juraj said Bamida had several points of
-// contact. Dean, 17 Sep 2026, settled it the other way: "here is the absolute point of contact to
-// Bamida / sklad@bamida.sk / It should no longer be an editable field."
+// Dean, 9 Sep 2026, asked for typeable addresses. Dean, 17 Sep 2026, fixed the recipient:
+// "sklad@bamida.sk / It should no longer be an editable field." Then, the same day: "readd the
+// ability to enter email addresses for to and CC which will append to the existing ones just make
+// it clear that [the four] is automatically CCed."
 //
-// So `to` and `cc` are off this schema entirely rather than merely hidden on the screen. While
-// they were optional fields, any caller of this 'use server' export could have the Hub send a real
-// purchase order, on Echo Barrier letterhead, to an address of their choosing. The recipient is
-// now decided on the server in factory-contact.ts and cannot be named from outside.
+// The difference from the original is the whole point. `to` and `cc` used to REPLACE, which meant
+// any caller of this 'use server' export could have the Hub send a real purchase order, on Echo
+// Barrier letterhead, to an address of its choosing and to nobody else. Now the factory's address
+// and the four internal copies are decided on the server and always go out; whatever arrives here
+// is merged on top and deduplicated. There is no input that can remove a recipient.
 const Schema = z.object({
   manufacturing_po_id: z.string().uuid("Invalid PO id"),
+  /** Comma separated. ADDED to the manufacturer's address, never instead of it. */
+  to: z.string().trim().max(400).optional(),
+  /** Comma separated. ADDED to the four standing internal copies. */
+  cc: z.string().trim().max(400).optional(),
 });
 
 const TIMEOUT_MS = 30_000;
@@ -145,15 +151,37 @@ async function planManufacturingSend(input: z.infer<typeof Schema>) {
     return { ok: false as const, error: "Sandbox (staging): nothing is sent to Bamida from here." };
   }
 
-  // One address, decided here. Testing still diverts everything through resolveRecipients.
-  const bamidaTo = FACTORY_CONTACT;
-  const bamidaCc = factoryCopyTo();
+  // The fixed lists first, then anything typed. mergeAddresses keeps the first spelling of each,
+  // so typing one of the four again cannot produce a second copy, and nothing typed can drop one.
+  const typedTo = String(parsed.data.to ?? "").trim();
+  const typedCc = String(parsed.data.cc ?? "").trim();
+  const bamidaTo = mergeAddresses(FACTORY_CONTACT, typedTo);
+  const bamidaCc = mergeAddresses(factoryCopyTo(), typedCc);
 
-  // WHERE EACH ADDRESS CAME FROM, so the confirmation dialog can print it. Nothing is typed any
-  // more, so every line says where it was decided.
+  // WHERE EACH ADDRESS CAME FROM, so the confirmation dialog can say it line by line. Worked out
+  // here because here is where the choice is made: matching against the settings afterwards would
+  // mislabel a typed address that is also one of the standing ones.
+  // Same rule as the merge: first spelling wins. Somebody typing an address that is already
+  // standing must not make the dialog print it twice, or the reader will wonder which one is real.
+  const once = (entries: PreviewAddress[]) => {
+    const seen = new Set<string>();
+    return entries.filter((e) => {
+      const key = e.address.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
   const real = {
-    to: addressesFrom(bamidaTo, "server", "the manufacturer's point of contact"),
-    cc: addressesFrom(bamidaCc, "server", "BAMIDA_PO_CC"),
+    to: once([
+      ...addressesFrom(FACTORY_CONTACT, "server", "the manufacturer's point of contact"),
+      ...addressesFrom(typedTo, "typed", "the Also send to box"),
+    ]),
+    cc: once([
+      ...addressesFrom(ALWAYS_COPIED.join(", "), "server", "always copied"),
+      ...addressesFrom(process.env.BAMIDA_PO_CC, "server", "BAMIDA_PO_CC"),
+      ...addressesFrom(typedCc, "typed", "the Also copy to box"),
+    ]),
     // Never on any screen. A blind copy nobody remembers is the whole reason
     // this dialog prints every address.
     bcc: addressesFrom(process.env.BAMIDA_PO_BCC, "server", "BAMIDA_PO_BCC"),

@@ -12,7 +12,7 @@ import { assessOrderCapability } from '@/lib/manufacturing-capability'
 import { loadPurchaseOrderDetail } from '@/lib/po-detail'
 import { loadCargoRequest, type CargoRequestRow } from '@/lib/cargo-request-store'
 import { specActorNames, specDocumentStatus } from '@/lib/po-spec-store'
-import { FACTORY_CONTACT } from '@/lib/factory-contact'
+import { ALWAYS_COPIED, FACTORY_CONTACT } from '@/lib/factory-contact'
 import DownloadPoPdfButton from '@/components/po/download-po-pdf-button'
 import AttachPoPdfButton from '@/components/po/attach-po-pdf-button'
 import ShipmentSection from '@/components/po/shipment-section'
@@ -379,6 +379,7 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
           canAct={canAct}
           manufacturing={progress}
           contact={bamidaTo}
+          alwaysCopied={ALWAYS_COPIED}
           specConfirmed={Boolean(specStatus?.confirmedAt)}
           specSaved={Boolean(specStatus?.saved)}
         />

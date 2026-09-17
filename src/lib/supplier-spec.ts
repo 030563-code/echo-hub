@@ -99,14 +99,6 @@ export interface SupplierSpec {
   packing: SupplierSpecPacking
   /** Standard unless somebody tells us otherwise: the Hub holds no other print spec. */
   printing: string
-  /**
-   * Who signed this document off and when, or null while it is unsigned.
-   *
-   * Dean, 17 Sep 2026: "That way nothing goes unsigned." A generated document
-   * is evidence; a document somebody in the office has read and confirmed is an
-   * instruction, and the face of the PDF says which one the factory is holding.
-   */
-  approval: { at: string; by: string } | null
 }
 
 
@@ -234,6 +226,5 @@ export function buildSupplierSpec(
     products,
     packing: { pallets, palletCovers: pallets, metalFrames: pallets },
     printing: STANDARD_PRINTING,
-    approval: null,
   }
 }

@@ -122,12 +122,15 @@ describe('the Bamida send is claimed before anything leaves', () => {
     // and `cc` were optional inputs, ANY caller of this 'use server' export
     // could have the Hub send a real purchase order to an address of their
     // choosing. The schema now takes the PO id and nothing else.
-    expect(source).toContain('const bamidaTo = FACTORY_CONTACT')
-    expect(source).not.toMatch(/parsed\.data\.(to|cc)/)
+    // Typed addresses came back on 17 Sep, but ADDING only: "readd the ability
+    // to enter email addresses for to and CC which will append to the existing
+    // ones". The factory's address and the four internal copies are decided on
+    // the server and merged in FIRST, so no input can drop a recipient.
+    expect(source).toContain('const bamidaTo = mergeAddresses(FACTORY_CONTACT, typedTo)')
+    expect(source).toContain('const bamidaCc = mergeAddresses(factoryCopyTo(), typedCc)')
     expect(source).not.toContain('BAMIDA_PO_TO')
-    const schema = source.slice(source.indexOf('const Schema = z.object('), source.indexOf('const TIMEOUT_MS'))
-    expect(schema).not.toContain('to:')
-    expect(schema).not.toContain('cc:')
+    // The old shape, a typed value OR the configured one, is what allowed replacing.
+    expect(source).not.toMatch(/parsed\.data\.to \?\? ""\)\.trim\(\) \|\|/)
   })
 
   it('sends nothing at all from the staging sandbox', () => {
@@ -157,8 +160,8 @@ describe('the Hub decides who gets the email, not n8n', () => {
     // The address is now fixed on the server, but it STILL goes through
     // resolveRecipients so the test override wins and nothing reaches the real
     // factory while anybody is trying things out.
-    expect(source).toContain('const bamidaTo = FACTORY_CONTACT')
-    expect(source).toContain('const bamidaCc = factoryCopyTo()')
+    expect(source).toContain('const bamidaTo = mergeAddresses(FACTORY_CONTACT, typedTo)')
+    expect(source).toContain('const bamidaCc = mergeAddresses(factoryCopyTo(), typedCc)')
     expect(source).toMatch(/resolveRecipients\(\{[\s\S]{0,120}to: bamidaTo,[\s\S]{0,60}cc: bamidaCc,/)
     expect(source).toContain('intended: recipients.intended')
   })
@@ -351,14 +354,14 @@ describe('one point of contact at the manufacturer', () => {
     expect(contact).toContain("export const FACTORY_CONTACT = 'sklad@bamida.sk'")
   })
 
-  it('has no address input left on the screen', () => {
-    expect(card).not.toContain('setTo(')
-    expect(card).not.toContain('setCc(')
-    expect(card).not.toContain('bamida-to')
-    expect(card).not.toContain('bamida-cc')
-    // Shown, so the sender can see where it goes, but only shown.
+  it('shows the standing addresses read only and offers extras that ADD to them', () => {
     expect(card).toContain('{contact}')
-    expect(card).toContain('Not editable')
+    expect(card).toContain('alwaysCopied.map')
+    expect(card).toContain('Always goes to')
+    expect(card).toContain('Always copied to')
+    expect(card).toContain('not instead of them')
+    expect(card).toContain('Also send to')
+    expect(card).toContain('Also copy to')
   })
 
   it('still routes through the one test switch rather than adding a second', () => {

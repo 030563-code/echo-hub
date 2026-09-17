@@ -149,7 +149,6 @@ describe('specFromDraft puts the header back on for printing', () => {
     supplier: { name: 'Supplier', address: ['Somewhere'], taxNumber: 'SK1' },
     buyer: { name: 'Buyer', address: ['Elsewhere'], taxNumber: 'SK2' },
     printing: 'Standard',
-    approval: { at: '2026-09-17', by: 'Juraj Ziak' },
   }
 
   it('prints the saved rows, not the standing model specification', () => {
@@ -161,8 +160,20 @@ describe('specFromDraft puts the header back on for printing', () => {
     expect(out.products[0].sourceDocument).toBe('PO-00001413')
   })
 
-  it('carries the sign-off onto the document', () => {
-    expect(specFromDraft(draft(), header).approval).toEqual({ at: '2026-09-17', by: 'Juraj Ziak' })
+  it('names nobody at Echo Barrier on the document', () => {
+    // 🔴 Dean, 17 Sep 2026, on "Specification confirmed by Operations on 2026-09-17. Read from
+    // template": "Please remove these on the client facing Document not needed at all." The
+    // sign-off is ours; the factory only ever receives a confirmed document because the send
+    // refuses an unconfirmed one.
+    const out = JSON.stringify(specFromDraft(draft(), header))
+    expect(out).not.toContain('Juraj')
+    expect(out).not.toContain('approval')
+    const pdf = readFileSync(join(process.cwd(), 'src/lib/supplier-spec-pdf.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1')
+    expect(pdf).not.toContain('Specification confirmed by')
+    expect(pdf).not.toContain('SPECIFICATION NOT YET CONFIRMED')
+    expect(pdf).not.toContain('Read from')
   })
 
   it('takes the number, date and addresses from the header and never from the draft', () => {
@@ -173,7 +184,7 @@ describe('specFromDraft puts the header back on for printing', () => {
   })
 
   it('round-trips a generated document through the draft and back unchanged', () => {
-    const built = specFromDraft(draft(), { ...header, approval: null })
+    const built = specFromDraft(draft(), header)
     expect(toSpecDraft(built as SupplierSpec)).toEqual(draft())
   })
 })

@@ -38,7 +38,7 @@ import { buildBamidaPoPdf } from '@/lib/bamida-po-pdf'
 import { BUYER } from '@/lib/bamida-po'
 import { STANDARD_PRINTING } from '@/lib/supplier-spec'
 import { specFromDraft } from '@/lib/po-spec-draft'
-import { loadSpecDocument, specActorNames } from '@/lib/po-spec-store'
+import { loadSpecDocument } from '@/lib/po-spec-store'
 import { buildSupplierSpecPdf } from '@/lib/supplier-spec-pdf'
 import { buildTransportOrderPdf } from '@/lib/transport-order-pdf'
 import { loadCargoRequest } from '@/lib/cargo-request-store'
@@ -162,24 +162,15 @@ export async function renderSupplierDocument(
   const document = await loadSpecDocument(poId, destination)
   if (!document || document.draft.products.length === 0) return { ok: false, reason: 'no_lines' }
 
-  // The one name on the face of the document, resolved only when there is one
-  // to resolve.
-  const names = await specActorNames([document.confirmedByUid])
-  const approval =
-    document.confirmedAt && document.confirmedByUid
-      ? {
-          at: document.confirmedAt.slice(0, 10),
-          by: names.get(document.confirmedByUid) ?? 'Echo Barrier',
-        }
-      : null
-
+  // Nothing on the face of this document names anybody at Echo Barrier, so there is no profile to
+  // read. Dean, 17 Sep 2026: "Please remove these on the client facing Document not needed at all."
+  // Whether it is confirmed, and who by, is on the order page and in the editor.
   const spec = specFromDraft(document.draft, {
     specNumber: po.po_number ?? '',
     date: today,
     supplier: supplier ?? DEFAULT_SUPPLIER,
     buyer: BUYER,
     printing: STANDARD_PRINTING,
-    approval,
   })
   const pdf = await buildSupplierSpecPdf(spec)
   return {

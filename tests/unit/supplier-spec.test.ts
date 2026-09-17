@@ -121,21 +121,36 @@ describe('buildSupplierSpec attaches the manufacturing specification', () => {
   })
 })
 
+
+/** Source with comments removed, so a guard cannot pass or fail on its own prose. */
+const codeOnly = (text: string) =>
+  text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
+
 describe('guard: the specification document tells the truth about itself', () => {
-  const pdf = readFileSync(join(process.cwd(), 'src/lib/supplier-spec-pdf.ts'), 'utf8')
+  const pdf = codeOnly(readFileSync(join(process.cwd(), 'src/lib/supplier-spec-pdf.ts'), 'utf8'))
   const lib = readFileSync(join(process.cwd(), 'src/lib/supplier-spec.ts'), 'utf8')
 
-  it('says on its face when a specification has not been confirmed', () => {
-    // 🔴 An unconfirmed spec was read off one historic order. The factory must be
-    // told that, on the document, not only in the database.
-    expect(pdf).toContain('SPECIFICATION NOT YET CONFIRMED')
-    expect(pdf).toContain('Check before building')
+  it('names nobody at Echo Barrier and cites no internal document', () => {
+    // 🔴 Dean, 17 Sep 2026, on "Specification confirmed by Operations on
+    // 2026-09-17. Read from template": "Please remove these on the client facing
+    // Document not needed at all."
+    //
+    // The gate is what made it redundant. That line warned the factory off a
+    // sheet nobody had checked, back when an unconfirmed specification could be
+    // sent. sendManufacturingPoToBamida now refuses one, so they can only ever
+    // receive a signed document and the warning warns of nothing.
+    expect(pdf).not.toContain('SPECIFICATION NOT YET CONFIRMED')
+    expect(pdf).not.toContain('Specification confirmed by')
+    expect(pdf).not.toContain('Check before building')
+    expect(pdf).not.toContain('sourceDocument')
   })
 
-  it('prints who signed it once somebody has', () => {
-    // Dean, 17 Sep 2026: "That way nothing goes unsigned." A name and a date, or
-    // the warning. Never neither.
-    expect(pdf).toContain('Specification confirmed by ${spec.approval.by}')
+  it('keeps the send gated, which is what replaced the warning', () => {
+    const send = readFileSync(
+      join(process.cwd(), 'src/app/actions/purchase-orders/send-manufacturing-po.ts'),
+      'utf8',
+    )
+    expect(send).toContain('if (!spec.confirmedAt)')
   })
 
   it('says when it holds no specification at all rather than printing nothing', () => {
@@ -145,7 +160,7 @@ describe('guard: the specification document tells the truth about itself', () =>
   it('decides what to say from what it PRINTED, not from a database field', () => {
     // An edited document has no ModelSpec behind it and is still a specification;
     // keying off `spec === null` would have called every hand-written one empty.
-    expect(pdf).toContain('product.specRows.length > 0 || product.bullets.length > 0')
+    expect(pdf).toContain('product.specRows.length === 0 && product.bullets.length === 0')
     expect(pdf).not.toContain('product.spec === null')
   })
 
