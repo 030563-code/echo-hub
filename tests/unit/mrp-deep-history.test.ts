@@ -172,9 +172,14 @@ describe('organisation keying', () => {
   })
 
   it('only claims a stock feed for the organisations that actually have one', () => {
-    // warehouse_stock_levels holds US-BAL, US-SBD, CA-HAM and EB-SRO and nothing else.
-    // UK, France and Australia levels live in xero_stock_snapshot, which the engine does not read.
-    expect([...ORGANISATIONS_WITH_STOCK].sort()).toEqual(['EB-CANADA', 'EB-SRO', 'EB-USA'])
+    // Since the stock consolidation, warehouse_stock_levels is the single source of truth and
+    // carries all seven depots: North America and the factory from physical counts, UK, France
+    // and Group synced from their Xero item ledgers.
+    expect([...ORGANISATIONS_WITH_STOCK].sort()).toEqual([
+      'EB-CANADA', 'EB-FRANCE', 'EB-GROUP', 'EB-SRO', 'EB-UK', 'EB-USA',
+    ])
+    // Australia is genuinely empty while it is rebuilt, so it must NOT claim a feed.
+    expect(ORGANISATIONS_WITH_STOCK).not.toContain('EB-AUSTRALIA')
   })
 })
 

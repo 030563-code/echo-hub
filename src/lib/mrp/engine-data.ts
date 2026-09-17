@@ -1,5 +1,4 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { DEPOT_WAREHOUSES } from "@/lib/stock/warehouses";
 import type {
   BomComponentRow,
   BomProductRow,
@@ -103,10 +102,12 @@ export function createSupabaseEngineData(admin: SupabaseClient): EngineData {
       pageAll<StockRow>("stock_levels", (from, to) =>
         admin
           .from("warehouse_stock_levels")
-          .select("warehouse_code, sku, quantity_on_hand, last_counted_at")
-          // North American depots only. EB-SRO now carries a real counted level
-          // and summing it into the depot buffers would suppress every reorder.
-          .in("warehouse_code", [...DEPOT_WAREHOUSES])
+          .select("warehouse_code, sku, quantity_on_hand, last_counted_at, source")
+          // Every depot now, not just North America. The old filter existed because on-hand was
+          // summed per SKU across depots, so EB-SRO's counted level would have been added to the
+          // North American buffers and suppressed every reorder. That is fixed at source: the
+          // engine buckets on-hand per ORGANISATION now (via organisationForDepot), so a UK shelf
+          // can no longer satisfy a US buffer and the filter is no longer what keeps them apart.
           .order("id")
           .range(from, to)
       ),

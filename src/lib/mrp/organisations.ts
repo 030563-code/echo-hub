@@ -77,8 +77,21 @@ export function splitDemandKey(key: string): { organisation: string; sku: string
  * The organisations the engine can currently produce an actionable net flow position for.
  *
  * An organisation needs BOTH demand history and a stock feed to be worth running: demand alone
- * gives a buffer size with nothing to compare it against. Demand now exists from 2020 for EB-UK,
- * EB-AUSTRALIA and EB-SRO and from 2025 for the rest, but stock only exists for North America and
- * the factory, so this list is shorter than the demand list and deliberately so.
+ * gives a buffer size with nothing to compare it against.
+ *
+ * Six of the seven qualify since the stock consolidation (migrations 20260917210000 and
+ * 20260917220000): warehouse_stock_levels is now the single source of truth and carries all seven
+ * depots, the North American and factory levels from physical counts and the UK, France and Group
+ * levels synced from their Xero item ledgers.
+ *
+ * EB-AUSTRALIA is the exception and it is genuine, not an oversight. Dean, 17 Sep 2026:
+ * "Australia is empty at the moment as we are building it up again."
  */
-export const ORGANISATIONS_WITH_STOCK: readonly Organisation[] = ["EB-USA", "EB-CANADA", "EB-SRO"];
+export const ORGANISATIONS_WITH_STOCK: readonly Organisation[] = [
+  "EB-USA",
+  "EB-CANADA",
+  "EB-SRO",
+  "EB-UK",
+  "EB-FRANCE",
+  "EB-GROUP",
+];

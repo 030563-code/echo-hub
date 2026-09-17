@@ -25,7 +25,7 @@ function profile(over: Partial<ProfileRow> & { sku: string }): ProfileRow {
 interface Fixtures {
   profiles: ProfileRow[]
   demandEvents: { event_date: string; organisation?: string; sku: string; qty: number; source: string }[]
-  stockLevels: { warehouse_code: string; sku: string; quantity_on_hand: number; last_counted_at: string | null }[]
+  stockLevels: { warehouse_code: string; sku: string; quantity_on_hand: number; last_counted_at: string | null; source?: string }[]
   shipments: { sku: string; qty: number; status: string; po_id: string | null; eta: string | null }[]
   openPoLines: { po_id: string; sku: string; quantity: number }[]
   stageWeights: { stage_id: string; win_weight: number; is_late_stage: boolean }[]
@@ -69,7 +69,9 @@ function makeData(over: Partial<Fixtures> = {}): { data: EngineData; captured: C
       ),
     deepDemand: () =>
       Promise.resolve(f.demandEvents.map(e => ({ ...e, organisation: e.organisation ?? 'EB-USA' }))),
-    stockLevels: () => Promise.resolve(f.stockLevels),
+    // Existing fixtures predate the source column and all describe counted depot stock, so
+    // 'count' is the faithful default for them.
+    stockLevels: () => Promise.resolve(f.stockLevels.map(s => ({ ...s, source: s.source ?? 'count' }))),
     shipments: () => Promise.resolve(f.shipments),
     openPoLines: () => Promise.resolve(f.openPoLines),
     stageWeights: () => Promise.resolve(f.stageWeights),
@@ -272,14 +274,20 @@ describe('runMrpEngine (stubbed end-to-end)', () => {
 
     const h9 = res.rows.find(r => r.sku === 'EBH9NA')!
     // ADU: (162 + 18) / 180 = 1.0 — the 2025 event is outside the window.
-    // Flow: on_hand 40+10, in_transit 30+20, on_order 100−20, firm 18.
-    expect(h9.on_hand).toBe(50)
+    // Flow: on_hand 40 (US-BAL ONLY), in_transit 30+20, on_order 100−20, firm 18.
+    //
+    // 🔴 40, not 50. The CA-HAM row of 10 is Canadian stock and this profile is EB-USA's. The
+    // engine used to sum on-hand per SKU across every depot, so Hamilton's shelf silently
+    // satisfied a Baltimore buffer and suppressed the reorder. Stock is bucketed per organisation
+    // now, so it does not. The 10 is not lost, it belongs to EB-CANADA, which has no profile in
+    // this fixture.
+    expect(h9.on_hand).toBe(40)
     expect(h9.in_transit).toBe(50)
     expect(h9.on_order).toBe(80)
     expect(h9.firm_demand).toBe(18)
-    expect(h9.nfp).toBe(50 + 50 + 80 - 18)
+    expect(h9.nfp).toBe(40 + 50 + 80 - 18)
     // adu 1.0, dlt 75, lt 0.25 → yellow 75, redBase 18.75; spiky CoV → vf 1.0
-    // → red 38, yellowTop 113, greenTop 132. NFP 162 > 113 → green.
+    // → red 38, yellowTop 113, greenTop 132. NFP 152 > 113 → green.
     expect(h9.red).toBe(38)
     expect(h9.yellow_top).toBe(113)
     expect(h9.green_top).toBe(132)

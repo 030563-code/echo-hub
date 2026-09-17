@@ -27,7 +27,7 @@ import {
 import { materialsCeiling, type BomComponentRow, type BomProductRow } from "./materials";
 import { mulberry32, seedFrom, simulateStockout, type McArrival, type McInput, type McLegSamples } from "./montecarlo";
 import { fillContainer, type ContainerCandidate, type ContainerFill } from "./container";
-import { demandKey, ORGANISATIONS_WITH_STOCK } from "./organisations";
+import { demandKey, organisationForDepot, ORGANISATIONS_WITH_STOCK } from "./organisations";
 import { deepStats, redZoneWithLumpinessFloor, EMPTY_DEEP_STATS } from "./deep-history";
 
 export type { BomComponentRow, BomProductRow, ContainerFill };
@@ -111,6 +111,8 @@ export interface StockRow {
   sku: string;
   quantity_on_hand: number;
   last_counted_at: string | null;
+  /** 'count' a physical stocktake, 'xero_sync' a figure from the organisation's Xero item ledger, 'ledger' derived from movements. */
+  source: string;
 }
 
 export interface ShipmentRow {
@@ -514,14 +516,31 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
     else deepByKey.set(key, [e]);
   }
 
-  const onHandBySku = new Map<string, number>();
+  // 🔴 Keyed per ORGANISATION. Before the stock consolidation the engine summed on-hand per SKU
+  // across depots, which is why the data layer filtered to North America: without that filter a
+  // UK shelf would have satisfied a US buffer and suppressed the reorder. Bucketing by
+  // organisation fixes it at source, so every depot can now be read.
+  const onHandByKey = new Map<string, number>();
   for (const s of stockRows) {
-    const sku = resolve(s.sku);
-    onHandBySku.set(sku, (onHandBySku.get(sku) ?? 0) + s.quantity_on_hand);
+    const org = organisationForDepot(s.warehouse_code);
+    // An unrecognised depot is attributed to nobody rather than to everybody.
+    if (!org) continue;
+    const k = demandKey(org, resolve(s.sku));
+    onHandByKey.set(k, (onHandByKey.get(k) ?? 0) + s.quantity_on_hand);
   }
-  // stock_unverified is a table-level state: until ANY row has a physical
-  // count timestamp, every on_hand figure is the receipts-ledger guess.
-  const stockAllUncounted = stockRows.length === 0 || stockRows.every((s) => s.last_counted_at === null);
+  // Stock provenance is PER ORGANISATION, not table-level. It used to be table-level and that was
+  // fine while warehouse_stock_levels held North America only. It now holds all seven depots with
+  // mixed provenance: the North American and factory levels are physical counts, the UK, France
+  // and Group levels are synced from their Xero item ledgers. One flag across the table would
+  // either libel the counted depots or flatter the synced ones.
+  const orgsWithCount = new Set<string>();
+  const orgsWithSync = new Set<string>();
+  for (const s of stockRows) {
+    const org = organisationForDepot(s.warehouse_code);
+    if (!org) continue;
+    if (s.last_counted_at !== null && s.source === "count") orgsWithCount.add(org);
+    if (s.source === "xero_sync") orgsWithSync.add(org);
+  }
 
   const inTransitBySku = new Map<string, number>();
   const shipmentsBySku = new Map<string, ShipmentRow[]>();
@@ -706,8 +725,12 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
     // per organisation too.
     const hasStockFeed = (ORGANISATIONS_WITH_STOCK as readonly string[]).includes(p.organisation);
     if (!hasStockFeed) flags.push("no_stock_feed");
-    const onHand = hasStockFeed ? onHandBySku.get(p.sku) ?? 0 : 0;
-    if (stockAllUncounted && hasStockFeed) flags.push("stock_unverified");
+    const onHand = hasStockFeed ? onHandByKey.get(key) ?? 0 : 0;
+    if (hasStockFeed && !orgsWithCount.has(p.organisation)) {
+      // A synced ledger figure is better than a receipts guess and worse than a count, and the
+      // buyer should be told which one they are looking at rather than left to assume.
+      flags.push(orgsWithSync.has(p.organisation) ? "stock_from_sync" : "stock_unverified");
+    }
     const inTransit = hasStockFeed ? inTransitBySku.get(p.sku) ?? 0 : 0;
     const skuOnOrder = hasStockFeed ? onOrder.get(p.sku) ?? 0 : 0;
     const firmDemand = skuEvents
