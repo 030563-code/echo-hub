@@ -56,6 +56,14 @@ export interface ModelSpec {
 
   sourceDocument: string
   confirmed: boolean
+  /**
+   * 🔴 INTERNAL ONLY. NEVER PRINTED ON A DOCUMENT THAT LEAVES THE BUILDING.
+   *
+   * Our working note about this row: where it was read from, what we are unsure of, who has to
+   * confirm it. It reached a client-facing factory order once, on 17 Sep 2026, and Dean caught it.
+   * `specificationRows` in supplier-spec.ts deliberately does not emit it and a guard test keeps it
+   * that way. Anything the supplier must act on is a specification row with a real label.
+   */
   notes: string | null
 }
 

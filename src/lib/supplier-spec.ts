@@ -167,7 +167,12 @@ export function specificationRows(s: ModelSpec): SupplierSpecRow[] {
   add('Pallet height', s.maxPalletHeight)
   add('Pack (balenie)', s.packConfig)
   add('Include (pribaliť)', s.includeWithOrder)
-  add('Note', s.notes)
+  // 🔴 `notes` IS NEVER PRINTED. It is our working note about the row, to us, and it went onto a
+  // client-facing factory order until Dean caught it on 17 Sep 2026. The H9 note read "Read from a
+  // single UK order dated 06.08.2026 because H9 has no template. Confirm with Juraj that these are
+  // the standing H9 values rather than that order's." That is an instruction to our own office
+  // about our own uncertainty, and the factory has no business reading it. Anything the supplier
+  // must act on is a specification row with a real label; anything else stays in the database.
   return rows
 }
 

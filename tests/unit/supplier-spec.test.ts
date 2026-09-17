@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { execSync } from 'node:child_process'
 import { join } from 'node:path'
 import { sroDocumentNumber } from '@/lib/po-number'
-import { buildSupplierSpec, STANDARD_PRINTING } from '@/lib/supplier-spec'
+import { buildSupplierSpec, specificationRows, STANDARD_PRINTING } from '@/lib/supplier-spec'
 import type { ModelSpec } from '@/lib/model-spec'
 import type { SroPoBom, SroPoBomLine } from '@/lib/erp-types'
 
@@ -226,5 +226,61 @@ describe('guard: the shipping order is a document, never a second purchase order
     expect(sroDocumentNumber('EBGRP8001', 'Shipping')).toBe('EBSRO8001-2')
     expect(sroDocumentNumber('EBGRP8001', 'Manufacturing')).toBe('EBSRO8001-1')
     expect(sroDocumentNumber('EBGRP8001', 'Accounting')).toBe('EBSRO8001-3')
+  })
+})
+
+describe('guard: our own working notes never reach the factory', () => {
+  /**
+   * 🔴 Dean, 17 Sep 2026: "why tf would include this / Note Read from a single UK order dated
+   * 06.08.2026 because H9 has no template. Confirm with Juraj that these are the standing H9
+   * values rather than that order's. / In a CLIENT FACING FUCKEN PO and we fucken resolved it"
+   *
+   * model_spec.notes is our note to OURSELVES about how sure we are of a row. It was printed as a
+   * "Note" line on the build sheet that goes to the supplier. Behavioural, not a grep: every field
+   * gets a unique marker and the output is searched for the one that must never appear.
+   */
+  const marker = (k: string) => `MARKER_${k}`
+  const everyFieldMarked: ModelSpec = {
+    modelCode: 'H9', productLabel: marker('productLabel'), dimensions: marker('dimensions'),
+    graphicsPrint: marker('graphicsPrint'), graphicsNotes: [marker('graphicsNotes')],
+    graphicsWithLogo: marker('graphicsWithLogo'),
+    pvcType: marker('pvcType'), pvcRal: marker('pvcRal'), pvcColour: marker('pvcColour'),
+    meshType: marker('meshType'), meshColour: marker('meshColour'),
+    goretexType: marker('goretexType'), goretexColour: marker('goretexColour'),
+    infillType: marker('infillType'), infillDimensions: marker('infillDimensions'),
+    threadType: marker('threadType'), threadColour: marker('threadColour'),
+    reflectiveType: marker('reflectiveType'), reflectiveColour: marker('reflectiveColour'),
+    rings: marker('rings'), buckles: marker('buckles'),
+    palletType: marker('palletType'), construction: marker('construction'),
+    maxPalletHeight: marker('maxPalletHeight'),
+    specificRequirements: [marker('specificRequirements')],
+    packConfig: marker('packConfig'), includeWithOrder: marker('includeWithOrder'),
+    sourceDocument: marker('sourceDocument'), confirmed: false, notes: marker('notes'),
+  }
+
+  const printed = JSON.stringify(specificationRows(everyFieldMarked))
+
+  it('does not print notes on the specification', () => {
+    expect(printed).not.toContain(marker('notes'))
+  })
+
+  it('does not print the source document as a row either', () => {
+    // It belongs in the one provenance line at the foot, not as a build instruction.
+    expect(printed).not.toContain(marker('sourceDocument'))
+  })
+
+  it('still prints every field that IS an instruction to the factory', () => {
+    for (const field of ['dimensions', 'pvcType', 'pvcColour', 'pvcRal', 'meshType', 'goretexType',
+      'infillType', 'infillDimensions', 'threadType', 'reflectiveType', 'rings', 'buckles',
+      'graphicsPrint', 'graphicsWithLogo', 'palletType', 'construction', 'maxPalletHeight',
+      'packConfig', 'includeWithOrder']) {
+      expect(printed, `${field} stopped printing`).toContain(marker(field))
+    }
+  })
+
+  it('names the field as internal where it is declared, so the next person does not re-add it', () => {
+    const model = readFileSync(join(process.cwd(), 'src/lib/model-spec.ts'), 'utf8')
+    expect(model).toContain('INTERNAL ONLY')
+    expect(model).toContain('NEVER PRINTED')
   })
 })
