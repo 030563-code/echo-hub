@@ -128,6 +128,9 @@ function POCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const lines = order.lines ?? [];
+  /** Group's order on SRO, once SRO have taken it on. */
+  const approvedSro =
+    order.leg === "EB_GROUP_TO_SRO" && order.status !== "requested" && order.status !== "rejected";
 
   return (
     <div
@@ -164,10 +167,14 @@ function POCard({
         {order.from_entity} → {order.to_entity}
       </p>
 
-      {/* Fulfilment type */}
-      {order.fulfilment_type && (
-        <div className="mb-2">
-          <StatusBadge status={order.fulfilment_type} />
+      {/* Approved, and how it is being fulfilled.
+          The Approved sticker is Dean's, 17 Sep 2026: once manufacturing starts
+          the SRO order goes back to the Group → S.R.O column, so the card has to
+          say for itself that it was accepted rather than still waiting. */}
+      {(approvedSro || order.fulfilment_type) && (
+        <div className="mb-2 flex flex-wrap items-center gap-1">
+          {approvedSro && <StatusBadge status="approved" />}
+          {order.fulfilment_type && <StatusBadge status={order.fulfilment_type} />}
         </div>
       )}
 

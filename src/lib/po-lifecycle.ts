@@ -96,6 +96,20 @@ export function deriveStage(po: StageInput, today: string = todayIso()): Lifecyc
       // order travels rather than staying put, because on the stock branch
       // there is no Bamida order to carry it.
       if (po.status === "ready_for_shipment") return "ready_for_shipment";
+      // Manufacturing under way: the Bamida order is the one being worked on
+      // and the one that travels, so this order goes back to the column it was
+      // raised in and says Approved for itself.
+      //
+      // Dean, 17 Sep 2026, looking at a board with Group → S.R.O empty and two
+      // cards stacked in S.R.O: "the EB-GROUP-EB-SRO card shouldve stayed on
+      // Group SRO board and just have an approved sticker."
+      //
+      // This does NOT undo his rule of 8 Sep ("the fulfill from stock is not
+      // sitting under sro but under group to sro"). The two together say the
+      // same thing: the card sits wherever the work is. Approved and undecided,
+      // or being picked from SRO stock, the work is SRO's and the card is at
+      // S.R.O. Once they have handed it to Bamida, the child order carries it.
+      if (po.status === "in_manufacturing") return "group_sro";
       return "sro";
     case "SRO_TO_CARGO":
       // The transport leg represents the shipping arrangement.

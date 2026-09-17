@@ -35,9 +35,9 @@ const code = (f: string) =>
 const UNAVOIDABLE_IDENTIFIERS = [
   /bamida_material_stock(_history)?/g,
   /N8N_BAMIDA_PO_WEBHOOK_(URL|SECRET)/g,
-  /buildBamidaPoPdf|buildBamidaPo|BamidaSupplier|bamidaPoPdfFilename/g,
+  /buildBamidaPoPdf|buildBamidaPo|BamidaSupplier|bamidaPoPdfFilename|renderBamidaPoDocument/g,
   /'BAMIDA, s\.r\.o\.'/g,
-  /@\/lib\/bamida-po(-pdf)?/g,
+  /@\/lib\/bamida-po(-pdf|-document)?/g,
 ]
 
 const ACTIONS = 'src/app/actions/factory/orders.ts'

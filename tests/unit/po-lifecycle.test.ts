@@ -81,14 +81,16 @@ describe("deriveStage, the intercompany legs", () => {
     expect(deriveStage(po("EB_GROUP_TO_SRO", "rejected"))).toBe("group_sro");
   });
 
-  it("once approved the SRO order sits at S.R.O, whatever SRO then decide", () => {
+  it("the SRO order sits wherever the work is", () => {
+    // Accepted but not yet decided, and being picked from SRO's own stock: the
+    // next move is SRO's, so the card is at S.R.O (Dean, 8 Sep 2026).
     expect(deriveStage(po("EB_GROUP_TO_SRO", "approved"))).toBe("sro");
     expect(deriveStage(po("EB_GROUP_TO_SRO", "sro_evaluating"))).toBe("sro");
-    // Fulfilling from stock is SRO's own work: it does not go back to Group → S.R.O.
     expect(deriveStage(po("EB_GROUP_TO_SRO", "fulfilling_from_stock"))).toBe("sro");
-    // Choosing to manufacture does not move the SRO order itself into
-    // manufacturing; the Bamida order it raised is what travels.
-    expect(deriveStage(po("EB_GROUP_TO_SRO", "in_manufacturing"))).toBe("sro");
+    // Handed to Bamida: the child order is the work and the one that travels,
+    // so this one goes back to the column it was raised in, marked Approved
+    // (Dean, 17 Sep 2026). Two cards stacked in S.R.O was the thing wrong.
+    expect(deriveStage(po("EB_GROUP_TO_SRO", "in_manufacturing"))).toBe("group_sro");
   });
 
   it("cargo leg → shipping (the transport arrangement)", () => {
@@ -200,9 +202,12 @@ describe("Ready for shipment: made is not booked", () => {
     expect(deriveStage(po("EB_GROUP_TO_SRO", "ready_for_shipment"))).toBe("ready_for_shipment");
   });
 
-  it("still keeps a manufacturing SRO order at S.R.O, where its Bamida order carries it", () => {
-    expect(deriveStage(po("EB_GROUP_TO_SRO", "in_manufacturing"))).toBe("sro");
+  it("sends a manufacturing SRO order back to Group → S.R.O, where its Bamida order carries it", () => {
+    expect(deriveStage(po("EB_GROUP_TO_SRO", "in_manufacturing"))).toBe("group_sro");
+    // The stock branch is unchanged: no child order, so this one is the work.
     expect(deriveStage(po("EB_GROUP_TO_SRO", "fulfilling_from_stock"))).toBe("sro");
+    // And a drag still wins, so the column can be overridden by hand.
+    expect(effectiveStage(po("EB_GROUP_TO_SRO", "in_manufacturing", "sro"))).toBe("sro");
   });
 
   it("a confirmed SPOT id is what makes it Shipping, and it beats every leg rule", () => {

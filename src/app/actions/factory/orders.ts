@@ -27,11 +27,7 @@ import {
   type ManufacturingUpdateResult,
 } from '@/lib/factory/updates'
 import { notifyPoConfirmed } from '@/app/actions/factory/notify-po-confirmed'
-import { loadSroPoBom } from '@/lib/bom'
-import { getSupplierByCode } from '@/lib/suppliers'
-import { buildBamidaPo, type BamidaSupplier } from '@/lib/bamida-po'
-import { buildBamidaPoPdf } from '@/lib/bamida-po-pdf'
-import { displayPoNumber } from '@/lib/po-number'
+import { renderBamidaPoDocument } from '@/lib/bamida-po-document'
 import { factoryStrings } from '@/lib/factory/locale.server'
 import type { FactoryStrings } from '@/lib/factory/strings'
 
@@ -207,42 +203,7 @@ export async function downloadFactoryOrderPdf(input: { poId: string }): Promise<
   const gated = await gate(parsed.data.poId, 'factory.view', t)
   if (!gated.ok) return { ok: false, error: gated.error }
 
-  const admin = createAdminClient()
-  const { data: po } = await admin
-    .from('purchase_orders')
-    .select('po_number, parent_po_id')
-    .eq('id', parsed.data.poId)
-    .maybeSingle<{ po_number: string | null; parent_po_id: string | null }>()
-  if (!po?.parent_po_id) {
-    return { ok: false, error: t.errNoDocument }
-  }
-
-  // The bill of materials hangs off the PARENT order, which is what carries the
-  // exploded lines the document is priced from.
-  const bom = await loadSroPoBom(po.parent_po_id, admin)
-  if (!bom) {
-    return { ok: false, error: t.errNoDocument }
-  }
-
-  const supplierRow = await getSupplierByCode('BAMIDA, s.r.o.', admin).catch(() => null)
-  const addressLines = (supplierRow?.address ?? '').split('\n').map((l) => l.trim()).filter(Boolean)
-  const supplier: BamidaSupplier | undefined =
-    supplierRow && addressLines.length
-      ? { name: supplierRow.name, address: addressLines, taxNumber: supplierRow.tax_number ?? undefined }
-      : undefined
-
-  const document = buildBamidaPo(bom, new Date().toISOString().slice(0, 10), supplier, po.po_number)
-  if (document.lines.length === 0) {
-    return { ok: false, error: t.errNoDocument }
-  }
-
-  const pdf = await buildBamidaPoPdf(document)
-  const bytes = Buffer.from(pdf.output('arraybuffer') as ArrayBuffer)
-  // Not bamidaPoPdfFilename: that one starts with the manufacturer's name, and
-  // nothing on their side of the Hub carries it.
-  return {
-    ok: true,
-    filename: `Purchase-order-${displayPoNumber(po.po_number)}.pdf`,
-    base64: bytes.toString('base64'),
-  }
+  const document = await renderBamidaPoDocument(parsed.data.poId)
+  if (!document.ok) return { ok: false, error: t.errNoDocument }
+  return document
 }
