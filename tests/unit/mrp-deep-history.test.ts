@@ -180,6 +180,9 @@ describe('organisation keying', () => {
     ])
     // Australia is genuinely empty while it is rebuilt, so it must NOT claim a feed.
     expect(ORGANISATIONS_WITH_STOCK).not.toContain('EB-AUSTRALIA')
+    // 🔴 Group DOES hold stock, transiently: it appears and disappears as it passes from the
+    // factory to a region. A near-zero level there is throughput, not a stockout.
+    expect(organisationForDepot('EB-GROUP')).toBe('EB-GROUP')
   })
 })
 

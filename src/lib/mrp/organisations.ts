@@ -47,6 +47,12 @@ export const DEPOT_ORGANISATION: Record<string, Organisation> = {
   "EU-FR": "EB-FRANCE",
   "GB-BSE": "EB-UK",
   "AU-SYD": "EB-AUSTRALIA",
+  // 🔴 EB-GROUP is a TRANSIT buffer, not a shelf. Dean, 17 Sep 2026: "group should still be a
+  // stock holding org it will just appear and then disappear out of the stock". Barriers land in
+  // Group's stock and leave again on their way from the factory to a region, so a level at or near
+  // zero is the normal resting state of a fast-flowing buffer and must NOT be read as a stockout.
+  // Eleven of its thirteen lines reading zero is throughput, not absence.
+  "EB-GROUP": "EB-GROUP",
 };
 
 /** The organisation that owns a depot, or null when the code is not one we know. */
@@ -79,13 +85,18 @@ export function splitDemandKey(key: string): { organisation: string; sku: string
  * An organisation needs BOTH demand history and a stock feed to be worth running: demand alone
  * gives a buffer size with nothing to compare it against.
  *
- * Six of the seven qualify since the stock consolidation (migrations 20260917210000 and
- * 20260917220000): warehouse_stock_levels is now the single source of truth and carries all seven
- * depots, the North American and factory levels from physical counts and the UK, France and Group
- * levels synced from their Xero item ledgers.
+ * Six of the seven qualify since the stock consolidation: warehouse_stock_levels is the single
+ * source of truth, carrying the North American and factory levels from physical counts and the UK,
+ * France and Group levels synced from their Xero item ledgers.
  *
- * EB-AUSTRALIA is the exception and it is genuine, not an oversight. Dean, 17 Sep 2026:
- * "Australia is empty at the moment as we are building it up again."
+ * 🔴 EB-GROUP is in the list but it is a TRANSIT buffer: stock appears and disappears as it passes
+ * from the factory to a region, so its level is usually at or near zero. That is the normal state
+ * of a pass-through node, not a stockout. Anything that reads a low Group level as urgency will be
+ * wrong most days, and whether Group should carry a classic reorder point at all is a separate
+ * question from whether it carries a stock level. It carries a level.
+ *
+ * EB-AUSTRALIA is the one absence, and it is genuine: "Australia is empty at the moment as we are
+ * building it up again."
  */
 export const ORGANISATIONS_WITH_STOCK: readonly Organisation[] = [
   "EB-USA",
