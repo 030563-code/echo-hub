@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  confirmButton,
   sanitiseDraft,
   specDrift,
   specFromDraft,
@@ -187,31 +188,45 @@ describe('guard: the specification cannot be edited or signed by the wrong perso
   it('gates every export on the session, a capability and the chain', () => {
     // Every export of a 'use server' file is a public endpoint.
     const exports = actions.match(/export async function (\w+)/g) ?? []
-    expect(exports).toHaveLength(4)
+    expect(exports).toEqual([
+      'export async function loadSpecEditor',
+      'export async function saveSpecDocument',
+      'export async function confirmSpecDocument',
+      'export async function resetSpecDocument',
+    ])
     expect(actions).toContain("auth.capabilities.has('po.view')")
     expect(actions).toContain("auth.capabilities.has('bom.edit')")
     expect(actions).toContain('poChainHeldBy(poId, auth.profile.organisations)')
-    // Each export goes through the one gate rather than repeating it differently.
-    expect((actions.match(/await gate\(/g) ?? []).length).toBe(4)
+    // The two write exports share one gated path rather than each repeating it differently.
+    expect((actions.match(/await gate\(/g) ?? []).length).toBe(3)
   })
 
   it('never trusts the client draft', () => {
-    expect(actions).toContain('sanitiseDraft(input.draft)')
+    expect(actions).toContain('sanitiseDraft(rawDraft)')
     expect(store).toContain('draft: sanitiseDraft(draft)')
   })
 
-  it('withdraws the sign-off when the words change', () => {
-    // 🔴 A signature belongs to the text that was read. Saving an edit must not
-    // leave a name printed against wording that person never saw.
-    expect(store).toMatch(/saveSpecDraft[\s\S]*?confirmed_at: null,\s*\n\s*confirmed_by_uid: null,/)
+  it('writes the content and the signature in ONE statement', () => {
+    // 🔴 Two statements would leave a window where the words were saved and the
+    // signature was not, or the reverse. Dean could not confirm at all until
+    // this collapsed into one write.
+    expect(store).toContain('confirmed_at: confirm ? now : null')
+    expect(store).toContain('confirmed_by_uid: confirm ? actorUid : null')
+    expect((store.match(/from\('po_spec_document'\)\s*\.upsert/g) ?? []).length).toBe(1)
   })
 
-  it('confirms once and only once', () => {
-    expect(store).toContain(".is('confirmed_at', null)")
+  it('withdraws the sign-off on an unsigned save, because the words changed', () => {
+    // A signature belongs to the text that was read. `confirm` false writes null
+    // into both columns, which is the withdrawal.
+    expect(confirmButton({ confirmedAt: '2026-09-17T10:00:00Z', dirty: true, pending: false }).label)
+      .toBe('Confirm specification')
+    expect(store).toContain('An unsigned save CLEARS any existing sign-off')
   })
 
-  it('refuses to confirm a document nobody saved', () => {
-    expect(store).toContain('Save the specification before confirming it.')
+  it('does not make a signature depend on a prior save', () => {
+    // 🔴 The bug Dean hit. Nothing may refuse a confirm for want of a saved row.
+    expect(store).not.toContain('Save the specification before confirming it.')
+    expect(store).not.toContain(".is('confirmed_at', null)")
   })
 
   it('never regenerates over an edit by itself', () => {
@@ -229,5 +244,40 @@ describe('guard: the specification cannot be edited or signed by the wrong perso
     expect(migration).toContain('revoke all on public.po_spec_document from public, anon, authenticated')
     expect(migration).toContain('enable row level security')
     expect(migration).not.toMatch(/to authenticated/)
+  })
+})
+
+describe('the Confirm button: an unsigned document can always be signed', () => {
+  // 🔴 Dean, 17 Sep 2026: "I cant press confirm as it is greyed out. I need to edit something and
+  // then it appears what if the first one is correct?" The first version required a save first,
+  // which made the commonest case the one you could not do.
+  const at = '2026-09-17T10:00:00Z'
+
+  it('is pressable on a generated document nobody has touched', () => {
+    expect(confirmButton({ confirmedAt: null, dirty: false, pending: false })).toEqual({
+      disabled: false,
+      label: 'Confirm specification',
+      title: 'Saves this document and signs it off',
+    })
+  })
+
+  it('is pressable on an edited document, without saving separately first', () => {
+    expect(confirmButton({ confirmedAt: null, dirty: true, pending: false }).disabled).toBe(false)
+  })
+
+  it('is spent once the document is signed and nothing has changed', () => {
+    const b = confirmButton({ confirmedAt: at, dirty: false, pending: false })
+    expect(b.disabled).toBe(true)
+    expect(b.label).toBe('Confirmed')
+  })
+
+  it('comes back the moment something changes, because that is a new document', () => {
+    const b = confirmButton({ confirmedAt: at, dirty: true, pending: false })
+    expect(b.disabled).toBe(false)
+    expect(b.label).toBe('Confirm specification')
+  })
+
+  it('is held while a write is in flight, so a double click cannot sign twice', () => {
+    expect(confirmButton({ confirmedAt: null, dirty: false, pending: true }).disabled).toBe(true)
   })
 })

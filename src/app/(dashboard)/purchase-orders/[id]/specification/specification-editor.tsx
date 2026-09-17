@@ -15,7 +15,7 @@ import {
   type SpecEditorState,
 } from '@/app/actions/purchase-orders/spec-document'
 import { downloadSupplierPoPdf } from '@/app/actions/purchase-orders/download-supplier-po'
-import { driftSentence, type SpecDraft, type SpecDraftProduct } from '@/lib/po-spec-draft'
+import { confirmButton, driftSentence, type SpecDraft, type SpecDraftProduct } from '@/lib/po-spec-draft'
 
 /**
  * The manufacturing specification as a form.
@@ -25,8 +25,10 @@ import { driftSentence, type SpecDraft, type SpecDraftProduct } from '@/lib/po-s
  * a seventeenth. Rows are label and value rather than a fixed field list, so an extra requirement
  * is typed rather than waiting on a migration.
  *
- * NOTHING SAVES BY ITSELF. Every change sits in the browser until Save is pressed, so a mistyped
- * quantity cannot reach the factory's download while somebody is still thinking about it.
+ * NOTHING SAVES BY ITSELF. Every change sits in the browser until Save or Confirm is pressed, so a
+ * mistyped quantity cannot reach the factory's download while somebody is still thinking about it.
+ * Confirm writes the document AND signs it, because the commonest case is a generated document
+ * that is already correct and that must not need a pointless edit before it can be signed.
  */
 
 const input =
@@ -54,6 +56,9 @@ export default function SpecificationEditor({
   const [downloading, setDownloading] = useState(false)
 
   const readOnly = !state.canEdit
+  // The rule lives in po-spec-draft.ts and is unit tested: an unsigned document can ALWAYS be
+  // signed, with or without an edit first.
+  const signOff = confirmButton({ confirmedAt: state.confirmedAt, dirty, pending })
 
   /** Every edit goes through here, so nothing can change the draft without marking it unsaved. */
   const edit = (next: SpecDraft) => {
@@ -67,36 +72,36 @@ export default function SpecificationEditor({
     })
   }
 
-  function save(then?: () => void) {
-    start(async () => {
-      const res = await saveSpecDocument({ poId, draft })
-      if (!res.ok) {
-        toast.error(res.error)
-        return
-      }
-      setDirty(false)
-      // A save clears the sign-off on the server, so the screen has to stop claiming one.
-      setState((s) => ({ ...s, saved: true, confirmedAt: null, confirmedBy: null }))
-      toast.success('Specification saved to the order')
-      router.refresh()
-      then?.()
-    })
-  }
-
-  function confirm() {
-    if (dirty) {
-      toast.error('Save your changes first, then confirm what you saved.')
+  /** Every write returns the new state, so the screen shows the database and not a guess. */
+  function apply(result: Awaited<ReturnType<typeof saveSpecDocument>>, done: string) {
+    if (!result.ok) {
+      toast.error(result.error)
       return
     }
-    start(async () => {
-      const res = await confirmSpecDocument({ poId })
-      if (!res.ok) {
-        toast.error(res.error)
-        return
-      }
-      toast.success('Specification confirmed')
-      router.refresh()
-    })
+    setState(result.state)
+    setDraft(result.state.draft)
+    setDirty(false)
+    toast.success(done)
+    router.refresh()
+  }
+
+  function save() {
+    start(async () => apply(await saveSpecDocument({ poId, draft }), 'Saved to the order'))
+  }
+
+  /**
+   * 🔴 Confirm signs WHAT IS ON THE SCREEN, saved or not.
+   *
+   * Dean, 17 Sep 2026: "I cant press confirm as it is greyed out. I need to edit something and
+   * then it appears what if the first one is correct?" He was right. Requiring a save first made
+   * the commonest case, a generated document that is already correct, the one case you could not
+   * sign without first making a pointless edit. The server writes the content and the signature in
+   * one statement.
+   */
+  function confirm() {
+    start(async () =>
+      apply(await confirmSpecDocument({ poId, draft }), 'Specification confirmed'),
+    )
   }
 
   function reset() {
@@ -106,15 +111,7 @@ export default function SpecificationEditor({
       )
     )
       return
-    start(async () => {
-      const res = await resetSpecDocument({ poId })
-      if (!res.ok) {
-        toast.error(res.error)
-        return
-      }
-      toast.success('Rebuilt from the order')
-      router.refresh()
-    })
+    start(async () => apply(await resetSpecDocument({ poId }), 'Rebuilt from the order'))
   }
 
   async function download() {
@@ -155,7 +152,7 @@ export default function SpecificationEditor({
             <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
               Confirmed by {state.confirmedBy ?? 'someone'} on {iso(state.confirmedAt)}. The PDF
-              prints their name instead of the unconfirmed warning. Saving a change here withdraws
+              prints their name instead of the unconfirmed warning. Changing anything here withdraws
               the confirmation, so it always belongs to the words that were read.
             </span>
           </p>
@@ -164,7 +161,7 @@ export default function SpecificationEditor({
             <strong>Not confirmed.</strong>{' '}
             {state.saved
               ? `Saved${state.updatedBy ? ` by ${state.updatedBy}` : ''}${iso(state.updatedAt) ? ` on ${iso(state.updatedAt)}` : ''}, but nobody has signed it off, so the PDF carries the unconfirmed warning.`
-              : 'Nothing has been saved for this order yet. What you see was generated from the order and the standing product specifications, and the PDF carries the unconfirmed warning until it is saved and confirmed.'}
+              : 'This was generated from the order and the standing product specifications, and nothing has been saved for this order yet. If it is already right, press Confirm specification: that saves it and signs it in one go. The PDF carries the unconfirmed warning until you do.'}
           </p>
         )}
       </section>
@@ -441,29 +438,25 @@ export default function SpecificationEditor({
           ) : (
             <>
               <button
-                onClick={() => save()}
+                onClick={save}
                 disabled={pending || !dirty}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#025945] px-4 py-2 text-sm font-medium text-white hover:bg-[#03674f] disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
               >
                 {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                {dirty ? 'Save to the order' : 'Saved'}
+                {dirty ? 'Save without confirming' : 'Saved'}
               </button>
               <button
                 onClick={confirm}
-                disabled={pending || dirty || Boolean(state.confirmedAt) || !state.saved}
-                title={
-                  state.confirmedAt
-                    ? 'Already confirmed'
-                    : dirty
-                      ? 'Save your changes first'
-                      : !state.saved
-                        ? 'Save it before confirming it'
-                        : undefined
-                }
-                className="inline-flex items-center gap-2 rounded-lg border border-emerald-600 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+                disabled={signOff.disabled}
+                title={signOff.title}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#025945] px-4 py-2 text-sm font-medium text-white hover:bg-[#03674f] disabled:opacity-50"
               >
-                <CheckCircle2 className="h-4 w-4" />
-                {state.confirmedAt ? 'Confirmed' : 'Confirm specification'}
+                {pending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4" />
+                )}
+                {signOff.label}
               </button>
               <button onClick={reset} disabled={pending} className={ghost}>
                 <RotateCcw className="h-3.5 w-3.5" />

@@ -22,13 +22,12 @@ import { getAuthorizedUser } from '@/lib/authz'
 import { poChainHeldBy } from '@/lib/po-organisations'
 import { sanitiseDraft, specDrift, type SpecDraft, type SpecDrift } from '@/lib/po-spec-draft'
 import {
-  confirmSpecDraft,
   generateSpecDraft,
   loadSpecDocument,
   resetSpecDraft,
-  saveSpecDraft,
   specActorNames,
   specDestination,
+  writeSpecDraft,
 } from '@/lib/po-spec-store'
 
 const PoId = z.object({ poId: z.string().uuid('Invalid PO id') })
@@ -51,7 +50,15 @@ export type SpecEditorResult =
   | { ok: true; state: SpecEditorState }
   | { ok: false; error: string }
 
-export type SpecWriteResult = { ok: true } | { ok: false; error: string }
+/**
+ * A write hands back the WHOLE new state rather than an acknowledgement.
+ *
+ * The editor holds the draft in React state, so `router.refresh()` alone would re-render the
+ * server component without the client ever seeing the new confirmation, and the banner would go on
+ * claiming the old one. Returning the state means the screen shows what the database says instead
+ * of what the browser guessed.
+ */
+export type SpecWriteResult = SpecEditorResult
 
 /** Session, capability and chain, in that order. Every export below starts here. */
 async function gate(poId: string, need: 'read' | 'write') {
@@ -70,15 +77,10 @@ async function gate(poId: string, need: 'read' | 'write') {
   return { ok: true as const, uid: auth.user.id, canEdit }
 }
 
-/** The document as it stands, plus everything the editor needs to explain it. */
-export async function loadSpecEditor(input: { poId: string }): Promise<SpecEditorResult> {
-  const parsed = PoId.safeParse(input)
-  if (!parsed.success) return { ok: false, error: 'Invalid PO id' }
-  const allowed = await gate(parsed.data.poId, 'read')
-  if (!allowed.ok) return { ok: false, error: allowed.error }
-
-  const destination = await specDestination(parsed.data.poId)
-  const document = await loadSpecDocument(parsed.data.poId, destination)
+/** Everything the editor needs, once the caller has been allowed through. */
+async function editorState(poId: string, canEdit: boolean): Promise<SpecEditorResult> {
+  const destination = await specDestination(poId)
+  const document = await loadSpecDocument(poId, destination)
   if (!document) {
     return {
       ok: false,
@@ -88,9 +90,7 @@ export async function loadSpecEditor(input: { poId: string }): Promise<SpecEdito
 
   // Only worth a second generation once something has been saved: before then the draft IS the
   // generation and comparing it with itself would find nothing.
-  const generated = document.saved
-    ? await generateSpecDraft(parsed.data.poId, destination)
-    : document.draft
+  const generated = document.saved ? await generateSpecDraft(poId, destination) : document.draft
 
   const names = await specActorNames([document.updatedByUid, document.confirmedByUid])
   return {
@@ -104,58 +104,68 @@ export async function loadSpecEditor(input: { poId: string }): Promise<SpecEdito
       confirmedAt: document.confirmedAt,
       confirmedBy: document.confirmedByUid ? (names.get(document.confirmedByUid) ?? null) : null,
       drift: generated ? specDrift(document.draft, generated) : [],
-      canEdit: allowed.canEdit,
+      canEdit,
     },
   }
 }
 
-/**
- * Save what is on the screen.
- *
- * The client's draft never reaches the database unvalidated: `sanitiseDraft` drops malformed rows,
- * caps every field, and recomputes the pallet count and the material totals from the quantity, so
- * a hand-typed total cannot send the wrong amount of fabric to the floor.
- */
-export async function saveSpecDocument(input: {
-  poId: string
-  draft: unknown
-}): Promise<SpecWriteResult> {
+/** The document as it stands, plus everything the editor needs to explain it. */
+export async function loadSpecEditor(input: { poId: string }): Promise<SpecEditorResult> {
   const parsed = PoId.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Invalid PO id' }
-  const allowed = await gate(parsed.data.poId, 'write')
+  const allowed = await gate(parsed.data.poId, 'read')
+  if (!allowed.ok) return { ok: false, error: allowed.error }
+  return editorState(parsed.data.poId, allowed.canEdit)
+}
+
+/**
+ * Write the document, signed or not.
+ *
+ * 🔴 CONFIRMING DOES NOT NEED A PRIOR SAVE. Dean, 17 Sep 2026: "I cant press confirm as it is
+ * greyed out. I need to edit something and then it appears what if the first one is correct?" The
+ * commonest case is exactly that: the generated document is right, somebody reads it and signs it.
+ * Content and signature go down together, so there is no half state either.
+ */
+async function write(poId: string, rawDraft: unknown, confirm: boolean): Promise<SpecWriteResult> {
+  const allowed = await gate(poId, 'write')
   if (!allowed.ok) return { ok: false, error: allowed.error }
 
-  const draft = sanitiseDraft(input.draft)
+  const draft = sanitiseDraft(rawDraft)
   if (draft.products.length === 0) {
     return { ok: false, error: 'A specification with no products on it would tell the factory nothing.' }
   }
 
   // Recorded alongside the draft the FIRST time, so a later hand edit can be told from an
   // untouched document without going back to the bill of materials.
-  const existing = await loadSpecDocument(parsed.data.poId, draft.destination)
+  const existing = await loadSpecDocument(poId, draft.destination)
   const generated = existing?.generated ?? existing?.draft ?? null
 
-  const written = await saveSpecDraft(parsed.data.poId, draft, allowed.uid, generated)
+  const written = await writeSpecDraft(poId, draft, allowed.uid, generated, confirm)
   if (!written.ok) return written
 
-  revalidatePath(`/purchase-orders/${parsed.data.poId}`)
-  revalidatePath(`/purchase-orders/${parsed.data.poId}/specification`)
-  return { ok: true }
+  revalidatePath(`/purchase-orders/${poId}`)
+  revalidatePath(`/purchase-orders/${poId}/specification`)
+  return editorState(poId, allowed.canEdit)
+}
+
+/** Save without signing. Any existing sign-off is withdrawn: the words changed. */
+export async function saveSpecDocument(input: {
+  poId: string
+  draft: unknown
+}): Promise<SpecWriteResult> {
+  const parsed = PoId.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Invalid PO id' }
+  return write(parsed.data.poId, input.draft, false)
 }
 
 /** Sign it off. From here the PDF prints a name and a date instead of the red warning. */
-export async function confirmSpecDocument(input: { poId: string }): Promise<SpecWriteResult> {
+export async function confirmSpecDocument(input: {
+  poId: string
+  draft: unknown
+}): Promise<SpecWriteResult> {
   const parsed = PoId.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Invalid PO id' }
-  const allowed = await gate(parsed.data.poId, 'write')
-  if (!allowed.ok) return { ok: false, error: allowed.error }
-
-  const done = await confirmSpecDraft(parsed.data.poId, allowed.uid)
-  if (!done.ok) return done
-
-  revalidatePath(`/purchase-orders/${parsed.data.poId}`)
-  revalidatePath(`/purchase-orders/${parsed.data.poId}/specification`)
-  return { ok: true }
+  return write(parsed.data.poId, input.draft, true)
 }
 
 /**
@@ -171,9 +181,9 @@ export async function resetSpecDocument(input: { poId: string }): Promise<SpecWr
   if (!allowed.ok) return { ok: false, error: allowed.error }
 
   const done = await resetSpecDraft(parsed.data.poId)
-  if (!done.ok) return done
+  if (!done.ok) return { ok: false, error: done.error }
 
   revalidatePath(`/purchase-orders/${parsed.data.poId}`)
   revalidatePath(`/purchase-orders/${parsed.data.poId}/specification`)
-  return { ok: true }
+  return editorState(parsed.data.poId, allowed.canEdit)
 }

@@ -246,3 +246,34 @@ export function driftSentence(d: SpecDrift): string {
   if (d.kind === 'extra') return `${d.model} is on this document but no longer on the order.`
   return `${d.model} says ${d.was} units here and ${d.now} on the order.`
 }
+
+// ---------------------------------------------------------------------------
+// The Confirm button
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether the document can be signed right now, and what the button should say.
+ *
+ * 🔴 Pure, and tested, because getting this wrong is not cosmetic. Dean, 17 Sep 2026: "I cant
+ * press confirm as it is greyed out. I need to edit something and then it appears what if the
+ * first one is correct?"
+ *
+ * The first version required a save before a confirm, which made the COMMONEST case the one you
+ * could not do: a generated document that is already right could only be signed by first making an
+ * edit nobody wanted. The rule now is simply "an unsigned document can always be signed", and
+ * confirming writes the content and the signature together.
+ */
+export function confirmButton(input: {
+  confirmedAt: string | null
+  dirty: boolean
+  pending: boolean
+}): { disabled: boolean; label: string; title: string } {
+  const alreadySigned = Boolean(input.confirmedAt) && !input.dirty
+  return {
+    disabled: input.pending || alreadySigned,
+    label: alreadySigned ? 'Confirmed' : 'Confirm specification',
+    title: alreadySigned
+      ? 'Already confirmed. Change something to confirm the new version.'
+      : 'Saves this document and signs it off',
+  }
+}

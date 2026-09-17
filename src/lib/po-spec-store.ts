@@ -134,18 +134,27 @@ export async function loadSpecDocument(
 }
 
 /**
- * Save the draft.
+ * Write the draft, signed or unsigned, in ONE statement.
  *
- * 🔴 Saving CLEARS the sign-off. A signature is on the words that were read, not on the row, so
- * changing one after somebody confirmed it sends it back for confirmation. Otherwise the PDF would
- * print a person's name against text they never saw.
+ * 🔴 An unsigned save CLEARS any existing sign-off. A signature belongs to the words that were
+ * read, not to the row, so changing one after somebody confirmed it sends it back for
+ * confirmation. Otherwise the PDF would print a person's name against text they never saw.
+ *
+ * Signing writes the content and the signature together rather than stamping a row that is
+ * already there. Dean, 17 Sep 2026: "I cant press confirm as it is greyed out. I need to edit
+ * something and then it appears what if the first one is correct?" Confirming a generated
+ * document that nobody has touched is the ordinary case, not an edge case, so it must not require
+ * a pointless edit first. One statement also means there is no half state where the content saved
+ * and the signature did not.
  */
-export async function saveSpecDraft(
+export async function writeSpecDraft(
   poId: string,
   draft: SpecDraft,
   actorUid: string,
   generated: SpecDraft | null,
+  confirm: boolean,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const now = new Date().toISOString()
   const admin = createAdminClient()
   const { error } = await admin.from('po_spec_document').upsert(
     {
@@ -153,35 +162,17 @@ export async function saveSpecDraft(
       draft: sanitiseDraft(draft),
       generated: generated ? sanitiseDraft(generated) : null,
       updated_by_uid: actorUid,
-      updated_at: new Date().toISOString(),
-      confirmed_at: null,
-      confirmed_by_uid: null,
+      updated_at: now,
+      confirmed_at: confirm ? now : null,
+      confirmed_by_uid: confirm ? actorUid : null,
     },
     { onConflict: 'po_id' },
   )
-  if (error) return { ok: false, error: 'The specification could not be saved.' }
-  return { ok: true }
-}
-
-/**
- * Sign the document off. One-shot: confirming an already confirmed document changes nothing, so a
- * double click cannot move the name or the date.
- */
-export async function confirmSpecDraft(
-  poId: string,
-  actorUid: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  const admin = createAdminClient()
-  const { data, error } = await admin
-    .from('po_spec_document')
-    .update({ confirmed_at: new Date().toISOString(), confirmed_by_uid: actorUid })
-    .eq('po_id', poId)
-    .is('confirmed_at', null)
-    .select('po_id')
-    .maybeSingle()
-
-  if (error) return { ok: false, error: 'The specification could not be confirmed.' }
-  if (!data) return { ok: false, error: 'Save the specification before confirming it.' }
+  if (error) {
+    return { ok: false, error: confirm
+      ? 'The specification could not be confirmed.'
+      : 'The specification could not be saved.' }
+  }
   return { ok: true }
 }
 
