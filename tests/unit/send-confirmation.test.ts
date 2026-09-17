@@ -137,11 +137,12 @@ describe('a preview claims nothing and posts nothing', () => {
     // it, so the dialog has to print it before anything is sent.
     const source = code(MFG_ACTION)
     expect(source).toContain("addressesFrom(process.env.BAMIDA_PO_BCC, \"server\", \"BAMIDA_PO_BCC\")")
-    // Since 17 Sep 2026 nothing is typed at all: the manufacturer has one fixed
-    // point of contact, so every line is attributed to where it was decided.
-    expect(source).toContain('"the manufacturer\'s point of contact"')
-    expect(source).toContain('addressesFrom(process.env.BAMIDA_PO_CC, "server", "BAMIDA_PO_CC")')
+    // Since 17 Sep 2026 the recipients come from the send_contact address book, so every line
+    // says whether it was standing, ticked from the book, or typed for this one order.
     expect(source).toContain('"always copied"')
+    expect(source).toContain('`address book${')
+    expect(source).toContain('"the Also send to box"')
+    expect(source).toContain('"the Also copy to box"')
     expect(source).not.toContain('"the Send to box"')
   })
 })

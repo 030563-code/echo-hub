@@ -7,7 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
 import { poChainHeldBy } from "@/lib/po-organisations";
 import { specDocumentStatus } from "@/lib/po-spec-store";
-import { ALWAYS_COPIED, FACTORY_CONTACT, factoryCopyTo, mergeAddresses } from "@/lib/factory-contact";
+import { loadSendContacts, resolveSelection } from "@/lib/send-contacts";
 import { externalCallsDisabled, hubBaseUrl } from "@/lib/env";
 import { resolveRecipients, sendDescription } from "@/lib/email-recipients";
 import { loadSroPoBom } from "@/lib/bom";
@@ -67,9 +67,10 @@ import { addressesFrom, type PreviewAddress, type SendPreview } from "@/lib/send
 // is merged on top and deduplicated. There is no input that can remove a recipient.
 const Schema = z.object({
   manufacturing_po_id: z.string().uuid("Invalid PO id"),
-  /** Comma separated. ADDED to the manufacturer's address, never instead of it. */
+  /** Address book rows that were ticked. Required rows go whether or not their id is here. */
+  contact_ids: z.array(z.string().uuid()).max(100).optional(),
+  /** Comma separated, for somebody not in the book. ADDED, never instead of. */
   to: z.string().trim().max(400).optional(),
-  /** Comma separated. ADDED to the four standing internal copies. */
   cc: z.string().trim().max(400).optional(),
 });
 
@@ -151,18 +152,37 @@ async function planManufacturingSend(input: z.infer<typeof Schema>) {
     return { ok: false as const, error: "Sandbox (staging): nothing is sent to Bamida from here." };
   }
 
-  // The fixed lists first, then anything typed. mergeAddresses keeps the first spelling of each,
-  // so typing one of the four again cannot produce a second copy, and nothing typed can drop one.
+  // The address book decides, not the browser. Required rows are merged in whatever arrives, so
+  // nothing a caller sends can drop the manufacturer's own desk or the four Dean named.
+  const book = await loadSendContacts("manufacturing");
   const typedTo = String(parsed.data.to ?? "").trim();
   const typedCc = String(parsed.data.cc ?? "").trim();
-  const bamidaTo = mergeAddresses(FACTORY_CONTACT, typedTo);
-  const bamidaCc = mergeAddresses(factoryCopyTo(), typedCc);
+  const chosen = resolveSelection(book, parsed.data.contact_ids ?? [], { to: typedTo, cc: typedCc });
+  const bamidaTo = chosen.to;
+  const bamidaCc = chosen.cc;
+
+  if (!bamidaTo) {
+    return {
+      ok: false as const,
+      error: "Nobody to send it to. The address book has no recipient for a manufacturing order.",
+    };
+  }
 
   // WHERE EACH ADDRESS CAME FROM, so the confirmation dialog can say it line by line. Worked out
-  // here because here is where the choice is made: matching against the settings afterwards would
-  // mislabel a typed address that is also one of the standing ones.
-  // Same rule as the merge: first spelling wins. Somebody typing an address that is already
-  // standing must not make the dialog print it twice, or the reader will wonder which one is real.
+  // here because here is where the choice is made.
+  const fromBook = (field: "to" | "cc") =>
+    chosen.used
+      .filter((c) => c.field === field)
+      .flatMap((c) =>
+        addressesFrom(
+          c.address,
+          "server",
+          c.isRequired ? "always copied" : `address book${c.organisation ? `, ${c.organisation}` : ""}`,
+        ),
+      );
+
+  // Same rule as the merge: first spelling wins, so an address that is both ticked and typed is
+  // printed once and the reader is not left wondering which one is real.
   const once = (entries: PreviewAddress[]) => {
     const seen = new Set<string>();
     return entries.filter((e) => {
@@ -173,15 +193,8 @@ async function planManufacturingSend(input: z.infer<typeof Schema>) {
     });
   };
   const real = {
-    to: once([
-      ...addressesFrom(FACTORY_CONTACT, "server", "the manufacturer's point of contact"),
-      ...addressesFrom(typedTo, "typed", "the Also send to box"),
-    ]),
-    cc: once([
-      ...addressesFrom(ALWAYS_COPIED.join(", "), "server", "always copied"),
-      ...addressesFrom(process.env.BAMIDA_PO_CC, "server", "BAMIDA_PO_CC"),
-      ...addressesFrom(typedCc, "typed", "the Also copy to box"),
-    ]),
+    to: once([...fromBook("to"), ...addressesFrom(typedTo, "typed", "the Also send to box")]),
+    cc: once([...fromBook("cc"), ...addressesFrom(typedCc, "typed", "the Also copy to box")]),
     // Never on any screen. A blind copy nobody remembers is the whole reason
     // this dialog prints every address.
     bcc: addressesFrom(process.env.BAMIDA_PO_BCC, "server", "BAMIDA_PO_BCC"),

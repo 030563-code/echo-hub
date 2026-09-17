@@ -7,6 +7,8 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import AddSendContact from '@/components/po/add-send-contact'
+import type { SendContactOption } from '@/components/po/add-send-contact'
 import { Mail, CheckCircle2, Clock } from 'lucide-react'
 import {
   sendManufacturingPoToBamida,
@@ -41,18 +43,15 @@ export default function ManufacturingCard({
   poId,
   canAct,
   manufacturing,
-  contact,
-  alwaysCopied,
+  contacts,
   specConfirmed,
   specSaved,
 }: {
   poId: string
   canAct: boolean
   manufacturing: Manufacturing
-  /** The manufacturer's one address, shown so the sender can see it. Read only. */
-  contact: string
-  /** The standing internal copies, shown for the same reason. Read only. */
-  alwaysCopied: readonly string[]
+  /** The address book for this send. Required rows are ticked and locked. */
+  contacts: readonly SendContactOption[]
   /**
    * 🔴 Whether the -1 specification has been signed off. The SERVER refuses an unconfirmed send;
    * this only stops somebody walking into a refusal they could have been told about.
@@ -74,6 +73,11 @@ export default function ManufacturingCard({
   // ones just make it clear that [the four] is automatically CCed."
   const [to, setTo] = useState('')
   const [cc, setCc] = useState('')
+  // Which of the book's rows are ticked. Required rows are not in here: the SERVER merges those in
+  // whatever the browser sends, so a tampered request cannot drop them.
+  const [picked, setPicked] = useState<string[]>(() =>
+    contacts.filter((c) => c.defaultSelected && !c.isRequired).map((c) => c.id),
+  )
   // The confirmation, added 16 Sep 2026. Nothing reaches the factory until
   // somebody has read who it goes to, which is the one thing a person can get
   // wrong here now that the address is typed rather than configured.
@@ -90,6 +94,19 @@ export default function ManufacturingCard({
       ? 'The specification is saved but not confirmed. Confirm it in step 1 above first. Until then the factory would get a sheet telling them not to build from it.'
       : 'Confirm the specification in step 1 above first. Until then the factory would get a sheet telling them not to build from it.'
 
+  // Grouped for the screen so a reader can see at a glance which side each person is on. The
+  // server's order is kept: Map preserves insertion order.
+  const groups = (() => {
+    const by = new Map<string, SendContactOption[]>()
+    for (const c of contacts) {
+      const key = c.organisation ?? 'Other'
+      const list = by.get(key)
+      if (list) list.push(c)
+      else by.set(key, [c])
+    }
+    return [...by.entries()]
+  })()
+
   const sent = manufacturing.sentAt !== null
   const finished = manufacturing.finishedAt !== null
 
@@ -99,7 +116,7 @@ export default function ManufacturingCard({
     setPreview(null)
     setPreviewError(null)
     setLoadingPreview(true)
-    void previewManufacturingPoSend({ manufacturing_po_id: poId, to, cc })
+    void previewManufacturingPoSend({ manufacturing_po_id: poId, contact_ids: picked, to, cc })
       .then((res) => {
         if (res.ok) setPreview(res.preview)
         else setPreviewError(res.error)
@@ -110,7 +127,7 @@ export default function ManufacturingCard({
 
   function send() {
     startTransition(async () => {
-      const res = await sendManufacturingPoToBamida({ manufacturing_po_id: poId, to, cc })
+      const res = await sendManufacturingPoToBamida({ manufacturing_po_id: poId, contact_ids: picked, to, cc })
       if (!res.ok) toast.error(res.error)
       else if (res.short) toast.warning(`${res.description}. They were told which materials are short.`)
       else toast.success(res.description)
@@ -199,21 +216,56 @@ export default function ManufacturingCard({
       {canAct && !finished && !sent && (
         <div className="mt-5 space-y-3">
           <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-            <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Always goes to</p>
-            <p className="mt-1 font-mono text-sm text-gray-900">{contact}</p>
-            <p className="mt-2.5 text-xs font-medium uppercase tracking-wider text-gray-500">
-              Always copied to
+            <p className="text-xs font-medium uppercase tracking-wider text-gray-500">
+              Who gets this order
             </p>
-            <ul className="mt-1 space-y-0.5">
-              {alwaysCopied.map((address) => (
-                <li key={address} className="font-mono text-sm text-gray-700">
-                  {address}
-                </li>
-              ))}
-            </ul>
+            {groups.map(([organisation, rows]) => (
+              <div key={organisation} className="mt-2.5">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-gray-400">
+                  {organisation}
+                </p>
+                <ul className="mt-1 space-y-1">
+                  {rows.map((c) => (
+                    <li key={c.id}>
+                      <label
+                        className={`flex items-start gap-2 text-sm ${
+                          c.isRequired ? 'text-gray-500' : 'text-gray-900 cursor-pointer'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-echo-orange focus:ring-echo-orange disabled:opacity-60"
+                          checked={c.isRequired || picked.includes(c.id)}
+                          disabled={c.isRequired || pending}
+                          onChange={(e) =>
+                            setPicked((prev) =>
+                              e.target.checked
+                                ? [...prev, c.id]
+                                : prev.filter((id) => id !== c.id),
+                            )
+                          }
+                        />
+                        <span className="min-w-0">
+                          <span className="font-mono">{c.address}</span>
+                          {c.displayName && (
+                            <span className="text-gray-500"> ({c.displayName})</span>
+                          )}
+                          <span className="ml-1.5 text-xs uppercase tracking-wider text-gray-400">
+                            {c.field}
+                          </span>
+                          {c.isRequired && (
+                            <span className="ml-1.5 text-xs text-gray-400">always</span>
+                          )}
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
             <p className="mt-2.5 text-xs text-gray-500">
-              These go on every order and cannot be removed here. Anything you add below is sent as
-              well as these, not instead of them.
+              The ones marked always are on every order and cannot be removed here. Untick anybody
+              else to leave them off this one order only.
             </p>
           </div>
 
@@ -234,7 +286,7 @@ export default function ManufacturingCard({
                 placeholder="Optional"
               />
               <p className="mt-1 text-xs text-gray-400">
-                Anyone else at the manufacturer. Separate several with commas.
+                Somebody not in the list. Separate several with commas.
               </p>
             </div>
             <div>
@@ -253,10 +305,12 @@ export default function ManufacturingCard({
                 placeholder="Optional"
               />
               <p className="mt-1 text-xs text-gray-400">
-                Anyone else on our side, for this order only.
+                For this order only. To keep somebody, add them to the list below.
               </p>
             </div>
           </div>
+
+          <AddSendContact channel="manufacturing" />
         </div>
       )}
 
