@@ -22,6 +22,7 @@ import DetailSection from '@/components/po/detail-section'
 import StatusBadge from '@/components/board/StatusBadge'
 import FulfilmentCard from './fulfilment-card'
 import ManufacturingCard from './manufacturing-card'
+import ManufacturingSteps from './manufacturing-steps'
 import CargoRequestCard from './cargo-request-card'
 import ApprovalCard from './approval-card'
 import StageControl from './stage-control'
@@ -206,31 +207,17 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
           </div>
         </div>
         <div className="w-full space-y-2 sm:w-56">
-          <DownloadPoPdfButton
-            po={po}
-            canViewCost={canViewCost}
-            parties={pdf.parties}
-            fx={pdf.fx}
-            rootCurrency={rootCurrency}
-          />
-          {/* The -1 is generated, but a generated document is evidence and a checked one is an
-              instruction. Dean, 17 Sep 2026: "That way nothing goes unsigned." */}
-          {isManufacturingOrder && (
-            <Link
-              href={`/purchase-orders/${po.id}/specification`}
-              className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-center text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
-            >
-              {canEditSpec ? 'Edit specification' : 'View specification'}
-            </Link>
-          )}
-          {specStatus && (
-            <p className="text-center text-xs text-gray-500">
-              {specStatus.confirmedAt
-                ? `Specification confirmed${specConfirmedBy ? ` by ${specConfirmedBy}` : ''}`
-                : specStatus.saved
-                  ? 'Specification saved, not yet confirmed'
-                  : 'Specification not yet checked'}
-            </p>
+          {/* A supplier order's documents live inside the numbered steps below, because the order
+              they are done in is the whole point. Every other leg has one document and no
+              sequence, so it keeps the plain button. */}
+          {!isManufacturingOrder && (
+            <DownloadPoPdfButton
+              po={po}
+              canViewCost={canViewCost}
+              parties={pdf.parties}
+              fx={pdf.fx}
+              rootCurrency={rootCurrency}
+            />
           )}
           {/* Only once Xero holds the order. The id is what the PDF attaches
               to, and nothing in that path can create a purchase order. */}
@@ -363,6 +350,28 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
         />
       )}
 
+      {isManufacturingOrder && (
+        <div className="mb-6">
+          <ManufacturingSteps
+            poId={po.id}
+            canEditSpec={canEditSpec}
+            specSaved={Boolean(specStatus?.saved)}
+            specConfirmedAt={specStatus?.confirmedAt ?? null}
+            specConfirmedBy={specConfirmedBy}
+            sentAt={progress?.sentAt ?? null}
+            documents={
+              <DownloadPoPdfButton
+                po={po}
+                canViewCost={canViewCost}
+                parties={pdf.parties}
+                fx={pdf.fx}
+                rootCurrency={rootCurrency}
+              />
+            }
+          />
+        </div>
+      )}
+
       {isManufacturingOrder && progress && (
         <ManufacturingCard
           poId={po.id}
@@ -370,6 +379,8 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
           manufacturing={progress}
           defaultTo={bamidaTo}
           defaultCc={bamidaCc}
+          specConfirmed={Boolean(specStatus?.confirmedAt)}
+          specSaved={Boolean(specStatus?.saved)}
         />
       )}
 

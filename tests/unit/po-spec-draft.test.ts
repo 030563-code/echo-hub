@@ -281,3 +281,64 @@ describe('the Confirm button: an unsigned document can always be signed', () => 
     expect(confirmButton({ confirmedAt: null, dirty: false, pending: true }).disabled).toBe(true)
   })
 })
+
+describe('guard: nothing reaches the factory on an unconfirmed specification', () => {
+  // 🔴 Dean, 17 Sep 2026: "what if they click on Manufacturing PO (PDF) see the spec is good then
+  // press on send to bamida without going into Edit Specification first to save it. Then does it
+  // send with that red line?" It did. The factory would have downloaded a build sheet headed
+  // SPECIFICATION NOT YET CONFIRMED, which is the one document the sign-off exists to prevent.
+  const send = readFileSync(
+    join(process.cwd(), 'src/app/actions/purchase-orders/send-manufacturing-po.ts'),
+    'utf8',
+  )
+  const card = readFileSync(
+    join(process.cwd(), 'src/app/(dashboard)/purchase-orders/[id]/manufacturing-card.tsx'),
+    'utf8',
+  )
+  const steps = readFileSync(
+    join(process.cwd(), 'src/app/(dashboard)/purchase-orders/[id]/manufacturing-steps.tsx'),
+    'utf8',
+  )
+
+  it('refuses on the SERVER, not only in the button', () => {
+    // A 'use server' export is a public endpoint: a greyed button is not a gate.
+    expect(send).toContain('const spec = await specDocumentStatus(poId)')
+    expect(send).toContain('if (!spec.confirmedAt)')
+    expect(send).toContain('Confirm the manufacturing specification before sending this order.')
+  })
+
+  it('refuses BEFORE it claims the send or contacts n8n', () => {
+    // The claim is one-shot: refusing after it would burn the order's only send.
+    const check = send.indexOf('const spec = await specDocumentStatus(poId)')
+    const claim = send.indexOf('sent_at: new Date().toISOString()')
+    expect(check).toBeGreaterThan(0)
+    expect(claim).toBeGreaterThan(check)
+  })
+
+  it('tells the difference between saved-but-unconfirmed and never-opened', () => {
+    expect(send).toContain('saved but not confirmed')
+  })
+
+  it('disables the button and says why, so nobody walks into the refusal', () => {
+    expect(card).toContain('disabled={pending || !specConfirmed}')
+    expect(card).toContain('Confirm the specification in step 1 above first.')
+  })
+
+  it('puts the steps in an order and locks the ones that are not reachable yet', () => {
+    expect(steps).toContain('Check the specification')
+    expect(steps).toContain('Download the documents')
+    expect(steps).toContain('Send to the factory')
+    expect(steps).toContain("state={sent ? 'done' : confirmed ? 'now' : 'locked'}")
+  })
+
+  it('explains itself on the page rather than only in a commit message', () => {
+    // Dean: "There should really be more clarity on some of these things maybe some small
+    // information icons we can hover over and it reveals how to use each page."
+    const hint = readFileSync(join(process.cwd(), 'src/components/ui/info-hint.tsx'), 'utf8')
+    // Reachable by keyboard, not only by hover.
+    expect(hint).toContain('group-focus-within:opacity-100')
+    expect(hint).toContain('<button')
+    expect(hint).toContain('aria-label={label}')
+    expect(steps).toContain('<InfoHint')
+  })
+})

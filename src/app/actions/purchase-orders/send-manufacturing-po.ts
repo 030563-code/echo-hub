@@ -6,6 +6,7 @@ import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
 import { poChainHeldBy } from "@/lib/po-organisations";
+import { specDocumentStatus } from "@/lib/po-spec-store";
 import { externalCallsDisabled, hubBaseUrl } from "@/lib/env";
 import { resolveRecipients, sendDescription } from "@/lib/email-recipients";
 import { loadSroPoBom } from "@/lib/bom";
@@ -119,6 +120,24 @@ async function planManufacturingSend(input: z.infer<typeof Schema>) {
   }
   if (!po.parent_po_id) {
     return { ok: false as const, error: "This manufacturing order has no SRO order behind it." };
+  }
+
+  // 🔴 NOTHING GOES UNSIGNED, and a disabled button is not a gate: every export of a 'use server'
+  // file is a public endpoint, so the refusal has to live here.
+  //
+  // Dean, 17 Sep 2026: "what if they click on Manufacturing PO (PDF) see the spec is good then
+  // press on send to bamida without going into Edit Specification first to save it. Then does it
+  // send with that red line?" It did. The factory would have downloaded a build sheet headed
+  // SPECIFICATION NOT YET CONFIRMED, which is exactly the document the whole sign-off exists to
+  // prevent reaching them. Confirming is one press on the specification page.
+  const spec = await specDocumentStatus(poId);
+  if (!spec.confirmedAt) {
+    return {
+      ok: false as const,
+      error: spec.saved
+        ? "The manufacturing specification has been saved but not confirmed. Open Review specification and confirm it, then send."
+        : "Confirm the manufacturing specification before sending this order. Open Review specification, check it and press Confirm.",
+    };
   }
 
   const webhookUrl = String(process.env.N8N_BAMIDA_PO_WEBHOOK_URL ?? "").trim();

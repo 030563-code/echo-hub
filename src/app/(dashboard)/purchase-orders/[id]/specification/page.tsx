@@ -6,6 +6,7 @@ import { poChainHeldBy } from '@/lib/po-organisations'
 import { createServerClient } from '@/lib/supabase/server'
 import { displayPoNumber } from '@/lib/po-number'
 import { loadSpecEditor } from '@/app/actions/purchase-orders/spec-document'
+import InfoHint from '@/components/ui/info-hint'
 import SpecificationEditor from './specification-editor'
 
 export const dynamic = 'force-dynamic'
@@ -50,8 +51,13 @@ export default async function SpecificationPage({ params }: { params: Promise<{ 
       </Link>
 
       <header className="mt-4">
-        <h1 className="text-xl font-semibold text-gray-900">
+        <h1 className="flex items-center gap-2 text-xl font-semibold text-gray-900">
           Manufacturing specification {displayPoNumber(po.po_number)}
+          <InfoHint label="How to use this page" align="left">
+            Read it, change anything this order needs, then press Confirm. Confirm saves and signs
+            in one go, so if it is already right you do not have to edit anything first. Nothing
+            can be sent to the factory until it is confirmed.
+          </InfoHint>
         </h1>
         <p className="mt-1 text-sm text-gray-500">
           This is what the factory builds from. It is filled in from the order and the standing

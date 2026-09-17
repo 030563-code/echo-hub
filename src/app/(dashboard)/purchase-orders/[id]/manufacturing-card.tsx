@@ -43,6 +43,8 @@ export default function ManufacturingCard({
   manufacturing,
   defaultTo,
   defaultCc,
+  specConfirmed,
+  specSaved,
 }: {
   poId: string
   canAct: boolean
@@ -50,6 +52,14 @@ export default function ManufacturingCard({
   /** What the server would use if nobody types anything. */
   defaultTo: string
   defaultCc: string
+  /**
+   * 🔴 Whether the -1 specification has been signed off. The SERVER refuses an unconfirmed send;
+   * this only stops somebody walking into a refusal they could have been told about.
+   * Dean, 17 Sep 2026, on pressing Send to Bamida without opening the specification: "does it send
+   * with that red line?" It did.
+   */
+  specConfirmed: boolean
+  specSaved: boolean
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -66,6 +76,14 @@ export default function ManufacturingCard({
   const [preview, setPreview] = useState<SendPreview | null>(null)
   const [loadingPreview, setLoadingPreview] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
+
+  // 🔴 The SERVER refuses an unconfirmed send. This only stops somebody walking into a refusal
+  // they could have been told about, and says the same thing the refusal would.
+  const blockedReason = specConfirmed
+    ? null
+    : specSaved
+      ? 'The specification is saved but not confirmed. Confirm it in step 1 above first. Until then the factory would get a sheet telling them not to build from it.'
+      : 'Confirm the specification in step 1 above first. Until then the factory would get a sheet telling them not to build from it.'
 
   const sent = manufacturing.sentAt !== null
   const finished = manufacturing.finishedAt !== null
@@ -217,13 +235,17 @@ export default function ManufacturingCard({
       {canAct && !finished && (
         <div className="mt-5 flex flex-wrap gap-2">
           {!sent && (
-            <button
-              onClick={askToSend}
-              disabled={pending}
-              className="px-5 py-2 bg-echo-orange hover:bg-echo-orange-hover text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
-            >
-              {pending ? 'Sending...' : 'Send to Bamida'}
-            </button>
+            <div>
+              <button
+                onClick={askToSend}
+                disabled={pending || !specConfirmed}
+                title={blockedReason ?? undefined}
+                className="px-5 py-2 bg-echo-orange hover:bg-echo-orange-hover text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
+              >
+                {pending ? 'Sending...' : 'Send to Bamida'}
+              </button>
+              {blockedReason && <p className="mt-2 text-xs text-amber-700">{blockedReason}</p>}
+            </div>
           )}
 
           {sent && !confirmingResend && (

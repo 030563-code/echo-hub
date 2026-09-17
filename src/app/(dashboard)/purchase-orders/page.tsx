@@ -128,7 +128,7 @@ export default async function PurchasingPage() {
             Supplier & PO Tracker
           </h1>
           <p className="text-gray-500 text-sm mt-1">
-            Intercompany purchase orders — Depots → EB Group → EB SRO
+            Intercompany purchase orders. Depots → EB Group → EB SRO
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
