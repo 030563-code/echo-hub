@@ -133,7 +133,7 @@ export interface NavItem {
    * The organisation-scoped module behind this item, when there is one. The
    * sidebar lists the organisations the person holds under it (Dean, 15 Sep
    * 2026: "a dropdown under each section"). Dashboard, Bill of Materials and
-   * Warehousing/Stock have none: the first is home, the other two are s.r.o.
+   * Stock Prediction Engine have none: the first is home, the other two are s.r.o.
    * manufacturing and belong to no single organisation.
    */
   module?: OrgModule
@@ -157,7 +157,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Bill of Materials', href: '/bom', icon: 'Layers', requires: ['bom.view'], group: 'Operations' },
   { label: 'Transport', href: '/transport', icon: 'Truck', requires: ['transport.view'], group: 'Operations', module: 'transport' },
   { label: 'Invoices', href: '/invoices', icon: 'Receipt', requires: ['invoice.view'], group: 'Operations', module: 'invoices' },
-  { label: 'Warehousing/Stock', href: '/mrp', icon: 'Gauge', requires: ['mrp.view'], group: 'Operations' },
+  { label: 'Stock Prediction Engine', href: '/mrp', icon: 'Gauge', requires: ['mrp.view'], group: 'Operations' },
   { label: 'Stock', href: '/stock', icon: 'Boxes', requires: ['stock.view', 'stock.edit'], group: 'Operations', module: 'stock' },
 
   // The manufacturer's two tabs. Not organisation-scoped: the factory is not

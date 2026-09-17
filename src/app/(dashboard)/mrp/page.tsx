@@ -42,10 +42,10 @@ export default async function MRPPage() {
     <div className="p-6">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: "Varela Round, sans-serif" }}>
-          MRP Prediction Dashboard
+          Stock Prediction Engine
         </h1>
         <p className="text-gray-500 text-sm mt-1">
-          Reorder point engine — CIP vs Lead Time Demand + Safety Stock per SKU
+          When to manufacture, per SKU: what is on hand and coming against what the pipeline and the sales history say will be needed
         </p>
       </div>
 
@@ -95,7 +95,6 @@ export default async function MRPPage() {
           <span className="text-gray-400">(target lead time from mrp_buffer_profile; seed — recalibrating from live shipments; the legacy trigger above still computes with 90d until cutover)</span>
         </p>
         <p><span className="text-red-700">Trigger</span> = CIP ≤ Lead Time Demand + Safety Stock</p>
-        <p className="text-gray-400 pt-1">⚠ All stock currently at 0 — red status expected until Dave provides real quantities</p>
       </div>
 
       <MRPClient rows={rows} />

@@ -161,7 +161,7 @@ test('signing in lands on Manufacturing, with two tabs and nothing else', async 
   await expect(nav.getByRole('link', { name: 'Stock', exact: true })).toBeVisible()
   await expect(nav.getByRole('link')).toHaveCount(2)
 
-  for (const hidden of ['Dashboard', 'Quotes', 'Purchase Orders', 'Warehousing/Stock', 'Invoicing', 'Pricing']) {
+  for (const hidden of ['Dashboard', 'Quotes', 'Purchase Orders', 'Stock Prediction Engine', 'Invoicing', 'Pricing']) {
     await expect(nav.getByRole('link', { name: hidden, exact: true })).toHaveCount(0)
   }
   // They hold no organisation, so there is nothing to badge.

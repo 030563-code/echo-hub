@@ -16,7 +16,7 @@ test.describe('Navigation + RBAC (privileged user)', () => {
 
   test('sidebar shows every workstream — and no Weeklies', async ({ page }) => {
     const nav = page.locator('aside')
-    for (const label of ['Dashboard', 'Quotes', 'Purchase Orders', 'Bill of Materials', 'Transport', 'Warehousing/Stock']) {
+    for (const label of ['Dashboard', 'Quotes', 'Purchase Orders', 'Bill of Materials', 'Transport', 'Stock Prediction Engine']) {
       await expect(nav.getByRole('link', { name: label, exact: true })).toBeVisible()
     }
     await expect(nav.getByRole('link', { name: 'Weeklies', exact: true })).toHaveCount(0)
@@ -24,11 +24,11 @@ test.describe('Navigation + RBAC (privileged user)', () => {
 
   test('dashboard lists the accessible module cards', async ({ page }) => {
     await expect(page.getByText('Welcome to the Echo Barrier Hub')).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Warehousing/Stock' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Stock Prediction Engine' })).toBeVisible()
   })
 
   const opsModules = [
-    { link: 'Warehousing/Stock', url: /\/mrp$/, heading: 'MRP Prediction Dashboard' },
+    { link: 'Stock Prediction Engine', url: /\/mrp$/, heading: 'Stock Prediction Engine' },
     { link: 'Transport', url: /\/transport$/, heading: 'Logistics & Shipping' },
     { link: 'Purchase Orders', url: /\/purchase-orders$/, heading: 'Supplier & PO Tracker' },
     { link: 'Bill of Materials', url: /\/bom$/, heading: 'Bill of Materials & Pricing' },

@@ -17,7 +17,7 @@ test.describe('Negative capability gating (scoped user)', () => {
   test('scoped user sees Quotes but NOT the ops boards', async ({ page }) => {
     const nav = page.locator('aside')
     await expect(nav.getByRole('link', { name: 'Quotes', exact: true })).toBeVisible()
-    for (const hidden of ['Warehousing/Stock', 'Transport', 'Purchase Orders', 'Bill of Materials']) {
+    for (const hidden of ['Stock Prediction Engine', 'Transport', 'Purchase Orders', 'Bill of Materials']) {
       await expect(nav.getByRole('link', { name: hidden, exact: true })).toHaveCount(0)
     }
   })
@@ -33,7 +33,7 @@ test.describe('Negative capability gating (scoped user)', () => {
 
   test('dashboard offers no forbidden module cards', async ({ page }) => {
     const main = page.getByRole('main')
-    for (const hidden of ['Warehousing/Stock', 'Transport', 'Purchase Orders', 'Bill of Materials']) {
+    for (const hidden of ['Stock Prediction Engine', 'Transport', 'Purchase Orders', 'Bill of Materials']) {
       await expect(main.getByRole('link', { name: hidden, exact: true })).toHaveCount(0)
     }
   })

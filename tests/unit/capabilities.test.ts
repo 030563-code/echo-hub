@@ -58,7 +58,7 @@ describe('navSections', () => {
     // Invoices (commercial intercompany invoices, /invoices) joined Operations in the
     // operations merge. It is a different module from Invoicing (/invoicing), which is
     // US customer invoicing and stays under Sales and Accounting.
-    expect(byGroup['Operations']).toEqual(['Purchase Orders', 'Bill of Materials', 'Transport', 'Invoices', 'Warehousing/Stock', 'Stock'])
+    expect(byGroup['Operations']).toEqual(['Purchase Orders', 'Bill of Materials', 'Transport', 'Invoices', 'Stock Prediction Engine', 'Stock'])
     // The manufacturer's two tabs. Dean, 16 Sep 2026: "Just a single tab only
     // they can see which is the manufacturing tab and the stock tab".
     expect(byGroup['Factory']).toEqual(['Manufacturing', 'Stock'])
@@ -88,7 +88,7 @@ describe('navSections', () => {
 
   it('names the organisation-scoped module behind every item that has one', () => {
     // Dean, 15 Sep 2026: "a dropdown under each section". Dashboard is home,
-    // Bill of Materials and Warehousing/Stock are s.r.o. manufacturing, so
+    // Bill of Materials and Stock Prediction Engine are s.r.o. manufacturing, so
     // those three carry no organisation list; everything else does.
     const byHref = Object.fromEntries(NAV_ITEMS.map((i) => [i.href, i.module]))
     expect(byHref).toEqual({
