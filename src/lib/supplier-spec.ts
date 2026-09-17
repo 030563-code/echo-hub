@@ -1,5 +1,6 @@
 import type { SroPoBom } from '@/lib/erp-types'
 import { BUYER, DEFAULT_SUPPLIER, type BamidaSupplier } from '@/lib/bamida-po'
+import { packSizeFor } from '@/lib/pack-size'
 
 /**
  * The OBJEDNÁVKOVÝ LIST: what the manufacturer builds from, with no prices on it.
@@ -63,12 +64,6 @@ export interface SupplierSpec {
   printing: string
 }
 
-// Barriers per pallet (the Bamida spec sheet: H9 = 9x70). Same table the priced
-// document counts pallets with, so the two never disagree about pallet count.
-const PACK_SIZE: Record<string, number> = {
-  H9: 70, H9W: 70, 'H9X 2.1W': 70, 'H9X 1.5W': 70, H10: 70, H10HercBlack: 70, H8: 70,
-}
-const DEFAULT_PACK = 70
 
 /**
  * Bill-of-materials rows that are NOT a material somebody picks off a shelf:
@@ -100,7 +95,7 @@ export function buildSupplierSpec(
 
   for (const line of po.lines) {
     if (!line.model_code) continue
-    const packSize = PACK_SIZE[line.model_code] ?? DEFAULT_PACK
+    const packSize = packSizeFor(line.model_code)
     const linePallets = Math.ceil(line.quantity / packSize)
     pallets += linePallets
 

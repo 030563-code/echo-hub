@@ -1,3 +1,4 @@
+import { palletsFor } from '@/lib/pack-size'
 import type { SroPoBom } from '@/lib/erp-types'
 
 // Build the Bamida supplier PO from an exploded SRO order. Per PO-00001385 the
@@ -43,11 +44,6 @@ export interface BamidaPo {
   priced: boolean
 }
 
-// Barriers per pallet (from the Bamida spec sheet: H9 = 9×70). Default 70.
-const PACK_SIZE: Record<string, number> = {
-  H9: 70, H9W: 70, 'H9X 2.1W': 70, 'H9X 1.5W': 70, H10: 70, H10HercBlack: 70, H8: 70,
-}
-const DEFAULT_PACK = 70
 
 const PALLET_COVER_EUR = 19 // "Pallet COVERs"
 const METAL_FRAME_EUR = 85 // product code 1781 "Metal Frames for Pallets"
@@ -98,7 +94,7 @@ export function buildBamidaPo(
 
   for (const l of po.lines) {
     if (!l.model_code) continue
-    pallets += Math.ceil(l.quantity / (PACK_SIZE[l.model_code] ?? DEFAULT_PACK))
+    pallets += palletsFor(l.model_code, l.quantity)
     if (l.bamida_man_eur > 0) {
       lines.push(mkLine(manCode(l.model_code), `Bamida Manufacturing cost ${l.model_code}`, l.quantity, l.bamida_man_eur, 0))
     }
