@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Menu, X } from 'lucide-react'
 import { Sidebar } from '@/components/nav/sidebar'
-import { OpenOnPhone } from '@/components/nav/open-on-phone'
+import { OpenOnPhone, type PhoneLabels } from '@/components/nav/open-on-phone'
 import { Avatar } from '@/components/profile/avatar'
 import { isStaging } from '@/lib/env'
 import type { CapabilityKey } from '@/lib/capabilities'
@@ -32,6 +32,8 @@ interface ShellProps {
   /** Nav labels in the viewer's own language, keyed by href. */
   navLabels?: Record<string, string>
   signOutLabel?: string
+  /** The QR dialog in the viewer's own language. */
+  phoneLabels?: PhoneLabels
   /** The organisations this person holds, and the one they are looking at. */
   organisations: OrgCode[]
   activeOrg: OrgCode | null
@@ -47,7 +49,7 @@ interface ShellProps {
  * state; `children` arrives as a prop from the server layout, so pages stay
  * server-rendered.
  */
-export function Shell({ capabilities, isExternal, navLabels, signOutLabel, organisations, activeOrg, displayName, profile, children }: ShellProps) {
+export function Shell({ capabilities, isExternal, navLabels, signOutLabel, phoneLabels, organisations, activeOrg, displayName, profile, children }: ShellProps) {
   const [open, setOpen] = useState(false)
   const pathname = usePathname()
 
@@ -139,7 +141,7 @@ export function Shell({ capabilities, isExternal, navLabels, signOutLabel, organ
               On lg the negative margin keeps their 40px boxes from making the
               header taller than the 32px circle that used to sit here. */}
           <div className="flex items-center gap-1 lg:gap-2">
-            <OpenOnPhone className="lg:-my-1" />
+            <OpenOnPhone className="lg:-my-1" labels={phoneLabels} />
             <Link
               href="/profile"
               aria-label="Your profile"

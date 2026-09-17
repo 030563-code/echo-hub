@@ -214,10 +214,12 @@ test('capture the three steps', async ({ page }) => {
   const T = LOCALE === 'sk'
     ? { orders: 'Výroba', download: /Stiahnuť objednávku/, confirm: 'Potvrdiť objednávku',
         finished: 'Výroba dokončená', step1: 'Stiahnite si objednávku', done: /Potvrdené|Potvrdená/i,
-        yes: /Áno/i }
+        yes: /Áno/i,
+        phoneOpen: 'Otvoriť túto stránku v telefóne', phoneTitle: 'Otvoriť v telefóne' }
     : { orders: 'Manufacturing', download: /Download purchase order/, confirm: 'Confirm purchase order',
         finished: 'Manufacturing finished', step1: 'Download the purchase order', done: /Confirmed/i,
-        yes: /Yes/i }
+        yes: /Yes/i,
+        phoneOpen: 'Open this page on your phone', phoneTitle: 'Open on your phone' }
   await expect(page.getByRole('heading', { name: T.orders })).toBeVisible({ timeout: 20_000 })
   await annotate(page, [{ at: page.locator('table tbody tr').first(), n: 1, where: 'left' }])
   await shot(page, '02-orders-list')
@@ -248,6 +250,30 @@ test('capture the three steps', async ({ page }) => {
   await expect(page.getByText(T.done).first()).toBeVisible({ timeout: 30_000 })
   await annotate(page, [{ at: page.getByRole('button', { name: T.finished }), n: 5, where: 'right' }])
   await shot(page, '05-confirmed')
+
+  // --- the QR code, for the guide's install page ---------------------------
+  // Viewport rather than fullPage: a modal centred in the window reads as a modal, and a full-page
+  // shot of a dialog over a long page is mostly the page behind it.
+  await page.evaluate(() => document.querySelectorAll('[data-guide-overlay]').forEach((n) => n.remove()))
+  await annotate(page, [
+    { at: page.getByRole('button', { name: T.phoneOpen }), n: 1, where: 'left' },
+  ])
+  await tidy(page)
+  await page.screenshot({ path: `${OUT}/07-phone-button.png` })
+  await page.evaluate(() => document.querySelectorAll('[data-guide-overlay]').forEach((n) => n.remove()))
+  await page.getByRole('button', { name: T.phoneOpen }).click()
+  await expect(page.getByText(T.phoneTitle)).toBeVisible({ timeout: 10_000 })
+  // The capture runs on localhost and the guide is read against the real Hub. Swapping the printed
+  // address is the honest thing for an ILLUSTRATION: the QR itself is per page and meaningless in
+  // a printed guide anyway, and localhost:3000 would send somebody hunting for a server.
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="open-on-phone-url"]')
+    if (el) el.textContent = 'https://hub.echobarrier.com/factory/...'
+  })
+  await page.waitForTimeout(400)
+  await page.screenshot({ path: `${OUT}/08-qr.png` })
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(400)
 
   // --- finished -----------------------------------------------------------
   await page.evaluate(() => document.querySelectorAll('[data-guide-overlay]').forEach((n) => n.remove()))

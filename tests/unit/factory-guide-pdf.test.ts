@@ -33,7 +33,8 @@ const CW = W - M * 2
 type Page = {
   heading: string
   intro?: string
-  shot: string
+  /** Null where there is nothing to photograph, such as the browser's own address bar. */
+  shot: string | null
   /** The numbered badges on that screenshot, in order. */
   steps: Array<[number, string]>
   note?: string
@@ -93,6 +94,21 @@ const COPY = {
         intro: 'Objednávka je označená ako dokončená a my o tom vieme. Ďalej už nič robiť netreba.',
         shot: '06-finished', steps: [],
         note: 'Ak sa niečo zmení, alebo si nie ste istí, ozvite sa nám. Na objednávku sa môžete kedykoľvek vrátiť.' },
+      { heading: 'Hub ako aplikácia v počítači',
+        intro: 'Hub si môžete nainštalovať ako bežnú aplikáciu. Otvorí sa vo vlastnom okne, bez panelov prehliadača, a nájdete ho medzi ostatnými programami. Nič sa nesťahuje ani neaktualizuje: je to okno na hub.echobarrier.com, takže vždy vidíte aktuálnu verziu.',
+        shot: '',
+        steps: [],
+        note: 'Chrome a Edge: vpravo v adresnom riadku sa objaví ikona inštalácie. Kliknite na ňu a potvrďte Inštalovať. Safari na Macu: v ponuke Zdieľať zvoľte Pridať do Docku. Ak ikonu nevidíte, stránku obnovte, objaví sa až po prvom načítaní.' },
+      { heading: 'Hub v telefóne',
+        intro: 'Tú istú stránku si môžete otvoriť v telefóne bez prepisovania adresy.',
+        shot: '07-phone-button',
+        steps: [[1, 'Kliknite na ikonu telefónu vpravo hore, vedľa vášho mena.']],
+        note: 'Funguje to na ktorejkoľvek stránke: kód vždy vedie na tú, ktorú máte práve otvorenú.' },
+      { heading: 'Naskenujte kód',
+        intro: 'Namierte fotoaparát telefónu na kód. V prehliadači telefónu sa otvorí tá istá stránka. Prvýkrát sa budete musieť prihlásiť tými istými údajmi.',
+        shot: '08-qr',
+        steps: [],
+        note: 'Ak chcete mať Hub priamo na ploche telefónu: na iPhone ťuknite v Safari na Share a potom Add to Home Screen. Na Androide otvorte ponuku prehliadača a zvoľte Pridať na plochu. iPhone nemá tlačidlo inštalácie vedľa adresy, robí sa to cez Share.' },
     ],
   },
   en: {
@@ -148,6 +164,21 @@ const COPY = {
         intro: 'The order is marked finished and we know about it. There is nothing else to do.',
         shot: '06-finished', steps: [],
         note: 'If anything changes, or you are not sure, tell us. You can come back to the order at any time.' },
+      { heading: 'The Hub as an app on your computer',
+        intro: 'The Hub can be installed like an ordinary application. It opens in its own window with no browser tabs, and sits with your other programs. Nothing is downloaded and nothing needs updating: it is a window onto hub.echobarrier.com, so you always see the current version.',
+        shot: '',
+        steps: [],
+        note: 'Chrome and Edge: an install icon appears at the right-hand end of the address bar. Click it and confirm Install. Safari on a Mac: the Share menu, then Add to Dock. If you cannot see the icon, reload the page: it only appears after the first load.' },
+      { heading: 'The Hub on your phone',
+        intro: 'You can open the same page on a phone without retyping the address.',
+        shot: '07-phone-button',
+        steps: [[1, 'Click the phone icon at the top right, next to your name.']],
+        note: 'It works on any page: the code always points at the one you have open.' },
+      { heading: 'Scan the code',
+        intro: 'Point your phone camera at the code and the same page opens in the phone browser. You will have to sign in the first time, with the same details.',
+        shot: '08-qr',
+        steps: [],
+        note: 'To keep the Hub on the phone itself: on iPhone, tap Share in Safari and then Add to Home Screen. On Android, open the browser menu and choose Add to Home screen. iPhone has no install button beside the address bar; it is done through Share.' },
     ],
   },
 } as const
@@ -156,7 +187,7 @@ const C = COPY[LOCALE]
 const PAGES: Page[] = C.pages.map((p) => ({
   heading: p.heading,
   intro: 'intro' in p ? (p.intro as string) : undefined,
-  shot: p.shot,
+  shot: p.shot || null,
   steps: p.steps.map((x) => [x[0], x[1]] as [number, string]),
   note: 'note' in p ? (p.note as string) : undefined,
 }))
@@ -259,6 +290,8 @@ it.skipIf(!DIR || !OUT)('builds the guide', async () => {
       py += lines.length * 4.1 + 4
     }
 
+    if (!page.shot) continue
+
     // The screenshot, scaled to whatever height is left.
     const png = readFileSync(`${DIR}/${page.shot}.png`)
     const dims = { w: png.readUInt32BE(16), h: png.readUInt32BE(20) }
@@ -291,4 +324,5 @@ it.skipIf(!DIR || !OUT)('builds the guide', async () => {
 
   writeFileSync(OUT, Buffer.from(doc.output('arraybuffer') as ArrayBuffer))
   expect(pages).toBe(PAGES.length + 1)
+  expect(PAGES.length).toBe(9)
 })

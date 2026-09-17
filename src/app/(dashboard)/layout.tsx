@@ -50,6 +50,15 @@ export default async function DashboardLayout({
         return {
           labels: { '/factory': t.navManufacturing, '/factory/stock': t.navStock },
           signOut: t.navSignOut,
+          phone: {
+            phoneOpenLabel: t.phoneOpenLabel,
+            phoneTitle: t.phoneTitle,
+            phoneLead: t.phoneLead,
+            phoneInstall: t.phoneInstall,
+            phoneCopy: t.phoneCopy,
+            phoneCopied: t.phoneCopied,
+            phoneCopyManual: t.phoneCopyManual,
+          },
         }
       })()
     : null
@@ -63,6 +72,7 @@ export default async function DashboardLayout({
         isExternal={auth.profile.is_external}
         navLabels={factoryChrome?.labels}
         signOutLabel={factoryChrome?.signOut}
+        phoneLabels={factoryChrome?.phone}
         organisations={auth.profile.organisations}
         activeOrg={activeOrg}
         displayName={displayName}

@@ -157,6 +157,14 @@ export interface FactoryStrings {
   errConfirmEmailFailed: string
   /** Shown in the rail. The factory reads its own language everywhere, sign out included. */
   navSignOut: string
+  /** The QR dialog in the header. English on a Slovak screen was the last leak of its kind. */
+  phoneOpenLabel: string
+  phoneTitle: string
+  phoneLead: string
+  phoneInstall: string
+  phoneCopy: string
+  phoneCopied: string
+  phoneCopyManual: string
   errInvalidOrder: string
   errNoDocument: string
 }
@@ -259,6 +267,14 @@ const en: FactoryStrings = {
   errConfirmEmailFailed:
     'Confirmed, and we have your dates. The confirmation email could not be sent, so keep this page as your record.',
   navSignOut: 'Sign Out',
+  phoneOpenLabel: 'Open this page on your phone',
+  phoneTitle: 'Open on your phone',
+  phoneLead: "Point your phone's camera at the code. The same page opens in your phone's browser.",
+  phoneInstall:
+    'Sign in the first time. To keep the Hub on your phone: on iPhone, tap Share, then Add to Home Screen. On Android, open the browser menu, then Add to Home screen.',
+  phoneCopy: 'Copy link',
+  phoneCopied: 'Copied',
+  phoneCopyManual: 'Select the link and copy it',
   errInvalidOrder: 'Invalid order',
   errNoDocument: 'The document for this order is not available. Please contact Echo Barrier.',
 }
@@ -361,6 +377,14 @@ const sk: FactoryStrings = {
   errConfirmEmailFailed:
     'Potvrdené, vaše termíny máme. Potvrdzovací e-mail sa nepodarilo odoslať, preto si túto stránku ponechajte ako doklad.',
   navSignOut: 'Odhlásiť sa',
+  phoneOpenLabel: 'Otvoriť túto stránku v telefóne',
+  phoneTitle: 'Otvoriť v telefóne',
+  phoneLead: 'Namierte fotoaparát telefónu na kód. V prehliadači telefónu sa otvorí tá istá stránka.',
+  phoneInstall:
+    'Prvýkrát sa budete musieť prihlásiť. Ak chcete mať Hub v telefóne: na iPhone ťuknite na Share a potom Add to Home Screen. Na Androide otvorte ponuku prehliadača a zvoľte Pridať na plochu.',
+  phoneCopy: 'Kopírovať odkaz',
+  phoneCopied: 'Skopírované',
+  phoneCopyManual: 'Označte odkaz a skopírujte ho',
   errInvalidOrder: 'Neplatná objednávka',
   errNoDocument: 'Dokument k tejto objednávke nie je dostupný. Kontaktujte prosím Echo Barrier.',
 }

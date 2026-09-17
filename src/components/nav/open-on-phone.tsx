@@ -21,7 +21,36 @@ type CopyState = 'idle' | 'copied' | 'manual'
 
 const COPIED_MS = 2000
 
-export function OpenOnPhone({ className }: { className?: string }) {
+/**
+ * Labels the caller can override, so an outside company reads its own language.
+ *
+ * 🔴 The dialog was English on a Slovak screen, the same fault as the rail. It also carries the one
+ * instruction the factory most needs, how to keep the Hub on a phone, so English here meant the
+ * people it was written for could not read it.
+ */
+export interface PhoneLabels {
+  phoneOpenLabel: string
+  phoneTitle: string
+  phoneLead: string
+  phoneInstall: string
+  phoneCopy: string
+  phoneCopied: string
+  phoneCopyManual: string
+}
+
+const EN: PhoneLabels = {
+  phoneOpenLabel: 'Open this page on your phone',
+  phoneTitle: 'Open on your phone',
+  phoneLead: "Point your phone's camera at the code. The same page opens in your phone's browser.",
+  phoneInstall:
+    'Sign in the first time. To keep the Hub on your phone: on iPhone, tap Share, then Add to Home Screen. On Android, open the browser menu, then Add to Home screen.',
+  phoneCopy: 'Copy link',
+  phoneCopied: 'Copied',
+  phoneCopyManual: 'Select the link and copy it',
+}
+
+export function OpenOnPhone({ className, labels }: { className?: string; labels?: PhoneLabels }) {
+  const t = labels ?? EN
   const [open, setOpen] = useState(false)
   const [url, setUrl] = useState('')
   const [copy, setCopy] = useState<CopyState>('idle')
@@ -65,8 +94,8 @@ export function OpenOnPhone({ className }: { className?: string }) {
       <DialogTrigger asChild>
         <button
           type="button"
-          aria-label="Open this page on your phone"
-          title="Open this page on your phone"
+          aria-label={t.phoneOpenLabel}
+          title={t.phoneOpenLabel}
           className={cn(
             'flex h-11 w-11 lg:h-10 lg:w-10 items-center justify-center rounded text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-echo-orange/50',
             className,
@@ -77,10 +106,8 @@ export function OpenOnPhone({ className }: { className?: string }) {
       </DialogTrigger>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Open on your phone</DialogTitle>
-          <DialogDescription>
-            Point your phone&apos;s camera at the code. The same page opens in your phone&apos;s browser.
-          </DialogDescription>
+          <DialogTitle>{t.phoneTitle}</DialogTitle>
+          <DialogDescription>{t.phoneLead}</DialogDescription>
         </DialogHeader>
 
         {url && (
@@ -98,10 +125,7 @@ export function OpenOnPhone({ className }: { className?: string }) {
               />
             </div>
 
-            <p className="text-center text-xs text-muted-foreground">
-              Sign in the first time. To keep the Hub on your phone: on iPhone, tap Share, then Add to Home Screen. On
-              Android, open the browser menu, then Add to Home screen.
-            </p>
+            <p className="text-center text-xs text-muted-foreground">{t.phoneInstall}</p>
 
             <div className="w-full space-y-2">
               <p
@@ -112,15 +136,15 @@ export function OpenOnPhone({ className }: { className?: string }) {
               </p>
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs text-muted-foreground" aria-live="polite">
-                  {copy === 'manual' && 'Select the link and copy it'}
-                  {copy === 'copied' && <span className="sr-only">Copied</span>}
+                  {copy === 'manual' && t.phoneCopyManual}
+                  {copy === 'copied' && <span className="sr-only">{t.phoneCopied}</span>}
                 </p>
                 <button
                   type="button"
                   onClick={copyLink}
                   className="shrink-0 rounded-[5px] border border-echo-orange px-4 py-2 text-xs font-bold text-echo-orange hover:bg-echo-orange hover:text-white focus:outline-none focus:ring-2 focus:ring-echo-orange/50"
                 >
-                  {copy === 'copied' ? 'Copied' : 'Copy link'}
+                  {copy === 'copied' ? t.phoneCopied : t.phoneCopy}
                 </button>
               </div>
             </div>
