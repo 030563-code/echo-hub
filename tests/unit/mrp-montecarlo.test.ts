@@ -289,7 +289,7 @@ describe('simulateStockout — determinism', () => {
 
 interface Fixtures {
   profiles: ProfileRow[]
-  demandEvents: { event_date: string; sku: string; qty: number; source: string }[]
+  demandEvents: { event_date: string; organisation?: string; sku: string; qty: number; source: string }[]
   shipments: { sku: string; qty: number; status: string; po_id: string | null; eta: string | null }[]
   legActuals: { leg: string; days: number }[]
 }
@@ -301,7 +301,14 @@ function makeEngineData(over: Partial<Fixtures> = {}): { data: EngineData; captu
   const writeBacksCaptured: ProfileWriteBack[][] = []
   const data: EngineData = {
     profiles: () => Promise.resolve(f.profiles),
-    demandEvents: (since) => Promise.resolve(f.demandEvents.filter((e) => e.event_date > since)),
+    demandEvents: (since) =>
+      Promise.resolve(
+        f.demandEvents
+          .filter((e) => e.event_date > since)
+          .map((e) => ({ ...e, organisation: e.organisation ?? 'EB-USA' }))
+      ),
+    deepDemand: () =>
+      Promise.resolve(f.demandEvents.map((e) => ({ ...e, organisation: e.organisation ?? 'EB-USA' }))),
     stockLevels: () => Promise.resolve([]),
     shipments: () => Promise.resolve(f.shipments),
     openPoLines: () => Promise.resolve([]),
@@ -326,7 +333,7 @@ function makeEngineData(over: Partial<Fixtures> = {}): { data: EngineData; captu
 
 function engineProfile(over: Partial<ProfileRow> & { sku: string }): ProfileRow {
   return {
-    sku_class: 'slow', family_sku: null, adu: null, adu_source: 'auto', cov: null,
+    organisation: 'EB-USA', sku_class: 'slow', family_sku: null, adu: null, adu_source: 'auto', cov: null,
     dlt_days: 75, mfg_lt: 45, ocean_lt: 21, customs_lt: 9, lt_factor: 0.25,
     var_factor: null, moq: 0, container_qty: null, seeded: true, alias_of: null,
     cbm_per_unit: null, mc_graduated: false, mc_threshold: 0.12,

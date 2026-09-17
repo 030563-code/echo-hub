@@ -14,7 +14,7 @@ const NOW = new Date('2026-08-08T00:00:00Z') // runDate 2026-08-08; ADU window >
 
 function profile(over: Partial<ProfileRow> & { sku: string }): ProfileRow {
   return {
-    sku_class: 'slow', family_sku: null, adu: null, adu_source: 'auto', cov: null,
+    organisation: 'EB-USA', sku_class: 'slow', family_sku: null, adu: null, adu_source: 'auto', cov: null,
     dlt_days: 75, mfg_lt: 45, ocean_lt: 21, customs_lt: 9, lt_factor: 0.25,
     var_factor: null, moq: 0, container_qty: null, seeded: true, alias_of: null,
     cbm_per_unit: null, mc_graduated: false, mc_threshold: 0.12,
@@ -24,7 +24,7 @@ function profile(over: Partial<ProfileRow> & { sku: string }): ProfileRow {
 
 interface Fixtures {
   profiles: ProfileRow[]
-  demandEvents: { event_date: string; sku: string; qty: number; source: string }[]
+  demandEvents: { event_date: string; organisation?: string; sku: string; qty: number; source: string }[]
   stockLevels: { warehouse_code: string; sku: string; quantity_on_hand: number; last_counted_at: string | null }[]
   shipments: { sku: string; qty: number; status: string; po_id: string | null; eta: string | null }[]
   openPoLines: { po_id: string; sku: string; quantity: number }[]
@@ -61,7 +61,14 @@ function makeData(over: Partial<Fixtures> = {}): { data: EngineData; captured: C
   const captured: Captured = { status: [], spikes: [], writeBacks: [], draftPoChain: [] }
   const data: EngineData = {
     profiles: () => Promise.resolve(f.profiles),
-    demandEvents: (since) => Promise.resolve(f.demandEvents.filter(e => e.event_date > since)),
+    demandEvents: (since) =>
+      Promise.resolve(
+        f.demandEvents
+          .filter(e => e.event_date > since)
+          .map(e => ({ ...e, organisation: e.organisation ?? 'EB-USA' }))
+      ),
+    deepDemand: () =>
+      Promise.resolve(f.demandEvents.map(e => ({ ...e, organisation: e.organisation ?? 'EB-USA' }))),
     stockLevels: () => Promise.resolve(f.stockLevels),
     shipments: () => Promise.resolve(f.shipments),
     openPoLines: () => Promise.resolve(f.openPoLines),
@@ -654,7 +661,7 @@ describe('Task 19 — MC graduation rule', () => {
     // weekly 500-unit orders at 190-350 days ago — the Markov bootstrap reads
     // that as a live, frequently-active pattern, so pStockout comes out very
     // high against on_hand=10 regardless of the (deliberately zero) zone math.
-    const demandEvents: { event_date: string; sku: string; qty: number; source: string }[] = []
+    const demandEvents: { event_date: string; organisation?: string; sku: string; qty: number; source: string }[] = []
     for (let d = 190; d <= 350; d += 7) {
       demandEvents.push({ event_date: daysAgo(d), sku: 'EBH9NA', qty: 500, source: 'xero_invoice' })
     }
@@ -681,7 +688,7 @@ describe('Task 19 — MC graduation rule', () => {
     // ~19, yellowTop ~74. on_hand 70 sits just inside yellow (comfortably
     // above red) yet close enough to yellowTop's built-in safety margin that
     // the simulated risk stays low.
-    const demandEvents: { event_date: string; sku: string; qty: number; source: string }[] = []
+    const demandEvents: { event_date: string; organisation?: string; sku: string; qty: number; source: string }[] = []
     for (let d = 0; d <= 364; d += 7) {
       demandEvents.push({ event_date: daysAgo(d), sku: 'EBH9NA', qty: 5, source: 'xero_invoice' })
     }

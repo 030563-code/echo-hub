@@ -69,14 +69,33 @@ export function createSupabaseEngineData(admin: SupabaseClient): EngineData {
         admin.from("mrp_buffer_profile").select("*").order("sku").range(from, to)
       ),
 
+    // Reads mrp_demand_engine_feed, not mrp_demand_events. The old table is the 7 August 2026
+    // one-shot backfill and an audit on 17 Sep 2026 found it carries intercompany units stamped
+    // as UK customer demand, every Australian unit stamped EBH9 on no evidence, EBHS mapped
+    // unconditionally to EBH9, an order booked twice, and bungees in the same quantity column as
+    // barriers. The feed view is the corrected history, resolved from product model to SKU.
+    //
+    // The region filter is gone: demand is now bucketed per organisation in the engine, so every
+    // organisation's rows are fetched and kept apart rather than one market's being let through.
     demandEvents: (since) =>
       pageAll<DemandEventRow>("demand_events", (from, to) =>
         admin
-          .from("mrp_demand_events")
-          .select("event_date, sku, qty, source")
-          .in("region", ["US", "CA"])
+          .from("mrp_demand_engine_feed")
+          .select("event_date, organisation, sku, qty, source")
           .gt("event_date", since)
-          .order("id")
+          .order("event_date")
+          .range(from, to)
+      ),
+
+    // The whole loaded history, for the lumpiness floor only (see deep-history.ts). Deliberately
+    // unbounded: it feeds a 95th percentile of single order size, which needs every order, not a
+    // trailing window. It never touches ADU or CoV.
+    deepDemand: () =>
+      pageAll<DemandEventRow>("deep_demand", (from, to) =>
+        admin
+          .from("mrp_demand_engine_feed")
+          .select("event_date, organisation, sku, qty, source")
+          .order("event_date")
           .range(from, to)
       ),
 
@@ -246,7 +265,7 @@ export function createSupabaseEngineData(admin: SupabaseClient): EngineData {
       if (rows.length === 0) return;
       const { error } = await admin
         .from("mrp_buffer_status_daily")
-        .upsert(rows, { onConflict: "run_date,sku" });
+        .upsert(rows, { onConflict: "run_date,organisation,sku" });
       if (error) throw new Error(`mrp engine persist failed (status_daily): ${error.message}`);
     },
 
@@ -260,9 +279,17 @@ export function createSupabaseEngineData(admin: SupabaseClient): EngineData {
 
     writeBackProfiles: async (updates: ProfileWriteBack[]) => {
       for (const u of updates) {
-        const { sku, ...fields } = u;
-        const { error } = await admin.from("mrp_buffer_profile").update(fields).eq("sku", sku);
-        if (error) throw new Error(`mrp engine profile write-back failed (${sku}): ${error.message}`);
+        // Matches on BOTH keys. A write-back on sku alone would now overwrite every
+        // organisation's row for that SKU with one organisation's numbers.
+        const { sku, organisation, ...fields } = u;
+        const { error } = await admin
+          .from("mrp_buffer_profile")
+          .update(fields)
+          .eq("organisation", organisation)
+          .eq("sku", sku);
+        if (error) {
+          throw new Error(`mrp engine profile write-back failed (${organisation}/${sku}): ${error.message}`);
+        }
       }
     },
 

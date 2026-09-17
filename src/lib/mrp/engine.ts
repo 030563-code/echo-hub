@@ -27,6 +27,8 @@ import {
 import { materialsCeiling, type BomComponentRow, type BomProductRow } from "./materials";
 import { mulberry32, seedFrom, simulateStockout, type McArrival, type McInput, type McLegSamples } from "./montecarlo";
 import { fillContainer, type ContainerCandidate, type ContainerFill } from "./container";
+import { demandKey, ORGANISATIONS_WITH_STOCK } from "./organisations";
+import { deepStats, redZoneWithLumpinessFloor, EMPTY_DEEP_STATS } from "./deep-history";
 
 export type { BomComponentRow, BomProductRow, ContainerFill };
 
@@ -66,6 +68,11 @@ const MS_PER_DAY = 86_400_000;
 // ---------------------------------------------------------------------------
 
 export interface ProfileRow {
+  /**
+   * The entities.code this buffer belongs to. Buffers are never pooled across organisations:
+   * a UK ADU and a US ADU are different numbers for the same SKU.
+   */
+  organisation: string;
   sku: string;
   sku_class: string;
   family_sku: string | null;
@@ -92,6 +99,8 @@ export interface ProfileRow {
 
 export interface DemandEventRow {
   event_date: string; // 'YYYY-MM-DD'
+  /** The organisation the demand belongs to. Demand is bucketed per organisation, never pooled. */
+  organisation: string;
   sku: string;
   qty: number;
   source: string;
@@ -160,6 +169,8 @@ export interface ReceiptRow {
 
 export interface StatusDailyRow {
   run_date: string;
+  /** The organisation this status row belongs to; part of the key alongside run_date and sku. */
+  organisation: string;
   sku: string;
   on_hand: number;
   in_transit: number;
@@ -200,6 +211,8 @@ export interface SpikeRegisterRow {
 }
 
 export interface ProfileWriteBack {
+  /** Part of the key: a write-back matches on organisation AND sku, never sku alone. */
+  organisation: string;
   sku: string;
   adu?: number | null;
   cov?: number | null;
@@ -207,12 +220,28 @@ export interface ProfileWriteBack {
   dlt_days: number;
   seeded: true;
   updated_at: string; // set explicitly — mrp_buffer_profile has NO touch trigger
+  /** Deep-history statistics (see deep-history.ts). Null where there is no loaded history. */
+  deep_adu?: number | null;
+  deep_cov?: number | null;
+  deep_p95_order?: number | null;
+  deep_max_order?: number | null;
+  deep_months?: number | null;
+  deep_from?: string | null;
 }
 
 export interface EngineData {
   profiles(): Promise<ProfileRow[]>;
-  /** US/CA demand events with event_date > since (lower bound only — see ADU note). */
+  /** Demand events with event_date > since (lower bound only — see ADU note), all organisations. */
   demandEvents(since: string): Promise<DemandEventRow[]>;
+  /**
+   * The whole loaded demand history, every organisation, from the window start.
+   *
+   * Separate from demandEvents on purpose: that one is bounded to the 371 days the ADU and CoV
+   * windows need, and widening it would pull six years through the hot path for statistics that
+   * divide by a fixed 180 days anyway. This one feeds deep-history.ts, which measures order
+   * lumpiness, and is allowed to be slow because it changes a floor, not a daily number.
+   */
+  deepDemand(): Promise<DemandEventRow[]>;
   stockLevels(): Promise<StockRow[]>;
   shipments(): Promise<ShipmentRow[]>;
   /** Lines of OPEN Hub POs: source='hub', leg='DEPOT_TO_EB_GROUP', status in requested/approved/shipped. */
@@ -408,6 +437,7 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
   const [
     profiles,
     events,
+    deepEvents,
     stockRows,
     shipmentRows,
     openLines,
@@ -425,6 +455,7 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
   ] = await Promise.all([
     data.profiles(),
     data.demandEvents(fetchSince),
+    data.deepDemand(),
     data.stockLevels(),
     data.shipments(),
     data.openPoLines(),
@@ -463,12 +494,24 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
   const firmSince = isoDate(daysBefore(now, FIRM_DEMAND_WINDOW_DAYS));
   const covWeeks = trailingIsoWeeks(now, COV_WEEKS);
 
-  const eventsBySku = new Map<string, DemandEventRow[]>();
+  // 🔴 Demand is bucketed per ORGANISATION and SKU, never per SKU alone. Pooling a UK ADU into a
+  // North American buffer is the exact error migration 20260808000300 was written to forbid, and
+  // it would now be silent rather than impossible, because the ledger holds every organisation.
+  const eventsByKey = new Map<string, DemandEventRow[]>();
   for (const e of events) {
-    const sku = resolve(e.sku);
-    const list = eventsBySku.get(sku);
+    const key = demandKey(e.organisation, resolve(e.sku));
+    const list = eventsByKey.get(key);
     if (list) list.push(e);
-    else eventsBySku.set(sku, [e]);
+    else eventsByKey.set(key, [e]);
+  }
+
+  // The whole loaded history, same keying, for the lumpiness floor (deep-history.ts).
+  const deepByKey = new Map<string, DemandEventRow[]>();
+  for (const e of deepEvents) {
+    const key = demandKey(e.organisation, resolve(e.sku));
+    const list = deepByKey.get(key);
+    if (list) list.push(e);
+    else deepByKey.set(key, [e]);
   }
 
   const onHandBySku = new Map<string, number>();
@@ -621,9 +664,10 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
 
   for (const p of computed) {
     const flags: string[] = [];
-    const skuEvents = eventsBySku.get(p.sku) ?? [];
+    const key = demandKey(p.organisation, p.sku);
+    const skuEvents = eventsByKey.get(key) ?? [];
 
-    // 1. ADU + CoV (aliased spellings already rolled in via eventsBySku).
+    // 1. ADU + CoV (aliased spellings already rolled in via eventsByKey).
     const aduEvents = skuEvents.filter((e) => e.event_date > aduSince);
     const aduComputed = aduEvents.reduce((a, e) => a + e.qty, 0) / ADU_WINDOW_DAYS;
     if (aduEvents.length < THIN_HISTORY_MIN_EVENTS) flags.push("thin_history");
@@ -651,16 +695,27 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
     const dlt = dltDaysFor(p, doorDays);
 
     // 3–6. Flow components.
-    const onHand = onHandBySku.get(p.sku) ?? 0;
-    if (stockAllUncounted) flags.push("stock_unverified");
-    const inTransit = inTransitBySku.get(p.sku) ?? 0;
-    const skuOnOrder = onOrder.get(p.sku) ?? 0;
+    //
+    // 🔴 The physical maps (stock, in-transit, on-order, spikes) are still keyed on SKU alone,
+    // because there is exactly one stock pool per SKU in the Hub today and it is North America's:
+    // warehouse_stock_levels holds US-BAL, US-SBD, CA-HAM and EB-SRO and nothing else. UK, France
+    // and Australia levels live in xero_stock_snapshot, which this engine does not read yet.
+    // Handing those NA figures to a UK buffer would invent stock that does not exist there, so an
+    // organisation with no stock feed gets a zeroed flow position and a flag saying why, rather
+    // than a plausible wrong number. When another organisation gets a feed, these maps become
+    // per organisation too.
+    const hasStockFeed = (ORGANISATIONS_WITH_STOCK as readonly string[]).includes(p.organisation);
+    if (!hasStockFeed) flags.push("no_stock_feed");
+    const onHand = hasStockFeed ? onHandBySku.get(p.sku) ?? 0 : 0;
+    if (stockAllUncounted && hasStockFeed) flags.push("stock_unverified");
+    const inTransit = hasStockFeed ? inTransitBySku.get(p.sku) ?? 0 : 0;
+    const skuOnOrder = hasStockFeed ? onOrder.get(p.sku) ?? 0 : 0;
     const firmDemand = skuEvents
       .filter((e) => e.source === "hubspot_deal" && e.event_date > firmSince)
       .reduce((a, e) => a + e.qty, 0);
 
     // 8 (zones first — the spike guard needs red).
-    const zones = computeZones({
+    const baseZones = computeZones({
       adu,
       dltDays: dlt,
       ltFactor: p.lt_factor,
@@ -668,6 +723,27 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
       moq: p.moq,
       containerQty: p.container_qty ?? 0,
     });
+
+    // 8b. The lumpiness floor, and the only place the deep history changes a number.
+    //
+    // ADU divides by a fixed 180 days and CoV by 52 weeks, so a longer fetch window on its own
+    // changes neither. What the deep history shows is that one invoice is half or more of the
+    // month in 31% of H9 months and 62% of Noise Defender months, and a buffer sized on an
+    // average daily rate is emptied by a single ordinary large order. So the red zone must cover
+    // a 95th percentile order line. This is NOT a seasonal factor: seasonality was tested on the
+    // full history and lost to a flat one twelfth in 13 of 13 hold-out backtests.
+    const deep = deepByKey.has(key) ? deepStats(deepByKey.get(key)!, runDate) : EMPTY_DEEP_STATS;
+    const floored = redZoneWithLumpinessFloor(baseZones.red, deep);
+    if (floored.raised) flags.push("red_raised_by_lumpiness");
+    if (deep.months > 0 && deep.months < 12) flags.push("thin_deep_history");
+    const zones = floored.raised
+      ? {
+          ...baseZones,
+          red: floored.red,
+          yellowTop: floored.red + baseZones.yellow,
+          greenTop: floored.red + baseZones.yellow + baseZones.green,
+        }
+      : baseZones;
 
     // 7. Spikes — guard is BINDING: an unseeded or zero-red buffer would
     // qualify everything (threshold 0.5 × 0 = 0), so qualification is skipped
@@ -679,7 +755,9 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
     if (skipSpikes) {
       flags.push("spikes_skipped_no_buffer");
     } else {
-      const cands = spikeCandsBySku.get(p.sku) ?? [];
+      // Spike candidates come from HubSpot deals, which today are North American only, so they
+      // are withheld from an organisation with no stock feed for the same reason its stock is.
+      const cands = hasStockFeed ? spikeCandsBySku.get(p.sku) ?? [] : [];
       // Deals carry NO close-date column, so due_date is unknown (null). A null
       // due date is treated as due TODAY — inside any horizon (conservative:
       // better an early spike than an invisible one). The lib's date window is
@@ -713,7 +791,7 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
       }
     }
     const spikeLoad = qualified.reduce((a, q) => a + q.qty * q.weight, 0);
-    draftStatsBySku.set(p.sku, {
+    draftStatsBySku.set(key, {
       spikeCount: qualified.length,
       spikeQty: qualified.reduce((a, q) => a + q.qty, 0),
       adu,
@@ -809,6 +887,7 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
 
     statusRows.push({
       run_date: runDate,
+      organisation: p.organisation,
       sku: p.sku,
       on_hand: onHand,
       in_transit: inTransit,
@@ -839,15 +918,26 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
     // (adu_source='auto'); dlt_days derives from lead-time structure, not ADU
     // ownership, so it recalibrates for manual rows too. updated_at is set
     // explicitly — the table has no touch trigger.
+    const round4 = (v: number | null) => (v === null ? null : Math.round(v * 10_000) / 10_000);
     const wb: ProfileWriteBack = {
+      organisation: p.organisation,
       sku: p.sku,
       dlt_days: dlt,
       seeded: true,
       updated_at: now.toISOString(),
+      // Deep-history statistics are written on every run regardless of adu_source: a manual ADU
+      // override owns the daily number, but it does not make the observed history untrue, and the
+      // buyer needs both side by side to judge whether the override still makes sense.
+      deep_adu: round4(deep.adu),
+      deep_cov: round4(deep.cov),
+      deep_p95_order: deep.p95Order,
+      deep_max_order: deep.maxOrder,
+      deep_months: deep.months,
+      deep_from: deep.from,
     };
     if (p.adu_source === "auto") {
-      wb.adu = Math.round(aduComputed * 10_000) / 10_000;
-      wb.cov = cov === null ? null : Math.round(cov * 10_000) / 10_000;
+      wb.adu = round4(aduComputed);
+      wb.cov = round4(cov);
       wb.var_factor = varFactorFromCov(cov);
     }
     writeBacks.push(wb);
@@ -869,9 +959,15 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
   // limitation until the Phase-2 cutover reworks drafting notifications.
   // Runs unconditionally (pure, cheap); only the draftPoChain call below is
   // gated on opts.draftPos.
-  const profileBySku = new Map(computed.map((p) => [p.sku, p]));
+  // Keyed per organisation, because a SKU alone no longer identifies a row: two organisations can
+  // hold a buffer for the same SKU and they are different buffers with different numbers.
+  const profileByKey = new Map(computed.map((p) => [demandKey(p.organisation, p.sku), p]));
   const containerCandidates: ContainerCandidate[] = [];
   for (const r of statusRows) {
+    // Container fill and the PO chain are physical: they load a container and draft a
+    // DEPOT_TO_EB_GROUP leg. An organisation with no stock feed has a zeroed flow position, so it
+    // has nothing to load and must never reach the drafting step.
+    if (!(ORGANISATIONS_WITH_STOCK as readonly string[]).includes(r.organisation)) continue;
     // Task 19: `trigger_reason` (computed per-SKU above) IS the gate — it
     // already encodes the old `zone red|yellow && action_qty > 0` pair for a
     // non-graduated SKU, plus the red guardrail / MC-risk cases for a
@@ -879,7 +975,7 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
     // degenerate case (e.g. action_qty landing exactly on a zone boundary).
     if (r.trigger_reason === null) continue;
     if (r.blocked_by_materials) continue;
-    const p = profileBySku.get(r.sku);
+    const p = profileByKey.get(demandKey(r.organisation, r.sku));
     containerCandidates.push({
       sku: r.sku,
       // fillContainer treats zone 'green' as "no need by definition" and
@@ -903,10 +999,17 @@ export async function runMrpEngine(data: EngineData, opts: EngineOptions = {}): 
   let draftResult: unknown = null;
   if (opts.draftPos && !opts.dryRun && redLines.length > 0) {
     draftAttempted = true;
-    const statusBySku = new Map(statusRows.map((r) => [r.sku, r]));
+    // Container fill returns SKUs, and only stock-fed organisations reached it, so a SKU here
+    // resolves to exactly one status row. Resolve through the candidate's own organisation rather
+    // than assuming, so this stays correct if a second stock-fed organisation is added.
+    const statusBySku = new Map(
+      statusRows
+        .filter((r) => (ORGANISATIONS_WITH_STOCK as readonly string[]).includes(r.organisation))
+        .map((r) => [r.sku, r])
+    );
     const rationaleLines = redLines.map((line) => {
       const row = statusBySku.get(line.sku)!;
-      const stats = draftStatsBySku.get(line.sku)!;
+      const stats = draftStatsBySku.get(demandKey(row.organisation, line.sku))!;
       const buildable = row.max_buildable ?? "unknown";
       const binding = row.materials_binding_desc ? ` (limit: ${row.materials_binding_desc})` : "";
       return (
