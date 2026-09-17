@@ -41,17 +41,15 @@ export default function ManufacturingCard({
   poId,
   canAct,
   manufacturing,
-  defaultTo,
-  defaultCc,
+  contact,
   specConfirmed,
   specSaved,
 }: {
   poId: string
   canAct: boolean
   manufacturing: Manufacturing
-  /** What the server would use if nobody types anything. */
-  defaultTo: string
-  defaultCc: string
+  /** The manufacturer's one address, shown so the sender can see it. Read only. */
+  contact: string
   /**
    * 🔴 Whether the -1 specification has been signed off. The SERVER refuses an unconfirmed send;
    * this only stops somebody walking into a refusal they could have been told about.
@@ -67,8 +65,9 @@ export default function ManufacturingCard({
   // Dean, 9 Sep 2026: Juraj says Bamida have several points of contact, so the
   // send needs the same editable address boxes the shipment request has. Blank
   // falls back to the server's configured list rather than sending to nobody.
-  const [to, setTo] = useState(defaultTo)
-  const [cc, setCc] = useState(defaultCc)
+  // 🔴 Not state and not editable. Dean, 17 Sep 2026: "here is the absolute point of contact to
+  // Bamida / sklad@bamida.sk / It should no longer be an editable field." The SERVER decides it;
+  // this is shown so nobody has to guess where the order went.
   // The confirmation, added 16 Sep 2026. Nothing reaches the factory until
   // somebody has read who it goes to, which is the one thing a person can get
   // wrong here now that the address is typed rather than configured.
@@ -94,7 +93,7 @@ export default function ManufacturingCard({
     setPreview(null)
     setPreviewError(null)
     setLoadingPreview(true)
-    void previewManufacturingPoSend({ manufacturing_po_id: poId, to, cc })
+    void previewManufacturingPoSend({ manufacturing_po_id: poId })
       .then((res) => {
         if (res.ok) setPreview(res.preview)
         else setPreviewError(res.error)
@@ -105,7 +104,7 @@ export default function ManufacturingCard({
 
   function send() {
     startTransition(async () => {
-      const res = await sendManufacturingPoToBamida({ manufacturing_po_id: poId, to, cc })
+      const res = await sendManufacturingPoToBamida({ manufacturing_po_id: poId })
       if (!res.ok) toast.error(res.error)
       else if (res.short) toast.warning(`${res.description}. They were told which materials are short.`)
       else toast.success(res.description)
@@ -192,43 +191,14 @@ export default function ManufacturingCard({
       </div>
 
       {canAct && !finished && !sent && (
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          <div>
-            <label
-              htmlFor="bamida-to"
-              className="block text-xs font-medium uppercase tracking-wider text-gray-500 mb-1.5"
-            >
-              Send to
-            </label>
-            <input
-              id="bamida-to"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-echo-orange focus:outline-none focus:ring-1 focus:ring-echo-orange"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              disabled={pending}
-              placeholder="name@bamida.sk"
-            />
-            <p className="mt-1 text-xs text-gray-400">
-              Bamida&apos;s address. Separate several with commas.
-            </p>
-          </div>
-          <div>
-            <label
-              htmlFor="bamida-cc"
-              className="block text-xs font-medium uppercase tracking-wider text-gray-500 mb-1.5"
-            >
-              Copy to
-            </label>
-            <input
-              id="bamida-cc"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-echo-orange focus:outline-none focus:ring-1 focus:ring-echo-orange"
-              value={cc}
-              onChange={(e) => setCc(e.target.value)}
-              disabled={pending}
-              placeholder="Optional"
-            />
-            <p className="mt-1 text-xs text-gray-400">Their other points of contact, and ours.</p>
-          </div>
+        <div className="mt-5 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+          <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Goes to</p>
+          <p className="mt-1 font-mono text-sm text-gray-900">{contact}</p>
+          <p className="mt-1.5 text-xs text-gray-500">
+            The manufacturer&apos;s point of contact. Not editable: one address receives the order,
+            the low stock reminders and the chasing, so one person there is accountable for all of
+            it. The confirmation dialog prints every address before anything is sent.
+          </p>
         </div>
       )}
 

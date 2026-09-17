@@ -116,9 +116,18 @@ describe('the Bamida send is claimed before anything leaves', () => {
     expect(source).toMatch(/releaseBamidaSendClaim[\s\S]*\.is\("finished_at", null\)/)
   })
 
-  it('refuses rather than guessing when Bamida have no configured address', () => {
-    expect(source).toContain('BAMIDA_PO_TO')
-    expect(source).toMatch(/if \(!bamidaTo\)[\s\S]{0,200}ok: false/)
+  it('cannot be told where to send a purchase order', () => {
+    // 🔴 Dean, 17 Sep 2026: "here is the absolute point of contact to Bamida /
+    // sklad@bamida.sk / It should no longer be an editable field." While `to`
+    // and `cc` were optional inputs, ANY caller of this 'use server' export
+    // could have the Hub send a real purchase order to an address of their
+    // choosing. The schema now takes the PO id and nothing else.
+    expect(source).toContain('const bamidaTo = FACTORY_CONTACT')
+    expect(source).not.toMatch(/parsed\.data\.(to|cc)/)
+    expect(source).not.toContain('BAMIDA_PO_TO')
+    const schema = source.slice(source.indexOf('const Schema = z.object('), source.indexOf('const TIMEOUT_MS'))
+    expect(schema).not.toContain('to:')
+    expect(schema).not.toContain('cc:')
   })
 
   it('sends nothing at all from the staging sandbox', () => {
@@ -145,11 +154,11 @@ describe('the Hub decides who gets the email, not n8n', () => {
   it('resolves the Bamida recipients through the test switch', () => {
     const source = read(SEND)
     expect(source).toContain('resolveRecipients')
-    // The address may now be typed on the screen, so the fallback moved one
-    // line up. What still matters is that WHATEVER is chosen goes through
-    // resolveRecipients, so the test override cannot be bypassed by typing.
-    expect(source).toMatch(/const bamidaTo = String\(parsed\.data\.to \?\? ""\)\.trim\(\) \|\| String\(process\.env\.BAMIDA_PO_TO/)
-    expect(source).toMatch(/const bamidaCc = String\(parsed\.data\.cc \?\? ""\)\.trim\(\) \|\| process\.env\.BAMIDA_PO_CC/)
+    // The address is now fixed on the server, but it STILL goes through
+    // resolveRecipients so the test override wins and nothing reaches the real
+    // factory while anybody is trying things out.
+    expect(source).toContain('const bamidaTo = FACTORY_CONTACT')
+    expect(source).toContain('const bamidaCc = factoryCopyTo()')
     expect(source).toMatch(/resolveRecipients\(\{[\s\S]{0,120}to: bamidaTo,[\s\S]{0,60}cc: bamidaCc,/)
     expect(source).toContain('intended: recipients.intended')
   })
@@ -328,5 +337,34 @@ describe('A draft written before a field existed still opens the page', () => {
     // The point of fixing it at the boundary: the render stays plain.
     const card = read('src/app/(dashboard)/purchase-orders/[id]/cargo-request-card.tsx')
     expect(card).toContain('PICKUP_PARTIES[form.pickup_from]')
+  })
+})
+
+describe('one point of contact at the manufacturer', () => {
+  // Dean, 17 Sep 2026: "here is the absolute point of contact to Bamida /
+  // sklad@bamida.sk / It should no longer be an editable field. In the future
+  // everything ... will go to him."
+  const contact = read('src/lib/factory-contact.ts')
+  const card = read('src/app/(dashboard)/purchase-orders/[id]/manufacturing-card.tsx')
+
+  it('holds the address in one place', () => {
+    expect(contact).toContain("export const FACTORY_CONTACT = 'sklad@bamida.sk'")
+  })
+
+  it('has no address input left on the screen', () => {
+    expect(card).not.toContain('setTo(')
+    expect(card).not.toContain('setCc(')
+    expect(card).not.toContain('bamida-to')
+    expect(card).not.toContain('bamida-cc')
+    // Shown, so the sender can see where it goes, but only shown.
+    expect(card).toContain('{contact}')
+    expect(card).toContain('Not editable')
+  })
+
+  it('still routes through the one test switch rather than adding a second', () => {
+    // A hard-coded address that skipped resolveRecipients would email the real
+    // factory during testing, which is the thing that switch exists to stop.
+    expect(contact).toContain('HUB_EMAIL_TEST_RECIPIENT')
+    expect(contact).not.toMatch(/process\.env\.BAMIDA_PO_TO/)
   })
 })

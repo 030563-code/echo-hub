@@ -12,6 +12,7 @@ import { assessOrderCapability } from '@/lib/manufacturing-capability'
 import { loadPurchaseOrderDetail } from '@/lib/po-detail'
 import { loadCargoRequest, type CargoRequestRow } from '@/lib/cargo-request-store'
 import { specActorNames, specDocumentStatus } from '@/lib/po-spec-store'
+import { FACTORY_CONTACT } from '@/lib/factory-contact'
 import DownloadPoPdfButton from '@/components/po/download-po-pdf-button'
 import AttachPoPdfButton from '@/components/po/attach-po-pdf-button'
 import ShipmentSection from '@/components/po/shipment-section'
@@ -149,8 +150,8 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
   // Who the Bamida send would go to if nobody changes it. Read here rather than
   // in the client component, because process.env is a server thing and these are
   // addresses rather than secrets.
-  const bamidaTo = String(process.env.BAMIDA_PO_TO ?? '').trim()
-  const bamidaCc = String(process.env.BAMIDA_PO_CC ?? '').trim()
+  // One address at the manufacturer, decided on the server and shown here read only.
+  const bamidaTo = FACTORY_CONTACT
 
   // The shipment request, drafted the moment the barriers existed: Bamida
   // pressing finished, or SRO taking them off the shelf.
@@ -377,8 +378,7 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
           poId={po.id}
           canAct={canAct}
           manufacturing={progress}
-          defaultTo={bamidaTo}
-          defaultCc={bamidaCc}
+          contact={bamidaTo}
           specConfirmed={Boolean(specStatus?.confirmedAt)}
           specSaved={Boolean(specStatus?.saved)}
         />

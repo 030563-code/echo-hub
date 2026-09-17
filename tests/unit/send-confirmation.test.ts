@@ -132,11 +132,16 @@ describe('a preview claims nothing and posts nothing', () => {
     expect(code(CARGO_ACTION)).toContain('cargoRecipients(draft)')
   })
 
-  it('the manufacturing preview surfaces the copies nobody typed', () => {
+  it('the manufacturing preview surfaces every address WITH where it came from', () => {
+    // 🔴 The blind copy is the point: nobody typed it and nobody would remember
+    // it, so the dialog has to print it before anything is sent.
     const source = code(MFG_ACTION)
     expect(source).toContain("addressesFrom(process.env.BAMIDA_PO_BCC, \"server\", \"BAMIDA_PO_BCC\")")
-    expect(source).toContain('"the Send to box"')
-    expect(source).toContain('"the Copy to box"')
+    // Since 17 Sep 2026 nothing is typed at all: the manufacturer has one fixed
+    // point of contact, so every line is attributed to where it was decided.
+    expect(source).toContain('"the manufacturer\'s point of contact"')
+    expect(source).toContain('addressesFrom(bamidaCc, "server", "BAMIDA_PO_CC")')
+    expect(source).not.toContain('"the Send to box"')
   })
 })
 

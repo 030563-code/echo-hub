@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
 import { poChainHeldBy } from "@/lib/po-organisations";
 import { specDocumentStatus } from "@/lib/po-spec-store";
+import { FACTORY_CONTACT, factoryCopyTo } from "@/lib/factory-contact";
 import { externalCallsDisabled, hubBaseUrl } from "@/lib/env";
 import { resolveRecipients, sendDescription } from "@/lib/email-recipients";
 import { loadSroPoBom } from "@/lib/bom";
@@ -52,20 +53,18 @@ import { addressesFrom, type SendPreview } from "@/lib/send-preview";
 // Bamida's address would email a factory while the Hub believed everything was
 // going to the test address.
 
-// Dean, 9 Sep 2026: "The send to Bamida button should have the option to fill
-// in which email address to send to, same as the Cargo Partner email, as Juraj
-// told me it could send to multiple addresses and multiple points of contact."
+// 🔴 THE RECIPIENT IS NOT AN INPUT.
 //
-// So the addresses come from the screen when somebody types them, and fall back
-// to the server's configured ones when they do not. Same split as the shipment
-// request: the HUB decides recipients, and a person at the Hub choosing one IS
-// the Hub. Whatever is chosen still goes through resolveRecipients, so the test
-// override keeps winning and a real factory cannot be reached during testing.
+// Dean, 9 Sep 2026, asked for typeable addresses because Juraj said Bamida had several points of
+// contact. Dean, 17 Sep 2026, settled it the other way: "here is the absolute point of contact to
+// Bamida / sklad@bamida.sk / It should no longer be an editable field."
+//
+// So `to` and `cc` are off this schema entirely rather than merely hidden on the screen. While
+// they were optional fields, any caller of this 'use server' export could have the Hub send a real
+// purchase order, on Echo Barrier letterhead, to an address of their choosing. The recipient is
+// now decided on the server in factory-contact.ts and cannot be named from outside.
 const Schema = z.object({
   manufacturing_po_id: z.string().uuid("Invalid PO id"),
-  /** Comma separated. Blank means "use what the server is configured with". */
-  to: z.string().trim().max(400).optional(),
-  cc: z.string().trim().max(400).optional(),
 });
 
 const TIMEOUT_MS = 30_000;
@@ -146,27 +145,15 @@ async function planManufacturingSend(input: z.infer<typeof Schema>) {
     return { ok: false as const, error: "Sandbox (staging): nothing is sent to Bamida from here." };
   }
 
-  const bamidaTo = String(parsed.data.to ?? "").trim() || String(process.env.BAMIDA_PO_TO ?? "").trim();
-  if (!bamidaTo) {
-    return {
-      ok: false as const,
-      error: "Nobody to send it to. Type an address, or set BAMIDA_PO_TO on the server.",
-    };
-  }
-  const bamidaCc = String(parsed.data.cc ?? "").trim() || process.env.BAMIDA_PO_CC;
+  // One address, decided here. Testing still diverts everything through resolveRecipients.
+  const bamidaTo = FACTORY_CONTACT;
+  const bamidaCc = factoryCopyTo();
 
-  // WHERE EACH ADDRESS CAME FROM, decided here because here is where the choice
-  // is made. Attributing them afterwards by matching against the settings would
-  // mislabel the first address somebody types that is also configured.
-  const typedTo = String(parsed.data.to ?? "").trim();
-  const typedCc = String(parsed.data.cc ?? "").trim();
+  // WHERE EACH ADDRESS CAME FROM, so the confirmation dialog can print it. Nothing is typed any
+  // more, so every line says where it was decided.
   const real = {
-    to: typedTo
-      ? addressesFrom(typedTo, "typed", "the Send to box")
-      : addressesFrom(process.env.BAMIDA_PO_TO, "server", "BAMIDA_PO_TO"),
-    cc: typedCc
-      ? addressesFrom(typedCc, "typed", "the Copy to box")
-      : addressesFrom(process.env.BAMIDA_PO_CC, "server", "BAMIDA_PO_CC"),
+    to: addressesFrom(bamidaTo, "server", "the manufacturer's point of contact"),
+    cc: addressesFrom(bamidaCc, "server", "BAMIDA_PO_CC"),
     // Never on any screen. A blind copy nobody remembers is the whole reason
     // this dialog prints every address.
     bcc: addressesFrom(process.env.BAMIDA_PO_BCC, "server", "BAMIDA_PO_BCC"),
