@@ -1,6 +1,9 @@
 import type { SroPoBom } from '@/lib/erp-types'
 import { BUYER, DEFAULT_SUPPLIER, type BamidaSupplier } from '@/lib/bamida-po'
 import { packSizeFor } from '@/lib/pack-size'
+// Type-only, so the `server-only` guard in model-spec.ts never reaches this pure module
+// or the unit tests that exercise it.
+import type { ModelSpec } from '@/lib/model-spec'
 
 /**
  * The OBJEDNÁVKOVÝ LIST: what the manufacturer builds from, with no prices on it.
@@ -43,6 +46,13 @@ export interface SupplierSpecProduct {
   packSize: number
   pallets: number
   materials: SupplierSpecMaterial[]
+  /**
+   * The manufacturing specification for this model, or null when the Hub holds
+   * none. Null prints a visible "no specification held" line rather than
+   * nothing, because a silently bare document reads as "no special
+   * requirements" to whoever is building from it.
+   */
+  spec: ModelSpec | null
 }
 
 export interface SupplierSpecPacking {
@@ -81,6 +91,13 @@ const NON_MATERIAL = /(-TRNS|^GRP-SLTF$)/i
  *  true rather than inventing a spec. */
 export const STANDARD_PRINTING = 'Standard'
 
+/**
+ * 🔴 Kept only as the fallback wording when NO model specification is held at
+ * all. It used to be the whole print specification, because none existed
+ * anywhere in either database. It is no longer the answer for a model whose row
+ * exists in model_spec.
+ */
+
 const round3 = (v: number) => Math.round(v * 1000) / 1000
 
 export function buildSupplierSpec(
@@ -89,6 +106,12 @@ export function buildSupplierSpec(
   supplier: BamidaSupplier = DEFAULT_SUPPLIER,
   specNumber: string = '',
   destination: string | null = null,
+  /**
+   * Model code to specification. Defaults to empty so every existing caller and
+   * every test keeps working and simply gets the old, specification-free
+   * document rather than a crash.
+   */
+  specs: ReadonlyMap<string, ModelSpec> = new Map(),
 ): SupplierSpec {
   const products: SupplierSpecProduct[] = []
   let pallets = 0
@@ -113,6 +136,7 @@ export function buildSupplierSpec(
           perUnit: round3(c.qty),
           total: round3(c.qty * line.quantity),
         })),
+      spec: specs.get(line.model_code) ?? null,
     })
   }
 

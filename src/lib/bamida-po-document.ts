@@ -36,6 +36,7 @@ import { getSupplierByCode } from '@/lib/suppliers'
 import { buildBamidaPo, type BamidaSupplier } from '@/lib/bamida-po'
 import { buildBamidaPoPdf } from '@/lib/bamida-po-pdf'
 import { buildSupplierSpec } from '@/lib/supplier-spec'
+import { loadModelSpecs } from '@/lib/model-spec'
 import { buildSupplierSpecPdf } from '@/lib/supplier-spec-pdf'
 import { buildTransportOrderPdf } from '@/lib/transport-order-pdf'
 import { loadCargoRequest } from '@/lib/cargo-request-store'
@@ -143,7 +144,12 @@ export async function renderSupplierDocument(
   const root = group?.parent_po_id ? await read(group.parent_po_id) : null
   const destination = root?.from_entity ? entityLabel(root.from_entity) : null
 
-  const spec = buildSupplierSpec(bom, today, supplier, po.po_number ?? '', destination)
+  // The manufacturing specification per model, which is the detail Juraj asked
+  // for. A failed read returns an empty map and the document degrades to the
+  // materials and pallet count it printed before, rather than the factory
+  // getting no order at all.
+  const specs = await loadModelSpecs(admin)
+  const spec = buildSupplierSpec(bom, today, supplier, po.po_number ?? '', destination, specs)
   if (spec.products.length === 0) return { ok: false, reason: 'no_lines' }
   const pdf = await buildSupplierSpecPdf(spec)
   return {
