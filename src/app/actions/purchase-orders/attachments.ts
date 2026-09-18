@@ -154,7 +154,19 @@ export async function setPoAttachmentShared(
   const auth = await getAuthorizedUser();
   if (!auth.ok) return { success: false, error: auth.error };
   if (!MANAGE_CAPS.some((c) => auth.capabilities.has(c))) {
-    return { success: false, error: "Forbidden: you can't change purchase order files." };
+    return { success: false, error: "You can't change purchase order files." };
+  }
+  // 🔴 Sharing needs cost.view, the same capability opening the file needs.
+  // po.receive is the warehouse, and cost.view is deliberately withheld from
+  // warehouse and production accounts, so without this a receiving clerk could
+  // publish a costed vendor invoice to the manufacturer that they themselves
+  // are refused when they click it. Unticking stays open: taking a file back is
+  // never the dangerous direction.
+  if (shared && !auth.capabilities.has("cost.view")) {
+    return {
+      success: false,
+      error: "Forbidden: cost visibility (cost.view) is required to send a file to the manufacturer.",
+    };
   }
   if (!uuid.safeParse(attachmentId).success) return { success: false, error: "Invalid id" };
   if (typeof shared !== "boolean") return { success: false, error: "Invalid value" };

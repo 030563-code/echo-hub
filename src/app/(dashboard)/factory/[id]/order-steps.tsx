@@ -57,6 +57,7 @@ export function OrderSteps({
   const [start, setStart] = useState(estStart ?? '')
   const [finish, setFinish] = useState(estFinish ?? '')
   const [confirming, setConfirming] = useState(false)
+  const [blocked, setBlocked] = useState<{ url: string; filename: string } | null>(null)
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
 
   const bothDates = start !== '' && finish !== ''
@@ -106,6 +107,7 @@ export function OrderSteps({
 
   function openDocument(attachmentId: string) {
     setMessage(null)
+    setBlocked(null)
     // Opened synchronously and filled in after, because a tab opened later is
     // the one Safari blocks.
     const tab = window.open('', '_blank')
@@ -116,8 +118,14 @@ export function OrderSteps({
         setMessage({ kind: 'error', text: res.error })
         return
       }
-      if (tab) tab.location.href = res.url
-      else window.open(res.url, '_blank')
+      if (tab) {
+        tab.location.href = res.url
+        return
+      }
+      // Both the placeholder tab and this one come back null when popups are
+      // blocked, and neither throws. Without this the button would look broken.
+      const opened = window.open(res.url, '_blank')
+      if (!opened) setBlocked({ url: res.url, filename: res.filename })
     })
   }
 
@@ -173,6 +181,18 @@ export function OrderSteps({
                 </li>
               ))}
             </ul>
+            {blocked && (
+              <p className="mt-3 text-sm text-amber-900">
+                <a
+                  href={blocked.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-echo-orange underline hover:no-underline"
+                >
+                  {fill(t.step1FilesBlocked, { name: blocked.filename })}
+                </a>
+              </p>
+            )}
           </div>
         )}
       </Step>

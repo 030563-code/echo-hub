@@ -66,7 +66,7 @@ export default async function PurchasingPage() {
     poIds.length
       ? supabase
           .from("po_attachments")
-          .select("id, po_id, storage_path, filename, content_type, size_bytes, uploaded_by_uid, created_at")
+          .select("id, po_id, storage_path, filename, content_type, size_bytes, uploaded_by_uid, created_at, share_with_manufacturer")
           .in("po_id", poIds)
           .order("created_at", { ascending: false })
       : Promise.resolve({ data: [] as PoAttachment[] }),

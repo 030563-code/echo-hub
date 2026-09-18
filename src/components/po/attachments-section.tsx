@@ -118,7 +118,7 @@ export default function AttachmentsSection({ po, canManage }: { po: PurchaseOrde
               <label className="mt-1.5 flex items-center gap-2 text-[11px] text-gray-600">
                 <input
                   type="checkbox"
-                  checked={a.share_with_manufacturer}
+                  checked={a.share_with_manufacturer === true}
                   disabled={pending}
                   onChange={(e) => toggleShare(a.id, e.target.checked)}
                   className="h-3.5 w-3.5 rounded border-gray-300 text-echo-orange focus:ring-echo-orange"
@@ -126,7 +126,7 @@ export default function AttachmentsSection({ po, canManage }: { po: PurchaseOrde
                 Let the manufacturer download this from their order page
               </label>
             )}
-            {!canShare && a.share_with_manufacturer && (
+            {!canShare && a.share_with_manufacturer === true && (
               <p className="mt-1.5 text-[11px] text-emerald-800">The manufacturer can download this.</p>
             )}
           </div>
