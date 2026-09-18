@@ -166,7 +166,6 @@ export interface FactoryStrings {
   bdCeilingUnknown: string
   bdColPerUnit: string
   bdColPerPallet: string
-  bdColHave: string
   bdNotReported: string
   bdBinding: string
   bdNotGating: string
@@ -310,20 +309,19 @@ const en: FactoryStrings = {
   emptyCapability: 'No product can be calculated yet.',
 
   bdBack: 'Back to stock',
-  bdIntro: 'Every material this product uses, against what your system reports on the shelf. Your figures and your bill of materials, nothing else.',
-  bdRule: 'Needed = per unit × {qty} + per pallet × {pallets} pallets, at {palletSize} units per pallet. Pallet lines are charged whole, so one unit over a pallet costs a full set.',
+  bdIntro: 'Every material this product uses, against the quantity in your stock list. Your numbers and your bill of materials, nothing else.',
+  bdRule: 'Needed = per unit × {qty} + per pallet × {pallets} pallets, at {palletSize} units per pallet. A pallet line counts whole pallets, so one unit over a pallet needs a full set.',
   bdRuleNoPallet: 'Needed = per unit × {qty}. We have no pallet size for this product, so lines charged per pallet are left out rather than guessed.',
   bdForRequirement: 'Worked out for the {qty} units we expect to need.',
   bdForTyped: 'Worked out for {qty} units.',
   bdForPallet: 'We are not forecasting this product yet, so this shows one pallet of {qty} units.',
-  bdCeiling: '{material} runs out first. That is what caps you at {max} units.',
-  bdCeilingUnknown: 'We cannot work out a ceiling for this product from your feed.',
+  bdCeiling: '{material} runs out first. That is what limits you to {max} units.',
+  bdCeilingUnknown: 'We cannot work out from your stock list how many of these you can build.',
   bdColPerUnit: 'Per unit',
   bdColPerPallet: 'Per pallet',
-  bdColHave: 'On the shelf',
-  bdNotReported: 'Not in your feed',
+  bdNotReported: 'Not in your stock list',
   bdBinding: 'Runs out first',
-  bdNotGating: 'Your feed does not report this one, so it never limits the total.',
+  bdNotGating: 'This one is not in your stock list, so it never limits the total.',
   bdQtyLabel: 'Work it out for',
   bdQtyButton: 'Calculate',
   bdUnits: 'units',
@@ -466,20 +464,19 @@ const sk: FactoryStrings = {
   emptyCapability: 'Zatiaľ nie je možné vypočítať žiadny produkt.',
 
   bdBack: 'Späť na sklad',
-  bdIntro: 'Všetok materiál, ktorý tento produkt spotrebuje, oproti stavu vo vašom systéme. Vaše čísla a váš kusovník, nič iné.',
-  bdRule: 'Potrebné = na kus × {qty} + na paletu × {pallets} paliet, pri {palletSize} kusoch na paletu. Paletové položky sa počítajú celé, takže jeden kus navyše stojí celú sadu.',
+  bdIntro: 'Všetok materiál, ktorý tento produkt spotrebuje, oproti množstvu vo vašom zozname zásob. Vaše čísla a váš kusovník, nič iné.',
+  bdRule: 'Potrebné = na kus × {qty} + na paletu × {pallets} paliet, pri {palletSize} kusoch na paletu. Paletová položka sa počíta na celé palety, takže jeden kus navyše potrebuje celú sadu.',
   bdRuleNoPallet: 'Potrebné = na kus × {qty}. Pre tento produkt nemáme veľkosť palety, preto položky účtované na paletu vynechávame a neodhadujeme ich.',
   bdForRequirement: 'Prepočítané na {qty} kusov, ktoré predpokladáme, že budeme potrebovať.',
   bdForTyped: 'Prepočítané na {qty} kusov.',
   bdForPallet: 'Tento produkt zatiaľ neprognózujeme, preto je tu jedna paleta, teda {qty} kusov.',
   bdCeiling: 'Najskôr dôjde {material}. To vás obmedzuje na {max} kusov.',
-  bdCeilingUnknown: 'Pre tento produkt sa z vášho prehľadu nedá vypočítať strop.',
+  bdCeilingUnknown: 'Z vášho zoznamu zásob sa nedá vypočítať, koľko kusov tohto produktu dokážete vyrobiť.',
   bdColPerUnit: 'Na kus',
   bdColPerPallet: 'Na paletu',
-  bdColHave: 'Na sklade',
-  bdNotReported: 'Nie je vo vašom prehľade',
+  bdNotReported: 'Nie je vo vašom zozname zásob',
   bdBinding: 'Dôjde najskôr',
-  bdNotGating: 'Túto položku váš prehľad neposiela, preto nikdy neobmedzuje celkový počet.',
+  bdNotGating: 'Táto položka nie je vo vašom zozname zásob, preto nikdy neobmedzuje celkový počet.',
   bdQtyLabel: 'Prepočítať pre',
   bdQtyButton: 'Prepočítať',
   bdUnits: 'kusov',

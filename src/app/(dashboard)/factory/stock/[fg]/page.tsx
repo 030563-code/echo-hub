@@ -135,7 +135,7 @@ export default async function FactoryProductPage({
               <th className="px-3 py-2 text-right font-semibold text-gray-700">{t.bdColPerUnit}</th>
               <th className="px-3 py-2 text-right font-semibold text-gray-700">{t.bdColPerPallet}</th>
               <th className="px-3 py-2 text-right font-semibold text-gray-700">{t.colNeeded}</th>
-              <th className="px-3 py-2 text-right font-semibold text-gray-700">{t.bdColHave}</th>
+              <th className="px-3 py-2 text-right font-semibold text-gray-700">{t.colQuantity}</th>
               <th className="px-3 py-2 text-right font-semibold text-gray-700">{t.colShortBy}</th>
             </tr>
           </thead>
