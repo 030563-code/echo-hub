@@ -132,6 +132,25 @@ export interface FactoryStrings {
   stockIntro: string
   stockUpdated: string
   stockStale: string
+  stockUnchangedSince: string
+  stockFrozen: string
+
+  // What they can build against what we will need
+  capabilityTitle: string
+  capabilityIntro: string
+  capabilityRun: string
+  capabilityFrozen: string
+  colCapability: string
+  colCappedBy: string
+  colRequirement: string
+  capOk: string
+  capShort: string
+  capUnknown: string
+  capProvisional: string
+  capDetail: string
+  emptyCapability: string
+  colNeeded: string
+  colShortBy: string
   colCode: string
   colItem: string
   colQuantity: string
@@ -242,6 +261,26 @@ const en: FactoryStrings = {
   step3No: 'Not yet',
 
   stockTitle: 'Stock',
+  stockUnchangedSince: 'Unchanged since {date}.',
+  stockFrozen:
+    'Your stock feed has sent us the same figures since {date}. Nothing has moved in that time, which for a working factory means the feed has stopped updating. We are raising it with you separately.',
+  capabilityTitle: 'What you can build',
+  capabilityIntro:
+    'For each product: how many you could build from the materials in your stock, and how many we expect to need. Worked out overnight from your stock feed and our bill of materials.',
+  capabilityRun: 'Calculated {date}.',
+  capabilityFrozen:
+    'Your stock feed has not changed since {date}, so these figures cannot be trusted and no low-stock notice will be sent until it moves.',
+  colCapability: 'You can build',
+  colCappedBy: 'Limited by',
+  colRequirement: 'We will need',
+  capOk: 'Enough material',
+  capShort: 'Not enough material',
+  capUnknown: 'Cannot be calculated',
+  capProvisional: 'Estimate: the bill of materials for this product is not confirmed yet.',
+  capDetail: 'Firm orders {firm}, weighted quotes {pipeline}, in stock {onHand}, in transit {inTransit}, on order {onOrder}.',
+  emptyCapability: 'No product can be calculated yet.',
+  colNeeded: 'Needed',
+  colShortBy: 'Short by',
   stockIntro: 'Your material stock, as your system last reported it.',
   stockUpdated: 'Updated {date}.',
   stockStale:
@@ -354,6 +393,26 @@ const sk: FactoryStrings = {
   step3No: 'Ešte nie',
 
   stockTitle: 'Sklad',
+  stockUnchangedSince: 'Bez zmeny od {date}.',
+  stockFrozen:
+    'Váš skladový prehľad nám posiela rovnaké údaje od {date}. Odvtedy sa nič nezmenilo, čo pri fungujúcej výrobe znamená, že prehľad sa prestal aktualizovať. Riešime to s vami samostatne.',
+  capabilityTitle: 'Čo dokážete vyrobiť',
+  capabilityIntro:
+    'Pri každom produkte: koľko kusov by ste dokázali vyrobiť z materiálu na vašom sklade a koľko kusov predpokladáme, že budeme potrebovať. Počíta sa každú noc z vášho skladového prehľadu a našich kusovníkov.',
+  capabilityRun: 'Vypočítané {date}.',
+  capabilityFrozen:
+    'Váš skladový prehľad sa od {date} nezmenil, preto sa tieto čísla nedajú považovať za spoľahlivé a upozornenie na nízke zásoby sa neodošle, kým sa neaktualizuje.',
+  colCapability: 'Dokážete vyrobiť',
+  colCappedBy: 'Obmedzuje',
+  colRequirement: 'Budeme potrebovať',
+  capOk: 'Dostatok materiálu',
+  capShort: 'Nedostatok materiálu',
+  capUnknown: 'Nedá sa vypočítať',
+  capProvisional: 'Odhad: kusovník tohto produktu ešte nie je potvrdený.',
+  capDetail: 'Záväzné objednávky {firm}, vážené ponuky {pipeline}, na sklade {onHand}, na ceste {inTransit}, objednané {onOrder}.',
+  emptyCapability: 'Zatiaľ nie je možné vypočítať žiadny produkt.',
+  colNeeded: 'Potrebné',
+  colShortBy: 'Chýba',
   stockIntro: 'Váš skladový materiál podľa posledných údajov z vášho systému.',
   stockUpdated: 'Aktualizované {date}.',
   stockStale:

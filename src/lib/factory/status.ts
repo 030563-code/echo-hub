@@ -95,9 +95,29 @@ export function availabilityTone(availability: string | null): AvailabilityTone 
 /** The sync runs daily at 06:00 London, so a day and a bit is the alarm. */
 export const STALE_FEED_HOURS = 26
 
+/**
+ * Did the sync run recently. Says nothing about whether the numbers moved:
+ * the feed served identical values for six weeks while this stayed green.
+ * That is what feedIsFrozen is for.
+ */
 export function feedIsStale(newestSyncAt: string | null, now: number = Date.now()): boolean {
   if (!newestSyncAt) return true
   const synced = new Date(newestSyncAt).getTime()
   if (!Number.isFinite(synced)) return true
   return now - synced > STALE_FEED_HOURS * 60 * 60 * 1000
+}
+
+/**
+ * A working factory's stock moves every day. A week with not one unit of
+ * change across the whole feed is a feed that has stopped, not a quiet week.
+ * Found the hard way on 18 Sep 2026: 112 items, 46 daily snapshots, identical
+ * since 6 August, under a banner that said "updated today".
+ */
+export const FROZEN_FEED_DAYS = 7
+
+export function feedIsFrozen(newestChangeAt: string | null, now: number = Date.now()): boolean {
+  if (!newestChangeAt) return true
+  const changed = new Date(newestChangeAt).getTime()
+  if (!Number.isFinite(changed)) return true
+  return now - changed > FROZEN_FEED_DAYS * 24 * 60 * 60 * 1000
 }

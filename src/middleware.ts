@@ -30,7 +30,7 @@ const PUBLIC_PATHS = ['/login', '/onboarding', '/auth/callback', '/offline.html'
 //  - /api/mrp/run: Bearer MRP_CRON_SECRET (n8n cron).
 //  - /api/agent/quote: Bearer AGENT_QUOTE_SECRET or AGENT_QUOTE_SECRET_PREVIOUS
 //    (Jack's Quote Sender in n8n), then a conversation binding check.
-const SELF_AUTHENTICATED_PATHS = ['/api/mrp/run', '/api/agent/quote', '/api/calls/ingest']
+const SELF_AUTHENTICATED_PATHS = ['/api/mrp/run', '/api/mrp/factory-alert', '/api/agent/quote', '/api/calls/ingest']
 
 function isPublic(pathname: string): boolean {
   return (

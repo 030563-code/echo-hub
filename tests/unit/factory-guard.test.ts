@@ -255,7 +255,9 @@ describe('the row scope is one predicate, written once', () => {
     const stock = read(STOCK)
     expect(stock).toContain('createServerClient')
     expect(stock).not.toContain('createAdminClient')
-    expect(stock).toContain("select('ns_number, item_name, quantity, unit, availability, last_synced_at')")
+    expect(stock).toContain(
+      "select('ns_number, item_name, quantity, unit, availability, last_synced_at, last_changed_at')",
+    )
     expect(stock).toContain("eq('is_active', true)")
   })
 })
