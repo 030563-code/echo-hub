@@ -2,13 +2,59 @@
 
 // page-state: view factory:orders (BoardTable keeps its own search and sort)
 
+import { useState, useTransition } from 'react'
 import Link from 'next/link'
+import { Download } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import BoardTable from '@/components/board/BoardTable'
 import { displayPoNumber } from '@/lib/po-number'
+import { downloadFactoryOrderPdf, downloadFactoryPricedOrderPdf } from '@/app/actions/factory/orders'
 import { factoryStatus, factoryStatusLabel } from '@/lib/factory/status'
 import { factoryDate, fill, strings, type FactoryLocale } from '@/lib/factory/strings'
+import { saveFactoryPdf } from '@/lib/factory/save-pdf'
 import type { FactoryOrder } from '@/lib/factory/orders'
+
+/**
+ * Both documents on the row, so the manufacturer does not have to open an order
+ * to get at them. Dean, 18 Sep 2026: "push the priced PO to the manufacturing
+ * page too". The same two downloads are inside the order as step 1, and both
+ * call the same gated actions; this is a shortcut, never a second way in.
+ */
+function DocumentButtons({ poId, locale }: { poId: string; locale: FactoryLocale }) {
+  const t = strings(locale)
+  const [pending, startTransition] = useTransition()
+  const [failed, setFailed] = useState(false)
+
+  const get = (action: typeof downloadFactoryOrderPdf) => () => {
+    setFailed(false)
+    startTransition(async () => {
+      const res = await action({ poId })
+      // The row has no room for a sentence, so a failure says so quietly here
+      // and the order page gives the real reason.
+      if (!res.ok) return setFailed(true)
+      saveFactoryPdf(res)
+    })
+  }
+
+  const chip =
+    'inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50'
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap gap-1">
+        <button onClick={get(downloadFactoryOrderPdf)} disabled={pending} className={chip}>
+          <Download className="h-3 w-3" />
+          {t.docOrder}
+        </button>
+        <button onClick={get(downloadFactoryPricedOrderPdf)} disabled={pending} className={chip}>
+          <Download className="h-3 w-3" />
+          {t.docPriced}
+        </button>
+      </div>
+      {failed && <span className="text-xs text-red-700">{t.docFailed}</span>}
+    </div>
+  )
+}
 
 /** Amber until they have answered us, green once the work is done. */
 function StatusPill({ order, locale }: { order: FactoryOrder; locale: FactoryLocale }) {
@@ -84,6 +130,14 @@ function columns(locale: FactoryLocale): ColumnDef<FactoryOrder, unknown>[] {
     header: t.colStatus,
     cell: ({ row }) => <StatusPill order={row.original} locale={locale} />,
     },
+  {
+    id: 'documents',
+    // Not sortable or searchable on purpose: it is two buttons, not a value.
+    enableSorting: false,
+    enableGlobalFilter: false,
+    header: t.colDocuments,
+    cell: ({ row }) => <DocumentButtons poId={row.original.po_id} locale={locale} />,
+  },
   ]
 }
 

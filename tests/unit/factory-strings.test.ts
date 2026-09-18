@@ -85,6 +85,9 @@ describe('the two languages are complete and actually different', () => {
     expect(sk.step3Button).toBe('Výroba dokončená')
     expect(sk.step1Button).toBe('Stiahnuť objednávku (PDF)')
     expect(sk.step1PricedButton).toBe('Stiahnuť objednávku s cenami (PDF)')
+    // The same two documents, shortened for the row on the order list.
+    expect(sk.docOrder).toBe('Objednávka')
+    expect(sk.docPriced).toBe('S cenami')
     expect(strings('en').confirmOrder).toBe('Confirm purchase order')
   })
 })

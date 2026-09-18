@@ -14,6 +14,7 @@ import {
   saveFactoryDates,
 } from '@/app/actions/factory/orders'
 import { factoryDate, fill, strings, type FactoryLocale } from '@/lib/factory/strings'
+import { saveFactoryPdf } from '@/lib/factory/save-pdf'
 
 /**
  * The three steps, in the order Dean set out on 16 Sep 2026: download the
@@ -69,19 +70,7 @@ export function OrderSteps({
         setMessage({ kind: 'error', text: res.error })
         return
       }
-      // The action returns bytes, not a link: the document is built per request
-      // and never sits at an address somebody could guess.
-      const blob = new Blob([Uint8Array.from(atob(res.base64), (c) => c.charCodeAt(0))], {
-        type: 'application/pdf',
-      })
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = res.filename
-      document.body.appendChild(anchor)
-      anchor.click()
-      anchor.remove()
-      URL.revokeObjectURL(url)
+      saveFactoryPdf(res)
     })
   }
 

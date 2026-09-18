@@ -23,6 +23,7 @@ import {
   type CargoDraft,
 } from '@/lib/cargo-request'
 import { registerUnicodeFont } from '@/lib/pdf-font'
+import { drawEbLogo } from '@/lib/eb-logo'
 
 export interface TransportOrder {
   orderNumber: string
@@ -44,6 +45,10 @@ export async function buildTransportOrderPdf(order: TransportOrder): Promise<imp
   const d = order.draft
   const pickup = PICKUP_PARTIES[d.pickup_from]
 
+  // The same corner and size as the other two supplier documents, so all three
+  // behind one s.r.o. order carry the same mark. This one goes to the forwarder
+  // as well as to us, which is the strongest case of the three for branding it.
+  drawEbLogo(doc, 14, 8, 40)
   doc.setFont(font, 'bold')
   doc.setFontSize(16)
   doc.text('TRANSPORT ORDER', W / 2, 16, { align: 'center' })

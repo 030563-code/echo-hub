@@ -27,9 +27,16 @@ describe('the embedded Echo Barrier logo', () => {
     expect(EB_LOGO_GREEN_PNG.length).toBeLessThan(12_000)
   })
 
-  it('is drawn on both documents the factory downloads, and compressed', () => {
+  it('is drawn on all three supplier documents, in the same place, and compressed', () => {
     const read = (f: string) => readFileSync(join(process.cwd(), f), 'utf8')
-    for (const f of ['src/lib/supplier-spec-pdf.ts', 'src/lib/bamida-po-pdf.ts']) {
+    // -1 the specification, -3 the priced order, -2 the transport order. One
+    // s.r.o. order produces all three and they should not look like three
+    // different companies.
+    for (const f of [
+      'src/lib/supplier-spec-pdf.ts',
+      'src/lib/bamida-po-pdf.ts',
+      'src/lib/transport-order-pdf.ts',
+    ]) {
       expect(read(f), f).toContain("import { drawEbLogo } from '@/lib/eb-logo'")
       expect(read(f), f).toMatch(/drawEbLogo\(doc, (MARGIN|14), 8, 40\)/)
     }

@@ -72,6 +72,10 @@ export interface FactoryStrings {
   colStart: string
   colFinish: string
   colStatus: string
+  colDocuments: string
+  docOrder: string
+  docPriced: string
+  docFailed: string
   noLines: string
   andMore: string
   searchOrders: string
@@ -205,6 +209,10 @@ const en: FactoryStrings = {
   colStart: 'Start',
   colFinish: 'Finish',
   colStatus: 'Status',
+  colDocuments: 'Documents',
+  docOrder: 'Order',
+  docPriced: 'With prices',
+  docFailed: 'That document could not be prepared. Open the order and try again.',
   noLines: 'No lines',
   andMore: 'and {count} more',
   searchOrders: 'Search by order number or product…',
@@ -337,6 +345,10 @@ const sk: FactoryStrings = {
   colStart: 'Začiatok',
   colFinish: 'Ukončenie',
   colStatus: 'Stav',
+  colDocuments: 'Dokumenty',
+  docOrder: 'Objednávka',
+  docPriced: 'S cenami',
+  docFailed: 'Tento dokument sa nepodarilo pripraviť. Otvorte objednávku a skúste to znova.',
   noLines: 'Žiadne položky',
   andMore: 'a ďalšie ({count})',
   searchOrders: 'Hľadať podľa čísla objednávky alebo produktu…',
