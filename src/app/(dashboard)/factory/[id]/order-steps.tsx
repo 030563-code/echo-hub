@@ -9,6 +9,7 @@ import { CheckCircle2, Download } from 'lucide-react'
 import {
   confirmFactoryOrder,
   downloadFactoryOrderPdf,
+  downloadFactoryPricedOrderPdf,
   markFactoryFinished,
   saveFactoryDates,
 } from '@/app/actions/factory/orders'
@@ -57,10 +58,13 @@ export function OrderSteps({
   const isConfirmed = Boolean(confirmedAt)
   const isFinished = Boolean(finishedAt)
 
-  function download() {
+  // Two documents, one download path. The specification is what the floor
+  // builds from; the priced order is the same order for their accounts (Dean,
+  // 18 Sep 2026, after the factory asked for prices).
+  function download(action: typeof downloadFactoryOrderPdf) {
     setMessage(null)
     startTransition(async () => {
-      const res = await downloadFactoryOrderPdf({ poId })
+      const res = await action({ poId })
       if (!res.ok) {
         setMessage({ kind: 'error', text: res.error })
         return
@@ -121,14 +125,25 @@ export function OrderSteps({
     <div className="mt-8 space-y-4">
       <Step number={1} title={t.step1Title} done={false}>
         <p className="text-sm text-gray-600">{fill(t.step1Body, { number: poNumber })}</p>
-        <button
-          onClick={download}
-          disabled={pending}
-          className="mt-4 inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-5 py-2 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 disabled:opacity-50"
-        >
-          <Download className="h-4 w-4" />
-          {t.step1Button}
-        </button>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            onClick={() => download(downloadFactoryOrderPdf)}
+            disabled={pending}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-5 py-2 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" />
+            {t.step1Button}
+          </button>
+          <button
+            onClick={() => download(downloadFactoryPricedOrderPdf)}
+            disabled={pending}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-5 py-2 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" />
+            {t.step1PricedButton}
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-gray-500">{t.step1PricedHint}</p>
       </Step>
 
       <Step number={2} title={t.step2Title} done={isConfirmed}>

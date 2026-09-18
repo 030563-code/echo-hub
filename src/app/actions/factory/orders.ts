@@ -1,7 +1,7 @@
 'use server'
 
 /**
- * The four things the manufacturer may do, and nothing else.
+ * The five things the manufacturer may do, and nothing else.
  *
  * Every export of a 'use server' file is a callable endpoint, so each of these
  * stands on its own: the session, then the capability, then the shape of the
@@ -208,9 +208,36 @@ export async function downloadFactoryOrderPdf(input: { poId: string }): Promise<
   const gated = await gate(parsed.data.poId, 'factory.view', t)
   if (!gated.ok) return { ok: false, error: gated.error }
 
-  // The SPECIFICATION, never the priced one. What the factory builds from, and
-  // the only one of the two that carries no prices at all.
+  // The SPECIFICATION: what the factory builds from, and the one of the two
+  // that carries no prices at all. The priced order is its own download below.
   const document = await renderSupplierDocument(parsed.data.poId, 'specification')
+  if (!document.ok) return { ok: false, error: t.errNoDocument }
+  return document
+}
+
+/**
+ * The PRICED accounting order, -3, as a second download beside the
+ * specification.
+ *
+ * Jozef at the factory, 18 Sep 2026, on his first order through the Hub: "The
+ * order is very unclear, it does not contain prices." Dean the same day: "I
+ * think the priced PO and the manufacturing PO can be two separate downloads
+ * for them then in their hub easy fix no need to send another email."
+ *
+ * The June rule from Juraj, that the people on the floor build from a document
+ * with no prices on it, still holds for the -1 above. This is the accounting
+ * copy the manufacturer's office asked for, and it is the same gate: their
+ * session, their capability, their order.
+ */
+export async function downloadFactoryPricedOrderPdf(input: { poId: string }): Promise<FactoryPdfResult> {
+  const { t } = await factoryStrings()
+  const parsed = PoId.safeParse(input)
+  if (!parsed.success) return { ok: false, error: t.errInvalidOrder }
+
+  const gated = await gate(parsed.data.poId, 'factory.view', t)
+  if (!gated.ok) return { ok: false, error: gated.error }
+
+  const document = await renderSupplierDocument(parsed.data.poId, 'priced')
   if (!document.ok) return { ok: false, error: t.errNoDocument }
   return document
 }

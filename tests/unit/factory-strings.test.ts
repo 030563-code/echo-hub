@@ -84,6 +84,7 @@ describe('the two languages are complete and actually different', () => {
     expect(sk.confirmOrder).toBe('Potvrdiť objednávku')
     expect(sk.step3Button).toBe('Výroba dokončená')
     expect(sk.step1Button).toBe('Stiahnuť objednávku (PDF)')
+    expect(sk.step1PricedButton).toBe('Stiahnuť objednávku s cenami (PDF)')
     expect(strings('en').confirmOrder).toBe('Confirm purchase order')
   })
 })

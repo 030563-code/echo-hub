@@ -44,6 +44,7 @@ import { buildTransportOrderPdf } from '@/lib/transport-order-pdf'
 import { loadCargoRequest } from '@/lib/cargo-request-store'
 import { displayPoNumber, sroDocumentNumber } from '@/lib/po-number'
 import { entityLabel } from '@/lib/depot-constants'
+import { supplierDocumentDate } from '@/lib/supplier-document-date'
 
 /**
  * The three documents behind one s.r.o. order.
@@ -133,13 +134,23 @@ export async function renderSupplierDocument(
       ? { name: supplierRow.name, address: addressLines, taxNumber: supplierRow.tax_number ?? undefined }
       : undefined
 
-  const today = new Date().toISOString().slice(0, 10)
+  // The order is dated the day it was SENT, on both the specification and the
+  // priced order, so it reads the same however many times it is downloaded.
+  // An unsent order has no send yet and shows today, which is what a draft is.
+  // Dean, 18 Sep 2026: "Fix the order date so it is the Date the PO was sent
+  // not just todays date."
+  const manufacturing = await admin
+    .from('po_manufacturing')
+    .select('sent_at')
+    .eq('po_id', poId)
+    .maybeSingle<{ sent_at: string | null }>()
+  const documentDate = supplierDocumentDate(manufacturing.data?.sent_at, new Date())
 
   if (kind === 'priced') {
     // -3, derived from the Group order's number. An order raised before the
     // scheme has no derivable number, so it keeps the one it carries.
     const number = sroDocumentNumber(group?.po_number, 'Accounting') ?? po.po_number
-    const document = buildBamidaPo(bom, today, supplier, number)
+    const document = buildBamidaPo(bom, documentDate, supplier, number)
     if (document.lines.length === 0) return { ok: false, reason: 'no_lines' }
     const pdf = await buildBamidaPoPdf(document)
     return {
@@ -167,7 +178,7 @@ export async function renderSupplierDocument(
   // Whether it is confirmed, and who by, is on the order page and in the editor.
   const spec = specFromDraft(document.draft, {
     specNumber: po.po_number ?? '',
-    date: today,
+    date: documentDate,
     supplier: supplier ?? DEFAULT_SUPPLIER,
     buyer: BUYER,
     printing: STANDARD_PRINTING,

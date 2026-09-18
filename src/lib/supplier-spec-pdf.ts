@@ -26,6 +26,7 @@
 
 import type { SupplierSpec } from '@/lib/supplier-spec'
 import { registerUnicodeFont } from '@/lib/pdf-font'
+import { drawEbLogo } from '@/lib/eb-logo'
 
 const qty = (v: number) => (Number.isInteger(v) ? String(v) : String(Number(v.toFixed(3))))
 
@@ -79,6 +80,10 @@ export async function buildSupplierSpecPdf(spec: SupplierSpec): Promise<import('
   }
 
   // ---------------------------------------------------------------- heading
+  // The wordmark sits in the top-left corner, clear of the centred title: 40mm
+  // wide ends at 54mm and the title starts past 75mm. Dean, 18 Sep 2026: "Add
+  // the echobarrier logo to the PO for branding".
+  drawEbLogo(doc, MARGIN, 8, 40)
   set(16, 'bold')
   doc.text('OBJEDNÁVKOVÝ LIST', PAGE_W / 2, 16, { align: 'center', maxWidth: CONTENT_W })
   set(10, 'bold')

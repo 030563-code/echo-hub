@@ -14,6 +14,7 @@
 
 import type { BamidaPo } from '@/lib/bamida-po'
 import { registerUnicodeFont } from '@/lib/pdf-font'
+import { drawEbLogo } from '@/lib/eb-logo'
 
 const eur2 = (v: number) => v.toLocaleString('en-GB', { minimumFractionDigits: 2 })
 
@@ -28,6 +29,9 @@ export async function buildBamidaPoPdf(bamida: BamidaPo): Promise<import('jspdf'
   const W = doc.internal.pageSize.width
   const priced = bamida.priced
 
+  // Same corner and size as the -1 specification, so the two documents the
+  // factory downloads side by side carry the same mark. Dean, 18 Sep 2026.
+  drawEbLogo(doc, 14, 8, 40)
   doc.setFont(font, 'bold')
   doc.setFontSize(16)
   // NOT "OBJEDNÁVKOVÝ LIST" any more. That is the name of the -1 specification
