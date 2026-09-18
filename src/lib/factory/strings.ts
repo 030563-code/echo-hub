@@ -131,7 +131,7 @@ export interface FactoryStrings {
   step3Yes: string
   step3No: string
 
-  // Their own material feed
+  // Their own material stock, from the API they gave us
   stockTitle: string
   stockIntro: string
   stockUpdated: string
@@ -251,7 +251,7 @@ const en: FactoryStrings = {
   orderHasNoLines: 'This order has no lines.',
   shortagesTitle: 'Materials your system showed as low',
   shortagesIntro:
-    'When we sent this order your stock feed suggested these might be short. Tell us if that stops you building it.',
+    'When we sent this order your stock API suggested these might be short. Tell us if that stops you building it.',
   thMaterial: 'Material',
   thNeeded: 'Needed',
   thInStock: 'In stock',
@@ -291,13 +291,13 @@ const en: FactoryStrings = {
   stockTitle: 'Stock',
   stockUnchangedSince: 'Unchanged since {date}.',
   stockFrozen:
-    'Your stock feed has sent us the same figures since {date}. Nothing has moved in that time, which for a working factory means the feed has stopped updating. We are raising it with you separately.',
+    'Your stock API has sent us the same figures since {date}. Nothing has moved in that time, which for a working factory means the API has stopped updating. We are raising it with you separately.',
   capabilityTitle: 'What you can build',
   capabilityIntro:
-    'For each product: how many you could build from the materials in your stock, and how many we expect to need. Worked out overnight from your stock feed and our bill of materials.',
+    'For each product: how many you could build from the materials in your stock, and how many we expect to need. Worked out overnight from your stock API and our bill of materials.',
   capabilityRun: 'Calculated {date}.',
   capabilityFrozen:
-    'These figures rest on your stock feed, which has not changed since {date}. Treat them as out of date until it moves. No low-stock notice will be sent while that is the case.',
+    'These figures rest on your stock API, which has not changed since {date}. Treat them as out of date until it moves. No low-stock notice will be sent while that is the case.',
   colCapability: 'You can build',
   colCappedBy: 'Limited by',
   colRequirement: 'We will need',
@@ -309,26 +309,26 @@ const en: FactoryStrings = {
   emptyCapability: 'No product can be calculated yet.',
 
   bdBack: 'Back to stock',
-  bdIntro: 'Every material this product uses, against the quantity in your stock list. Your numbers and your bill of materials, nothing else.',
+  bdIntro: 'Every material this product uses, against the quantity in your stock API. Your numbers and your bill of materials, nothing else.',
   bdRule: 'Needed = per unit × {qty} + per pallet × {pallets} pallets, at {palletSize} units per pallet. A pallet line counts whole pallets, so one unit over a pallet needs a full set.',
   bdRuleNoPallet: 'Needed = per unit × {qty}. We have no pallet size for this product, so lines charged per pallet are left out rather than guessed.',
   bdForRequirement: 'Worked out for the {qty} units we expect to need.',
   bdForTyped: 'Worked out for {qty} units.',
   bdForPallet: 'We are not forecasting this product yet, so this shows one pallet of {qty} units.',
   bdCeiling: '{material} runs out first. That is what limits you to {max} units.',
-  bdCeilingUnknown: 'We cannot work out from your stock list how many of these you can build.',
+  bdCeilingUnknown: 'We cannot work out from your stock API how many of these you can build.',
   bdColPerUnit: 'Per unit',
   bdColPerPallet: 'Per pallet',
-  bdNotReported: 'Not in your stock list',
+  bdNotReported: 'Not in your stock API',
   bdBinding: 'Runs out first',
-  bdNotGating: 'This one is not in your stock list, so it never limits the total.',
+  bdNotGating: 'This one is not in your stock API, so it never limits the total.',
   bdQtyLabel: 'Work it out for',
   bdQtyButton: 'Calculate',
   bdUnits: 'units',
   bdNotFound: 'We hold no bill of materials for that product.',
   colNeeded: 'Needed',
   colShortBy: 'Short by',
-  stockIntro: 'Your material stock, as your system last reported it.',
+  stockIntro: 'Your material stock, as your stock API last reported it.',
   stockUpdated: 'Updated {date}.',
   stockStale:
     'These figures are more than a day old. The overnight update has not run since, so treat them as out of date.',
@@ -406,7 +406,7 @@ const sk: FactoryStrings = {
   orderHasNoLines: 'Táto objednávka nemá žiadne položky.',
   shortagesTitle: 'Materiály, ktoré váš systém ukázal ako nedostatkové',
   shortagesIntro:
-    'Keď sme vám túto objednávku posielali, váš sklad naznačoval, že týchto materiálov môže byť málo. Dajte nám vedieť, ak vám to bráni vo výrobe.',
+    'Keď sme vám túto objednávku posielali, vaše skladové API naznačovalo, že týchto materiálov môže byť málo. Dajte nám vedieť, ak vám to bráni vo výrobe.',
   thMaterial: 'Materiál',
   thNeeded: 'Potrebné',
   thInStock: 'Na sklade',
@@ -446,13 +446,13 @@ const sk: FactoryStrings = {
   stockTitle: 'Sklad',
   stockUnchangedSince: 'Bez zmeny od {date}.',
   stockFrozen:
-    'Váš skladový prehľad nám posiela rovnaké údaje od {date}. Odvtedy sa nič nezmenilo, čo pri fungujúcej výrobe znamená, že prehľad sa prestal aktualizovať. Riešime to s vami samostatne.',
+    'Vaše skladové API nám posiela rovnaké údaje od {date}. Odvtedy sa nič nezmenilo, čo pri fungujúcej výrobe znamená, že API sa prestalo aktualizovať. Riešime to s vami samostatne.',
   capabilityTitle: 'Čo dokážete vyrobiť',
   capabilityIntro:
-    'Pri každom produkte: koľko kusov by ste dokázali vyrobiť z materiálu na vašom sklade a koľko kusov predpokladáme, že budeme potrebovať. Počíta sa každú noc z vášho skladového prehľadu a našich kusovníkov.',
+    'Pri každom produkte: koľko kusov by ste dokázali vyrobiť z materiálu na vašom sklade a koľko kusov predpokladáme, že budeme potrebovať. Počíta sa každú noc z vášho skladového API a našich kusovníkov.',
   capabilityRun: 'Vypočítané {date}.',
   capabilityFrozen:
-    'Tieto čísla vychádzajú z vášho skladového prehľadu, ktorý sa od {date} nezmenil. Považujte ich za neaktuálne, kým sa neaktualizuje. Upozornenie na nízke zásoby sa dovtedy neodosiela.',
+    'Tieto čísla vychádzajú z vášho skladového API, ktoré sa od {date} nezmenilo. Považujte ich za neaktuálne, kým sa neaktualizuje. Upozornenie na nízke zásoby sa dovtedy neodosiela.',
   colCapability: 'Dokážete vyrobiť',
   colCappedBy: 'Obmedzuje',
   colRequirement: 'Budeme potrebovať',
@@ -464,26 +464,26 @@ const sk: FactoryStrings = {
   emptyCapability: 'Zatiaľ nie je možné vypočítať žiadny produkt.',
 
   bdBack: 'Späť na sklad',
-  bdIntro: 'Všetok materiál, ktorý tento produkt spotrebuje, oproti množstvu vo vašom zozname zásob. Vaše čísla a váš kusovník, nič iné.',
+  bdIntro: 'Všetok materiál, ktorý tento produkt spotrebuje, oproti množstvu vo vašom skladovom API. Vaše čísla a váš kusovník, nič iné.',
   bdRule: 'Potrebné = na kus × {qty} + na paletu × {pallets} paliet, pri {palletSize} kusoch na paletu. Paletová položka sa počíta na celé palety, takže jeden kus navyše potrebuje celú sadu.',
   bdRuleNoPallet: 'Potrebné = na kus × {qty}. Pre tento produkt nemáme veľkosť palety, preto položky účtované na paletu vynechávame a neodhadujeme ich.',
   bdForRequirement: 'Prepočítané na {qty} kusov, ktoré predpokladáme, že budeme potrebovať.',
   bdForTyped: 'Prepočítané na {qty} kusov.',
   bdForPallet: 'Tento produkt zatiaľ neprognózujeme, preto je tu jedna paleta, teda {qty} kusov.',
   bdCeiling: 'Najskôr dôjde {material}. To vás obmedzuje na {max} kusov.',
-  bdCeilingUnknown: 'Z vášho zoznamu zásob sa nedá vypočítať, koľko kusov tohto produktu dokážete vyrobiť.',
+  bdCeilingUnknown: 'Z vášho skladového API sa nedá vypočítať, koľko kusov tohto produktu dokážete vyrobiť.',
   bdColPerUnit: 'Na kus',
   bdColPerPallet: 'Na paletu',
-  bdNotReported: 'Nie je vo vašom zozname zásob',
+  bdNotReported: 'Nie je vo vašom skladovom API',
   bdBinding: 'Dôjde najskôr',
-  bdNotGating: 'Táto položka nie je vo vašom zozname zásob, preto nikdy neobmedzuje celkový počet.',
+  bdNotGating: 'Táto položka nie je vo vašom skladovom API, preto nikdy neobmedzuje celkový počet.',
   bdQtyLabel: 'Prepočítať pre',
   bdQtyButton: 'Prepočítať',
   bdUnits: 'kusov',
   bdNotFound: 'Na tento produkt nemáme kusovník.',
   colNeeded: 'Potrebné',
   colShortBy: 'Chýba',
-  stockIntro: 'Váš skladový materiál podľa posledných údajov z vášho systému.',
+  stockIntro: 'Váš skladový materiál podľa posledných údajov z vášho skladového API.',
   stockUpdated: 'Aktualizované {date}.',
   stockStale:
     'Tieto údaje sú staršie ako jeden deň. Nočná aktualizácia odvtedy neprebehla, preto ich považujte za neaktuálne.',
