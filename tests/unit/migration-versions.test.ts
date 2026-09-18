@@ -30,6 +30,17 @@ const ROLLBACK = join(MIGRATIONS, 'rollback')
  */
 const PARKED = ['20260828000000', '20260902003000']
 
+/**
+ * Rollbacks became the habit on 10 Sep 2026 and every migration since carries
+ * one. The 69 older files predate it and are left alone: writing a down
+ * migration for a schema nobody remembers is how you get a rollback that does
+ * more damage than the thing it undoes.
+ *
+ * Caught by a reviewer on 18 Sep 2026, after the only migration in nine without
+ * a rollback shipped to production.
+ */
+const ROLLBACKS_EXPECTED_FROM = '20260910000000'
+
 function sqlFiles(dir: string): string[] {
   return readdirSync(join(process.cwd(), dir))
     .filter((f) => f.endsWith('.sql'))
@@ -74,5 +85,26 @@ describe('migration versions', () => {
       const down = `${file.slice(0, -4)}.down.sql`
       expect(existsSync(join(process.cwd(), ROLLBACK, down)), `missing ${down}`).toBe(true)
     }
+  })
+})
+
+describe('every recent migration can be undone', () => {
+  it('has a matching .down.sql', () => {
+    const missing = sqlFiles(MIGRATIONS)
+      .filter((f) => version(f) >= ROLLBACKS_EXPECTED_FROM)
+      .filter((f) => !existsSync(join(process.cwd(), ROLLBACK, f.replace(/\.sql$/, '.down.sql'))))
+    expect(missing, `no rollback for: ${missing.join(', ')}`).toEqual([])
+  })
+
+  it('has no rollback for a migration that does not exist', () => {
+    // pending/ counts: those two are written and waiting to be re-timed, and
+    // their rollbacks were written with them.
+    const applied = new Set(
+      [...sqlFiles(MIGRATIONS), ...sqlFiles(PENDING)].map((f) => f.replace(/\.sql$/, '')),
+    )
+    const orphans = sqlFiles(ROLLBACK)
+      .map((f) => f.replace(/\.down\.sql$/, ''))
+      .filter((base) => !applied.has(base))
+    expect(orphans, `rollback with no migration: ${orphans.join(', ')}`).toEqual([])
   })
 })
