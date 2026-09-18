@@ -56,6 +56,38 @@ export function isUSDepot(value: unknown): value is USDepot {
   return value === 'US-BAL' || value === 'US-SBD'
 }
 
+export const CA_DEPOTS = ['CA-HAM'] as const
+export type CADepot = (typeof CA_DEPOTS)[number]
+
+export function isCADepot(value: unknown): value is CADepot {
+  return value === 'CA-HAM'
+}
+
+/**
+ * Every depot the invoicing module can raise an invoice from.
+ *
+ * 🔴 `USDepot` IS DELIBERATELY NOT WIDENED. Two kinds of code use a depot here
+ * and they are not interchangeable:
+ *
+ *   - Shared machinery (the draft builder, the editor's ship-from picker, the
+ *     printed document, the line schema) works for any organisation and takes
+ *     `InvoiceDepot`.
+ *   - The TaxJar paths (`tax-mapping.ts`, the Tax Setup page, the filing
+ *     transaction id) are US-only by nature, because TaxJar is the US sales-tax
+ *     engine and Canada does not go near it. Those keep `USDepot`, so the type
+ *     checker refuses a Canadian depot at the door rather than letting one
+ *     reach a nexus lookup that would answer for the wrong country.
+ *
+ * Widening `USDepot` itself would have been one character of work and would
+ * have removed exactly the guard that makes this safe.
+ */
+export const INVOICE_DEPOTS = [...US_DEPOTS, ...CA_DEPOTS] as const
+export type InvoiceDepot = (typeof INVOICE_DEPOTS)[number]
+
+export function isInvoiceDepot(value: unknown): value is InvoiceDepot {
+  return isUSDepot(value) || isCADepot(value)
+}
+
 /** Fitting kits (and their split components) always dispatch from Baltimore,
  *  regardless of where the barriers ship from. */
 export const KIT_SHIP_FROM: USDepot = 'US-BAL'
@@ -63,9 +95,11 @@ export const KIT_SHIP_FROM: USDepot = 'US-BAL'
 export interface DepotFromAddress {
   street: string
   city: string
+  /** US state code, or Canadian province code. */
   state: string
+  /** US zip, or Canadian postal code. */
   zip: string
-  country: 'US'
+  country: 'US' | 'CA'
 }
 
 /**
@@ -76,7 +110,7 @@ export interface DepotFromAddress {
  * Each zip was verified against TaxJar GET /v2/rates/{zip}: 20794 resolves to
  * MD (6%), 91730 to Rancho Cucamonga, San Bernardino county, CA (7.75%).
  */
-export const DEPOT_FROM_ADDRESSES: Record<USDepot, DepotFromAddress | null> = {
+export const DEPOT_FROM_ADDRESSES: Record<InvoiceDepot, DepotFromAddress | null> = {
   'US-BAL': {
     street: 'Capitol Warehouse, 8125 Stayton Drive',
     city: 'Jessup',
@@ -91,6 +125,17 @@ export const DEPOT_FROM_ADDRESSES: Record<USDepot, DepotFromAddress | null> = {
     zip: '91730',
     country: 'US',
   },
+  /**
+   * 🔴 NULL UNTIL DEAN SUPPLIES THE HAMILTON ADDRESS. Deliberately not guessed.
+   *
+   * null is a supported value here, not a gap: the editor already lists depots
+   * with no dispatch address and warns about them, and the printed document
+   * falls back rather than inventing a place. A plausible-looking invented
+   * address would print on a customer's invoice and be believed, which is the
+   * worse failure. Canada does not use these as TaxJar from_ fields (it never
+   * calls TaxJar); this feeds the "Despatched from" line on the PDF.
+   */
+  'CA-HAM': null,
 }
 
 /**

@@ -7,13 +7,14 @@ import { resolveRecipients } from '@/lib/email-recipients'
 import { readyNotifyRecipients } from '@/app/actions/purchase-orders/notify-ready-for-shipment'
 import { loadSendContacts } from '@/lib/send-contacts'
 import { feedIsFrozen } from '@/lib/factory/status'
-import type { BomComponentRow, BomProductRow } from '@/lib/mrp/materials'
+import type { BomComponentRow } from '@/lib/mrp/materials'
 import {
   alertSignature,
   anythingShort,
   materialNeeds,
   productCapabilities,
   type CapabilityStatusRow,
+  type FactoryBomProduct,
   type SkuMapRow,
 } from '@/lib/factory/capability-math'
 
@@ -94,12 +95,12 @@ export async function POST(request: Request) {
       await Promise.all([
         admin
           .from('mrp_buffer_status_daily')
-          .select(
-            'sku, run_date, max_buildable, materials_binding_code, materials_binding_desc, action_qty, firm_demand, qualified_spikes, on_hand, in_transit, on_order, flags',
-          )
+          // One column of ours, and only because it says what to build. Our flow
+          // position never leaves the database on a factory path.
+          .select('sku, run_date, action_qty, flags')
           .eq('run_date', latest.run_date)
           .in('sku', hubSkus),
-        admin.from('mrp_bom_product').select('fg_code, pallet_size').in('fg_code', fgCodes),
+        admin.from('mrp_bom_product').select('fg_code, fg_label, pallet_size').in('fg_code', fgCodes),
         admin
           .from('mrp_bom_component')
           .select('fg_code, component_code, component_desc, qty, basis, line_type, is_gating')
@@ -114,18 +115,15 @@ export async function POST(request: Request) {
     const stockByCode = new Map(stock.map((s) => [s.ns_number, Math.max(0, Number(s.quantity ?? 0))]))
     const stockRow = new Map(stock.map((s) => [s.ns_number, s]))
 
-    const products = productCapabilities(
-      (statusRows ?? []) as unknown as CapabilityStatusRow[],
-      skuMap,
-      names,
-    )
-    const needs = materialNeeds(
-      products,
-      skuMap,
-      (bomProducts ?? []) as BomProductRow[],
-      (components ?? []) as BomComponentRow[],
+    const products = productCapabilities({
+      products: (bomProducts ?? []) as FactoryBomProduct[],
+      components: (components ?? []) as BomComponentRow[],
       stockByCode,
-    )
+      skuMap,
+      status: (statusRows ?? []) as unknown as CapabilityStatusRow[],
+      names,
+    })
+    const needs = materialNeeds(products, (components ?? []) as BomComponentRow[], stockByCode)
 
     const shortProducts = products.filter((p) => p.short)
     const shortMaterials = Array.from(needs.entries())

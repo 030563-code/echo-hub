@@ -151,8 +151,29 @@ export interface FactoryStrings {
   capShort: string
   capUnknown: string
   capProvisional: string
-  capDetail: string
+  capNoForecast: string
   emptyCapability: string
+
+  // The per-product breakdown: their materials, their stock, one number of ours
+  bdBack: string
+  bdIntro: string
+  bdRule: string
+  bdRuleNoPallet: string
+  bdForRequirement: string
+  bdForTyped: string
+  bdForPallet: string
+  bdCeiling: string
+  bdCeilingUnknown: string
+  bdColPerUnit: string
+  bdColPerPallet: string
+  bdColHave: string
+  bdNotReported: string
+  bdBinding: string
+  bdNotGating: string
+  bdQtyLabel: string
+  bdQtyButton: string
+  bdUnits: string
+  bdNotFound: string
   colNeeded: string
   colShortBy: string
   colCode: string
@@ -285,8 +306,28 @@ const en: FactoryStrings = {
   capShort: 'Not enough material',
   capUnknown: 'Cannot be calculated',
   capProvisional: 'Estimate: the bill of materials for this product is not confirmed yet.',
-  capDetail: 'Firm orders {firm}, weighted quotes {pipeline}, in stock {onHand}, in transit {inTransit}, on order {onOrder}.',
+  capNoForecast: 'We are not forecasting this product yet.',
   emptyCapability: 'No product can be calculated yet.',
+
+  bdBack: 'Back to stock',
+  bdIntro: 'Every material this product uses, against what your system reports on the shelf. Your figures and your bill of materials, nothing else.',
+  bdRule: 'Needed = per unit × {qty} + per pallet × {pallets} pallets, at {palletSize} units per pallet. Pallet lines are charged whole, so one unit over a pallet costs a full set.',
+  bdRuleNoPallet: 'Needed = per unit × {qty}. We have no pallet size for this product, so lines charged per pallet are left out rather than guessed.',
+  bdForRequirement: 'Worked out for the {qty} units we expect to need.',
+  bdForTyped: 'Worked out for {qty} units.',
+  bdForPallet: 'We are not forecasting this product yet, so this shows one pallet of {qty} units.',
+  bdCeiling: '{material} runs out first. That is what caps you at {max} units.',
+  bdCeilingUnknown: 'We cannot work out a ceiling for this product from your feed.',
+  bdColPerUnit: 'Per unit',
+  bdColPerPallet: 'Per pallet',
+  bdColHave: 'On the shelf',
+  bdNotReported: 'Not in your feed',
+  bdBinding: 'Runs out first',
+  bdNotGating: 'Your feed does not report this one, so it never limits the total.',
+  bdQtyLabel: 'Work it out for',
+  bdQtyButton: 'Calculate',
+  bdUnits: 'units',
+  bdNotFound: 'We hold no bill of materials for that product.',
   colNeeded: 'Needed',
   colShortBy: 'Short by',
   stockIntro: 'Your material stock, as your system last reported it.',
@@ -421,8 +462,28 @@ const sk: FactoryStrings = {
   capShort: 'Nedostatok materiálu',
   capUnknown: 'Nedá sa vypočítať',
   capProvisional: 'Odhad: kusovník tohto produktu ešte nie je potvrdený.',
-  capDetail: 'Záväzné objednávky {firm}, vážené ponuky {pipeline}, na sklade {onHand}, na ceste {inTransit}, objednané {onOrder}.',
+  capNoForecast: 'Tento produkt zatiaľ neprognózujeme.',
   emptyCapability: 'Zatiaľ nie je možné vypočítať žiadny produkt.',
+
+  bdBack: 'Späť na sklad',
+  bdIntro: 'Všetok materiál, ktorý tento produkt spotrebuje, oproti stavu vo vašom systéme. Vaše čísla a váš kusovník, nič iné.',
+  bdRule: 'Potrebné = na kus × {qty} + na paletu × {pallets} paliet, pri {palletSize} kusoch na paletu. Paletové položky sa počítajú celé, takže jeden kus navyše stojí celú sadu.',
+  bdRuleNoPallet: 'Potrebné = na kus × {qty}. Pre tento produkt nemáme veľkosť palety, preto položky účtované na paletu vynechávame a neodhadujeme ich.',
+  bdForRequirement: 'Prepočítané na {qty} kusov, ktoré predpokladáme, že budeme potrebovať.',
+  bdForTyped: 'Prepočítané na {qty} kusov.',
+  bdForPallet: 'Tento produkt zatiaľ neprognózujeme, preto je tu jedna paleta, teda {qty} kusov.',
+  bdCeiling: 'Najskôr dôjde {material}. To vás obmedzuje na {max} kusov.',
+  bdCeilingUnknown: 'Pre tento produkt sa z vášho prehľadu nedá vypočítať strop.',
+  bdColPerUnit: 'Na kus',
+  bdColPerPallet: 'Na paletu',
+  bdColHave: 'Na sklade',
+  bdNotReported: 'Nie je vo vašom prehľade',
+  bdBinding: 'Dôjde najskôr',
+  bdNotGating: 'Túto položku váš prehľad neposiela, preto nikdy neobmedzuje celkový počet.',
+  bdQtyLabel: 'Prepočítať pre',
+  bdQtyButton: 'Prepočítať',
+  bdUnits: 'kusov',
+  bdNotFound: 'Na tento produkt nemáme kusovník.',
   colNeeded: 'Potrebné',
   colShortBy: 'Chýba',
   stockIntro: 'Váš skladový materiál podľa posledných údajov z vášho systému.',

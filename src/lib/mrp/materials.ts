@@ -86,7 +86,7 @@ export function requiredFor(
 export function materialsCeiling(
   product: BomProductRow,
   components: BomComponentRow[],
-  stockByCode: Map<string, number>
+  stockByCode: ReadonlyMap<string, number>
 ): MaterialsCeiling {
   const palletSize = product.pallet_size && product.pallet_size > 0 ? product.pallet_size : null;
   const gating = components.filter((c) => c.is_gating);
@@ -210,7 +210,7 @@ export interface MaterialShortages {
 export function shortagesFor(
   product: BomProductRow,
   components: BomComponentRow[],
-  stockByCode: Map<string, number>,
+  stockByCode: ReadonlyMap<string, number>,
   qty: number
 ): MaterialShortages {
   const palletSize = product.pallet_size && product.pallet_size > 0 ? product.pallet_size : null;

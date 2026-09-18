@@ -2,15 +2,21 @@
 
 // page-state: view factory:capability (BoardTable keeps its own search and sort)
 
+import Link from 'next/link'
 import type { ColumnDef } from '@tanstack/react-table'
 import BoardTable from '@/components/board/BoardTable'
-import { fill, strings, type FactoryLocale } from '@/lib/factory/strings'
+import { strings, type FactoryLocale } from '@/lib/factory/strings'
 import type { FactoryProductCapability } from '@/lib/factory/capability-math'
 
 /**
  * One row per product: what they can build, what caps it, what we will need,
  * and whether that adds up. No SKU column: EBH9NA is our database code and
  * means nothing to a factory, so the product name carries the row.
+ *
+ * 🔴 The requirement is ONE number. It used to print our firm orders, weighted
+ * quotes, depot stock, in transit and on order underneath it, which is our
+ * commercial position and none of their business. Dean, 18 Sep 2026. The
+ * breakdown behind the name is all theirs: their parts list and their shelf.
  */
 function columns(locale: FactoryLocale): ColumnDef<FactoryProductCapability, unknown>[] {
   const t = strings(locale)
@@ -21,7 +27,12 @@ function columns(locale: FactoryLocale): ColumnDef<FactoryProductCapability, unk
       header: t.thProduct,
       cell: ({ row }) => (
         <div>
-          <span className="font-medium text-gray-900">{row.original.productName}</span>
+          <Link
+            href={`/factory/stock/${encodeURIComponent(row.original.fgCode)}`}
+            className="font-medium text-echo-orange underline hover:no-underline"
+          >
+            {row.original.productName}
+          </Link>
           {row.original.provisional && (
             <p className="mt-0.5 text-xs text-gray-500">{t.capProvisional}</p>
           )}
@@ -53,24 +64,17 @@ function columns(locale: FactoryLocale): ColumnDef<FactoryProductCapability, unk
     {
       accessorKey: 'requirement',
       header: t.colRequirement,
-      cell: ({ row }) => (
-        <div>
+      cell: ({ row }) =>
+        row.original.requirement === null ? (
+          <span className="text-xs text-gray-500">{t.capNoForecast}</span>
+        ) : (
           <span className="tabular-nums font-semibold text-gray-900">{n(row.original.requirement)}</span>
-          <p className="mt-0.5 whitespace-normal text-xs text-gray-500">
-            {fill(t.capDetail, {
-              firm: n(row.original.firmDemand),
-              pipeline: n(row.original.weightedPipeline),
-              onHand: n(row.original.onHand),
-              inTransit: n(row.original.inTransit),
-              onOrder: n(row.original.onOrder),
-            })}
-          </p>
-        </div>
-      ),
+        ),
     },
     {
       id: 'status',
-      accessorFn: (row) => (row.short ? 'short' : row.maxBuildable === null ? 'unknown' : 'ok'),
+      accessorFn: (row) =>
+        row.short ? 'short' : row.requirement === null || row.maxBuildable === null ? 'unknown' : 'ok',
       header: t.colStatus,
       cell: ({ row }) => {
         const p = row.original
@@ -83,6 +87,8 @@ function columns(locale: FactoryLocale): ColumnDef<FactoryProductCapability, unk
             </span>
           )
         }
+        // No forecast is not a clean bill of health, so it says nothing at all.
+        if (p.requirement === null) return <span className="text-gray-400">—</span>
         if (p.maxBuildable === null) {
           return <span className="text-xs font-medium text-gray-500">{t.capUnknown}</span>
         }
