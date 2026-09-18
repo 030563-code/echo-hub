@@ -27,8 +27,17 @@ export const dynamic = 'force-dynamic'
  *
  * Two banners, for two different failures. Stale means the sync has not run;
  * frozen means it ran and nothing moved, which for a working factory means the
- * feed has stopped. Frozen also hides the product table, because a capability
- * figure on a frozen number is a confident lie.
+ * feed has stopped.
+ *
+ * 🔴 A FROZEN FEED WARNS, IT DOES NOT HIDE. The first cut of this page removed
+ * the product table entirely while the feed was frozen, on the reasoning that a
+ * capability figure resting on a six-week-old number is a confident lie. It is,
+ * but hiding it is worse: the feed has been frozen since 6 August, so the
+ * feature shipped invisible, and a reader cannot act on a table they cannot
+ * see. A person reading a figure under a red banner that names the date can
+ * judge it. That is the difference between this screen and the alert email,
+ * which still refuses to send off a frozen feed, because nobody is there to
+ * read the warning on it.
  */
 export default async function FactoryStockPage() {
   await requireCapability(['factory.view', 'factory.update'])
@@ -39,26 +48,34 @@ export default async function FactoryStockPage() {
   const t = strings(locale)
   const stale = feedIsStale(newestSyncAt)
   const frozen = rows.length > 0 && feedIsFrozen(newestChangeAt)
-  const capability = frozen ? null : await loadFactoryCapability(rows)
+  const capability = await loadFactoryCapability(rows)
 
-  const lines = rows.map((row) => ({ ...row, need: capability?.needs.get(row.ns_number) ?? null }))
+  const lines = rows.map((row) => ({ ...row, need: capability.needs.get(row.ns_number) ?? null }))
   const longDate = (v: string | null) =>
     factoryDate(v, locale, { day: 'numeric', month: 'long', year: 'numeric' })
 
   return (
     <div>
-      {!frozen && (
-        <section className="mb-10">
-          <h1 className="text-2xl font-bold text-gray-900">{t.capabilityTitle}</h1>
-          <p className="mt-1 text-sm text-gray-600">
-            {t.capabilityIntro}
-            {capability?.runDate && <> {fill(t.capabilityRun, { date: longDate(capability.runDate) })}</>}
-          </p>
-          <div className="mt-4">
-            <FactoryCapabilityTable rows={capability?.products ?? []} locale={locale} />
+      <section className="mb-10">
+        <h1 className="text-2xl font-bold text-gray-900">{t.capabilityTitle}</h1>
+        <p className="mt-1 text-sm text-gray-600">
+          {t.capabilityIntro}
+          {capability.runDate && <> {fill(t.capabilityRun, { date: longDate(capability.runDate) })}</>}
+        </p>
+
+        {frozen && (
+          <div className="mt-4 flex items-start gap-3 rounded-lg border-l-4 border-red-400 bg-red-50 p-4">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+            <p className="text-sm text-red-900">
+              {fill(t.capabilityFrozen, { date: longDate(newestChangeAt) })}
+            </p>
           </div>
-        </section>
-      )}
+        )}
+
+        <div className="mt-4">
+          <FactoryCapabilityTable rows={capability.products} locale={locale} />
+        </div>
+      </section>
 
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900">{t.stockTitle}</h2>
@@ -84,10 +101,7 @@ export default async function FactoryStockPage() {
       {frozen && (
         <div className="mb-6 flex items-start gap-3 rounded-lg border-l-4 border-red-400 bg-red-50 p-4">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
-          <div className="text-sm text-red-900">
-            <p>{fill(t.stockFrozen, { date: longDate(newestChangeAt) })}</p>
-            <p className="mt-2">{fill(t.capabilityFrozen, { date: longDate(newestChangeAt) })}</p>
-          </div>
+          <p className="text-sm text-red-900">{fill(t.stockFrozen, { date: longDate(newestChangeAt) })}</p>
         </div>
       )}
 

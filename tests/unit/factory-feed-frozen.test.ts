@@ -39,10 +39,16 @@ describe('feedIsFrozen', () => {
 describe('the factory stock page shows the change date, not the sync date', () => {
   const read = (f: string) => readFileSync(join(process.cwd(), f), 'utf8')
 
-  it('hides the capability table and refuses the alert while the feed is frozen', () => {
+  it('warns on the screen but still refuses to email while the feed is frozen', () => {
+    // 🔴 The screen SHOWS the figures under a banner naming the date; it used
+    // to hide them, which shipped the feature invisible because the feed has
+    // been frozen since 6 Aug. A person can judge a marked figure. The alert
+    // still refuses, because nobody is there to read a warning on an email.
     const page = read('src/app/(dashboard)/factory/stock/page.tsx')
     expect(page).toContain('feedIsFrozen(newestChangeAt)')
-    expect(page).toContain('const capability = frozen ? null : await loadFactoryCapability(rows)')
+    expect(page).toContain('const capability = await loadFactoryCapability(rows)')
+    expect(page).not.toContain('frozen ? null :')
+    expect(page).toContain('t.capabilityFrozen')
     const route = read('src/app/api/mrp/factory-alert/route.ts')
     expect(route).toContain("reason: 'feed_frozen'")
     // The alert route is a machine endpoint and has to be on the allowlist, or

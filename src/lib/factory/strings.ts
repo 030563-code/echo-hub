@@ -277,7 +277,7 @@ const en: FactoryStrings = {
     'For each product: how many you could build from the materials in your stock, and how many we expect to need. Worked out overnight from your stock feed and our bill of materials.',
   capabilityRun: 'Calculated {date}.',
   capabilityFrozen:
-    'Your stock feed has not changed since {date}, so these figures cannot be trusted and no low-stock notice will be sent until it moves.',
+    'These figures rest on your stock feed, which has not changed since {date}. Treat them as out of date until it moves. No low-stock notice will be sent while that is the case.',
   colCapability: 'You can build',
   colCappedBy: 'Limited by',
   colRequirement: 'We will need',
@@ -413,7 +413,7 @@ const sk: FactoryStrings = {
     'Pri každom produkte: koľko kusov by ste dokázali vyrobiť z materiálu na vašom sklade a koľko kusov predpokladáme, že budeme potrebovať. Počíta sa každú noc z vášho skladového prehľadu a našich kusovníkov.',
   capabilityRun: 'Vypočítané {date}.',
   capabilityFrozen:
-    'Váš skladový prehľad sa od {date} nezmenil, preto sa tieto čísla nedajú považovať za spoľahlivé a upozornenie na nízke zásoby sa neodošle, kým sa neaktualizuje.',
+    'Tieto čísla vychádzajú z vášho skladového prehľadu, ktorý sa od {date} nezmenil. Považujte ich za neaktuálne, kým sa neaktualizuje. Upozornenie na nízke zásoby sa dovtedy neodosiela.',
   colCapability: 'Dokážete vyrobiť',
   colCappedBy: 'Obmedzuje',
   colRequirement: 'Budeme potrebovať',
