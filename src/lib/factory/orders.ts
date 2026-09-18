@@ -146,3 +146,66 @@ export async function factoryOrderVisible(poId: string): Promise<boolean> {
   }
   return Boolean(data)
 }
+
+/**
+ * A file somebody here ticked for the manufacturer.
+ *
+ * Jozef Šidík, 18 Sep 2026: the order document carries no previews when it
+ * includes a logo. There is no artwork field in either database, so rather than
+ * invent one, Juraj and Martin attach the file they already have and the
+ * factory downloads it from the order. Dean chose the order page over an email
+ * attachment: "then they can download it from there and there is nothing on the
+ * email attached that they might need to look for".
+ *
+ * 🔴 TWO GATES, ALWAYS BOTH. The order must be one the factory can see, and the
+ * file must be ticked. Every other attachment on a purchase order is internal
+ * (vendor invoices, costed sheets) and downloading one needs cost.view.
+ */
+export interface FactoryDocument {
+  id: string
+  filename: string
+  content_type: string | null
+  size_bytes: number | null
+  created_at: string
+}
+
+const DOCUMENT_COLUMNS = 'id, filename, content_type, size_bytes, created_at'
+
+export async function loadFactoryDocuments(poId: string): Promise<FactoryDocument[]> {
+  if (!(await factoryOrderVisible(poId))) return []
+  const { data, error } = await createAdminClient()
+    .from('po_attachments')
+    .select(DOCUMENT_COLUMNS)
+    .eq('po_id', poId)
+    .eq('share_with_manufacturer', true)
+    .order('created_at', { ascending: false })
+  if (error) {
+    console.error('loadFactoryDocuments failed', error.message)
+    return []
+  }
+  return (data ?? []) as FactoryDocument[]
+}
+
+/**
+ * The storage path of one shared file, or null. Written as its own read rather
+ * than filtering a loaded list, so the download path asks the database the same
+ * two questions the page did and cannot be handed an id from another order.
+ */
+export async function factorySharedFile(
+  poId: string,
+  attachmentId: string,
+): Promise<{ storage_path: string; filename: string } | null> {
+  if (!(await factoryOrderVisible(poId))) return null
+  const { data, error } = await createAdminClient()
+    .from('po_attachments')
+    .select('storage_path, filename')
+    .eq('id', attachmentId)
+    .eq('po_id', poId)
+    .eq('share_with_manufacturer', true)
+    .maybeSingle<{ storage_path: string; filename: string }>()
+  if (error) {
+    console.error('factorySharedFile failed', error.message)
+    return null
+  }
+  return data ?? null
+}

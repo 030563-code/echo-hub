@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { requireCapability } from '@/lib/authz'
-import { loadFactoryOrder } from '@/lib/factory/orders'
+import { loadFactoryDocuments, loadFactoryOrder } from '@/lib/factory/orders'
 import { displayPoNumber } from '@/lib/po-number'
 import { factoryStatus, factoryStatusLabel } from '@/lib/factory/status'
 import { factoryLocale } from '@/lib/factory/locale.server'
@@ -27,6 +27,9 @@ export default async function FactoryOrderPage({ params }: { params: Promise<{ i
 
   const order = await loadFactoryOrder(id)
   if (!order) notFound()
+  // Only the files somebody here ticked for them. The loader asks the same two
+  // questions the download action does.
+  const documents = await loadFactoryDocuments(id)
 
   const locale = await factoryLocale()
   const t = strings(locale)
@@ -120,6 +123,7 @@ export default async function FactoryOrderPage({ params }: { params: Promise<{ i
         estFinish={order.est_finish}
         confirmedAt={order.confirmed_at}
         finishedAt={order.finished_at}
+        documents={documents}
         locale={locale}
       />
     </div>

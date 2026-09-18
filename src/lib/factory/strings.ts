@@ -107,6 +107,8 @@ export interface FactoryStrings {
   step1Button: string
   step1PricedButton: string
   step1PricedHint: string
+  step1Files: string
+  step1FilesHint: string
   step2Title: string
   step2Confirmed: string
   step2StillEditable: string
@@ -262,6 +264,8 @@ const en: FactoryStrings = {
   step1Button: 'Download purchase order (PDF)',
   step1PricedButton: 'Download priced order (PDF)',
   step1PricedHint: 'The priced order is the same order with the agreed prices on it, for your accounts.',
+  step1Files: 'Files for this order',
+  step1FilesHint: 'Artwork and any other file we attached to this order. Opens in a new tab.',
   step2Title: 'Confirm the purchase order',
   step2Confirmed: 'Confirmed on {date}. We have your dates and a confirmation email is on its way to you.',
   step2StillEditable: 'You can still change these dates until the order is finished.',
@@ -416,6 +420,8 @@ const sk: FactoryStrings = {
   step1Button: 'Stiahnuť objednávku (PDF)',
   step1PricedButton: 'Stiahnuť objednávku s cenami (PDF)',
   step1PricedHint: 'Objednávka s cenami je tá istá objednávka s dohodnutými cenami, pre vaše účtovníctvo.',
+  step1Files: 'Súbory k tejto objednávke',
+  step1FilesHint: 'Grafika a ďalšie súbory, ktoré sme k objednávke pripojili. Otvoria sa v novej karte.',
   step1Body: 'Toto je objednávka {number}, dokument, ktorý ste predtým dostávali v prílohe e-mailu.',
   step2Title: 'Potvrďte objednávku',
   step2Confirmed: 'Potvrdené {date}. Máme vaše termíny a potvrdzovací e-mail je na ceste k vám.',

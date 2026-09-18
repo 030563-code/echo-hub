@@ -1,7 +1,7 @@
 'use server'
 
 /**
- * The five things the manufacturer may do, and nothing else.
+ * The six things the manufacturer may do, and nothing else.
  *
  * Every export of a 'use server' file is a callable endpoint, so each of these
  * stands on its own: the session, then the capability, then the shape of the
@@ -18,7 +18,7 @@
 import { z } from 'zod'
 import { getAuthorizedUser } from '@/lib/authz'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { factoryOrderVisible, loadFactoryOrder } from '@/lib/factory/orders'
+import { factoryOrderVisible, factorySharedFile, loadFactoryOrder } from '@/lib/factory/orders'
 import {
   applyManufacturingDates,
   confirmManufacturingOrder,
@@ -240,4 +240,39 @@ export async function downloadFactoryPricedOrderPdf(input: { poId: string }): Pr
   const document = await renderSupplierDocument(parsed.data.poId, 'priced')
   if (!document.ok) return { ok: false, error: t.errNoDocument }
   return document
+}
+
+/**
+ * A signed link to one file we ticked for them, good for five minutes.
+ *
+ * A link rather than bytes on purpose: artwork is what this exists for, and a
+ * browser opens a PNG in a tab. That is the "náhľad" Jozef asked for, without
+ * a preview generator, an artwork table or an asset pipeline.
+ *
+ * The bucket is private and storage.objects has no policy for a signed-in user,
+ * so the signing happens here with the service role AFTER the two gates, the
+ * same shape as the internal download in purchase-orders/attachments.ts.
+ */
+export async function getFactoryDocumentUrl(input: {
+  poId: string
+  attachmentId: string
+}): Promise<{ ok: true; url: string; filename: string } | { ok: false; error: string }> {
+  const { t } = await factoryStrings()
+  const parsed = PoId.extend({ attachmentId: z.string().uuid() }).safeParse(input)
+  if (!parsed.success) return { ok: false, error: t.errInvalidOrder }
+
+  const gated = await gate(parsed.data.poId, 'factory.view', t)
+  if (!gated.ok) return { ok: false, error: gated.error }
+
+  const file = await factorySharedFile(parsed.data.poId, parsed.data.attachmentId)
+  if (!file) return { ok: false, error: t.errNoDocument }
+
+  const { data, error } = await createAdminClient()
+    .storage.from('po-attachments')
+    .createSignedUrl(file.storage_path, 300)
+  if (error || !data) {
+    console.error('getFactoryDocumentUrl signing failed', error?.message)
+    return { ok: false, error: t.errNoDocument }
+  }
+  return { ok: true, url: data.signedUrl, filename: file.filename }
 }

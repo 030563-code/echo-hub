@@ -5,14 +5,16 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { CheckCircle2, Download } from 'lucide-react'
+import { CheckCircle2, Download, Paperclip } from 'lucide-react'
 import {
   confirmFactoryOrder,
   downloadFactoryOrderPdf,
   downloadFactoryPricedOrderPdf,
+  getFactoryDocumentUrl,
   markFactoryFinished,
   saveFactoryDates,
 } from '@/app/actions/factory/orders'
+import type { FactoryDocument } from '@/lib/factory/orders'
 import { factoryDate, fill, strings, type FactoryLocale } from '@/lib/factory/strings'
 import { saveFactoryPdf } from '@/lib/factory/save-pdf'
 
@@ -37,6 +39,7 @@ export function OrderSteps({
   estFinish,
   confirmedAt,
   finishedAt,
+  documents,
   locale,
 }: {
   poId: string
@@ -45,6 +48,7 @@ export function OrderSteps({
   estFinish: string | null
   confirmedAt: string | null
   finishedAt: string | null
+  documents: FactoryDocument[]
   locale: FactoryLocale
 }) {
   const t = strings(locale)
@@ -100,6 +104,23 @@ export function OrderSteps({
     })
   }
 
+  function openDocument(attachmentId: string) {
+    setMessage(null)
+    // Opened synchronously and filled in after, because a tab opened later is
+    // the one Safari blocks.
+    const tab = window.open('', '_blank')
+    startTransition(async () => {
+      const res = await getFactoryDocumentUrl({ poId, attachmentId })
+      if (!res.ok) {
+        tab?.close()
+        setMessage({ kind: 'error', text: res.error })
+        return
+      }
+      if (tab) tab.location.href = res.url
+      else window.open(res.url, '_blank')
+    })
+  }
+
   function finished() {
     setConfirming(false)
     setMessage(null)
@@ -133,6 +154,27 @@ export function OrderSteps({
           </button>
         </div>
         <p className="mt-2 text-xs text-gray-500">{t.step1PricedHint}</p>
+
+        {documents.length > 0 && (
+          <div className="mt-5 border-t border-gray-100 pt-4">
+            <h3 className="text-sm font-semibold text-gray-900">{t.step1Files}</h3>
+            <p className="mt-1 text-xs text-gray-500">{t.step1FilesHint}</p>
+            <ul className="mt-3 space-y-1.5">
+              {documents.map((d) => (
+                <li key={d.id}>
+                  <button
+                    onClick={() => openDocument(d.id)}
+                    disabled={pending}
+                    className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    <Paperclip className="h-3.5 w-3.5 text-gray-500" />
+                    {d.filename}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </Step>
 
       <Step number={2} title={t.step2Title} done={isConfirmed}>

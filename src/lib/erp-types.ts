@@ -100,6 +100,8 @@ export interface PoAttachment {
   size_bytes: number | null;
   uploaded_by_uid: string | null;
   created_at: string;
+  /** Ticked for the manufacturer, who downloads it from their order page. False by default. */
+  share_with_manufacturer: boolean;
 }
 
 export interface PurchaseOrderLine {

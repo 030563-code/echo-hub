@@ -134,6 +134,67 @@ export async function getPoAttachmentUrl(
   return { success: true, url: data.signedUrl };
 }
 
+/**
+ * Tick a file for the manufacturer, or untick it.
+ *
+ * Jozef Šidík, 18 Sep 2026, on the order document: no previews when the order
+ * includes a logo. Rather than build an artwork pipeline, Juraj and Martin put
+ * the file they already have on the purchase order and tick it; the factory
+ * downloads it from the order page. Dean chose the page over the email.
+ *
+ * 🔴 ONE FILE AT A TIME, AND NEVER BY DEFAULT. The rest of this bucket is
+ * internal: vendor invoices and costed sheets, which is why opening one needs
+ * cost.view. Ticking is the deliberate act that lets exactly one file out, and
+ * the same people who may attach may tick.
+ */
+export async function setPoAttachmentShared(
+  attachmentId: string,
+  shared: boolean
+): Promise<AttachmentResult> {
+  const auth = await getAuthorizedUser();
+  if (!auth.ok) return { success: false, error: auth.error };
+  if (!MANAGE_CAPS.some((c) => auth.capabilities.has(c))) {
+    return { success: false, error: "Forbidden: you can't change purchase order files." };
+  }
+  if (!uuid.safeParse(attachmentId).success) return { success: false, error: "Invalid id" };
+  if (typeof shared !== "boolean") return { success: false, error: "Invalid value" };
+
+  const supabase = await createServerClient();
+  const { data: att } = await supabase
+    .from("po_attachments")
+    .select("id, po_id")
+    .eq("id", attachmentId)
+    .maybeSingle();
+  if (!att) return { success: false, error: "Attachment not found" };
+  if (!(await poChainHeldBy(String(att.po_id), auth.profile.organisations))) {
+    return { success: false, error: "Attachment not found" };
+  }
+
+  // Only the manufacturing leg reaches a manufacturer. Ticking a file on a
+  // depot order would be a promise the factory screens can never keep, because
+  // they only ever see SRO_TO_SUPPLIER orders.
+  const { data: po } = await supabase
+    .from("purchase_orders")
+    .select("leg, to_entity")
+    .eq("id", String(att.po_id))
+    .maybeSingle<{ leg: string; to_entity: string }>();
+  if (shared && (po?.leg !== "SRO_TO_SUPPLIER" || po?.to_entity !== "SUPPLIER")) {
+    return { success: false, error: "Only files on a manufacturing order can be sent to the manufacturer." };
+  }
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("po_attachments")
+    .update({ share_with_manufacturer: shared })
+    .eq("id", attachmentId);
+  if (error) {
+    console.error("setPoAttachmentShared failed", error.message);
+    return { success: false, error: "Could not change the file." };
+  }
+  revalidatePath("/purchase-orders");
+  return { success: true };
+}
+
 export async function deletePoAttachment(attachmentId: string): Promise<AttachmentResult> {
   const auth = await getAuthorizedUser();
   if (!auth.ok) return { success: false, error: auth.error };

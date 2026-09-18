@@ -68,10 +68,12 @@ describe("every action is gated, because a 'use server' export is an endpoint", 
 
   it('checks the session, a capability and the record on every export', () => {
     const exports = source.match(/export async function (\w+)/g) ?? []
-    // Five since 18 Sep 2026: the priced order became a second download after
-    // the factory asked for prices on their first order (Dean: "the priced PO
-    // and the manufacturing PO can be two separate downloads for them").
-    expect(exports.length).toBe(5)
+    // Six since 18 Sep 2026. Five, when the priced order became a second
+    // download after the factory asked for prices on their first order (Dean:
+    // "the priced PO and the manufacturing PO can be two separate downloads for
+    // them"), then six when they asked for artwork previews and we let the
+    // office tick a file onto their order page instead of building one.
+    expect(exports.length).toBe(6)
     // One gate() per action, and gate() is the thing that does all three.
     expect((source.match(/await gate\(/g) ?? []).length).toBe(exports.length)
     expect(source).toContain('getAuthorizedUser()')
@@ -80,11 +82,11 @@ describe("every action is gated, because a 'use server' export is an endpoint", 
   })
 
   it('asks for factory.update to write and factory.view to read', () => {
-    // Three writes (dates, confirm, finished) and two reads (the specification
-    // and the priced order). `await gate(`, so gate's own signature line is not
-    // counted as a call.
+    // Three writes (dates, confirm, finished) and three reads (the
+    // specification, the priced order, and a file the office ticked for them).
+    // `await gate(`, so gate's own signature line is not counted as a call.
     expect((source.match(/await gate\([^)]*'factory\.update', t\)/g) ?? []).length).toBe(3)
-    expect((source.match(/await gate\([^)]*'factory\.view', t\)/g) ?? []).length).toBe(2)
+    expect((source.match(/await gate\([^)]*'factory\.view', t\)/g) ?? []).length).toBe(3)
   })
 
   it('offers exactly the two documents, and nothing the office keeps to itself', () => {
@@ -113,9 +115,9 @@ describe("every action is gated, because a 'use server' export is an endpoint", 
   })
 
   it('says everything in the manufacturer\'s language, resolved once per call', () => {
-    // Five actions, five resolutions, and gate is handed the same table rather
+    // Six actions, six resolutions, and gate is handed the same table rather
     // than reading the cookie again, so one call cannot answer in two languages.
-    expect((source.match(/await factoryStrings\(\)/g) ?? []).length).toBe(5)
+    expect((source.match(/await factoryStrings\(\)/g) ?? []).length).toBe(6)
     expect(source).toContain('async function gate(poId: string, capability:')
     expect(source).toContain('t: FactoryStrings)')
     // No English left where the manufacturer can see it.

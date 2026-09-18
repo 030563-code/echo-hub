@@ -98,7 +98,7 @@ export async function loadPurchaseOrderDetail(
   // Files attached to this PO.
   const { data: atts } = await supabase
     .from('po_attachments')
-    .select('id, po_id, storage_path, filename, content_type, size_bytes, uploaded_by_uid, created_at')
+    .select('id, po_id, storage_path, filename, content_type, size_bytes, uploaded_by_uid, created_at, share_with_manufacturer')
     .eq('po_id', po.id)
     .order('created_at', { ascending: false })
   po.attachments = (atts ?? []) as PoAttachment[]
