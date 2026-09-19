@@ -1,0 +1,110 @@
+{
+  "_README": [
+    "SYNTHETIC EUR PRICES. NOT APPROVED, NOT REAL, NEVER LOAD THESE INTO list_prices.",
+    "",
+    "Echo Barrier holds no approved EUR price list yet (live count on 2026-09-19: 0 active EUR",
+    "rows, 11 USD, 4 CAD). These numbers exist so the pricing engine can be proven before the",
+    "real ones land, and they are deliberately round so every expected total below can be",
+    "checked by hand in a few seconds.",
+    "",
+    "THE RULE THIS FILE EXISTS TO SERVE: expected values come from here, never from the system",
+    "under test. A cross-check that reads the value it is checking checks nothing.",
+    "",
+    "When Andrew or Geoff approve the real EUR list, this file does NOT change. It is the",
+    "engine's test fixture, not a staging copy of production pricing."
+  ],
+
+  "currency": "EUR",
+  "today": "2026-09-19",
+
+  "cap": {
+    "_why": "max_discount_per_unit must exceed the largest unit-to-floor gap below (H8, 120.00), or urgent pricing is refused by checkDiscount rather than applied.",
+    "max_discount_pct": null,
+    "max_discount_per_unit": "200.00"
+  },
+
+  "listPrices": [
+    { "sku": "EBH8EU",  "currency": "EUR", "unit_price": "500.00", "floor_price": "380.00", "is_active": true },
+    { "sku": "EBH9EU",  "currency": "EUR", "unit_price": "300.00", "floor_price": "220.00", "is_active": true },
+    { "sku": "EBH9XEU", "currency": "EUR", "unit_price": "400.00", "floor_price": "300.00", "is_active": true },
+    { "sku": "EBH10EU", "currency": "EUR", "unit_price": "350.00", "floor_price": "260.00", "is_active": true },
+    { "sku": "HKEU",    "currency": "EUR", "unit_price": "4.00",   "floor_price": "3.00",   "is_active": true },
+    { "sku": "BUNEU",   "currency": "EUR", "unit_price": "2.00",   "floor_price": "1.50",   "is_active": true },
+
+    { "_why": "An inactive row must be invisible to resolveBasePrice, so a price withdrawn from sale can never be quoted.",
+      "sku": "EBH20EU", "currency": "EUR", "unit_price": "900.00", "floor_price": "700.00", "is_active": false },
+
+    { "_why": "A real EUR row whose floor is null. Urgent pricing must refuse the whole cart rather than discount to nothing.",
+      "sku": "NOFLOOREU", "currency": "EUR", "unit_price": "100.00", "floor_price": null, "is_active": true },
+
+    { "_why": "Same SKU, wrong currency. Must never be picked for a EUR cart.",
+      "sku": "EBH10EU", "currency": "USD", "unit_price": "275.00", "floor_price": "205.00", "is_active": true }
+  ],
+
+  "baskets": {
+    "typical_kit": {
+      "_why": "The everyday shape: panels plus a fitting kit at one hook and two bungees per panel. The kit stays ONE line per component; splitting it is the bug that reached a real customer in September.",
+      "lines": [
+        { "sku": "EBH10EU", "quantity": 44, "unit": "350.00", "floor": "260.00" },
+        { "sku": "HKEU",    "quantity": 44, "unit": "4.00",   "floor": "3.00" },
+        { "sku": "BUNEU",   "quantity": 88, "unit": "2.00",   "floor": "1.50" }
+      ],
+      "expected": {
+        "list_total": 15752.00,
+        "list_working": "44*350 = 15400, 44*4 = 176, 88*2 = 176",
+        "urgent_total": 11704.00,
+        "urgent_working": "44*260 = 11440, 44*3 = 132, 88*1.50 = 132",
+        "line_count": 3
+      }
+    },
+
+    "single_panel": {
+      "_why": "Quantity of one. Rounding and per-unit maths have nowhere to hide.",
+      "lines": [ { "sku": "EBH9EU", "quantity": 1, "unit": "300.00", "floor": "220.00" } ],
+      "expected": { "list_total": 300.00, "urgent_total": 220.00, "line_count": 1 }
+    },
+
+    "panel_limit": {
+      "_why": "Exactly 200 panels, the documented maximum, across two families. Allowed by the panel rule and OVER the 50000 amount ceiling, so it proves the two limits are independent.",
+      "lines": [
+        { "sku": "EBH9EU",  "quantity": 100, "unit": "300.00", "floor": "220.00" },
+        { "sku": "EBH10EU", "quantity": 100, "unit": "350.00", "floor": "260.00" }
+      ],
+      "expected": {
+        "list_total": 65000.00,
+        "list_working": "100*300 = 30000, 100*350 = 35000",
+        "urgent_total": 48000.00,
+        "urgent_working": "100*220 = 22000, 100*260 = 26000",
+        "panels": 200,
+        "over_default_ceiling": true
+      }
+    },
+
+    "floor_exact": {
+      "_why": "A cash discount landing exactly ON the floor must be ALLOWED. Off-by-one here either blocks legitimate urgent quotes or lets them through a cent under.",
+      "lines": [ { "sku": "EBH10EU", "quantity": 10, "unit": "350.00", "floor": "260.00", "discountMode": "amount", "discountValue": 90.00 } ],
+      "expected": { "allowed": true, "net_unit": 260.00, "total": 2600.00 }
+    },
+
+    "one_cent_below_floor": {
+      "_why": "The same line one cent lower must be REFUSED. This is the assertion that actually protects margin.",
+      "lines": [ { "sku": "EBH10EU", "quantity": 10, "unit": "350.00", "floor": "260.00", "discountMode": "amount", "discountValue": 90.01 } ],
+      "expected": { "allowed": false, "refusal_mentions": "floor" }
+    },
+
+    "no_floor_row": {
+      "_why": "Urgent pricing across a line whose floor is null must refuse the WHOLE cart, not silently price that line at list.",
+      "lines": [
+        { "sku": "EBH10EU",  "quantity": 4, "unit": "350.00", "floor": "260.00" },
+        { "sku": "NOFLOOREU", "quantity": 4, "unit": "100.00", "floor": null }
+      ],
+      "expected": { "urgent_allowed": false }
+    },
+
+    "unpriced_sku": {
+      "_why": "A SKU with no EUR row falls back to what the caller typed and is marked 'manual'. A discount on it must be refused: there is no list price to discount FROM.",
+      "lines": [ { "sku": "NOTAPRODUCT", "quantity": 2, "unit": "123.45", "discountMode": "amount", "discountValue": 10.00 } ],
+      "expected": { "allowed": false, "source": "manual" }
+    }
+  }
+}
