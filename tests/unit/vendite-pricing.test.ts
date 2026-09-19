@@ -86,7 +86,7 @@ function priceUrgent(lines: FixtureLine[]) {
     today: TODAY,
   })
   return second.ok
-    ? { ok: true as const, ...second }
+    ? { ok: true as const, lines: second.lines, total: second.total }
     : { ok: false as const, stage: 'discount' as const, error: second.error }
 }
 
