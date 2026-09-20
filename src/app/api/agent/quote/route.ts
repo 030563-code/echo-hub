@@ -70,7 +70,7 @@ import { quoteTemplateIdFor } from '@/lib/pipeline-config'
 //             the caller is the hourly pipeline worker and the call is over.
 //
 // Order, every refusal before any write:
-//   auth, strict body, conversation bound to the deal (jack_tool_calls
+//   auth, strict body, conversation bound to the deal (agent_tool_calls
 //   log_lead in 24 h), then for create: product allowlist, no quote by a
 //   person, repeat (holds the earlier quote back for the deal check below),
 //   nothing in flight, the urgent cap, the volume caps. Then a per-request Jack

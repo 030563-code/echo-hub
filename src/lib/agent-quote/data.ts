@@ -41,14 +41,18 @@ function check<T extends { error: { message?: string } | null }>(result: T, what
 }
 
 /**
- * The conversation is bound to the deal: Jack's log_lead call in this
+ * The conversation is bound to the deal: the agent's log_lead call in this
  * conversation created or found exactly this deal within the last 24 hours.
  * Without it, anyone holding the route secret could aim a quote at any deal.
+ *
+ * Renamed from jack_tool_calls on 19 Sep 2026 (migration agent_namespace_rename):
+ * the table is the shared agent ledger, discriminated by its `agent` column, not
+ * one agent's private table.
  */
 export async function isConversationBound(admin: Admin, conversationId: string, dealId: string, now: Date): Promise<boolean> {
   const res = check(
     await admin
-      .from('jack_tool_calls')
+      .from('agent_tool_calls')
       .select('id')
       .eq('tool', 'log_lead')
       .eq('conversation_id', conversationId)
