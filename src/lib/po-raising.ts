@@ -98,7 +98,9 @@ export interface RaisingParty {
    * in the UNITED STATES Xero organisation. Dave holds GB-BSE and EU-FR, so
    * that is a real person doing a real thing, not a hypothetical.
    *
-   * Clear each line in the SAME sitting as the change it names.
+   * Clear each line in the SAME sitting as the change it names. All three were
+   * cleared on 21 Sep 2026 once migration 20260921140000 was applied and
+   * Fz7xXgifva5n548u version d68df882 was published, in that order.
    */
   pending: string | null
 }
@@ -115,15 +117,15 @@ export const RAISING_PARTIES: readonly RaisingParty[] = [
   { code: 'US-BAL', label: 'US Baltimore', leg: 'DEPOT_TO_EB_GROUP', to: 'EB-GROUP', org: 'EB-USA', codeColumn: 'code_usa_balt', series: 'EBUSA', pending: null },
   { code: 'US-SBD', label: 'US San Bernardino', leg: 'DEPOT_TO_EB_GROUP', to: 'EB-GROUP', org: 'EB-USA', codeColumn: 'code_usa_sb', series: 'EBUSA', pending: null },
   { code: 'CA-HAM', label: 'Canada Hamilton', leg: 'DEPOT_TO_EB_GROUP', to: 'EB-GROUP', org: 'EB-CANADA', codeColumn: 'code_canada', series: 'EBCAN', pending: null },
-  { code: 'EU-FR', label: 'France', leg: 'DEPOT_TO_EB_GROUP', to: 'EB-GROUP', org: 'EB-FRANCE', codeColumn: 'code_france', series: 'EBFRA', pending: 'n8n Fz7xXgifva5n548u still picks the Xero organisation itself and would create this order in the USA organisation with US Baltimore item codes. It also has no EB Group supplier contact for the French Xero organisation.' },
-  { code: 'GB-BSE', label: 'UK Bury St Edmunds', leg: 'DEPOT_TO_EB_GROUP', to: 'EB-GROUP', org: 'EB-UK', codeColumn: 'code_uk', series: 'EBUK', pending: 'The EBUK number series is in a migration that has not been applied, and n8n would create this order in the USA Xero organisation. It also has no EB Group supplier contact for the UK Xero organisation.' },
+  { code: 'EU-FR', label: 'France', leg: 'DEPOT_TO_EB_GROUP', to: 'EB-GROUP', org: 'EB-FRANCE', codeColumn: 'code_france', series: 'EBFRA', pending: null },
+  { code: 'GB-BSE', label: 'UK Bury St Edmunds', leg: 'DEPOT_TO_EB_GROUP', to: 'EB-GROUP', org: 'EB-UK', codeColumn: 'code_uk', series: 'EBUK', pending: null },
   // 🔴 Has a number series and a Xero organisation, and NO item codes: there is
   // no Australian column on product_code_master. Listed so the compiler, the
   // database function and this file agree about it, and refused by
   // canRaiseFor() with a reason rather than quietly missing from the dropdown.
   { code: 'AU-SYD', label: 'Australia Sydney', leg: 'DEPOT_TO_EB_GROUP', to: 'EB-GROUP', org: 'EB-AUSTRALIA', codeColumn: null, series: 'EBAUS', pending: null },
   { code: 'EB-GROUP', label: 'Group (buying from s.r.o.)', leg: 'EB_GROUP_TO_SRO', to: 'EB-SRO', org: 'EB-GROUP', codeColumn: 'code_grp', series: 'EBGRP', pending: null },
-  { code: 'EB-SRO', label: 's.r.o. (buying from the manufacturer)', leg: 'SRO_TO_SUPPLIER', to: 'SUPPLIER', org: 'EB-SRO', codeColumn: 'code_sro', series: 'EBSRO', pending: 'A standalone s.r.o. order needs the EBSRO series from a migration that has not been applied, and the SRO_TO_SUPPLIER branch in n8n is switched off with a placeholder supplier contact, so the order would reach no Xero organisation at all.' },
+  { code: 'EB-SRO', label: 's.r.o. (buying from the manufacturer)', leg: 'SRO_TO_SUPPLIER', to: 'SUPPLIER', org: 'EB-SRO', codeColumn: 'code_sro', series: 'EBSRO', pending: null },
 ]
 
 const BY_CODE = new Map(RAISING_PARTIES.map((p) => [p.code, p]))
