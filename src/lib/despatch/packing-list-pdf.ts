@@ -47,10 +47,47 @@ const finalY = (doc: unknown, fallback: number) =>
 /** A right-aligned cell, because columnStyles will not reach a head or foot row. */
 const right = (content: string) => ({ content, styles: { halign: 'right' as const } })
 
-export async function buildPackingListPdf(pl: PackingListDoc): Promise<import('jspdf').jsPDF> {
+/**
+ * A PDF /ID is 32 hex characters. Derived from the order so it is stable for a
+ * given document and different between documents, which is what the field is
+ * for. Lifted from invoice-pdf.ts, which learned it the hard way.
+ */
+function stableFileId(documentId: string): string {
+  let hex = ''
+  for (let i = 0; i < documentId.length && hex.length < 32; i++) {
+    hex += documentId.charCodeAt(i).toString(16).padStart(2, '0')
+  }
+  return (hex + '0'.repeat(32)).slice(0, 32).toUpperCase()
+}
+
+export interface PackingListPdfStamp {
+  /** The order this document belongs to, which seeds the /ID. */
+  documentId: string
+  /** What /CreationDate says. Pass the order's own date, never `new Date()`. */
+  createdAt: Date
+}
+
+/**
+ * `stamp` is optional only so a caller can render a throwaway preview. Anything
+ * that STORES, HASHES, EMAILS or ATTACHES the result must pass it: jsPDF stamps
+ * a wall-clock /CreationDate and a RANDOM /ID otherwise, so the same container
+ * renders different bytes every time and no two copies can be compared. That is
+ * the fault that made emailing a customer invoice impossible until
+ * invoice-pdf.ts pinned both, and the A and B copies of a packing list are
+ * exactly a pair of documents somebody will want to compare.
+ */
+export async function buildPackingListPdf(
+  pl: PackingListDoc,
+  stamp?: PackingListPdfStamp,
+): Promise<import('jspdf').jsPDF> {
   const { default: jsPDF } = await import('jspdf')
   const autoTable = (await import('jspdf-autotable')).default
   const doc = new jsPDF()
+  // Both pinned before anything is drawn, as in invoice-pdf.ts.
+  if (stamp) {
+    doc.setCreationDate(stamp.createdAt)
+    doc.setFileId(stableFileId(`${stamp.documentId}:${pl.variant}`))
+  }
   const font = registerUnicodeFont(doc)
 
   const set = (size: number, weight: 'normal' | 'bold' = 'normal') => {

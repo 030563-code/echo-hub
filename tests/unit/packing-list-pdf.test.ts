@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { createHash } from 'node:crypto'
 import { asGroupCopy, buildPackingList, type PackingListDoc } from '@/lib/despatch/packing-list'
 import { buildPackingListPdf } from '@/lib/despatch/packing-list-pdf'
 
@@ -90,5 +91,36 @@ describe('the packing list PDF', () => {
     const text = doc.output('arraybuffer')
     expect(text.byteLength).toBeGreaterThan(20_000)
     expect(doc.getFontList()).toHaveProperty('LiberationSans')
+  })
+
+  it('renders identical bytes twice when it is stamped', async () => {
+    // Without the stamp jsPDF writes a wall-clock /CreationDate and a RANDOM
+    // /ID, so the A copy and the B copy of one container could never be
+    // compared and nothing could be hashed before it was stored or emailed.
+    // This is the fault invoice-pdf.ts fixed for the customer invoice.
+    const stamp = { documentId: 'EBSRO8001-1', createdAt: new Date('2026-09-11T00:00:00Z') }
+    const hash = async (n: number) =>
+      createHash('sha256')
+        .update(Buffer.from((await buildPackingListPdf(jessup(), stamp)).output('arraybuffer')))
+        .digest('hex') + n
+    const a = await hash(0)
+    const b = await hash(0)
+    expect(a).toBe(b)
+  })
+
+  it('gives the A copy and the B copy different file ids', async () => {
+    const stamp = { documentId: 'EBSRO8001-1', createdAt: new Date('2026-09-11T00:00:00Z') }
+    const a = jessup()
+    const b = asGroupCopy(a, { issuer: GROUP, consignee: GROUP })
+    const bytes = async (d: PackingListDoc) =>
+      Buffer.from((await buildPackingListPdf(d, stamp)).output('arraybuffer')).toString('latin1')
+    const ida = /\/ID \[ <([0-9A-F]+)>/.exec(await bytes(a))?.[1]
+    const idb = /\/ID \[ <([0-9A-F]+)>/.exec(await bytes(b))?.[1]
+    expect(ida).toBeTruthy()
+    expect(ida).not.toBe(idb)
+  })
+
+  it('is still renderable with no stamp, for a throwaway preview', async () => {
+    expect((await buildPackingListPdf(jessup())).getNumberOfPages()).toBe(1)
   })
 })

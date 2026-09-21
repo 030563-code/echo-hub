@@ -200,7 +200,7 @@ describe('guard: the specification document tells the truth about itself', () =>
     // C of "Čierna" on the sheet the factory builds from.
     expect(pdf).toContain("import { registerUnicodeFont } from '@/lib/pdf-font'")
     expect(pdf).not.toContain("'helvetica'")
-    for (const file of ['src/lib/bamida-po-pdf.ts', 'src/lib/transport-order-pdf.ts']) {
+    for (const file of ['src/lib/bamida-po-pdf.ts', 'src/lib/transport-order-pdf.ts', 'src/lib/despatch/packing-list-pdf.ts']) {
       const source = readFileSync(join(process.cwd(), file), 'utf8')
       expect(source, file).toContain('registerUnicodeFont(doc)')
       expect(source, file).not.toContain("'helvetica'")
