@@ -1,4 +1,5 @@
 import type { FactoryStrings } from './strings'
+import { DATES_REQUIRED_TO_CONFIRM } from './status'
 import 'server-only'
 
 /**
@@ -92,10 +93,11 @@ export async function applyManufacturingDates(
 /**
  * Confirm the purchase order.
  *
- * BOTH DATES ARE REQUIRED, and that is the whole point of the step. Dean: the
- * confirm button works only when they are filled in, because the confirmation
- * we receive, and the email they get back, are the dates. A confirmation with
- * nothing in it would tell us they have seen the order and nothing else.
+ * THE DATES ARE OPTIONAL since 21 Sep 2026, and DATES_REQUIRED_TO_CONFIRM in
+ * status.ts is the one switch that says so, with the argument on both sides
+ * written beside it. What is left here is the check that survives either way:
+ * a finish date before a start date is wrong whether or not either was asked
+ * for.
  *
  * ONE SHOT, like the finish: confirmed_at moves off null in a single
  * conditional update, so a double press or a retry confirms once and emails
@@ -108,7 +110,7 @@ export async function confirmManufacturingOrder(
   actorUid: string | null,
   t: FactoryStrings,
 ): Promise<ManufacturingUpdateResult & { confirmedAt?: string }> {
-  if (!dates.estStart || !dates.estFinish) {
+  if (DATES_REQUIRED_TO_CONFIRM && (!dates.estStart || !dates.estFinish)) {
     return { ok: false, error: t.errBothDatesRequired }
   }
   if (datesOutOfOrder(dates.estStart, dates.estFinish)) {

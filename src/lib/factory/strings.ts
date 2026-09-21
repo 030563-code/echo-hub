@@ -117,6 +117,7 @@ export interface FactoryStrings {
   labelEstimatedStart: string
   labelEstimatedFinish: string
   required: string
+  optional: string
   saveDates: string
   saving: string
   confirmOrder: string
@@ -269,13 +270,14 @@ const en: FactoryStrings = {
   step1FilesHint: 'Artwork and any other file we attached to this order. Opens in a new tab.',
   step1FilesBlocked: 'Your browser blocked the new tab. Open {name} here instead.',
   step2Title: 'Confirm the purchase order',
-  step2Confirmed: 'Confirmed on {date}. We have your dates and a confirmation email is on its way to you.',
+  step2Confirmed: 'Confirmed on {date}. A confirmation email is on its way to you.',
   step2StillEditable: 'You can still change these dates until the order is finished.',
   step2Body:
-    'Tell us when you expect to start and finish. We need both dates: they are what we plan the shipping around, and they are quoted back to you in the confirmation email.',
+    'Confirm that you have the order. If you can give us rough start and finish dates they help us plan the shipping, but they are not required and you can change them at any time.',
   labelEstimatedStart: 'Estimated start',
   labelEstimatedFinish: 'Estimated finish',
   required: '(required)',
+  optional: '(optional)',
   saveDates: 'Save dates',
   saving: 'Saving...',
   confirmOrder: 'Confirm purchase order',
@@ -427,13 +429,14 @@ const sk: FactoryStrings = {
   step1FilesBlocked: 'Váš prehliadač zablokoval novú kartu. Súbor {name} otvoríte tu.',
   step1Body: 'Toto je objednávka {number}, dokument, ktorý ste predtým dostávali v prílohe e-mailu.',
   step2Title: 'Potvrďte objednávku',
-  step2Confirmed: 'Potvrdené {date}. Máme vaše termíny a potvrdzovací e-mail je na ceste k vám.',
+  step2Confirmed: 'Potvrdené {date}. Potvrdzovací e-mail je na ceste k vám.',
   step2StillEditable: 'Tieto termíny môžete meniť, kým nie je objednávka dokončená.',
   step2Body:
-    'Dajte nám vedieť, kedy predpokladáte začiatok a ukončenie výroby. Potrebujeme oba termíny: podľa nich plánujeme prepravu a uvedieme ich v potvrdzovacom e-maile.',
+    'Potvrďte, že objednávku máte. Ak nám viete dať orientačný začiatok a ukončenie výroby, pomôže nám to naplánovať prepravu, ale povinné to nie je a kedykoľvek ich môžete zmeniť.',
   labelEstimatedStart: 'Predpokladaný začiatok',
   labelEstimatedFinish: 'Predpokladané ukončenie',
   required: '(povinné)',
+  optional: '(nepovinné)',
   saveDates: 'Uložiť termíny',
   saving: 'Ukladá sa...',
   confirmOrder: 'Potvrdiť objednávku',

@@ -15,6 +15,7 @@ import {
   saveFactoryDates,
 } from '@/app/actions/factory/orders'
 import type { FactoryDocument } from '@/lib/factory/orders'
+import { DATES_REQUIRED_TO_CONFIRM } from '@/lib/factory/status'
 import { factoryDate, fill, strings, type FactoryLocale } from '@/lib/factory/strings'
 import { saveFactoryPdf } from '@/lib/factory/save-pdf'
 
@@ -61,6 +62,9 @@ export function OrderSteps({
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
 
   const bothDates = start !== '' && finish !== ''
+  // The dates are welcome, not demanded. DATES_REQUIRED_TO_CONFIRM in
+  // status.ts carries the reasoning and turns it back on in one line.
+  const datesBlockConfirm = DATES_REQUIRED_TO_CONFIRM && !bothDates
   const isConfirmed = Boolean(confirmedAt)
   const isFinished = Boolean(finishedAt)
 
@@ -216,7 +220,7 @@ export function OrderSteps({
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <label className="block">
                 <span className="text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t.labelEstimatedStart} {isConfirmed ? '' : t.required}
+                  {t.labelEstimatedStart} {isConfirmed ? '' : t.optional}
                 </span>
                 <input
                   type="date"
@@ -227,7 +231,7 @@ export function OrderSteps({
               </label>
               <label className="block">
                 <span className="text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t.labelEstimatedFinish} {isConfirmed ? '' : t.required}
+                  {t.labelEstimatedFinish} {isConfirmed ? '' : t.optional}
                 </span>
                 <input
                   type="date"
@@ -250,14 +254,12 @@ export function OrderSteps({
               <>
                 <button
                   onClick={confirm}
-                  disabled={pending || !bothDates}
+                  disabled={pending || datesBlockConfirm}
                   className="mt-4 rounded-lg bg-echo-orange px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-echo-orange-hover disabled:opacity-50"
                 >
                   {pending ? t.confirming : t.confirmOrder}
                 </button>
-                {!bothDates && (
-                  <p className="mt-2 text-xs text-gray-500">{t.bothDatesHint}</p>
-                )}
+                {datesBlockConfirm && <p className="mt-2 text-xs text-gray-500">{t.bothDatesHint}</p>}
               </>
             )}
           </>

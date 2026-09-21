@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { DATES_REQUIRED_TO_CONFIRM } from '@/lib/factory/status'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -43,6 +44,7 @@ const UNAVOIDABLE_IDENTIFIERS = [
 const ACTIONS = 'src/app/actions/factory/orders.ts'
 const NOTIFY = 'src/app/actions/factory/notify-po-confirmed.ts'
 const UPDATES = 'src/lib/factory/updates.ts'
+const STEPS = 'src/app/(dashboard)/factory/[id]/order-steps.tsx'
 const ORDERS = 'src/lib/factory/orders.ts'
 const STOCK = 'src/lib/factory/stock.ts'
 const MIGRATION = 'supabase/migrations/20260916100000_factory_login.sql'
@@ -131,9 +133,25 @@ describe("every action is gated, because a 'use server' export is an endpoint", 
 describe('the three steps hold their shape', () => {
   const source = read(UPDATES)
 
-  it('refuses to confirm without both dates, because the dates ARE the confirmation', () => {
+  /**
+   * The dates stopped being a gate on 21 Sep 2026 (Dean: "Lets comment out the
+   * need for estimated finish and start dates for now"), after Jozef called the
+   * requirement irrelevant because priorities move. It is a switch, not a
+   * deletion: the refusal is still written, still translated, and still one
+   * line from being back.
+   */
+  it('asks for the dates without demanding them, through one switch', () => {
+    expect(DATES_REQUIRED_TO_CONFIRM).toBe(false)
     expect(source).toContain('error: t.errBothDatesRequired')
-    expect(source).toMatch(/if \(!dates\.estStart \|\| !dates\.estFinish\)/)
+    expect(source).toMatch(/if \(DATES_REQUIRED_TO_CONFIRM && \(!dates\.estStart \|\| !dates\.estFinish\)\)/)
+    // The screen reads the same switch, so the button and the endpoint cannot
+    // disagree about whether a date is needed.
+    expect(read(STEPS)).toContain('DATES_REQUIRED_TO_CONFIRM && !bothDates')
+  })
+
+  it('still refuses a finish date before a start date, which is wrong either way', () => {
+    expect(source).toContain('error: t.errFinishBeforeStart')
+    expect(source).toMatch(/if \(datesOutOfOrder\(dates\.estStart, dates\.estFinish\)\)/)
   })
 
   it('confirms exactly once, whatever the browser does', () => {

@@ -113,6 +113,30 @@ export function feedIsStale(newestSyncAt: string | null, now: number = Date.now(
  * Found the hard way on 18 Sep 2026: 112 items, 46 daily snapshots, identical
  * since 6 August, under a banner that said "updated today".
  */
+/**
+ * Whether the factory must give both dates before they can confirm an order.
+ *
+ * 🔴 OFF since 21 Sep 2026, at Dean's word: "Lets comment out the need for
+ * estimated finish and start dates for now." It is a switch rather than a
+ * deletion because the reason it existed has not gone away, and the argument
+ * on both sides is worth keeping next to it.
+ *
+ * FOR: the confirmation we get back, and the email they receive, ARE the dates.
+ * A confirmation with nothing in it says they have seen the order and no more,
+ * and transport is planned against the finish date.
+ *
+ * AGAINST, and why it is off: Jozef Šidík, 18 Sep 2026, on his first order
+ * through the Hub, translated: "I consider this requirement completely
+ * irrelevant, since the deadlines and priorities of individual orders change
+ * constantly. It can only be met if orders are produced strictly in the order
+ * they arrived." He is describing a date typed to satisfy a form, which is
+ * worse than no date because we would plan freight against it.
+ *
+ * The fields stay, and so does the finish-before-start check on anything they
+ * DO give us. What goes is the refusal.
+ */
+export const DATES_REQUIRED_TO_CONFIRM = false
+
 export const FROZEN_FEED_DAYS = 7
 
 export function feedIsFrozen(newestChangeAt: string | null, now: number = Date.now()): boolean {
