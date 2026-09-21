@@ -67,6 +67,7 @@ const WRITE_GATES: Record<string, string> = {
   'src/app/actions/purchase-orders/receive-po.ts': 'poChainHeldBy(',
   'src/app/actions/purchase-orders/set-po-stage.ts': 'poChainHeldBy(',
   'src/app/actions/purchase-orders/send-manufacturing-po.ts': 'poChainHeldBy(',
+  'src/app/actions/purchase-orders/download-packing-list.ts': 'poChainHeldBy(parsed.data.poId, auth.profile.organisations)',
   'src/app/(dashboard)/stock/actions.ts': 'warehouseHeld(',
   'src/app/(dashboard)/transport/actions.ts': 'depotsForOrgs(held).includes(d.depot_destination)',
   'src/app/actions/invoices/generate-commercial-invoice.ts': 'holdsOrganisation(held, cfg.seller)',

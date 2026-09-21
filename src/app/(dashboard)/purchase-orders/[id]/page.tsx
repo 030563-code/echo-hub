@@ -15,6 +15,9 @@ import { specActorNames, specDocumentStatus } from '@/lib/po-spec-store'
 import { loadSendContacts } from '@/lib/send-contacts'
 import DownloadPoPdfButton from '@/components/po/download-po-pdf-button'
 import AttachPoPdfButton from '@/components/po/attach-po-pdf-button'
+import PackingListCard from '@/components/po/packing-list-card'
+import { loadPackingListContext } from '@/lib/despatch/packing-list-store'
+import { previewPackingList } from '@/lib/despatch/packing-list-source'
 import ShipmentSection from '@/components/po/shipment-section'
 import AttachmentsSection from '@/components/po/attachments-section'
 import PoPurposeTag from '@/components/po/po-purpose-tag'
@@ -157,6 +160,12 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
   // The address book for this send, so the card can draw the tick boxes. Only on the leg that has
   // a factory email at all.
   const sendBook = isManufacturingOrder ? await loadSendContacts('manufacturing') : []
+
+  // The despatch pack's first document, built from the signed specification.
+  // Only the manufacturing order has one. Dated to Bamida's finish date until
+  // somebody types the real despatch date on the card.
+  const packing = isManufacturingOrder ? await loadPackingListContext(id) : null
+  const packingDate = packing?.estFinish ?? new Date().toISOString().slice(0, 10)
 
   // The shipment request, drafted the moment the barriers existed: Bamida
   // pressing finished, or SRO taking them off the shelf.
@@ -387,6 +396,26 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
           specConfirmed={Boolean(specStatus?.confirmedAt)}
           specSaved={Boolean(specStatus?.saved)}
         />
+      )}
+
+      {packing && (
+        <div className="mt-6">
+          <PackingListCard
+            poId={po.id}
+            data={{
+              poNumber: packing.poNumber,
+              groupPoNumber: packing.groupPoNumber,
+              destination: packing.destination,
+              defaults: {
+                date: packingDate,
+                consignee: packing.consignee,
+                placeOfCollection: packing.placeOfCollection,
+              },
+              preview: previewPackingList(packing, packingDate),
+              spec: packing.spec,
+            }}
+          />
+        </div>
       )}
 
       {cargo && (canDetectShipment || canAct) && (
