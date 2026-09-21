@@ -1,9 +1,10 @@
 -- Four more parties can raise a purchase order: France, the UK, Group and s.r.o.
 --
--- NOT APPLIED when this file was written. It sits in pending/ deliberately:
--- Dean, 21 Sep 2026, "Lets first develop on localhost and not on prod". Apply it
--- with MCP apply_migration, move it up into migrations/, and only then publish
--- the matching n8n change. Never db push.
+-- Written into pending/ first (Dean, 21 Sep 2026, "Lets first develop on
+-- localhost and not on prod"), dry-run on korylyniwsqtsvzuzydg inside
+-- begin/rollback with a probe select, then applied live via MCP apply_migration
+-- on 21 Sep 2026 at Dean's word ("do 1 and 2 and 3 also"). This file is the repo
+-- record. Never db push.
 --
 -- Dean, 21 Sep 2026: "Add this raising depots in the purchase orders, EU-FR,
 -- GB-BSE, EB-GROUP, EB-SRO ... add the delivery addresses in supabase GB-BSE is
@@ -211,7 +212,7 @@ revoke all on function public.po_guard_number_update() from public, anon, authen
 -- statement and tell whoever wrote those two documents.
 update public.po_delivery_addresses
    set address = replace(address, 'IP33 3TG', 'IP33 3TF')
- where entity = 'EB-GROUP' and address like '%IP33 3TG%';
+ where entity in ('EB-GROUP', 'GB-BSE') and address like '%IP33 3TG%';
 
 -- 🔴 NOT `on conflict do nothing`. po_delivery_addresses has exactly one unique
 -- index and it is the primary key on `id`, so ON CONFLICT could never fire and
@@ -225,7 +226,10 @@ update public.po_delivery_addresses
 insert into public.po_delivery_addresses (entity, label, address, active)
 select v.entity, v.label, v.address, true
 from (values
-  ('GB-BSE', 'UK depot, Bury St Edmunds', E'Echo Barrier Limited\n118a Newmarket Road\nBury St Edmunds\nSuffolk\nIP33 3TF\nUnited Kingdom'),
+  -- Dean, 21 Sep 2026: "add gb-bse delivery address same as group". Inserted
+  -- live that day as a copy of the EB-GROUP row, so on apply this line is a
+  -- no-op and the postcode correction above covers both rows together.
+  ('GB-BSE', 'UK depot, Bury St Edmunds', E'118A Newmarket Rd, Bury Saint Edmunds IP33 3TF, United Kingdom\n'),
   ('EU-FR', 'France depot', '- confirm ship-to address -'),
   ('AU-SYD', 'Australia depot, Sydney', '- confirm ship-to address -')
 ) as v(entity, label, address)

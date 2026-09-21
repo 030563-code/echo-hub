@@ -28,7 +28,7 @@ import { PO_PREFIX_BY_DEPOT, isNewSchemePoNumber } from '@/lib/po-number'
  * Baltimore item codes, with nothing said anywhere.
  */
 
-const MIG = 'supabase/migrations/pending/20260921140000_po_raising_parties.sql'
+const MIG = 'supabase/migrations/20260921140000_po_raising_parties.sql'
 const DOWN = 'supabase/migrations/rollback/20260921140000_po_raising_parties.down.sql'
 
 function stripComments(sql: string): string {
@@ -152,9 +152,12 @@ describe('the depot-specific line items', () => {
 })
 
 describe('the raising migration', () => {
-  it('carries the house header, says it is not applied, and has no em-dash', () => {
+  it('carries the house header, records how it was applied, and has no em-dash', () => {
     expect(raw).toContain('Never db push.')
-    expect(raw).toContain('NOT APPLIED when this file was written.')
+    // Dry-run inside begin/rollback before the real apply, and the header says
+    // so: the next person should know that route exists.
+    expect(raw).toContain('dry-run on korylyniwsqtsvzuzydg inside')
+    expect(raw).toContain('applied live via MCP apply_migration')
     expect(raw).not.toContain('—')
   })
 
@@ -245,8 +248,7 @@ describe('the raising migration', () => {
 
   it('adds the UK delivery address Dean gave, and placeholders for the rest', () => {
     expect(up).toContain("('GB-BSE', 'UK depot, Bury St Edmunds'")
-    expect(up).toContain('118a Newmarket Road')
-    expect(up).toContain('IP33 3TF')
+    expect(up).toContain('118A Newmarket Rd, Bury Saint Edmunds IP33 3TF, United Kingdom')
     // A delivery address is printed on the order the manufacturer packs to, so
     // an invented one is worse than a visible gap.
     expect(up).toContain("('EU-FR', 'France depot', '- confirm ship-to address -')")
@@ -264,7 +266,9 @@ describe('the raising migration', () => {
 
   it('corrects the Group postcode against Echo Barrier\'s own documents', () => {
     expect(up).toContain("replace(address, 'IP33 3TG', 'IP33 3TF')")
-    expect(up).toContain("where entity = 'EB-GROUP' and address like '%IP33 3TG%'")
+    // GB-BSE was inserted live on 21 Sep as a copy of the Group row, so the
+    // correction has to reach both or they drift apart.
+    expect(up).toContain("where entity in ('EB-GROUP', 'GB-BSE') and address like '%IP33 3TG%'")
     expect(raw).toContain('PL-A UK 10.08.2026')
   })
 
@@ -302,8 +306,11 @@ describe('the raising rollback', () => {
     )
   })
 
-  it('removes the three addresses it added and keeps every minted number', () => {
-    expect(down).toContain("delete from public.po_delivery_addresses where entity in ('GB-BSE', 'EU-FR', 'AU-SYD');")
+  it('removes the two placeholder addresses, keeps GB-BSE and every minted number', () => {
+    // GB-BSE was inserted live at Dean's request before the migration ran;
+    // undoing the migration must not take away a row it did not add.
+    expect(down).toContain("delete from public.po_delivery_addresses where entity in ('EU-FR', 'AU-SYD');")
+    expect(down).not.toMatch(/delete from public\.po_delivery_addresses[^;]*GB-BSE/)
     expect(down).not.toMatch(/update public\.purchase_orders|delete from public\.purchase_orders/i)
     expect(downRaw).not.toContain('—')
   })

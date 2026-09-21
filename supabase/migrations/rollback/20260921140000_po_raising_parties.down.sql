@@ -128,7 +128,10 @@ revoke all on function public.po_guard_number_update() from public, anon, authen
 
 drop sequence if exists public.po_number_seq_ebuk, public.po_number_seq_ebsro;
 
-delete from public.po_delivery_addresses where entity in ('GB-BSE', 'EU-FR', 'AU-SYD');
+-- GB-BSE is NOT removed: Dean asked for that row on its own ("add gb-bse delivery
+-- address same as group") and it was inserted live before this migration ran,
+-- so the migration's own insert was a no-op for it.
+delete from public.po_delivery_addresses where entity in ('EU-FR', 'AU-SYD');
 
 -- The postcode correction is NOT reverted. It was a correction, and putting a
 -- wrong postcode back on a delivery address would be a fresh mistake rather
