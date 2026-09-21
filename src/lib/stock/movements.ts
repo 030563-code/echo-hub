@@ -223,3 +223,92 @@ export function buildDispatchMovements(
   }
   return out
 }
+
+// ---------------------------------------------------------------------------
+// (e) A container arrives at a depot: the barriers leave EB-SRO (if a Cargo
+//     Partner booking has not already taken them) and land on the depot shelf.
+// ---------------------------------------------------------------------------
+
+/**
+ * The booking trigger's own key, spelled here so the two writers cannot drift.
+ * stock_on_booking (20260911120000_stock_ledger.sql) writes shipped_out rows
+ * with ref_type 'po_shipment' and ref_id = the SRO leg's id; an arrival keyed
+ * the same way is skipped by the ledger when the booking already deducted, and
+ * deducts when it never did. po_shipments had zero rows for the first ten days
+ * of the ledger, so the second case is the common one.
+ */
+export const SHIPPED_OUT_REF_TYPE = 'po_shipment'
+export const ARRIVAL_REF_TYPE = 'po_arrival'
+
+export interface OrderLine {
+  sku: string | null
+  quantity: number | null
+}
+
+/**
+ * -quantity per SKU at EB-SRO for the SRO leg's lines, one row per SKU. Per
+ * SKU rather than per line on purpose: the ledger's key has no line in it, so
+ * two lines of one SKU would collide and the second would be dropped.
+ */
+export function buildShippedOutMovements(
+  sroLegId: string,
+  lines: readonly OrderLine[],
+  note: string,
+): StockMovementInput[] {
+  const bySku = new Map<string, number>()
+  for (const l of lines) {
+    const sku = String(l.sku ?? '').trim()
+    const qty = Math.trunc(Number(l.quantity ?? 0))
+    if (sku === '' || !(qty > 0)) continue
+    bySku.set(sku, (bySku.get(sku) ?? 0) + qty)
+  }
+  const out: StockMovementInput[] = []
+  for (const [sku, qty] of bySku) {
+    out.push({
+      item_kind: 'finished',
+      warehouse_code: SRO_WAREHOUSE,
+      sku,
+      kind: 'shipped_out',
+      quantity: -qty,
+      ref_type: SHIPPED_OUT_REF_TYPE,
+      ref_id: sroLegId,
+      note,
+    })
+  }
+  return out
+}
+
+/**
+ * +quantity per SKU at the arrival depot, keyed on the receiving leg so one
+ * order lands once however many times the button is pressed. Quantities are
+ * what is still outstanding on each line, so a partial delivery somebody
+ * already logged line by line is not counted twice.
+ */
+export function buildArrivalMovements(
+  receivingLegId: string,
+  depot: string,
+  lines: readonly OrderLine[],
+  note: string,
+): StockMovementInput[] {
+  const bySku = new Map<string, number>()
+  for (const l of lines) {
+    const sku = String(l.sku ?? '').trim()
+    const qty = Math.trunc(Number(l.quantity ?? 0))
+    if (sku === '' || !(qty > 0)) continue
+    bySku.set(sku, (bySku.get(sku) ?? 0) + qty)
+  }
+  const out: StockMovementInput[] = []
+  for (const [sku, qty] of bySku) {
+    out.push({
+      item_kind: 'finished',
+      warehouse_code: depot,
+      sku,
+      kind: 'receipt',
+      quantity: qty,
+      ref_type: ARRIVAL_REF_TYPE,
+      ref_id: receivingLegId,
+      note,
+    })
+  }
+  return out
+}

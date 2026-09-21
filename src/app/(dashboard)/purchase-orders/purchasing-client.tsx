@@ -91,6 +91,7 @@ interface Props {
   canReceive: boolean;
   canManageAttachments: boolean;
   canDetectShipment: boolean;
+  canMarkArrived: boolean;
   canViewCost: boolean;
   /** Can drag PO cards between lifecycle columns (po.approve / po.receive). */
   canMoveStage: boolean;
@@ -99,7 +100,7 @@ interface Props {
   fx: FxRates | null;
 }
 
-export default function PurchasingClient({ orders, canReceive, canManageAttachments, canDetectShipment, canViewCost, canMoveStage, parties, fx }: Props) {
+export default function PurchasingClient({ orders, canReceive, canManageAttachments, canDetectShipment, canMarkArrived, canViewCost, canMoveStage, parties, fx }: Props) {
   const router = useRouter();
   // Kanban or table, and the search box, both remembered. The OPEN CARD is
   // not: a PO can be approved or cancelled while somebody is away, and
@@ -402,7 +403,14 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
             </DetailSection>
 
 
-            <ShipmentSection po={selected} canDetect={canDetectShipment} />
+            <ShipmentSection
+              po={selected}
+              canDetect={canDetectShipment}
+              canMarkArrived={canMarkArrived}
+              defaultDepot={
+                optimisticOrders.find((o) => o.master_ref === selected.master_ref && o.leg === "DEPOT_TO_EB_GROUP")?.from_entity ?? null
+              }
+            />
 
             {selected.notes && (
               <DetailSection label="Notes">

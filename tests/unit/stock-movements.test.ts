@@ -4,8 +4,14 @@ import {
   buildReceiptMovements,
   buildManufacturedMovements,
   buildDispatchMovements,
+  buildShippedOutMovements,
+  buildArrivalMovements,
+  SHIPPED_OUT_REF_TYPE,
+  ARRIVAL_REF_TYPE,
   ESTIMATED_CONSUMPTION_NOTE,
 } from '@/lib/stock/movements'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { SuppliedBomRow } from '@/lib/mrp/supplied-materials'
 
 const poLines = new Map([
@@ -137,5 +143,55 @@ describe('buildDispatchMovements', () => {
     expect(buildDispatchMovements('inv-3', [
       { sku: 'EBH9NA', quantity: 0.4, is_shipping: false, ship_from_depot: 'US-BAL' },
     ])).toEqual([])
+  })
+})
+
+describe('buildShippedOutMovements', () => {
+  const lines = [
+    { sku: 'EBH9NA', quantity: 100 },
+    { sku: 'EBH9NA', quantity: 20 },
+    { sku: 'EBH10NA', quantity: 40 },
+    { sku: null, quantity: 5 },
+    { sku: 'EBH8NA', quantity: 0 },
+  ]
+
+  it('takes the SRO leg out of EB-SRO, one row per SKU', () => {
+    const out = buildShippedOutMovements('sro-leg', lines, 'Arrived at US-BAL')
+    expect(out).toEqual([
+      { item_kind: 'finished', warehouse_code: 'EB-SRO', sku: 'EBH9NA', kind: 'shipped_out', quantity: -120, ref_type: 'po_shipment', ref_id: 'sro-leg', note: 'Arrived at US-BAL' },
+      { item_kind: 'finished', warehouse_code: 'EB-SRO', sku: 'EBH10NA', kind: 'shipped_out', quantity: -40, ref_type: 'po_shipment', ref_id: 'sro-leg', note: 'Arrived at US-BAL' },
+    ])
+  })
+
+  it('is keyed exactly like the Cargo Partner booking trigger, so the two never double-deduct', () => {
+    // The trigger is SQL and cannot import this constant, so the contract is
+    // pinned from the other side: the migration must say the same string.
+    const migration = readFileSync(join(process.cwd(), 'supabase/migrations/20260911120000_stock_ledger.sql'), 'utf8')
+    expect(migration).toContain(`'ref_type', '${SHIPPED_OUT_REF_TYPE}'`)
+    expect(migration).toContain("'ref_id', v_sro::text")
+    expect(migration).toContain("'kind', 'shipped_out'")
+    expect(SHIPPED_OUT_REF_TYPE).toBe('po_shipment')
+  })
+})
+
+describe('buildArrivalMovements', () => {
+  it('lands what is outstanding on the depot, keyed on the receiving leg', () => {
+    const out = buildArrivalMovements('depot-leg', 'GB-BSE', [
+      { sku: 'EBH9NA', quantity: 60 },
+      { sku: 'EBH9NA', quantity: 40 },
+      { sku: 'EBH10NA', quantity: 0 },
+    ], 'Arrived at GB-BSE')
+    expect(out).toEqual([
+      { item_kind: 'finished', warehouse_code: 'GB-BSE', sku: 'EBH9NA', kind: 'receipt', quantity: 100, ref_type: ARRIVAL_REF_TYPE, ref_id: 'depot-leg', note: 'Arrived at GB-BSE' },
+    ])
+    expect(ARRIVAL_REF_TYPE).toBe('po_arrival')
+  })
+
+  it('uses a different key from a line-by-line receipt, and the same one every retry', () => {
+    const a = buildArrivalMovements('depot-leg', 'US-BAL', [{ sku: 'EBH9NA', quantity: 10 }], 'x')
+    const b = buildArrivalMovements('depot-leg', 'US-BAL', [{ sku: 'EBH9NA', quantity: 10 }], 'y')
+    expect(a[0].ref_type).not.toBe('po_line_receipt')
+    expect([a[0].kind, a[0].ref_type, a[0].ref_id, a[0].warehouse_code, a[0].sku])
+      .toEqual([b[0].kind, b[0].ref_type, b[0].ref_id, b[0].warehouse_code, b[0].sku])
   })
 })

@@ -69,6 +69,10 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
   // materials itself. Juraj and the Operations account hold it; sales and production do not.
   const canEditSpec = caps.has('bom.edit')
   const canDetectShipment = caps.has('transport.view')
+  // Closing a shipment is a stock event done from Kosice, so it sits behind the
+  // capability that already moves a stock level, with the warehouse's own
+  // receive capability as the other door.
+  const canMarkArrived = caps.has('stock.edit') || canReceive
   const canManageAttachments = canAct || canApprove || canReceive
   const canMoveStage = canApprove || canReceive
 
@@ -413,7 +417,12 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
           >
             Shipment
           </h2>
-          <ShipmentSection po={po} canDetect={canDetectShipment} />
+          <ShipmentSection
+            po={po}
+            canDetect={canDetectShipment}
+            canMarkArrived={canMarkArrived}
+            defaultDepot={chain.find((leg) => leg.leg === 'DEPOT_TO_EB_GROUP')?.from_entity ?? null}
+          />
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-white p-5">

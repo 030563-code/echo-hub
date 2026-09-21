@@ -105,6 +105,7 @@ export default async function PurchasingPage() {
   for (const sh of (shipRes.data ?? []) as PoShipment[]) shipByPo.set(sh.po_id, sh);
   for (const o of all) o.shipment = shipByPo.get(o.id) ?? null;
   const canDetectShipment = caps.has("transport.view");
+  const canMarkArrived = caps.has("stock.edit") || canReceive;
 
   // Manufacturing progress per PO: sent, dates given, finished.
   const mfgByPo = new Map<string, PoManufacturing>();
@@ -184,6 +185,7 @@ export default async function PurchasingPage() {
         canReceive={canReceive}
         canManageAttachments={canManageAttachments}
         canDetectShipment={canDetectShipment}
+        canMarkArrived={canMarkArrived}
         canViewCost={canViewCost}
         canMoveStage={canMoveStage}
         parties={poPdfData.parties}

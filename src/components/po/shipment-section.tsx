@@ -5,17 +5,40 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, Ship } from "lucide-react";
+import { Loader2, Ship, PackageCheck } from "lucide-react";
 import { resolvePoShipment } from "@/app/actions/purchase-orders/po-shipments";
 import DetailSection from "@/components/po/detail-section";
+import ArrivalDialog from "@/components/po/arrival-dialog";
 import type { PurchaseOrder } from "@/lib/erp-types";
 
-/** Shared by the purchase order board drawer and the single order page, so it is not re-inlined. */
-export default function ShipmentSection({ po, canDetect }: { po: PurchaseOrder; canDetect: boolean }) {
+/** An order that could still be on its way: not refused, not cancelled, not already on a shelf. */
+const OPEN_FOR_ARRIVAL = new Set(["approved", "in_manufacturing", "ready_for_shipment", "shipped"]);
+
+/**
+ * Shared by the purchase order board drawer and the single order page, so it is
+ * not re-inlined.
+ *
+ * "Arrived at depot" lives here because it is the end of the shipment, not a
+ * warehouse chore: whoever closes the container picks where it landed and the
+ * ledger moves the barriers from s.r.o. to that shelf. Dean, 21 Sep 2026.
+ */
+export default function ShipmentSection({
+  po,
+  canDetect,
+  canMarkArrived = false,
+  defaultDepot = null,
+}: {
+  po: PurchaseOrder;
+  canDetect: boolean;
+  canMarkArrived?: boolean;
+  defaultDepot?: string | null;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
+  const [arriving, setArriving] = useState(false);
   const s = po.shipment;
+  const showArrival = canMarkArrived && po.source === "hub" && OPEN_FOR_ARRIVAL.has(po.status);
 
   function detect() {
     setMsg(null);
@@ -66,6 +89,19 @@ export default function ShipmentSection({ po, canDetect }: { po: PurchaseOrder; 
         </button>
       )}
       {msg && <p className="text-[10px] text-amber-700 mt-1">{msg}</p>}
+      {showArrival && (
+        <button
+          onClick={() => setArriving(true)}
+          className="mt-2 ml-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-echo-orange hover:bg-echo-orange-hover rounded-lg transition-colors"
+        >
+          <PackageCheck className="w-3.5 h-3.5" />
+          Arrived at depot
+        </button>
+      )}
+      {po.status === "delivered" && po.delivered_at && (
+        <p className="text-[10px] text-green-700 mt-1">Arrived and on the shelf.</p>
+      )}
+      {arriving && <ArrivalDialog po={po} defaultDepot={defaultDepot} onClose={() => setArriving(false)} />}
     </DetailSection>
   );
 }
