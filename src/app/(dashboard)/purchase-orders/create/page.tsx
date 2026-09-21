@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { requireCapability } from "@/lib/authz";
-import { RAISABLE_PARTIES, XERO_CODE_COLUMNS, type ProductXeroCodes } from "@/lib/po-raising";
+import { activeOrganisation } from "@/lib/active-organisation.server";
+import { orgLabel, partiesForOrg } from "@/lib/organisations";
+import { RAISABLE_PARTIES, RAISING_PARTIES, raisingBlockedReason, XERO_CODE_COLUMNS, type ProductXeroCodes } from "@/lib/po-raising";
 import { createServerClient } from "@/lib/supabase/server";
 import RaisePOForm from "./raise-po-form";
 import type { PoProductCatalogItem, PoDeliveryAddress, PoHsCode, PoTemplate } from "@/lib/erp-types";
@@ -48,16 +50,38 @@ export default async function RaisePOPage() {
     stockBySku[r.sku] = (stockBySku[r.sku] ?? 0) + (r.quantity_on_hand ?? 0);
   }
 
-  // The raising party must belong to an organisation the caller holds, and a
-  // depot must also be one of their own. Group and s.r.o. carry no depot code,
-  // so holding the organisation is the whole test for them.
+  // The organisation being looked at is the OUTER scope, in the query and in
+  // the form. Dean, 21 Sep 2026: "if I am in UK country mode for the Hub as a
+  // whole it should only show me the UK depot and UK delivery address as well
+  // as the UK line items only". The raising party must belong to that
+  // organisation, a depot must also be one of the caller's own, and the
+  // delivery addresses are the organisation's parties' and no other's. The
+  // line items already follow the selected party.
+  const org = await activeOrganisation(auth);
   const allowed = auth.profile.allowed_depots ?? [];
   const anyDepot = auth.profile.is_super_admin || allowed.includes("ALL");
-  const parties = RAISABLE_PARTIES.filter(
-    (p) =>
-      auth.profile.organisations.includes(p.org) &&
-      (p.leg !== "DEPOT_TO_EB_GROUP" || anyDepot || allowed.includes(p.code)),
-  ).map((p) => ({ code: p.code, label: p.label, leg: p.leg, to: p.to }));
+  const parties = org
+    ? RAISABLE_PARTIES.filter(
+        (p) => p.org === org && (p.leg !== "DEPOT_TO_EB_GROUP" || anyDepot || allowed.includes(p.code)),
+      ).map((p) => ({ code: p.code, label: p.label, leg: p.leg, to: p.to }))
+    : [];
+  // Why the list is empty, in a sentence the form can show.
+  let reason: string | null = null;
+  if (!org) {
+    reason = "Choose an organisation in the header first.";
+  } else if (parties.length === 0) {
+    const own = RAISING_PARTIES.filter((p) => p.org === org);
+    const blocked = own.map((p) => raisingBlockedReason(p.code)).find(Boolean);
+    reason =
+      blocked ??
+      (own.length
+        ? `Your account is not assigned the ${orgLabel(org)} depot (${own.map((p) => p.code).join(", ")}). Ask an administrator.`
+        : `${orgLabel(org)} has no raising party.`);
+  }
+  const orgParties = new Set(org ? partiesForOrg(org) : []);
+  const addressesForOrg = ((addresses ?? []) as PoDeliveryAddress[]).filter((a) => orgParties.has(a.entity));
+  const partyCodes = new Set(parties.map((p) => p.code));
+  const templatesForOrg = templatesSafe.filter((t) => !t.from_entity || partyCodes.has(t.from_entity));
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -80,11 +104,12 @@ export default async function RaisePOPage() {
 
       <RaisePOForm
         parties={parties}
+        reason={reason}
         catalog={(catalog ?? []) as PoProductCatalogItem[]}
-        addresses={(addresses ?? []) as PoDeliveryAddress[]}
+        addresses={addressesForOrg}
         hsCodes={(hsCodes ?? []) as PoHsCode[]}
         entityCodes={(codes ?? []) as unknown as Partial<ProductXeroCodes>[]}
-        templates={templatesSafe}
+        templates={templatesForOrg}
         stockBySku={stockBySku}
         canViewCost={canViewCost}
       />

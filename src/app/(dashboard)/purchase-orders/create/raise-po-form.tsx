@@ -48,6 +48,8 @@ export interface RaisingPartyOption {
 
 interface Props {
   parties: RaisingPartyOption[];
+  /** Why `parties` is empty, when it is: the organisation's own reason, not a generic line. */
+  reason?: string | null;
   catalog: PoProductCatalogItem[];
   addresses: PoDeliveryAddress[];
   hsCodes: PoHsCode[];
@@ -59,7 +61,7 @@ interface Props {
   canViewCost: boolean;
 }
 
-export default function RaisePOForm({ parties, catalog, addresses, hsCodes, entityCodes, templates, stockBySku, canViewCost }: Props) {
+export default function RaisePOForm({ parties, reason, catalog, addresses, hsCodes, entityCodes, templates, stockBySku, canViewCost }: Props) {
   const router = useRouter();
   const [fromEntity, setFromEntity] = useState(parties[0]?.code ?? "");
   const [deliveryAddress, setDeliveryAddress] = useState("");
@@ -333,8 +335,8 @@ export default function RaisePOForm({ parties, catalog, addresses, hsCodes, enti
   if (parties.length === 0) {
     return (
       <div className="border border-dashed border-gray-200 rounded-xl p-12 text-center">
-        <p className="text-gray-600 mb-1">Your account cannot raise a purchase order for anyone.</p>
-        <p className="text-xs text-gray-400">Ask an administrator for a depot or an organisation before raising a PO.</p>
+        <p className="text-gray-600 mb-1">No purchase order can be raised here.</p>
+        <p className="text-xs text-gray-400">{reason ?? "Ask an administrator for a depot or an organisation before raising a PO."}</p>
       </div>
     );
   }
