@@ -227,7 +227,7 @@ describe('the page is ordered the way the factory reads it', () => {
    * most likely to undo by putting it back where it looks like it belongs.
    */
   it('puts the summary first, packing under it, then the detail', () => {
-    expect(at("head: [['Model', 'Product', 'Quantity', 'Pallets']]")).toBeLessThan(
+    expect(at("head: [['Model', 'Product', right('Quantity')]]")).toBeLessThan(
       at("head: [['Packing and finishing', '']]"),
     )
     expect(at("head: [['Packing and finishing', '']]")).toBeLessThan(at("write('Detailed specification'"))
@@ -236,9 +236,32 @@ describe('the page is ordered the way the factory reads it', () => {
 
   it('counts the whole order once, from the same products it lists', () => {
     expect(pdf).toContain('const totalUnits = spec.products.reduce((a, p) => a + p.quantity, 0)')
-    expect(pdf).toContain('const totalPallets = spec.products.reduce((a, p) => a + p.pallets, 0)')
     // A single-product order needs no total row saying the same number twice.
     expect(pdf).toContain('spec.products.length > 1 ?')
+  })
+
+  /**
+   * 🔴 The summary must not total the pallets. The per-line figure is the Hub's
+   * own arithmetic and the packing block is what Juraj edited and signed, and
+   * they are allowed to differ: EBSRO8001-1 has lines summing to 7 against a
+   * signed 8 pallets and 6 metal frames. Printing both made the page argue with
+   * itself, one line apart.
+   */
+  it('states the pallet count once, from the block somebody approved', () => {
+    expect(pdf).not.toContain('a + p.pallets')
+    expect(pdf).not.toContain("'Pallets']]")
+    // The packing block is still the one that says it.
+    expect(pdf).toContain("['Pallets', qty(spec.packing.pallets)]")
+    // And the per-product line still carries its own, next to its own materials.
+    expect(pdf).toContain('${product.pallets} pallet')
+  })
+
+  it('aligns a numeric heading over its own figures', () => {
+    // columnStyles reach the BODY only in jspdf-autotable, so a right-aligned
+    // column with a plain string heading prints the heading on the left.
+    expect(pdf).toContain("const right = (content: string) => ({ content, styles: { halign: 'right' as const } })")
+    expect(pdf).toContain("right('Quantity')")
+    expect(pdf).toContain("right('Per barrier'), right('Total')")
   })
 
   it('states the packing figures once, not once here and once at the foot', () => {

@@ -131,22 +131,29 @@ export async function buildSupplierSpecPdf(spec: SupplierSpec): Promise<import('
   // has first, in that order: what am I making, and how does it go out. The
   // per-product detail follows, unchanged. Nothing new is computed here: the
   // same products and the same packing block, read in the order he asked for.
+  // 🔴 NO PALLET COUNT HERE, and that is deliberate. The per-line pallets are
+  // the Hub's arithmetic (quantity / pack size); the packing block below is what
+  // Juraj edited and signed, and the two are allowed to differ, because a real
+  // job takes the pallets it takes. On EBSRO8001-1 the lines sum to 7 and the
+  // signed packing says 8 pallets and 6 metal frames. Printing both, one under
+  // the other, made the document argue with itself. Quantities are summed here
+  // because those DO come from the lines; pallets are stated once, below, by
+  // the only figure anybody has approved.
   const totalUnits = spec.products.reduce((a, p) => a + p.quantity, 0)
-  const totalPallets = spec.products.reduce((a, p) => a + p.pallets, 0)
+  const right = (content: string) => ({ content, styles: { halign: 'right' as const } })
   autoTable(doc, {
     startY: y,
     margin: { left: MARGIN, right: MARGIN },
-    head: [['Model', 'Product', 'Quantity', 'Pallets']],
-    body: spec.products.map((p) => [p.model, p.name, `${qty(p.quantity)} pcs`, qty(p.pallets)]),
-    foot: spec.products.length > 1 ? [['', 'Total', `${qty(totalUnits)} pcs`, qty(totalPallets)]] : undefined,
+    head: [['Model', 'Product', right('Quantity')]],
+    body: spec.products.map((p) => [p.model, p.name, `${qty(p.quantity)} pcs`]),
+    foot: spec.products.length > 1 ? [['', 'Total', right(`${qty(totalUnits)} pcs`)]] : undefined,
     styles: { font, fontSize: 10, overflow: 'linebreak' },
     headStyles: { font, fontStyle: 'bold', fillColor: [40, 40, 40] },
     footStyles: { font, fontStyle: 'bold', fillColor: [235, 235, 235], textColor: [0, 0, 0] },
     columnStyles: {
       0: { cellWidth: 30 },
-      1: { cellWidth: CONTENT_W - 30 - 30 - 22 },
-      2: { cellWidth: 30, halign: 'right' },
-      3: { cellWidth: 22, halign: 'right' },
+      1: { cellWidth: CONTENT_W - 30 - 34 },
+      2: { cellWidth: 34, halign: 'right' },
     },
   })
   y = finalY(doc, y + 20) + 6
@@ -198,7 +205,7 @@ export async function buildSupplierSpecPdf(spec: SupplierSpec): Promise<import('
       autoTable(doc, {
         startY: y,
         margin: { left: MARGIN, right: MARGIN },
-        head: [['Code', 'Material', 'Per barrier', 'Total']],
+        head: [['Code', 'Material', right('Per barrier'), right('Total')]],
         body: product.materials.map((m) => [m.code, m.description, qty(m.perUnit), qty(m.total)]),
         styles: { font, fontSize: 9, overflow: 'linebreak', cellWidth: 'wrap' },
         headStyles: { font, fontStyle: 'bold', fillColor: [40, 40, 40] },
