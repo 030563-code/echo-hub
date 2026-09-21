@@ -22,6 +22,11 @@
  * Column widths are stated rather than left to autoTable, so a long value
  * wraps inside its cell at a width this file chose and not at one that depends
  * on what the other rows happened to contain.
+ *
+ * ORDER OF THE PAGE, 21 Sep 2026: summary, packing, then the detail. Jozef
+ * asked for it through Martin, and he is right. The document used to open on a
+ * material table for the first model and put the pallet count on the last page,
+ * so nobody could see what the whole order was without reading all of it.
  */
 
 import type { SupplierSpec } from '@/lib/supplier-spec'
@@ -116,7 +121,67 @@ export async function buildSupplierSpecPdf(spec: SupplierSpec): Promise<import('
   if (spec.destination) write(`Destination: ${spec.destination}`, 9)
   y += 6
 
+  // ---------------------------------------------------------------- summary
+  // Jozef Šidík through Martin, 21 Sep 2026: "He want some summary of full
+  // order on top of documents. For example h9 -350pcs / v2 - 5pcs / cs- 5 pcs.
+  // Than he want packing information under that summary part. And after we can
+  // put that detailed order with all specification of materials etc."
+  //
+  // So the document now answers the two questions a person opening it actually
+  // has first, in that order: what am I making, and how does it go out. The
+  // per-product detail follows, unchanged. Nothing new is computed here: the
+  // same products and the same packing block, read in the order he asked for.
+  const totalUnits = spec.products.reduce((a, p) => a + p.quantity, 0)
+  const totalPallets = spec.products.reduce((a, p) => a + p.pallets, 0)
+  autoTable(doc, {
+    startY: y,
+    margin: { left: MARGIN, right: MARGIN },
+    head: [['Model', 'Product', 'Quantity', 'Pallets']],
+    body: spec.products.map((p) => [p.model, p.name, `${qty(p.quantity)} pcs`, qty(p.pallets)]),
+    foot: spec.products.length > 1 ? [['', 'Total', `${qty(totalUnits)} pcs`, qty(totalPallets)]] : undefined,
+    styles: { font, fontSize: 10, overflow: 'linebreak' },
+    headStyles: { font, fontStyle: 'bold', fillColor: [40, 40, 40] },
+    footStyles: { font, fontStyle: 'bold', fillColor: [235, 235, 235], textColor: [0, 0, 0] },
+    columnStyles: {
+      0: { cellWidth: 30 },
+      1: { cellWidth: CONTENT_W - 30 - 30 - 22 },
+      2: { cellWidth: 30, halign: 'right' },
+      3: { cellWidth: 22, halign: 'right' },
+    },
+  })
+  y = finalY(doc, y + 20) + 6
+
+  // ---------------------------------------------------------------- packing
+  // Second, because that is where he asked for it. It used to be the last thing
+  // on the last page, after every material table.
+  flow(34)
+  autoTable(doc, {
+    startY: y,
+    margin: { left: MARGIN, right: MARGIN },
+    head: [['Packing and finishing', '']],
+    body: [
+      ['Pallets', qty(spec.packing.pallets)],
+      ['Pallet covers', qty(spec.packing.palletCovers)],
+      ['Metal frames for pallets', qty(spec.packing.metalFrames)],
+      // Only shown when NO product carried a specification. Where a spec exists
+      // its own Graphics row says what is printed, and repeating "Standard"
+      // underneath would contradict it.
+      ...(spec.products.every((p) => p.specRows.length === 0)
+        ? ([['Printing', spec.printing]] as [string, string][])
+        : []),
+    ],
+    styles: { font, fontSize: 9, overflow: 'linebreak' },
+    headStyles: { font, fontStyle: 'bold', fillColor: [40, 40, 40] },
+    columnStyles: { 0: { cellWidth: CONTENT_W - 40 }, 1: { cellWidth: 40, halign: 'right' } },
+  })
+  y = finalY(doc, y + 20) + 8
+
   // ---------------------------------------------------------------- products
+  // The detail, under a heading of its own so the summary above plainly ends.
+  flow(14)
+  write('Detailed specification', 12, 'bold')
+  y += 3
+
   for (const product of spec.products) {
     // Keep the heading with at least the first rows of its table rather than
     // stranding a product name alone at the foot of a page.
@@ -196,28 +261,6 @@ export async function buildSupplierSpecPdf(spec: SupplierSpec): Promise<import('
       y += 7
     }
   }
-
-  // ---------------------------------------------------------------- packing
-  flow(34)
-  autoTable(doc, {
-    startY: y,
-    margin: { left: MARGIN, right: MARGIN },
-    head: [['Packing and finishing', '']],
-    body: [
-      ['Pallets', qty(spec.packing.pallets)],
-      ['Pallet covers', qty(spec.packing.palletCovers)],
-      ['Metal frames for pallets', qty(spec.packing.metalFrames)],
-      // Only shown when NO product carried a specification. Where a spec exists
-      // its own Graphics row says what is printed, and repeating "Standard"
-      // underneath would contradict it.
-      ...(spec.products.every((p) => p.specRows.length === 0)
-        ? ([['Printing', spec.printing]] as [string, string][])
-        : []),
-    ],
-    styles: { font, fontSize: 9, overflow: 'linebreak' },
-    headStyles: { font, fontStyle: 'bold', fillColor: [40, 40, 40] },
-    columnStyles: { 0: { cellWidth: CONTENT_W - 40 }, 1: { cellWidth: 40, halign: 'right' } },
-  })
 
   // A multi-page build sheet that does not say how many pages it has is a build
   // sheet somebody works half of.

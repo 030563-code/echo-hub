@@ -208,6 +208,44 @@ describe('guard: the specification document tells the truth about itself', () =>
   })
 })
 
+describe('the page is ordered the way the factory reads it', () => {
+  const pdf = readFileSync(join(process.cwd(), 'src/lib/supplier-spec-pdf.ts'), 'utf8')
+  const at = (needle: string) => {
+    const i = pdf.indexOf(needle)
+    expect(i, `not found: ${needle}`).toBeGreaterThan(-1)
+    return i
+  }
+
+  /**
+   * Jozef Šidík through Martin, 21 Sep 2026: "He want some summary of full order
+   * on top of documents. For example h9 -350pcs / v2 - 5pcs / cs- 5 pcs. Than he
+   * want packing information under that summary part. And after we can put that
+   * detailed order with all specification of materials etc."
+   *
+   * Three sections, in that order. The packing block in particular used to be
+   * the last thing on the last page, which is the half of this a later edit is
+   * most likely to undo by putting it back where it looks like it belongs.
+   */
+  it('puts the summary first, packing under it, then the detail', () => {
+    expect(at("head: [['Model', 'Product', 'Quantity', 'Pallets']]")).toBeLessThan(
+      at("head: [['Packing and finishing', '']]"),
+    )
+    expect(at("head: [['Packing and finishing', '']]")).toBeLessThan(at("write('Detailed specification'"))
+    expect(at("write('Detailed specification'")).toBeLessThan(at('for (const product of spec.products) {'))
+  })
+
+  it('counts the whole order once, from the same products it lists', () => {
+    expect(pdf).toContain('const totalUnits = spec.products.reduce((a, p) => a + p.quantity, 0)')
+    expect(pdf).toContain('const totalPallets = spec.products.reduce((a, p) => a + p.pallets, 0)')
+    // A single-product order needs no total row saying the same number twice.
+    expect(pdf).toContain('spec.products.length > 1 ?')
+  })
+
+  it('states the packing figures once, not once here and once at the foot', () => {
+    expect(pdf.split("head: [['Packing and finishing', '']]")).toHaveLength(2)
+  })
+})
+
 describe('guard: the shipping order is a document, never a second purchase order', () => {
   // 🔴 Two things used to be able to carry the number EBSRO<n>-2: this document,
   // derived from the group order's number, and a real SRO_TO_CARGO purchase
