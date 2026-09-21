@@ -7,14 +7,18 @@ import { deletePageState } from "@/lib/page-state-server";
 import { RAISE_PO_KEY } from "@/lib/page-drafts";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
-import { holdsOrganisation, orgForDepot } from "@/lib/organisations";
-import { depotHasPoSeries, PO_PREFIX_BY_DEPOT } from "@/lib/po-number";
+import { holdsOrganisation } from "@/lib/organisations";
+import { catalogueFor, indexCodes, raisingBlockedReason, raisingParty, XERO_CODE_COLUMNS, type ProductXeroCodes } from "@/lib/po-raising";
 
 // ---------------------------------------------------------------------------
 // Raise a purchase order in the Hub (the FRONT of the intercompany chain).
 //
-// A branch/depot user with `po.create` raises a DEPOT_TO_EB_GROUP root PO for one
-// of THEIR OWN depots. The row lands `status='requested'`, `source='hub'` — the
+// A holder of `po.create` raises an order for one of THEIR OWN raising parties.
+// WHICH LEG it is comes from src/lib/po-raising.ts and is no longer assumed: a
+// depot raises DEPOT_TO_EB_GROUP on Group, Group raises EB_GROUP_TO_SRO on
+// s.r.o., and s.r.o. raises SRO_TO_SUPPLIER on the manufacturer. Group and
+// s.r.o. buying on their own account is ordinary rather than exceptional; the
+// manufacturer's board is full of orders with no depot above them. The row lands `status='requested'`, `source='hub'` — the
 // Hub's record of truth — awaiting EB-Group admin approval (see decide-po.ts).
 //
 // Security (mirrors create-quote.ts): capability is re-checked here, the depot is
@@ -60,43 +64,64 @@ export async function createPurchaseOrder(input: CreatePOInput): Promise<CreateP
 
   const { profile, user } = auth;
 
-  // Depot scope — a raiser may only raise for one of their own depots. Super
-  // admins and the `ALL` sentinel bypass. (The "hub: raise PO" RLS policy enforces
-  // the same check at the DB layer — defence in depth.)
-  const depots = profile.allowed_depots ?? [];
-  const depotOk = profile.is_super_admin || depots.includes("ALL") || depots.includes(data.from_entity);
-  if (!depotOk) {
-    return { success: false, error: "You are not permitted to raise a PO for this depot" };
-  }
-  // And the depot's organisation has to be one the raiser holds. Super admins
-  // hold them all, so this only ever bites a scoped raiser.
-  if (!holdsOrganisation(profile.organisations, orgForDepot(data.from_entity))) {
-    return { success: false, error: "That depot belongs to an organisation you do not hold." };
+  // The raising party decides the leg, the counterparty and the Xero item code
+  // column. An unmapped one refuses with a sentence rather than defaulting.
+  const party = raisingParty(data.from_entity);
+  const blocked = raisingBlockedReason(data.from_entity);
+  if (!party || blocked) {
+    return { success: false, error: blocked ?? "That party cannot raise purchase orders." };
   }
 
-  // The database refuses a depot with no number series; say so plainly here
-  // rather than letting that surface as a failed insert.
-  if (!depotHasPoSeries(data.from_entity)) {
-    return {
-      success: false,
-      error: `Purchase orders cannot be raised for ${data.from_entity} yet. It has no order number series (depots with one: ${Object.keys(PO_PREFIX_BY_DEPOT).join(", ")}).`,
-    };
+  // Scope: a raiser may only raise for one of their own parties. Super admins
+  // and ALL pass. allowed_depots carries depot codes; Group and s.r.o. are
+  // reached by holding the organisation, which the next check is.
+  const depots = profile.allowed_depots ?? [];
+  const partyOk =
+    profile.is_super_admin || depots.includes("ALL") || depots.includes(party.code) || party.leg !== "DEPOT_TO_EB_GROUP";
+  if (!partyOk) {
+    return { success: false, error: "You are not permitted to raise a PO for this depot" };
+  }
+  if (!holdsOrganisation(profile.organisations, party.org)) {
+    return { success: false, error: "That party belongs to an organisation you do not hold." };
   }
 
   const supabase = await createServerClient();
 
   // Validate SKUs against the catalogue + resolve names/families server-side.
   const skus = [...new Set(data.lines.map((l) => l.sku))];
-  const { data: catalog } = await supabase
-    .from("po_product_catalog")
-    .select("sku, product_name, product_family")
-    .in("sku", skus)
-    .eq("active", true);
+  const [{ data: catalog }, { data: codeRows }] = await Promise.all([
+    supabase
+      .from("po_product_catalog")
+      .select("sku, product_name, product_family, internal_sku")
+      .in("sku", skus)
+      .eq("active", true),
+    supabase
+      .from("product_code_master")
+      .select(["internal_sku", ...XERO_CODE_COLUMNS].join(", "))
+      .eq("is_active", true),
+  ]);
 
   const catMap = new Map((catalog ?? []).map((c) => [c.sku, c]));
   const unknown = skus.filter((s) => !catMap.has(s));
   if (unknown.length) {
     return { success: false, error: `Unknown product code(s): ${unknown.join(", ")}` };
+  }
+
+  // 🔴 And that THIS party can actually order them. The form only offers
+  // products with a Xero item code for the raising party, but the form is not
+  // the enforcer: a line with no code reaches n8n, which drops it into
+  // `unmapped_skus` and carries on, so the order would arrive in Xero SHORT A
+  // LINE with nobody told. Refuse here instead, naming the products.
+  const codesByInternal = indexCodes((codeRows ?? []) as unknown as Partial<ProductXeroCodes>[]);
+  const orderable = new Set(
+    catalogueFor(party, catalog ?? [], codesByInternal).map((row) => row.item.sku),
+  );
+  const unmapped = skus.filter((s) => !orderable.has(s));
+  if (unmapped.length) {
+    return {
+      success: false,
+      error: `${party.label} has no Xero product code for: ${unmapped.join(", ")}. Those products cannot be ordered by it until a code is set.`,
+    };
   }
 
   // Human-readable label for the free-text requested_by column (n8n writes labels
@@ -112,9 +137,9 @@ export async function createPurchaseOrder(input: CreatePOInput): Promise<CreateP
   const { data: po, error: poErr } = await supabase
     .from("purchase_orders")
     .insert({
-      leg: "DEPOT_TO_EB_GROUP",
-      from_entity: data.from_entity,
-      to_entity: "EB-GROUP",
+      leg: party.leg,
+      from_entity: party.code,
+      to_entity: party.to,
       status: "requested",
       source: "hub",
       requested_by_uid: user.id,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -8,17 +8,16 @@ import { Plus, Trash2, Loader2, CheckCircle2, Save, Layers } from "lucide-react"
 import { createPurchaseOrder } from "@/app/actions/purchase-orders/create-po";
 import { saveTemplate, deleteTemplate } from "@/app/actions/purchase-orders/templates";
 import { isLineShort } from "@/lib/po-stock";
-import type { PoProductCatalogItem, PoDeliveryAddress, PoHsCode, ProductEntityCodes, PoTemplate } from "@/lib/erp-types";
+import type { PoProductCatalogItem, PoDeliveryAddress, PoHsCode, PoTemplate } from "@/lib/erp-types";
+import { catalogueFor, indexCodes, raisingParty, type ProductXeroCodes } from "@/lib/po-raising";
 import { usePageState } from "@/hooks/use-page-state";
 import { DraftStrip } from "@/components/page-state/draft-strip";
 import { RAISE_PO_KEY, parseRaisePoDraft, type RaisePoDraft } from "@/lib/page-drafts";
 
-// Which product_code_master column holds the Xero product code for each depot.
-const DEPOT_CODE_COL: Record<string, keyof ProductEntityCodes> = {
-  "US-BAL": "code_usa_balt",
-  "US-SBD": "code_usa_sb",
-  "CA-HAM": "code_canada",
-};
+// Which product_code_master column holds the Xero item code for a raising
+// party now lives in src/lib/po-raising.ts, with the leg and the Xero
+// organisation, so the form, the server action, the numbering and n8n all read
+// one table instead of four that had drifted.
 
 const inputCls =
   "w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-base sm:text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-echo-orange transition-colors";
@@ -40,12 +39,19 @@ const emptyLine = (): LineRow => ({ sku: "", quantity: "1", hs_code: "", unit_pr
 type LineFieldErrors = { sku?: string; quantity?: string; unit_price?: string };
 type FieldErrors = { depot?: string; deliveryAddress?: string; lines: Record<number, LineFieldErrors> };
 
+export interface RaisingPartyOption {
+  code: string;
+  label: string;
+  leg: string;
+  to: string;
+}
+
 interface Props {
-  depots: string[];
+  parties: RaisingPartyOption[];
   catalog: PoProductCatalogItem[];
   addresses: PoDeliveryAddress[];
   hsCodes: PoHsCode[];
-  entityCodes: ProductEntityCodes[];
+  entityCodes: Partial<ProductXeroCodes>[];
   templates: PoTemplate[];
   /** SKU → total on-hand across warehouses (dummy until the stocktake lands). */
   stockBySku: Record<string, number>;
@@ -53,9 +59,9 @@ interface Props {
   canViewCost: boolean;
 }
 
-export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entityCodes, templates, stockBySku, canViewCost }: Props) {
+export default function RaisePOForm({ parties, catalog, addresses, hsCodes, entityCodes, templates, stockBySku, canViewCost }: Props) {
   const router = useRouter();
-  const [fromEntity, setFromEntity] = useState(depots[0] ?? "");
+  const [fromEntity, setFromEntity] = useState(parties[0]?.code ?? "");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
@@ -81,7 +87,7 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
   });
   const seedDraftJson = JSON.stringify({
     v: 1,
-    fromEntity: depots[0] ?? "",
+    fromEntity: parties[0]?.code ?? "",
     deliveryAddress: "",
     notes: "",
     lines: [emptyLine()],
@@ -93,7 +99,7 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
     if (!draft) return;
     // A depot the profile no longer carries would raise a PO the server refuses,
     // so fall back rather than restore it.
-    setFromEntity(depots.includes(draft.fromEntity) ? draft.fromEntity : depots[0] ?? "");
+    setFromEntity(partyCodes.includes(draft.fromEntity) ? draft.fromEntity : parties[0]?.code ?? "");
     setDeliveryAddress(draft.deliveryAddress);
     setNotes(draft.notes);
     setLines(draft.lines.length > 0 ? draft.lines : [emptyLine()]);
@@ -126,7 +132,7 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
   /** Throw the draft away and put the form back as it opened. */
   const startAgain = async () => {
     await clearDraft();
-    setFromEntity(depots[0] ?? "");
+    setFromEntity(parties[0]?.code ?? "");
     setDeliveryAddress("");
     setNotes("");
     setLines([emptyLine()]);
@@ -140,7 +146,7 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
     setTplNotice(null);
     const t = templates.find((x) => x.id === id);
     if (!t) return;
-    if (t.from_entity && depots.includes(t.from_entity)) setFromEntity(t.from_entity);
+    if (t.from_entity && partyCodes.includes(t.from_entity)) setFromEntity(t.from_entity);
     setDeliveryAddress(t.delivery_address ?? "");
     setNotes(t.notes ?? "");
     const tplLines = (t.lines ?? []).map((l) => ({
@@ -206,28 +212,38 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
     });
   }
 
-  // Group the catalogue by product family for the SKU <optgroup>s.
-  const families = useMemo(() => {
+  const partyCodes = parties.map((p) => p.code);
+
+  // The products THIS party may order, and the Xero item code each will carry.
+  //
+  // Dean, 21 Sep 2026: "The line items have to be loaded depot specific." A
+  // product with no code for the selected party is not offered at all, because
+  // n8n drops an unmapped line and creates the Xero order without it.
+  //
+  // Plain consts, not useMemo: every one is a map lookup or a single pass over
+  // sixteen catalogue rows, and hand-written memos here made the React Compiler
+  // skip the whole component ("Existing memoization could not be preserved").
+  // Letting it do the memoising is both cheaper and the point of it.
+  const party = raisingParty(fromEntity);
+  const codesByInternal = indexCodes(entityCodes);
+  const orderable = party ? catalogueFor(party, catalog, codesByInternal) : [];
+  const codeBySku = new Map(orderable.map((row) => [row.item.sku, row.xeroItemCode]));
+  function depotCode(sku: string): string | null {
+    return codeBySku.get(sku) ?? null;
+  }
+
+  // Group the ORDERABLE products by family for the SKU <optgroup>s. Grouping
+  // the whole catalogue here was what let a raiser pick a product their Xero
+  // organisation has no item code for.
+  const families = (() => {
     const map = new Map<string, PoProductCatalogItem[]>();
-    for (const c of catalog) {
-      const fam = c.product_family || "Other";
+    for (const row of orderable) {
+      const fam = row.item.product_family || "Other";
       if (!map.has(fam)) map.set(fam, []);
-      map.get(fam)!.push(c);
+      map.get(fam)!.push(row.item);
     }
     return [...map.entries()];
-  }, [catalog]);
-
-  // Resolve the selected depot's Xero product code for a catalogue SKU
-  // (sku → internal_sku → product_code_master.code_<depot>).
-  const skuToInternal = useMemo(() => new Map(catalog.map((c) => [c.sku, c.internal_sku])), [catalog]);
-  const internalToCodes = useMemo(() => new Map(entityCodes.map((e) => [e.internal_sku, e])), [entityCodes]);
-  const codeCol = DEPOT_CODE_COL[fromEntity];
-  function depotCode(sku: string): string | null {
-    const internal = skuToInternal.get(sku);
-    if (!internal || !codeCol) return null;
-    const v = internalToCodes.get(internal)?.[codeCol];
-    return v ? String(v).trim() : null;
-  }
+  })();
 
   function updateLine(i: number, patch: Partial<LineRow>) {
     setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
@@ -314,11 +330,11 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
     );
   }
 
-  if (depots.length === 0) {
+  if (parties.length === 0) {
     return (
       <div className="border border-dashed border-gray-200 rounded-xl p-12 text-center">
-        <p className="text-gray-600 mb-1">No raising depot assigned to your account.</p>
-        <p className="text-xs text-gray-400">Ask an administrator to add a depot to your profile before raising a PO.</p>
+        <p className="text-gray-600 mb-1">Your account cannot raise a purchase order for anyone.</p>
+        <p className="text-xs text-gray-400">Ask an administrator for a depot or an organisation before raising a PO.</p>
       </div>
     );
   }
@@ -421,16 +437,19 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
               }}
               className={selectCls}
             >
-              {depots.map((d) => (
-                <option key={d} value={d}>
-                  {d}
+              {parties.map((p) => (
+                <option key={p.code} value={p.code}>
+                  {p.code} — {p.label}
                 </option>
               ))}
             </select>
             {fieldErrors.depot ? (
               <p className="text-[10px] text-red-700 mt-1">{fieldErrors.depot}</p>
             ) : (
-              <p className="text-[10px] text-gray-400 mt-1">Raised to <span className="font-mono">EB-GROUP</span>.</p>
+              <p className="text-[10px] text-gray-400 mt-1">
+                Raised to <span className="font-mono">{party?.to ?? "EB-GROUP"}</span>
+                {party ? ` as a ${party.leg.replaceAll("_", " ").toLowerCase()} order` : ""}.
+              </p>
             )}
           </div>
           <div>
@@ -572,7 +591,7 @@ export default function RaisePOForm({ depots, catalog, addresses, hsCodes, entit
                   )}
                 </div>
               )}
-              {line.sku && codeCol && (
+              {line.sku && party?.codeColumn && (
                 <p className="text-[10px] text-gray-400 mt-1 pl-1">
                   {fromEntity} Xero code:{" "}
                   {depotCode(line.sku) ? (

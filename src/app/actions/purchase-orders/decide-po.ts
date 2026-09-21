@@ -10,6 +10,7 @@ import { entityLabel } from "@/lib/depot-constants";
 import { snapshotSroPoCost } from "@/lib/bom";
 import { renderApprovalAttachment } from "@/lib/xero/attach-po-pdf";
 import { notifySroPoReady } from "./notify-sro";
+import { indexCodes, raisingParty, xeroItemCode, XERO_CODE_COLUMNS, type ProductXeroCodes } from "@/lib/po-raising";
 import type { PurchaseOrderLine } from "@/lib/erp-types";
 
 // ---------------------------------------------------------------------------
@@ -211,6 +212,38 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
       // rather than throwing, so a document that will not render costs us the
       // PDF and never the order.
       const attachment = await renderApprovalAttachment(po.id);
+
+      // 🔴 THE HUB DECIDES THE XERO ORGANISATION AND THE ITEM CODES, not n8n.
+      //
+      // n8n Fz7xXgifva5n548u chose the item code column with
+      // `let codeCol = "code_usa_balt"` and three ifs, and the tenant with
+      // `from_entity === 'CA-HAM' ? Canada : USA`. EU-FR already had a number
+      // series, so the first French order would have been created in the UNITED
+      // STATES organisation carrying US Baltimore codes, silently. Rather than
+      // sync a fourth copy of the map, the payload now carries the answers and
+      // n8n's own lookup becomes a fallback that nothing reaches.
+      //
+      // The party is read from from_entity, which is a depot on the depot leg,
+      // EB-GROUP on the Group leg and EB-SRO on the manufacturing leg. All
+      // three are in the registry with their own code column.
+      const party = raisingParty(po.from_entity);
+      const [{ data: tenantRow }, { data: codeRows }] = await Promise.all([
+        supabase.from("entities").select("xero_tenant_id").eq("code", party?.org ?? "").maybeSingle(),
+        supabase
+          .from("product_code_master")
+          .select(["internal_sku", ...XERO_CODE_COLUMNS].join(", "))
+          .eq("is_active", true),
+      ]);
+      const { data: catRows } = await supabase
+        .from("po_product_catalog")
+        .select("sku, internal_sku")
+        .in("sku", [...new Set((po.lines ?? []).map((l) => l.sku))]);
+      const internalBySku = new Map((catRows ?? []).map((c) => [c.sku, c.internal_sku]));
+      const codesByInternal = indexCodes((codeRows ?? []) as unknown as Partial<ProductXeroCodes>[]);
+      const codeFor = (sku: string): string | null => {
+        const internal = internalBySku.get(sku);
+        return party && internal ? xeroItemCode(party, codesByInternal.get(internal)) : null;
+      };
       const res = await fetch(webhookUrl, {
         method: "POST",
         headers: {
@@ -232,12 +265,19 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
           delivery_address: po.delivery_address,
           approved_by: label,
           approved_by_uid: user.id,
+          /** The Xero organisation this order belongs in. Null only when the
+           *  party is unmapped, which create-po refuses, so n8n falling back
+           *  should never happen and is worth an execution log if it does. */
+          xero_tenant_id: (tenantRow as { xero_tenant_id?: string | null } | null)?.xero_tenant_id ?? null,
+          raising_party: party?.code ?? null,
           lines: (po.lines ?? []).map((l) => ({
             sku: l.sku,
             product_name: l.product_name,
             quantity: l.quantity,
             hs_code: l.hs_code,
             unit_price: l.unit_price,
+            /** The ItemCode Xero must receive for THIS party. */
+            xero_item_code: codeFor(l.sku),
           })),
           /** null = render failed; n8n creates the order and skips the attach. */
           attachment,

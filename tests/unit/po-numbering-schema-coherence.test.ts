@@ -90,11 +90,16 @@ describe('po numbering migration', () => {
     expect(up).not.toMatch(/\bgrant\b/i)
   })
 
-  it('maps exactly the depots the TypeScript maps, to the same series', () => {
+  it('maps the five depots it introduced, and every one still maps the same way', () => {
     const body = fn(up, 'hub_po_prefix_for_depot')
     const pairs = Object.fromEntries([...body.matchAll(/when '([^']+)' then '([A-Z]+)'/g)].map((m) => [m[1], m[2]]))
-    expect(pairs).toEqual({ ...PO_PREFIX_BY_DEPOT })
     expect(pairs).toEqual({ 'US-BAL': 'EBUSA', 'US-SBD': 'EBUSA', 'CA-HAM': 'EBCAN', 'EU-FR': 'EBFRA', 'AU-SYD': 'EBAUS' })
+    // GB-BSE was added later, so this file is a SUBSET of the TypeScript map
+    // rather than equal to it. po-raising-schema-coherence.test.ts pins the
+    // whole of it against the migration that supersedes this function.
+    for (const [depot, prefix] of Object.entries(pairs)) {
+      expect(PO_PREFIX_BY_DEPOT[depot], depot).toBe(prefix)
+    }
   })
 
   it('refuses an unmapped depot instead of falling back to a prefix', () => {
@@ -287,6 +292,10 @@ describe('po numbering migration', () => {
         'EBSRO8001-4', 'EBSRO8001', 'EBGRP', 'EBG26086', 'EBG26094', 'EBUSA26013x', 'PO-01224', 'PO-USA18139',
         '1405', 'E2EPO26005', 'MRPD-20260914-01', 'xEBUSA8001', '',
       ]
+      // EBUK is deliberately absent: it joined the scheme in a later migration,
+      // which po-raising-schema-coherence.test.ts pins. Everything this
+      // migration knew about still agrees with the TypeScript.
+      expect(samples.some((n) => n.startsWith('EBUK'))).toBe(false)
       for (const n of samples) {
         expect(numberPattern.test(n), n).toBe(isNewSchemePoNumber(n))
         expect(refPattern.test(`MR-${n}`), `MR-${n}`).toBe(isNewSchemePoNumber(n))

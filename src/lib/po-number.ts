@@ -1,4 +1,5 @@
 import type { PurchaseOrder } from './erp-types'
+import { RAISING_PARTIES } from './po-raising'
 
 // The purchase order numbering scheme (Dean, 14 Sep 2026). The Hub mints every
 // number in the database trigger (po_before_insert -> hub_mint_po_number, see
@@ -25,15 +26,17 @@ const LEG_INDEX: Record<PurchaseOrder['leg'], number> = {
 /**
  * The depot code to its number series. Mirrors public.hub_po_prefix_for_depot;
  * tests/unit/po-numbering-schema-coherence.test.ts keeps the two identical.
- * EU-SK, GB-BSE and EB-SRO have no series in the scheme, so they are absent.
+ *
+ * DERIVED from RAISING_PARTIES rather than written out again, because it was
+ * one of four copies of the same facts and the copies had drifted: this one
+ * carried EU-FR and AU-SYD while the create page offered three depots and n8n
+ * silently treated anything but CA-HAM and US-SBD as US Baltimore. The depot
+ * leg only: Group and s.r.o. raise their own legs and take their numbers from
+ * those, not from a depot series.
  */
-export const PO_PREFIX_BY_DEPOT: Readonly<Record<string, string>> = {
-  'US-BAL': 'EBUSA',
-  'US-SBD': 'EBUSA',
-  'CA-HAM': 'EBCAN',
-  'EU-FR': 'EBFRA',
-  'AU-SYD': 'EBAUS',
-}
+export const PO_PREFIX_BY_DEPOT: Readonly<Record<string, string>> = Object.fromEntries(
+  RAISING_PARTIES.filter((p) => p.leg === 'DEPOT_TO_EB_GROUP').map((p) => [p.code, p.series]),
+)
 
 /** True when a depot can raise an order, i.e. it has a number series. */
 export function depotHasPoSeries(depot: string): boolean {
@@ -53,7 +56,10 @@ export function poPrefixForDepot(depot: string): string {
   return PO_PREFIX_BY_DEPOT[depot]
 }
 
-const NEW_SCHEME = /^(?:EB(?:USA|CAN|FRA|AUS|GRP)\d+|EBSRO\d+-[123])$/
+// EBUK joined the scheme with pending/20260921140000_po_raising_parties.sql.
+// This pattern and public.po_guard_number_update's must stay identical; the two
+// coherence tests pin them sample by sample.
+const NEW_SCHEME = /^(?:EB(?:USA|CAN|FRA|UK|AUS|GRP)\d+|EBSRO\d+-[123])$/
 const SRO_SUFFIX = /^EBSRO\d+-([123])$/
 const SRO_SUFFIX_TAIL = /-[123]$/
 const GROUP_NUMBER = /^EBGRP(\d+)$/

@@ -54,7 +54,7 @@ const WRITE_GATES: Record<string, string> = {
   'src/app/actions/invoicing/open-invoice.ts': 'holdsOrganisation(gate.auth.profile.organisations, org)',
   'src/app/actions/invoicing/shared.ts': 'holdsOrganisation(heldBy',
   'src/app/actions/pricing/save-pricing.ts': 'currencyHeld(gate.auth, d.currency)',
-  'src/app/actions/purchase-orders/create-po.ts': 'holdsOrganisation(profile.organisations, orgForDepot(data.from_entity))',
+  'src/app/actions/purchase-orders/create-po.ts': 'holdsOrganisation(profile.organisations, party.org)',
   'src/app/actions/purchase-orders/attachments.ts': 'poChainHeldBy(',
   'src/app/actions/purchase-orders/cargo-request.ts': 'poChainHeldBy(',
   'src/app/actions/purchase-orders/decide-po.ts': 'poChainHeldBy(',

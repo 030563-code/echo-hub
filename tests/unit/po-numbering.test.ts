@@ -27,13 +27,22 @@ describe('depot to number series', () => {
     expect(poPrefixForDepot('AU-SYD')).toBe('EBAUS')
   })
 
+  it('gives the UK depot its own series, not another country\'s', () => {
+    // GB-BSE was refused until 21 Sep 2026. Dean asked for it, so it has EBUK
+    // and a sequence of its own rather than borrowing EBUSA or EBFRA.
+    expect(depotHasPoSeries('GB-BSE')).toBe(true)
+    expect(poPrefixForDepot('GB-BSE')).toBe('EBUK')
+  })
+
   it('refuses a depot with no series in plain words instead of borrowing a prefix', () => {
-    for (const depot of ['EU-SK', 'GB-BSE', 'EB-SRO', 'US-NEW', 'EU-France', '']) {
+    // EB-SRO and EB-GROUP are absent on purpose: they raise their own legs and
+    // take their numbers from those, not from a depot series.
+    for (const depot of ['EU-SK', 'EB-SRO', 'EB-GROUP', 'US-NEW', 'EU-France', '']) {
       expect(depotHasPoSeries(depot)).toBe(false)
       expect(() => poPrefixForDepot(depot)).toThrow(/has no purchase order number series/)
     }
-    expect(() => poPrefixForDepot('GB-BSE')).toThrow(
-      'Depot GB-BSE has no purchase order number series. Depot orders can be raised for US-BAL, US-SBD, CA-HAM, EU-FR, AU-SYD.',
+    expect(() => poPrefixForDepot('EU-SK')).toThrow(
+      'Depot EU-SK has no purchase order number series. Depot orders can be raised for US-BAL, US-SBD, CA-HAM, EU-FR, GB-BSE, AU-SYD.',
     )
   })
 

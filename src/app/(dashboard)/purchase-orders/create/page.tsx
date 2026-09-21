@@ -1,15 +1,18 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { requireCapability } from "@/lib/authz";
-import { depotsForOrgs } from "@/lib/organisations";
+import { RAISABLE_PARTIES, XERO_CODE_COLUMNS, type ProductXeroCodes } from "@/lib/po-raising";
 import { createServerClient } from "@/lib/supabase/server";
 import RaisePOForm from "./raise-po-form";
-import type { PoProductCatalogItem, PoDeliveryAddress, PoHsCode, ProductEntityCodes, PoTemplate } from "@/lib/erp-types";
+import type { PoProductCatalogItem, PoDeliveryAddress, PoHsCode, PoTemplate } from "@/lib/erp-types";
 
 export const dynamic = "force-dynamic";
 
-// US + Canada only for v1 (Dean 2026-06-15). Add AU/FR once they have entities.
-const V1_DEPOTS = ["US-BAL", "US-SBD", "CA-HAM"];
+// Who may raise, and what their order is, now comes from src/lib/po-raising.ts.
+// It used to be a hardcoded V1_DEPOTS = ["US-BAL","US-SBD","CA-HAM"] here, a
+// second map in the form, a third in po-number.ts and a fourth in n8n, and the
+// four had drifted apart. Dean, 21 Sep 2026: add EU-FR, GB-BSE, EB-GROUP and
+// EB-SRO.
 
 export default async function RaisePOPage() {
   const auth = await requireCapability("po.create");
@@ -20,9 +23,11 @@ export default async function RaisePOPage() {
       supabase.from("po_product_catalog").select("*").eq("active", true).order("product_family").order("sku"),
       supabase.from("po_delivery_addresses").select("*").eq("active", true).order("entity"),
       supabase.from("po_hs_codes").select("*").eq("active", true).order("code"),
+      // EVERY code column, derived from the registry. France's and the UK's
+      // codes have been in this table all along and nothing selected them.
       supabase
         .from("product_code_master")
-        .select("internal_sku, code_usa_balt, code_usa_sb, code_canada, code_grp, code_sro")
+        .select(["internal_sku", ...XERO_CODE_COLUMNS].join(", "))
         .eq("is_active", true),
       // RLS restricts po_templates SELECT to po.create holders (this page is po.create-gated).
       supabase.from("po_templates").select("*").order("name"),
@@ -43,15 +48,16 @@ export default async function RaisePOPage() {
     stockBySku[r.sku] = (stockBySku[r.sku] ?? 0) + (r.quantity_on_hand ?? 0);
   }
 
-  // The raising depot must be one of the caller's own (super-admin / ALL → all v1),
-  // and belong to an organisation they hold.
+  // The raising party must belong to an organisation the caller holds, and a
+  // depot must also be one of their own. Group and s.r.o. carry no depot code,
+  // so holding the organisation is the whole test for them.
   const allowed = auth.profile.allowed_depots ?? [];
-  const orgDepots = depotsForOrgs(auth.profile.organisations);
-  const depots = (
-    auth.profile.is_super_admin || allowed.includes("ALL")
-      ? V1_DEPOTS
-      : allowed.filter((d) => V1_DEPOTS.includes(d))
-  ).filter((d) => orgDepots.includes(d));
+  const anyDepot = auth.profile.is_super_admin || allowed.includes("ALL");
+  const parties = RAISABLE_PARTIES.filter(
+    (p) =>
+      auth.profile.organisations.includes(p.org) &&
+      (p.leg !== "DEPOT_TO_EB_GROUP" || anyDepot || allowed.includes(p.code)),
+  ).map((p) => ({ code: p.code, label: p.label, leg: p.leg, to: p.to }));
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -73,11 +79,11 @@ export default async function RaisePOPage() {
       </div>
 
       <RaisePOForm
-        depots={depots}
+        parties={parties}
         catalog={(catalog ?? []) as PoProductCatalogItem[]}
         addresses={(addresses ?? []) as PoDeliveryAddress[]}
         hsCodes={(hsCodes ?? []) as PoHsCode[]}
-        entityCodes={(codes ?? []) as ProductEntityCodes[]}
+        entityCodes={(codes ?? []) as unknown as Partial<ProductXeroCodes>[]}
         templates={templatesSafe}
         stockBySku={stockBySku}
         canViewCost={canViewCost}
