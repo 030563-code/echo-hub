@@ -28,6 +28,9 @@ const LIST_PAGES: Record<string, string[]> = {
   'src/app/(dashboard)/calls/contacts/page.tsx': ['activeOrganisation(', 'officesForOrg(org)'],
   'src/app/(dashboard)/purchase-orders/page.tsx': ['activeOrganisation(', 'chainsForOrg(supabase, org)', '.or(filter)'],
   'src/app/(dashboard)/purchase-orders/approvals/page.tsx': ['activeOrganisation(', 'chainsForOrg(supabase, org)', '.or(filter)'],
+  // Dean, 21 Sep 2026: in UK mode the raise page offers the UK depot, the UK
+  // delivery address and the UK line items only.
+  'src/app/(dashboard)/purchase-orders/create/page.tsx': ['activeOrganisation(', 'p.org === org', 'partiesForOrg(org)'],
   'src/app/(dashboard)/stock/finished/page.tsx': ['activeOrganisation(', 'loadFinishedBoard(new Date(), warehouses)'],
   'src/app/(dashboard)/stock/materials/page.tsx': ['activeOrganisation(', 'SRO_WAREHOUSE'],
   'src/app/(dashboard)/stock/movements/page.tsx': ['activeOrganisation(', 'loadMovements({ warehouses'],
