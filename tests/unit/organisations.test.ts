@@ -166,13 +166,19 @@ describe('which organisations a module lists', () => {
   })
 
   it('lists under Stock only the organisations holding stock', () => {
-    expect(MODULE_ORGS.stock).toEqual(['EB-USA', 'EB-CANADA', 'EB-SRO'])
-    expect(moduleHasOrg('stock', 'EB-FRANCE')).toBe(false)
+    // France and the UK joined on 21 Sep 2026: their rows had been in
+    // warehouse_stock_levels all along and the organisation mapped to no
+    // warehouse, so the board told the UK it held nothing. Group holds
+    // throughput, not a shelf, and Australia has no count loaded.
+    expect(MODULE_ORGS.stock).toEqual(['EB-USA', 'EB-CANADA', 'EB-FRANCE', 'EB-SRO', 'EB-UK'])
+    expect(moduleHasOrg('stock', 'EB-GROUP')).toBe(false)
+    expect(moduleHasOrg('stock', 'EB-AUSTRALIA')).toBe(false)
   })
 
   it('shows a person only what they hold, in registry order', () => {
     expect(orgsForNavItem('invoicing', ['EB-UK', 'EB-USA'])).toEqual(['EB-USA', 'EB-UK'])
-    expect(orgsForNavItem('stock', ['EB-UK', 'EB-USA'])).toEqual(['EB-USA'])
+    expect(orgsForNavItem('stock', ['EB-UK', 'EB-USA'])).toEqual(['EB-USA', 'EB-UK'])
+    expect(orgsForNavItem('stock', ['EB-GROUP', 'EB-USA'])).toEqual(['EB-USA'])
     expect(orgsForNavItem('quotes', ['EB-SRO'])).toEqual(['EB-SRO'])
     expect(orgsForNavItem('calls', ['EB-SRO'])).toEqual([])
     expect(orgsForNavItem(undefined, ORG_CODES)).toEqual([])

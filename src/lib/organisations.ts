@@ -163,11 +163,14 @@ const CALL_OFFICES: Record<OrgCode, readonly Office[]> = {
 const WAREHOUSES: Record<OrgCode, readonly string[]> = {
   'EB-USA': ['US-BAL', 'US-SBD'],
   'EB-CANADA': ['CA-HAM'],
-  'EB-FRANCE': [],
+  'EB-FRANCE': ['EU-FR'],
   'EB-SRO': ['EB-SRO'],
+  // Group's rows in warehouse_stock_levels are throughput, not a shelf
+  // (20260917250000_group_holds_transient_stock.sql). Deliberately empty.
   'EB-GROUP': [],
+  // No AU-SYD rows exist yet. Add it here the day a count is loaded.
   'EB-AUSTRALIA': [],
-  'EB-UK': [],
+  'EB-UK': ['GB-BSE'],
 }
 
 /** Every container leaves s.r.o. and is owned by Group on the way, so those two

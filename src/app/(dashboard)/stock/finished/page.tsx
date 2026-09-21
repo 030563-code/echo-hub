@@ -11,7 +11,7 @@ export default async function FinishedGoodsPage() {
   const auth = await requireCapability(['stock.view', 'stock.edit'])
   const canEdit = auth.capabilities.has('stock.edit')
   // The organisation being looked at decides the warehouses, in the query. An
-  // organisation that holds no stock (France, the UK) is told so.
+  // organisation that holds no stock (Group, Australia) is told so.
   const org = await activeOrganisation(auth)
   if (!org) return <NoOrganisationCard title="Finished goods" what="stock" />
   const warehouses = warehousesForOrg(org)

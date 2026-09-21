@@ -12,7 +12,19 @@ export const SRO_WAREHOUSE = 'EB-SRO'
 export const DEPOT_WAREHOUSES = ['US-BAL', 'US-SBD', 'CA-HAM'] as const
 export type DepotWarehouse = (typeof DEPOT_WAREHOUSES)[number]
 
-export const STOCK_WAREHOUSES = [SRO_WAREHOUSE, ...DEPOT_WAREHOUSES] as const
+/**
+ * The UK and French shelves. Kept OUT of DEPOT_WAREHOUSES on purpose: the /mrp
+ * board sums that list as one North American on-hand figure, and widening it
+ * would fold Bury St Edmunds and France into a US number.
+ *
+ * Dean, 21 Sep 2026: "the UK warehousing stock is not showing". It was in the
+ * table all along (GB-BSE, 12 SKUs, updated that day); the organisation simply
+ * mapped to no warehouse, so the board said the UK held no stock.
+ */
+export const REGIONAL_WAREHOUSES = ['GB-BSE', 'EU-FR'] as const
+export type RegionalWarehouse = (typeof REGIONAL_WAREHOUSES)[number]
+
+export const STOCK_WAREHOUSES = [SRO_WAREHOUSE, ...DEPOT_WAREHOUSES, ...REGIONAL_WAREHOUSES] as const
 export type StockWarehouse = (typeof STOCK_WAREHOUSES)[number]
 
 export function isStockWarehouse(code: string): code is StockWarehouse {
