@@ -162,12 +162,6 @@ export default function FulfilmentCard({
                     </p>
                   )}
 
-                  {line.mappingProvisional && line.computable && (
-                    <p className="mt-1 text-xs text-gray-400">
-                      The SKU to model mapping is still provisional. Treat the figure as a guide.
-                    </p>
-                  )}
-
                   {/* The s.r.o.-supplied materials, from the unverified recipe.
                       A guide, never a block: neither button reads it. */}
                   {line.supplied && (

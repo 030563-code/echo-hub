@@ -71,7 +71,6 @@ export default async function FactoryProductPage({
 
       <h1 className="text-2xl font-bold text-gray-900">{product.productName}</h1>
       <p className="mt-1 max-w-3xl text-sm text-gray-600">{t.bdIntro}</p>
-      {product.provisional && <p className="mt-1 text-xs text-gray-500">{t.capProvisional}</p>}
 
       {frozen && (
         <div className="mt-4 flex items-start gap-3 rounded-lg border-l-4 border-red-400 bg-red-50 p-4">

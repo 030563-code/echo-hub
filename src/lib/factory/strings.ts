@@ -154,7 +154,6 @@ export interface FactoryStrings {
   capOk: string
   capShort: string
   capUnknown: string
-  capProvisional: string
   capNoForecast: string
   emptyCapability: string
 
@@ -312,7 +311,6 @@ const en: FactoryStrings = {
   capOk: 'Enough material',
   capShort: 'Not enough material',
   capUnknown: 'Cannot be calculated',
-  capProvisional: 'Estimate: the bill of materials for this product is not confirmed yet.',
   capNoForecast: 'We are not forecasting this product yet.',
   emptyCapability: 'No product can be calculated yet.',
 
@@ -471,7 +469,6 @@ const sk: FactoryStrings = {
   capOk: 'Dostatok materiálu',
   capShort: 'Nedostatok materiálu',
   capUnknown: 'Nedá sa vypočítať',
-  capProvisional: 'Odhad: kusovník tohto produktu ešte nie je potvrdený.',
   capNoForecast: 'Tento produkt zatiaľ neprognózujeme.',
   emptyCapability: 'Zatiaľ nie je možné vypočítať žiadny produkt.',
 

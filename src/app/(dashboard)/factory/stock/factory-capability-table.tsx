@@ -33,9 +33,6 @@ function columns(locale: FactoryLocale): ColumnDef<FactoryProductCapability, unk
           >
             {row.original.productName}
           </Link>
-          {row.original.provisional && (
-            <p className="mt-0.5 text-xs text-gray-500">{t.capProvisional}</p>
-          )}
         </div>
       ),
     },
