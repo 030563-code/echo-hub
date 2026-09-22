@@ -15,7 +15,7 @@ import { join } from 'node:path'
  */
 
 const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
-const UP = 'supabase/migrations/pending/20260922110000_stock_on_hand_floor.sql'
+const UP = 'supabase/migrations/20260922110000_stock_on_hand_floor.sql'
 const DOWN = 'supabase/migrations/rollback/20260922110000_stock_on_hand_floor.down.sql'
 const up = read(UP)
 const down = read(DOWN)

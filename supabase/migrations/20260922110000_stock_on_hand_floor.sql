@@ -21,8 +21,10 @@
 -- without a line that explains it. A CHECK on both level tables refuses any
 -- writer this file forgot.
 --
--- PENDING: written against the schema at 20260922100000, not applied; renumbered from 20260922090000 on 22 Sep 2026 so it sorts after the priced document table. Apply
--- live via MCP apply_migration, then move this file and its rollback up.
+-- Applied live via MCP apply_migration on 22 Sep 2026, after a dry run inside a rolled-back
+-- transaction. Renumbered from 20260922090000 the same day so it sorts after the priced document
+-- table. Post-apply probe on production: the CHECK refused a direct negative write and the ledger
+-- writer floored a short movement to zero, both inside a transaction that left nothing behind.
 
 begin;
 
