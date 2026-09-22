@@ -1,3 +1,5 @@
+import { isOrgCode, orgForDepot, type OrgCode } from "@/lib/organisations";
+
 // Per-leg PO document currency + conversion.
 //
 // A PO's cost is entered ONCE, on the first (depot) leg, in that depot's currency
@@ -11,14 +13,49 @@
 
 export type Currency = "USD" | "GBP" | "EUR" | "CAD";
 
-/** The PO-document currency for an entity/depot code (its functional currency). */
+/**
+ * The currency each company's purchase orders are denominated in.
+ *
+ * Dean, 22 Sep 2026: "Please first fix the currency issue with France it should
+ * be Euros." It was US dollars, because this used to be a list of prefixes that
+ * named the American and Canadian codes and defaulted everything else to USD.
+ * France, the UK and s.r.o.'s own depot all fell into that default, so EBFRA8001
+ * priced a French order in dollars.
+ *
+ * EB-GROUP stays GBP on purpose. The organisation registry lists it as EUR and
+ * the Dublin registered address agrees, but every Group purchase order ever sent
+ * prints pounds and the Xero tenant is the UK one. Changing it would rewrite
+ * documents that are already out. That one is Dean's to settle, not a tidy-up.
+ *
+ * Australia is the one gap. Its currency is AUD, and fx_weekly carries EUR_USD,
+ * GBP_EUR and EUR_CAD only, so there is no rate to convert an Australian order
+ * with. It keeps the dollar default until a rate exists, which is harmless while
+ * AU-SYD has nothing mapped to order.
+ */
+const ORG_PO_CURRENCY: Record<OrgCode, Currency> = {
+  "EB-USA": "USD",
+  "EB-CANADA": "CAD",
+  "EB-FRANCE": "EUR",
+  "EB-SRO": "EUR",
+  "EB-GROUP": "GBP",
+  "EB-AUSTRALIA": "USD",
+  "EB-UK": "GBP",
+};
+
+/**
+ * The PO-document currency for an entity OR depot code (its functional currency).
+ *
+ * Both vocabularies arrive here: the first leg of a chain is raised by a depot
+ * (US-BAL, EU-FR, GB-BSE) and every later leg by an entity (EB-GROUP, EB-SRO).
+ * A depot is resolved through the company that owns it, so a new depot needs no
+ * change in this file.
+ */
 export function entityPoCurrency(code: string | null | undefined): Currency {
-  const c = (code ?? "").toUpperCase();
-  if (c.startsWith("US-") || c === "EB-USA") return "USD";
-  if (c.startsWith("CA-") || c === "EB-CANADA") return "CAD";
-  if (c === "EB-GROUP") return "GBP";
-  if (c === "EB-SRO") return "EUR";
-  return "USD"; // sensible default (most chains root at a US depot)
+  const c = (code ?? "").trim().toUpperCase();
+  if (isOrgCode(c)) return ORG_PO_CURRENCY[c];
+  const owner = orgForDepot(c);
+  if (owner) return ORG_PO_CURRENCY[owner];
+  return "USD"; // SUPPLIER and anything unmapped; most chains root at a US depot.
 }
 
 export const CURRENCY_SYMBOL: Record<Currency, string> = { USD: "$", GBP: "£", EUR: "€", CAD: "C$" };

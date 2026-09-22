@@ -15,6 +15,44 @@ describe("entityPoCurrency", () => {
     expect(entityPoCurrency("SUPPLIER")).toBe("USD"); // default
     expect(entityPoCurrency(null)).toBe("USD");
   });
+
+  // Dean, 22 Sep 2026: "Please first fix the currency issue with France it
+  // should be Euros." It was dollars: this used to be a list of prefixes naming
+  // the American and Canadian codes, and every other region fell into the
+  // dollar default, so EBFRA8001 priced a French order in USD.
+  it("prices a French order in euros and a British one in pounds", () => {
+    expect(entityPoCurrency("EU-FR")).toBe("EUR");
+    expect(entityPoCurrency("EB-FRANCE")).toBe("EUR");
+    expect(entityPoCurrency("GB-BSE")).toBe("GBP");
+    expect(entityPoCurrency("EB-UK")).toBe("GBP");
+    expect(entityPoCurrency("EU-SK")).toBe("EUR");
+  });
+
+  it("resolves a depot through the company that owns it, not a prefix", () => {
+    // Every depot in the registry lands on its organisation's currency, so a
+    // new depot needs no change in po-currency.ts.
+    for (const [depot, expected] of [
+      ["us-bal", "USD"], ["ca-ham", "CAD"], ["eu-fr", "EUR"],
+      ["gb-bse", "GBP"], ["eu-sk", "EUR"],
+    ] as const) {
+      expect(entityPoCurrency(depot), depot).toBe(expected);
+      expect(entityPoCurrency(` ${depot.toUpperCase()} `), depot).toBe(expected);
+    }
+  });
+
+  it("leaves Group in pounds, because every Group order ever sent is in pounds", () => {
+    // The organisation registry says EUR and the registered address is Dublin.
+    // Changing it would rewrite documents that are already out, so it is Dean's
+    // call and not a tidy-up. Pinned here so nobody "fixes" it by accident.
+    expect(entityPoCurrency("EB-GROUP")).toBe("GBP");
+  });
+
+  it("keeps Australia on the default, because there is no AUD rate to convert with", () => {
+    // fx_weekly carries EUR_USD, GBP_EUR and EUR_CAD only. Harmless while
+    // AU-SYD has nothing mapped to order; revisit when a rate exists.
+    expect(entityPoCurrency("AU-SYD")).toBe("USD");
+    expect(entityPoCurrency("EB-AUSTRALIA")).toBe("USD");
+  });
 });
 
 describe("convertCurrency — the USD→GBP→EUR chain", () => {
