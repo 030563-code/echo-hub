@@ -1,3 +1,4 @@
+import { modelForSku, modelMaps } from '@/lib/sku-model'
 import 'server-only'
 
 import { createServerClient } from '@/lib/supabase/server'
@@ -123,10 +124,20 @@ async function buildExplodeCtx(
   mfg: Mfg,
   pos: PoForExplode[]
 ): Promise<{ ctx: ExplodeCtx; week: string | null }> {
-  const { data: catalog } = await ops.from('po_product_catalog').select('sku, bom_model_code')
-  const skuToModel = new Map<string, string | null>(
-    ((catalog ?? []) as { sku: string; bom_model_code: string | null }[]).map((c) => [c.sku, c.bom_model_code])
+  // Two tables know a SKU's model: the catalogue for the North American and
+  // Japan SKUs, the code master for the internal SKUs France, the UK and Group
+  // order under (sku-model.ts).
+  const [{ data: catalog }, { data: master }] = await Promise.all([
+    ops.from('po_product_catalog').select('sku, bom_model_code'),
+    ops.from('product_code_master').select('internal_sku, bom_model_code'),
+  ])
+  const maps = modelMaps(
+    (catalog ?? []) as { sku: string; bom_model_code: string | null }[],
+    (master ?? []) as { internal_sku: string; bom_model_code: string | null }[],
   )
+  const skuToModel = {
+    get: (sku: string) => modelForSku(sku, maps.catalogue, maps.master),
+  }
   const week = await latestWeek(mfg)
   const priceMap = await loadMaterialPriceMap(mfg)
   const bomByModel = new Map<string, MfgBomRow>()

@@ -3,10 +3,10 @@ import { ArrowLeft } from "lucide-react";
 import { requireCapability } from "@/lib/authz";
 import { activeOrganisation } from "@/lib/active-organisation.server";
 import { orgLabel, partiesForOrg } from "@/lib/organisations";
-import { RAISABLE_PARTIES, RAISING_PARTIES, raisingBlockedReason, XERO_CODE_COLUMNS, type ProductXeroCodes } from "@/lib/po-raising";
+import { RAISABLE_PARTIES, RAISING_PARTIES, raisingBlockedReason, DEPOT_MAPPING_COLUMNS, type DepotProduct } from "@/lib/po-raising";
 import { createServerClient } from "@/lib/supabase/server";
 import RaisePOForm from "./raise-po-form";
-import type { PoProductCatalogItem, PoDeliveryAddress, PoHsCode, PoTemplate } from "@/lib/erp-types";
+import type { PoDeliveryAddress, PoHsCode, PoTemplate } from "@/lib/erp-types";
 
 export const dynamic = "force-dynamic";
 
@@ -20,17 +20,14 @@ export default async function RaisePOPage() {
   const auth = await requireCapability("po.create");
   const supabase = await createServerClient();
 
-  const [{ data: catalog }, { data: addresses }, { data: hsCodes }, { data: codes }, { data: templates }, { data: stock }] =
+  const [{ data: mapping }, { data: addresses }, { data: hsCodes }, { data: templates }, { data: stock }] =
     await Promise.all([
-      supabase.from("po_product_catalog").select("*").eq("active", true).order("product_family").order("sku"),
+      // What each party may order: its own rows of product_depot_mapping, the
+      // SKU that region uses and the code its Xero organisation carries. Dean,
+      // 22 Sep 2026: France was still being shown the North American SKUs.
+      supabase.from("product_depot_mapping").select(DEPOT_MAPPING_COLUMNS).eq("is_active", true),
       supabase.from("po_delivery_addresses").select("*").eq("active", true).order("entity"),
       supabase.from("po_hs_codes").select("*").eq("active", true).order("code"),
-      // EVERY code column, derived from the registry. France's and the UK's
-      // codes have been in this table all along and nothing selected them.
-      supabase
-        .from("product_code_master")
-        .select(["internal_sku", ...XERO_CODE_COLUMNS].join(", "))
-        .eq("is_active", true),
       // RLS restricts po_templates SELECT to po.create holders (this page is po.create-gated).
       supabase.from("po_templates").select("*").order("name"),
       // Stock for the non-blocking shortfall flag (dummy until the stocktake lands).
@@ -105,10 +102,9 @@ export default async function RaisePOPage() {
       <RaisePOForm
         parties={parties}
         reason={reason}
-        catalog={(catalog ?? []) as PoProductCatalogItem[]}
         addresses={addressesForOrg}
         hsCodes={(hsCodes ?? []) as PoHsCode[]}
-        entityCodes={(codes ?? []) as unknown as Partial<ProductXeroCodes>[]}
+        products={((mapping ?? []) as DepotProduct[]).filter((r) => partyCodes.has(r.depot_code))}
         templates={templatesForOrg}
         stockBySku={stockBySku}
         canViewCost={canViewCost}

@@ -8,7 +8,7 @@ import { RAISE_PO_KEY } from "@/lib/page-drafts";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
 import { holdsOrganisation } from "@/lib/organisations";
-import { catalogueFor, indexCodes, raisingBlockedReason, raisingParty, XERO_CODE_COLUMNS, type ProductXeroCodes } from "@/lib/po-raising";
+import { catalogueFor, DEPOT_MAPPING_COLUMNS, raisingBlockedReason, raisingParty, type DepotProduct } from "@/lib/po-raising";
 
 // ---------------------------------------------------------------------------
 // Raise a purchase order in the Hub (the FRONT of the intercompany chain).
@@ -87,40 +87,25 @@ export async function createPurchaseOrder(input: CreatePOInput): Promise<CreateP
 
   const supabase = await createServerClient();
 
-  // Validate SKUs against the catalogue + resolve names/families server-side.
-  const skus = [...new Set(data.lines.map((l) => l.sku))];
-  const [{ data: catalog }, { data: codeRows }] = await Promise.all([
-    supabase
-      .from("po_product_catalog")
-      .select("sku, product_name, product_family, internal_sku")
-      .in("sku", skus)
-      .eq("active", true),
-    supabase
-      .from("product_code_master")
-      .select(["internal_sku", ...XERO_CODE_COLUMNS].join(", "))
-      .eq("is_active", true),
-  ]);
-
-  const catMap = new Map((catalog ?? []).map((c) => [c.sku, c]));
-  const unknown = skus.filter((s) => !catMap.has(s));
-  if (unknown.length) {
-    return { success: false, error: `Unknown product code(s): ${unknown.join(", ")}` };
-  }
-
-  // 🔴 And that THIS party can actually order them. The form only offers
-  // products with a Xero item code for the raising party, but the form is not
+  // 🔴 Validate every SKU against what THIS party may order, which is its own
+  // rows of product_depot_mapping: the SKU that region uses and the code its
+  // Xero organisation carries. The form only offers those, but the form is not
   // the enforcer: a line with no code reaches n8n, which drops it into
   // `unmapped_skus` and carries on, so the order would arrive in Xero SHORT A
-  // LINE with nobody told. Refuse here instead, naming the products.
-  const codesByInternal = indexCodes((codeRows ?? []) as unknown as Partial<ProductXeroCodes>[]);
-  const orderable = new Set(
-    catalogueFor(party, catalog ?? [], codesByInternal).map((row) => row.item.sku),
-  );
-  const unmapped = skus.filter((s) => !orderable.has(s));
+  // LINE with nobody told. Refuse here instead, naming the products. Names and
+  // families come from the same rows, never from the client.
+  const skus = [...new Set(data.lines.map((l) => l.sku))];
+  const { data: mapping } = await supabase
+    .from("product_depot_mapping")
+    .select(DEPOT_MAPPING_COLUMNS)
+    .eq("depot_code", party.code)
+    .eq("is_active", true);
+  const catMap = new Map(catalogueFor(party, (mapping ?? []) as DepotProduct[]).map((p) => [p.sku, p]));
+  const unmapped = skus.filter((s) => !catMap.has(s));
   if (unmapped.length) {
     return {
       success: false,
-      error: `${party.label} has no Xero product code for: ${unmapped.join(", ")}. Those products cannot be ordered by it until a code is set.`,
+      error: `${party.label} has no product code for: ${unmapped.join(", ")}. Those products cannot be ordered by it until product_depot_mapping carries them.`,
     };
   }
 

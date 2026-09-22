@@ -10,7 +10,7 @@ import { entityLabel } from "@/lib/depot-constants";
 import { snapshotSroPoCost } from "@/lib/bom";
 import { renderApprovalAttachment } from "@/lib/xero/attach-po-pdf";
 import { notifySroPoReady } from "./notify-sro";
-import { indexCodes, raisingParty, xeroItemCode, XERO_CODE_COLUMNS, type ProductXeroCodes } from "@/lib/po-raising";
+import { DEPOT_MAPPING_COLUMNS, raisingParty, xeroItemCodeFor, type DepotProduct } from "@/lib/po-raising";
 import type { PurchaseOrderLine } from "@/lib/erp-types";
 
 // ---------------------------------------------------------------------------
@@ -227,23 +227,18 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
       // EB-GROUP on the Group leg and EB-SRO on the manufacturing leg. All
       // three are in the registry with their own code column.
       const party = raisingParty(po.from_entity);
-      const [{ data: tenantRow }, { data: codeRows }] = await Promise.all([
+      const [{ data: tenantRow }, { data: mapping }] = await Promise.all([
         supabase.from("entities").select("xero_tenant_id").eq("code", party?.org ?? "").maybeSingle(),
+        // The party's own rows of product_depot_mapping: the code ITS Xero
+        // organisation knows the line under. Dean, 22 Sep 2026.
         supabase
-          .from("product_code_master")
-          .select(["internal_sku", ...XERO_CODE_COLUMNS].join(", "))
+          .from("product_depot_mapping")
+          .select(DEPOT_MAPPING_COLUMNS)
+          .eq("depot_code", party?.code ?? "")
           .eq("is_active", true),
       ]);
-      const { data: catRows } = await supabase
-        .from("po_product_catalog")
-        .select("sku, internal_sku")
-        .in("sku", [...new Set((po.lines ?? []).map((l) => l.sku))]);
-      const internalBySku = new Map((catRows ?? []).map((c) => [c.sku, c.internal_sku]));
-      const codesByInternal = indexCodes((codeRows ?? []) as unknown as Partial<ProductXeroCodes>[]);
-      const codeFor = (sku: string): string | null => {
-        const internal = internalBySku.get(sku);
-        return party && internal ? xeroItemCode(party, codesByInternal.get(internal)) : null;
-      };
+      const codeFor = (sku: string): string | null =>
+        party ? xeroItemCodeFor(party, sku, (mapping ?? []) as DepotProduct[]) : null;
       const res = await fetch(webhookUrl, {
         method: "POST",
         headers: {

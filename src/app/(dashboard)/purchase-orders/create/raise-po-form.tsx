@@ -8,16 +8,17 @@ import { Plus, Trash2, Loader2, CheckCircle2, Save, Layers } from "lucide-react"
 import { createPurchaseOrder } from "@/app/actions/purchase-orders/create-po";
 import { saveTemplate, deleteTemplate } from "@/app/actions/purchase-orders/templates";
 import { isLineShort } from "@/lib/po-stock";
-import type { PoProductCatalogItem, PoDeliveryAddress, PoHsCode, PoTemplate } from "@/lib/erp-types";
-import { catalogueFor, indexCodes, raisingParty, type ProductXeroCodes } from "@/lib/po-raising";
+import type { PoDeliveryAddress, PoHsCode, PoTemplate } from "@/lib/erp-types";
+import { catalogueFor, raisingParty, type DepotProduct, type OrderableProduct } from "@/lib/po-raising";
 import { usePageState } from "@/hooks/use-page-state";
 import { DraftStrip } from "@/components/page-state/draft-strip";
 import { RAISE_PO_KEY, parseRaisePoDraft, type RaisePoDraft } from "@/lib/page-drafts";
 
-// Which product_code_master column holds the Xero item code for a raising
-// party now lives in src/lib/po-raising.ts, with the leg and the Xero
-// organisation, so the form, the server action, the numbering and n8n all read
-// one table instead of four that had drifted.
+// Who may raise, and their leg, series and Xero organisation, live in
+// src/lib/po-raising.ts. What each party may ORDER is its own rows of
+// product_depot_mapping, handed in as `products`: the SKU that region uses and
+// the code its Xero organisation carries. Dean, 22 Sep 2026: France was still
+// being shown the North American SKUs.
 
 const inputCls =
   "w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-base sm:text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-echo-orange transition-colors";
@@ -50,10 +51,10 @@ interface Props {
   parties: RaisingPartyOption[];
   /** Why `parties` is empty, when it is: the organisation's own reason, not a generic line. */
   reason?: string | null;
-  catalog: PoProductCatalogItem[];
+  /** product_depot_mapping rows for the organisation's parties: what each may order. */
+  products: DepotProduct[];
   addresses: PoDeliveryAddress[];
   hsCodes: PoHsCode[];
-  entityCodes: Partial<ProductXeroCodes>[];
   templates: PoTemplate[];
   /** SKU → total on-hand across warehouses (dummy until the stocktake lands). */
   stockBySku: Record<string, number>;
@@ -61,7 +62,7 @@ interface Props {
   canViewCost: boolean;
 }
 
-export default function RaisePOForm({ parties, reason, catalog, addresses, hsCodes, entityCodes, templates, stockBySku, canViewCost }: Props) {
+export default function RaisePOForm({ parties, reason, products, addresses, hsCodes, templates, stockBySku, canViewCost }: Props) {
   const router = useRouter();
   const [fromEntity, setFromEntity] = useState(parties[0]?.code ?? "");
   const [deliveryAddress, setDeliveryAddress] = useState("");
@@ -223,13 +224,12 @@ export default function RaisePOForm({ parties, reason, catalog, addresses, hsCod
   // n8n drops an unmapped line and creates the Xero order without it.
   //
   // Plain consts, not useMemo: every one is a map lookup or a single pass over
-  // sixteen catalogue rows, and hand-written memos here made the React Compiler
+  // the party's mapping rows, and hand-written memos here made the React Compiler
   // skip the whole component ("Existing memoization could not be preserved").
   // Letting it do the memoising is both cheaper and the point of it.
   const party = raisingParty(fromEntity);
-  const codesByInternal = indexCodes(entityCodes);
-  const orderable = party ? catalogueFor(party, catalog, codesByInternal) : [];
-  const codeBySku = new Map(orderable.map((row) => [row.item.sku, row.xeroItemCode]));
+  const orderable = party ? catalogueFor(party, products) : [];
+  const codeBySku = new Map(orderable.map((row) => [row.sku, row.xeroItemCode]));
   function depotCode(sku: string): string | null {
     return codeBySku.get(sku) ?? null;
   }
@@ -238,11 +238,11 @@ export default function RaisePOForm({ parties, reason, catalog, addresses, hsCod
   // the whole catalogue here was what let a raiser pick a product their Xero
   // organisation has no item code for.
   const families = (() => {
-    const map = new Map<string, PoProductCatalogItem[]>();
+    const map = new Map<string, OrderableProduct[]>();
     for (const row of orderable) {
-      const fam = row.item.product_family || "Other";
+      const fam = row.product_family || "Other";
       if (!map.has(fam)) map.set(fam, []);
-      map.get(fam)!.push(row.item);
+      map.get(fam)!.push(row);
     }
     return [...map.entries()];
   })();
@@ -523,7 +523,7 @@ export default function RaisePOForm({ parties, reason, catalog, addresses, hsCod
                 onChange={(e) => updateLine(i, { sku: e.target.value })}
                 className={selectCls + " col-span-2 sm:col-span-1"}
               >
-                <option value="">Select product…</option>
+                <option value="">{party && orderable.length === 0 ? `Nothing mapped for ${party.label}` : "Select product…"}</option>
                 {families.map(([fam, items]) => (
                   <optgroup key={fam} label={fam}>
                     {items.map((c) => (

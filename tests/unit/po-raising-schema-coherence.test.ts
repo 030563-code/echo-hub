@@ -4,28 +4,32 @@ import { join } from 'node:path'
 import {
   RAISING_PARTIES,
   RAISABLE_PARTIES,
-  XERO_CODE_COLUMNS,
+  DEPOT_MAPPING_COLUMNS,
   canRaiseFor,
   catalogueFor,
-  indexCodes,
   raisingBlockedReason,
   raisingParty,
-  xeroItemCode,
-  type ProductXeroCodes,
+  xeroItemCodeFor,
+  type DepotProduct,
 } from '@/lib/po-raising'
 import { PO_PREFIX_BY_DEPOT, isNewSchemePoNumber } from '@/lib/po-number'
 
 /**
- * Who may raise a purchase order, in one table, and the migration that agrees
- * with it.
+ * Who may raise a purchase order, in one table; what each may order, in one
+ * table of the database; and the migration that agrees with both.
  *
  * 🔴 THE FAULT THIS EXISTS TO PREVENT. The same facts were written out four
  * times: V1_DEPOTS on the create page, DEPOT_CODE_COL in the form,
  * PO_PREFIX_BY_DEPOT here, and a `let codeCol = "code_usa_balt"` with three ifs
  * inside n8n Fz7xXgifva5n548u. The fourth one is the one Xero actually obeys,
- * and it DEFAULTED, so a French order (EU-FR already had a number series) would
- * have been created in the United States Xero organisation carrying US
- * Baltimore item codes, with nothing said anywhere.
+ * and it DEFAULTED, so a French order would have been created in the United
+ * States Xero organisation carrying US Baltimore item codes.
+ *
+ * And the second fault, 22 Sep 2026: the product list came from
+ * po_product_catalog, sixteen North American SKUs, so France was offered EBH9NA
+ * where its own SKU (and its stock rows) are EBH9. Dean: "remember we have the
+ * region specific codes in product_depot_mapping in supabase already for each
+ * depot." That table is the only product source now.
  */
 
 const MIG = 'supabase/migrations/20260921140000_po_raising_parties.sql'
@@ -49,33 +53,49 @@ function fn(sql: string, name: string): string {
 
 const raw = readFileSync(join(process.cwd(), MIG), 'utf8')
 const up = stripComments(raw)
+const read = (file: string) => readFileSync(join(process.cwd(), file), 'utf8')
+const codeOnly = (text: string) =>
+  text
+    .split('\n')
+    .map((l) => l.replace(/^\s*(\/\/|\*|\/\*).*$/, ''))
+    .join('\n')
 
-// A product_code_master shaped fixture, taken from the live table on 21 Sep 2026.
-const CODES: Partial<ProductXeroCodes>[] = [
-  { internal_sku: 'EBH9', code_usa_balt: 'H9BALT', code_usa_sb: 'H9SB', code_canada: 'H9HAM', code_france: 'H9', code_uk: '01-EBH9', code_grp: '01-EBH9', code_sro: 'SK-EBH9' },
-  { internal_sku: 'EBH9X', code_usa_balt: 'H9XBALT', code_usa_sb: 'H9XSB', code_canada: null, code_france: null, code_uk: '01-H9X', code_grp: '01-EBH9X', code_sro: 'SK-EBH9X' },
-  // The live V2 row really does carry trailing spaces on its Baltimore code.
-  { internal_sku: 'V2', code_usa_balt: 'V2BALT  ', code_usa_sb: null, code_canada: 'V2HAM', code_france: 'V2', code_uk: '01-V2A', code_grp: null, code_sro: 'SK-EBV2' },
-  { internal_sku: 'VFK', code_usa_balt: 'VFKB', code_usa_sb: null, code_canada: null, code_france: null, code_uk: null, code_grp: null, code_sro: 'SK-VFK' },
+// A product_depot_mapping shaped fixture, taken from the live table on 22 Sep 2026.
+const row = (
+  depot_code: string,
+  hubspot_sku_code: string,
+  xero_item_code: string,
+  xero_item_description: string,
+  product_family: string,
+  is_active = true,
+): DepotProduct => ({ depot_code, hubspot_sku_code, xero_item_code, xero_item_description, product_family, is_active })
+
+const MAPPING: DepotProduct[] = [
+  row('US-BAL', 'EBH9NA', 'H9BALT', 'Echo Barrier H9', 'H9'),
+  // The live V2 Baltimore code really does carry trailing spaces.
+  row('US-BAL', 'V2NA', 'V2BALT  ', 'Echo Barrier V2', 'V2'),
+  row('US-BAL', 'EBVFKNA', 'VFKB', 'Verticale Fitting Kits', 'Accessories'),
+  row('US-SBD', 'EBH9NA', 'H9SB', 'Echo Barrier H9', 'H9'),
+  row('US-SBD', 'EBH9ERNA', 'H9SBXR', 'Echo Barrier H9 Ex Rental', 'H9'),
+  row('CA-HAM', 'EBH9NA', 'H9HAM', 'Echo Barrier H9', 'H9'),
+  row('CA-HAM', 'EBH10HERC', 'H10HERCHAM', 'Echo Barrier H10 Black with HERC Logo', 'H10', false),
+  row('EU-FR', 'EBH9', 'H9', 'Echo Barrier H9', 'H9'),
+  row('EU-FR', 'V2', 'V2', 'V2', 'V2'),
+  row('GB-BSE', 'EBH9', '01-EBH9', 'Echo Barrier H9', 'H9'),
+  row('GB-BSE', 'NDS', '01-NDS', 'Noise Defender Single', 'Noise Defender'),
+  row('EB-GROUP', 'EBH9', '01-EBH9', 'Echo Barrier H9', 'H9'),
+  row('EB-SRO', 'EBH9SK', 'H9SK', 'Echo Barrier H9', 'H9'),
+  row('EB-SRO', 'BLANK', '   ', 'A row with no code', 'H9'),
 ]
-const CATALOGUE = [
-  { sku: 'EBH9NA', product_name: 'Echo Barrier H9', product_family: 'H9', internal_sku: 'EBH9' },
-  { sku: 'EBH9XNA', product_name: 'Echo Barrier H9X', product_family: 'H9', internal_sku: 'EBH9X' },
-  { sku: 'V2NA', product_name: 'Echo Barrier V2', product_family: 'V2', internal_sku: 'V2' },
-  { sku: 'EBVFKNA', product_name: 'Vertical Fitting Kits', product_family: 'ACC', internal_sku: 'VFK' },
-  { sku: 'ORPHAN', product_name: 'No master row', product_family: 'ACC', internal_sku: null },
-]
-const byInternal = indexCodes(CODES)
-const skusFor = (code: string) =>
-  catalogueFor(raisingParty(code)!, CATALOGUE, byInternal).map((r) => r.item.sku)
+const skusFor = (code: string) => catalogueFor(raisingParty(code)!, MAPPING).map((p) => p.sku)
 
 describe('the raising registry', () => {
   it('carries the four parties Dean asked for, on their own legs', () => {
-    expect(raisingParty('EU-FR')).toMatchObject({ leg: 'DEPOT_TO_EB_GROUP', to: 'EB-GROUP', org: 'EB-FRANCE', codeColumn: 'code_france', series: 'EBFRA' })
-    expect(raisingParty('GB-BSE')).toMatchObject({ leg: 'DEPOT_TO_EB_GROUP', to: 'EB-GROUP', org: 'EB-UK', codeColumn: 'code_uk', series: 'EBUK' })
+    expect(raisingParty('EU-FR')).toMatchObject({ leg: 'DEPOT_TO_EB_GROUP', to: 'EB-GROUP', org: 'EB-FRANCE', series: 'EBFRA' })
+    expect(raisingParty('GB-BSE')).toMatchObject({ leg: 'DEPOT_TO_EB_GROUP', to: 'EB-GROUP', org: 'EB-UK', series: 'EBUK' })
     // Group and s.r.o. are not depots and do not raise the depot leg.
-    expect(raisingParty('EB-GROUP')).toMatchObject({ leg: 'EB_GROUP_TO_SRO', to: 'EB-SRO', org: 'EB-GROUP', codeColumn: 'code_grp', series: 'EBGRP' })
-    expect(raisingParty('EB-SRO')).toMatchObject({ leg: 'SRO_TO_SUPPLIER', to: 'SUPPLIER', org: 'EB-SRO', codeColumn: 'code_sro', series: 'EBSRO' })
+    expect(raisingParty('EB-GROUP')).toMatchObject({ leg: 'EB_GROUP_TO_SRO', to: 'EB-SRO', org: 'EB-GROUP', series: 'EBGRP' })
+    expect(raisingParty('EB-SRO')).toMatchObject({ leg: 'SRO_TO_SUPPLIER', to: 'SUPPLIER', org: 'EB-SRO', series: 'EBSRO' })
   })
 
   it('never defaults: an unmapped party refuses and says who can', () => {
@@ -87,23 +107,17 @@ describe('the raising registry', () => {
     expect(raisingBlockedReason('')).toContain('(blank)')
   })
 
-  it('refuses Australia with its reason rather than hiding it', () => {
-    // It has a series and a Xero organisation and no item codes at all, which
-    // is a fact about product_code_master, not an oversight here.
-    expect(raisingParty('AU-SYD')?.codeColumn).toBeNull()
-    expect(canRaiseFor('AU-SYD')).toBe(false)
-    expect(raisingBlockedReason('AU-SYD')).toContain('no Xero product codes')
-    expect(RAISABLE_PARTIES.map((p) => p.code)).not.toContain('AU-SYD')
+  it('lists Australia, and offers it nothing until the mapping has rows for it', () => {
+    // A series and a Xero organisation, and no rows in product_depot_mapping
+    // on 22 Sep 2026. That is a fact about the data; the form says so.
+    expect(canRaiseFor('AU-SYD')).toBe(true)
+    expect(RAISABLE_PARTIES.map((p) => p.code)).toContain('AU-SYD')
+    expect(skusFor('AU-SYD')).toEqual([])
+    expect(read('src/app/(dashboard)/purchase-orders/create/raise-po-form.tsx')).toContain('`Nothing mapped for ${party.label}`')
   })
 
   it('is case and whitespace tolerant on the way in', () => {
     expect(raisingParty(' eu-fr ')?.code).toBe('EU-FR')
-  })
-
-  it('selects every code column it names, and no more', () => {
-    const used = new Set(RAISING_PARTIES.map((p) => p.codeColumn).filter(Boolean))
-    for (const col of used) expect(XERO_CODE_COLUMNS).toContain(col)
-    expect(new Set(XERO_CODE_COLUMNS).size).toBe(XERO_CODE_COLUMNS.length)
   })
 
   it('gives every party a distinct code and a series', () => {
@@ -113,41 +127,63 @@ describe('the raising registry', () => {
   })
 })
 
-describe('the depot-specific line items', () => {
-  it('offers only the products this party has a Xero item code for', () => {
+describe('the depot-specific line items come from product_depot_mapping', () => {
+  it("offers each party its own region's SKUs, and never the North American ones to France", () => {
     // Dean, 21 Sep 2026: "The line items have to be loaded depot specific."
-    expect(skusFor('US-BAL')).toEqual(['EBH9NA', 'EBH9XNA', 'V2NA', 'EBVFKNA'])
-    expect(skusFor('US-SBD')).toEqual(['EBH9NA', 'EBH9XNA'])
-    expect(skusFor('CA-HAM')).toEqual(['EBH9NA', 'V2NA'])
-    expect(skusFor('EU-FR')).toEqual(['EBH9NA', 'V2NA'])
-    expect(skusFor('GB-BSE')).toEqual(['EBH9NA', 'EBH9XNA', 'V2NA'])
-    expect(skusFor('EB-GROUP')).toEqual(['EBH9NA', 'EBH9XNA'])
-    expect(skusFor('EB-SRO')).toEqual(['EBH9NA', 'EBH9XNA', 'V2NA', 'EBVFKNA'])
+    // Dean, 22 Sep 2026: "when I go to France it still shows the US/NA hubspot_sku_codes".
+    expect(skusFor('EU-FR')).toEqual(['EBH9', 'V2'])
+    expect(skusFor('GB-BSE')).toEqual(['EBH9', 'NDS'])
+    expect(skusFor('EB-GROUP')).toEqual(['EBH9'])
+    expect(skusFor('US-BAL')).toEqual(['EBVFKNA', 'EBH9NA', 'V2NA'])
+    expect(skusFor('EU-FR')).not.toContain('EBH9NA')
   })
 
-  it('never offers a product with no master row at all', () => {
-    for (const p of RAISABLE_PARTIES) expect(skusFor(p.code)).not.toContain('ORPHAN')
+  it('gives the code the party\'s OWN Xero organisation knows the line under', () => {
+    expect(xeroItemCodeFor(raisingParty('EU-FR')!, 'EBH9', MAPPING)).toBe('H9')
+    expect(xeroItemCodeFor(raisingParty('GB-BSE')!, 'EBH9', MAPPING)).toBe('01-EBH9')
+    expect(xeroItemCodeFor(raisingParty('US-BAL')!, 'EBH9NA', MAPPING)).toBe('H9BALT')
+    // San Bernardino's ex-rental H9 has its own code, which a per-country
+    // column on the code master could never say.
+    expect(xeroItemCodeFor(raisingParty('US-SBD')!, 'EBH9ERNA', MAPPING)).toBe('H9SBXR')
+    expect(xeroItemCodeFor(raisingParty('US-SBD')!, 'EBH9NA', MAPPING)).toBe('H9SB')
   })
 
-  it('returns the code the order will carry, and trims it', () => {
-    // A Xero ItemCode with a trailing space does not match the item, and the
-    // live V2 Baltimore code has two.
-    const rows = catalogueFor(raisingParty('US-BAL')!, CATALOGUE, byInternal)
-    expect(rows.find((r) => r.item.sku === 'V2NA')?.xeroItemCode).toBe('V2BALT')
-    expect(xeroItemCode(raisingParty('GB-BSE')!, byInternal.get('EBH9'))).toBe('01-EBH9')
+  it('returns null for a SKU the party does not map, and never another party\'s code', () => {
+    expect(xeroItemCodeFor(raisingParty('EU-FR')!, 'EBH9NA', MAPPING)).toBeNull()
+    expect(xeroItemCodeFor(raisingParty('AU-SYD')!, 'EBH9', MAPPING)).toBeNull()
   })
 
-  it('treats a blank or missing code as no code', () => {
-    expect(xeroItemCode(raisingParty('EU-FR')!, { code_france: '   ' })).toBeNull()
-    expect(xeroItemCode(raisingParty('EU-FR')!, undefined)).toBeNull()
-    expect(xeroItemCode(raisingParty('AU-SYD')!, byInternal.get('EBH9'))).toBeNull()
+  it('trims the code, skips a retired row and a row with no code', () => {
+    // A Xero ItemCode with a trailing space does not match the item.
+    expect(xeroItemCodeFor(raisingParty('US-BAL')!, 'V2NA', MAPPING)).toBe('V2BALT')
+    expect(skusFor('CA-HAM')).toEqual(['EBH9NA'])
+    expect(skusFor('EB-SRO')).toEqual(['EBH9SK'])
   })
 
-  it('gives France and the UK the codes that were in the table all along', () => {
-    // Nothing selected code_france or code_uk before 21 Sep 2026. The create
-    // page asked for five columns and there were seven.
-    expect(skusFor('EU-FR').length).toBeGreaterThan(0)
-    expect(skusFor('GB-BSE').length).toBeGreaterThan(0)
+  it('names a product by its Xero description, so the dropdown reads like the region', () => {
+    const fr = catalogueFor(raisingParty('EU-FR')!, MAPPING)
+    expect(fr.map((p) => [p.sku, p.product_name, p.product_family])).toEqual([
+      ['EBH9', 'Echo Barrier H9', 'H9'],
+      ['V2', 'V2', 'V2'],
+    ])
+  })
+
+  it('is read from the same columns by every reader, and nothing reads the old tables for it', () => {
+    for (const col of ['depot_code', 'hubspot_sku_code', 'xero_item_code', 'xero_item_description', 'product_family', 'is_active']) {
+      expect(DEPOT_MAPPING_COLUMNS).toContain(col)
+    }
+    for (const file of [
+      'src/app/(dashboard)/purchase-orders/create/page.tsx',
+      'src/app/actions/purchase-orders/create-po.ts',
+      'src/app/actions/purchase-orders/decide-po.ts',
+    ]) {
+      const src = codeOnly(read(file))
+      expect(src, file).toContain('from("product_depot_mapping")')
+      expect(src, file).toContain('DEPOT_MAPPING_COLUMNS')
+      expect(src, file).not.toContain('product_code_master')
+      expect(src, file).not.toContain('po_product_catalog')
+    }
+    expect(codeOnly(read('src/app/(dashboard)/purchase-orders/create/raise-po-form.tsx'))).not.toContain('product_code_master')
   })
 })
 
@@ -321,13 +357,10 @@ describe('the raising rollback', () => {
 })
 
 describe('what the Hub hands n8n', () => {
-  const decide = readFileSync(join(process.cwd(), 'src/app/actions/purchase-orders/decide-po.ts'), 'utf8')
+  const decide = read('src/app/actions/purchase-orders/decide-po.ts')
   /** Without the comments, so the prose explaining the old fault cannot satisfy
    *  or trip an assertion about the code. */
-  const code = decide
-    .split('\n')
-    .map((l) => l.replace(/^\s*(\/\/|\*|\/\*).*$/, ''))
-    .join('\n')
+  const code = codeOnly(decide)
 
   it('sends the Xero organisation and the item code, so n8n has nothing to decide', () => {
     // 🔴 n8n Fz7xXgifva5n548u picked the tenant with
@@ -347,9 +380,10 @@ describe('what the Hub hands n8n', () => {
     expect(code).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/)
   })
 
-  it('resolves the code through the registry, not a map of its own', () => {
+  it("resolves the code through the party's own mapping rows, not a map of its own", () => {
     expect(code).toContain('raisingParty(po.from_entity)')
-    expect(code).toContain('xeroItemCode(party, codesByInternal.get(internal))')
+    expect(code).toContain('xeroItemCodeFor(party, sku, (mapping ?? []) as DepotProduct[])')
+    expect(code).toMatch(/\.eq\("depot_code", party\?\.code \?\? ""\)/)
     // No depot-to-column map of its own, anywhere in the executable code.
     expect(code).not.toMatch(/code_usa_balt|code_canada|code_france|code_uk\b/)
   })
