@@ -15,7 +15,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { loadSroPoBom } from '@/lib/bom'
 import { loadModelSpecs } from '@/lib/model-spec'
-import { buildSupplierSpec } from '@/lib/supplier-spec'
+import { buildSupplierSpec, type SupplierSpecPacking } from '@/lib/supplier-spec'
 import { sanitiseDraft, toSpecDraft, type SpecDraft } from '@/lib/po-spec-draft'
 import { entityLabel } from '@/lib/depot-constants'
 
@@ -220,4 +220,56 @@ export async function specActorNames(uids: (string | null)[]): Promise<Map<strin
       r.display_name ?? 'Unknown',
     ]),
   )
+}
+
+/**
+ * The packing block of a SAVED specification, or null when nothing was saved.
+ *
+ * One row read, no bill of materials. The priced -3 and the send to Bamida
+ * read this so they print the pallets, covers and frames somebody signed and
+ * not the ones the pack-size table computes. Null means "nobody has written
+ * anything down", and then the table is the only answer there is.
+ */
+export async function specSavedPacking(poId: string): Promise<SupplierSpecPacking | null> {
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('po_spec_document')
+    .select('draft')
+    .eq('po_id', poId)
+    .maybeSingle<{ draft: unknown }>()
+  return data ? sanitiseDraft(data.draft).packing : null
+}
+
+/**
+ * The same, for the manufacturing order under each of these SRO orders, keyed
+ * by the SRO order's id. The bill of materials page builds one priced document
+ * per SRO order and the specification hangs off the manufacturing child, so
+ * this is the join it needs in two reads rather than one per order.
+ */
+export async function specSavedPackingBySroOrder(
+  sroPoIds: string[],
+): Promise<Record<string, SupplierSpecPacking>> {
+  if (sroPoIds.length === 0) return {}
+  const admin = createAdminClient()
+  const { data: children } = await admin
+    .from('purchase_orders')
+    .select('id, parent_po_id')
+    .eq('leg', 'SRO_TO_SUPPLIER')
+    .in('parent_po_id', sroPoIds)
+  const parentOf = new Map<string, string>()
+  for (const c of (children ?? []) as { id: string; parent_po_id: string | null }[]) {
+    if (c.parent_po_id) parentOf.set(c.id, c.parent_po_id)
+  }
+  if (parentOf.size === 0) return {}
+
+  const { data: docs } = await admin
+    .from('po_spec_document')
+    .select('po_id, draft')
+    .in('po_id', [...parentOf.keys()])
+  const out: Record<string, SupplierSpecPacking> = {}
+  for (const row of (docs ?? []) as { po_id: string; draft: unknown }[]) {
+    const sro = parentOf.get(row.po_id)
+    if (sro) out[sro] = sanitiseDraft(row.draft).packing
+  }
+  return out
 }

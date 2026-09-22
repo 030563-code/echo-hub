@@ -6,7 +6,7 @@ import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedUser } from "@/lib/authz";
 import { poChainHeldBy } from "@/lib/po-organisations";
-import { specDocumentStatus } from "@/lib/po-spec-store";
+import { specDocumentStatus, specSavedPacking } from "@/lib/po-spec-store";
 import { factoryLogin, loadSendContacts, resolveSelection } from "@/lib/send-contacts";
 import { factoryGuideAttachment } from "@/lib/factory-guide";
 import { externalCallsDisabled, hubBaseUrl } from "@/lib/env";
@@ -222,7 +222,10 @@ async function planManufacturingSend(input: z.infer<typeof Schema>) {
 
   // `po` IS the manufacturing order, so its own number (EBSRO8001-1) is the one
   // that goes on the document Bamida receive; `bom` belongs to its SRO parent.
-  const bamida = buildBamidaPo(bom, new Date().toISOString().slice(0, 10), supplier, po.po_number);
+  // The pallet count the email quotes is the one signed on the specification,
+  // which the gate above has just required, not the pack-size table's.
+  const packing = await specSavedPacking(poId);
+  const bamida = buildBamidaPo(bom, new Date().toISOString().slice(0, 10), supplier, po.po_number, packing);
   if (bamida.lines.length === 0) {
     return {
       ok: false as const,

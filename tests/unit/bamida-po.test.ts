@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { buildBamidaPo, type BamidaSupplier } from '@/lib/bamida-po'
 import type { SroPoBom, SroPoBomLine } from '@/lib/erp-types'
 
@@ -69,5 +71,57 @@ describe('buildBamidaPo', () => {
     expect(po.pallets).toBe(2)
     const covers = po.lines.find((l) => l.code === 'Pallet COVERs')!
     expect(covers.qty).toBe(2)
+  })
+})
+
+describe('the signed packing', () => {
+  // EBSRO8001-1 as Martin saved it on 17 Sep 2026: 350 H9 make 5 pallets by the
+  // table, but with a V2 and a cutting station on the order he signed 8 pallets,
+  // 8 covers and 6 frames. The priced order said 7, 7 and 7 until 21 Sep.
+  const signed = { pallets: 8, palletCovers: 8, metalFrames: 6 }
+
+  it('prints the pallets, covers and frames somebody signed, not the ones the table makes', () => {
+    const po = buildBamidaPo(makePo({ quantity: 350 }), '2026-06-24', undefined, 'EBSRO8001-1', signed)
+    expect(po.pallets).toBe(8)
+    expect(po.lines.find((l) => l.code === 'Pallet COVERs')!.qty).toBe(8)
+    expect(po.lines.find((l) => l.code === '1781')!.qty).toBe(6)
+    // 350 x 46.30 + 350 x 12.50 + 8 x 19 + 6 x 85
+    expect(po.subtotal).toBe(16205 + 4375 + 152 + 510)
+  })
+
+  it('drops a packaging line whose signed count is zero rather than printing a zero line', () => {
+    const po = buildBamidaPo(makePo(), '2026-06-24', undefined, null, { pallets: 1, palletCovers: 1, metalFrames: 0 })
+    expect(po.lines.map((l) => l.code)).toEqual(['MANH9', 'PRISTD', 'Pallet COVERs'])
+  })
+
+  it('still counts from the pack sizes when nothing was saved', () => {
+    const po = buildBamidaPo(makePo({ quantity: 71 }), '2026-06-24', undefined, null, null)
+    expect(po.pallets).toBe(2)
+    expect(po.lines.find((l) => l.code === '1781')!.qty).toBe(2)
+  })
+})
+
+describe('every priced document reads the signed packing', () => {
+  // Three places build the priced document. If any of them stops passing the
+  // saved packing, that document silently goes back to the table's count and
+  // disagrees with the -1 again, which is the fault Martin reported.
+  const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
+
+  it('the -3 download', () => {
+    const src = read('src/lib/bamida-po-document.ts')
+    expect(src).toContain('const packing = await specSavedPacking(poId)')
+    expect(src).toContain('buildBamidaPo(bom, documentDate, supplier, number, packing)')
+  })
+
+  it('the bill of materials tab', () => {
+    const src = read('src/app/(dashboard)/bom/page.tsx')
+    expect(src).toContain('specSavedPackingBySroOrder(ids)')
+    expect(src).toContain('packingBySro[po.id] ?? null')
+  })
+
+  it('the send to Bamida, whose email quotes the pallet count', () => {
+    const src = read('src/app/actions/purchase-orders/send-manufacturing-po.ts')
+    expect(src).toContain('const packing = await specSavedPacking(poId)')
+    expect(src).toContain('supplier, po.po_number, packing)')
   })
 })

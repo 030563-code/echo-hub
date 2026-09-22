@@ -1,6 +1,7 @@
 import { requireCapability } from "@/lib/authz";
 import { loadSroPoBoms, loadBomMaster, loadMaterials, loadManufacturingPoNumbers } from "@/lib/bom";
 import { getSupplierByCode } from "@/lib/suppliers";
+import { specSavedPackingBySroOrder } from "@/lib/po-spec-store";
 import { buildBamidaPo, type BamidaPo, type BamidaSupplier } from "@/lib/bamida-po";
 import { stripBamidaPo, stripSroPoBomCosts, stripBomMasterCosts } from "@/lib/price-visibility";
 import BomSection from "./bom-section";
@@ -36,10 +37,13 @@ export default async function BomPage() {
   // SRO order. An order fulfilled from stock has no such child, so it keeps its
   // own number rather than showing an EBSRO<n>-1 nobody ever raised.
   const today = new Date().toISOString().slice(0, 10);
-  const mfgNumbers = await loadManufacturingPoNumbers(orders.pos.map((p) => p.id));
+  // The packing somebody signed on each manufacturing order's specification,
+  // so this tab and the -3 download never state different pallet counts.
+  const ids = orders.pos.map((p) => p.id);
+  const [mfgNumbers, packingBySro] = await Promise.all([loadManufacturingPoNumbers(ids), specSavedPackingBySroOrder(ids)]);
   const bamidaByPo: Record<string, BamidaPo> = {};
   for (const po of orders.pos) {
-    const bp = buildBamidaPo(po, today, bamidaSupplier, mfgNumbers[po.id]);
+    const bp = buildBamidaPo(po, today, bamidaSupplier, mfgNumbers[po.id], packingBySro[po.id] ?? null);
     bamidaByPo[po.id] = canViewCost ? bp : stripBamidaPo(bp);
   }
 

@@ -73,7 +73,29 @@ function mkLine(code: string, description: string, qty: number, price: number, t
 }
 
 /**
+ * The pallets, pallet covers and metal frames somebody signed on the -1
+ * specification. Same shape as SupplierSpecPacking, declared here so this
+ * module keeps importing nothing from the specification side.
+ */
+export interface SignedPacking {
+  pallets: number
+  palletCovers: number
+  metalFrames: number
+}
+
+/**
  * The Bamida document for one SRO order.
+ *
+ * `packing` is what was SAVED on the manufacturing specification, when anybody
+ * has saved one. Martin, 21 Sep 2026: "I did change packing in manufacturing
+ * PO but in price order it fill automatically and I need to change it as
+ * well." Until then this document counted pallets from the pack-size table and
+ * printed that count as both the covers and the frames, so the two documents
+ * for one order disagreed the moment the -1 was edited: EBSRO8001-1 was signed
+ * at 8 pallets, 8 covers and 6 frames and the priced order said 7, 7 and 7.
+ * The -1 is the editable, signed document and the -3 follows it; nobody edits
+ * the same fact twice. With nothing saved the table still decides, which is
+ * exactly what the generated -1 would say.
  *
  * `manufacturingPoNumber` is the po_number of the SRO order's manufacturing
  * child (EBSRO8001-1 under EBGRP8001), when one has been raised. It is passed
@@ -88,13 +110,14 @@ export function buildBamidaPo(
   isoDate: string,
   supplier: BamidaSupplier = DEFAULT_SUPPLIER,
   manufacturingPoNumber?: string | null,
+  packing?: SignedPacking | null,
 ): BamidaPo {
   const lines: BamidaPoLine[] = []
-  let pallets = 0
+  let computedPallets = 0
 
   for (const l of po.lines) {
     if (!l.model_code) continue
-    pallets += palletsFor(l.model_code, l.quantity)
+    computedPallets += palletsFor(l.model_code, l.quantity)
     if (l.bamida_man_eur > 0) {
       lines.push(mkLine(manCode(l.model_code), `Bamida Manufacturing cost ${l.model_code}`, l.quantity, l.bamida_man_eur, 0))
     }
@@ -103,10 +126,15 @@ export function buildBamidaPo(
     }
   }
 
-  if (pallets > 0) {
-    lines.push(mkLine('Pallet COVERs', 'covers for pallets', pallets, PALLET_COVER_EUR, 0))
-    lines.push(mkLine('1781', 'Metal Frames for Pallets', pallets, METAL_FRAME_EUR, 0))
-  }
+  // The signed figures where there are any, the table's where there are none.
+  // Covers and frames are separate counts on the specification (a pallet of
+  // cutting stations takes a cover and no frame), so each line stands on its
+  // own and a signed zero prints no line.
+  const pallets = packing ? packing.pallets : computedPallets
+  const covers = packing ? packing.palletCovers : computedPallets
+  const frames = packing ? packing.metalFrames : computedPallets
+  if (covers > 0) lines.push(mkLine('Pallet COVERs', 'covers for pallets', covers, PALLET_COVER_EUR, 0))
+  if (frames > 0) lines.push(mkLine('1781', 'Metal Frames for Pallets', frames, METAL_FRAME_EUR, 0))
 
   // mkLine always sets numeric values here (this is the priced build path);
   // the null branch is only ever reached after stripBamidaPo.

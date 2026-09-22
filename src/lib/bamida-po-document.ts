@@ -38,7 +38,7 @@ import { buildBamidaPoPdf } from '@/lib/bamida-po-pdf'
 import { BUYER } from '@/lib/bamida-po'
 import { STANDARD_PRINTING } from '@/lib/supplier-spec'
 import { specFromDraft } from '@/lib/po-spec-draft'
-import { loadSpecDocument } from '@/lib/po-spec-store'
+import { loadSpecDocument, specSavedPacking } from '@/lib/po-spec-store'
 import { buildSupplierSpecPdf } from '@/lib/supplier-spec-pdf'
 import { buildTransportOrderPdf } from '@/lib/transport-order-pdf'
 import { loadCargoRequest } from '@/lib/cargo-request-store'
@@ -150,7 +150,10 @@ export async function renderSupplierDocument(
     // -3, derived from the Group order's number. An order raised before the
     // scheme has no derivable number, so it keeps the one it carries.
     const number = sroDocumentNumber(group?.po_number, 'Accounting') ?? po.po_number
-    const document = buildBamidaPo(bom, documentDate, supplier, number)
+    // WHAT PRINTS IS WHAT WAS SIGNED, on this document too. The pallets, covers
+    // and frames come from the saved -1 where there is one; see buildBamidaPo.
+    const packing = await specSavedPacking(poId)
+    const document = buildBamidaPo(bom, documentDate, supplier, number, packing)
     if (document.lines.length === 0) return { ok: false, reason: 'no_lines' }
     const pdf = await buildBamidaPoPdf(document)
     return {
