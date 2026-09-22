@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,6 +13,27 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 🔴 Until React has attached, this form is a plain HTML form with
+  // method="post" and no action, so a click submits it natively: the browser
+  // posts to /login, Next has no POST handler, and the person lands back on an
+  // EMPTY login form with nothing said. It looks exactly like being signed out
+  // for no reason, and it is why "it just goes back to login" happens on a slow
+  // connection or a cold start. Reproduced twice against production while
+  // chasing that report.
+  //
+  // The method="post" stays: without it the native submit is a GET and the
+  // browser puts the password in the URL, the history and every log on the way.
+  // The button simply waits for the handler that prevents it.
+  //
+  // useSyncExternalStore rather than an effect: it returns the server snapshot
+  // (false) during render and the client snapshot (true) once hydrated, in one
+  // pass. Setting state in an effect would do the same thing a render later and
+  // the React Compiler rightly refuses it.
+  const ready = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  )
 
   const supabase = createClient()
 
@@ -103,8 +124,8 @@ export default function LoginPage() {
             </div>
           )}
 
-          <Button type="submit" className="w-full" variant="primary" disabled={loading}>
-            {loading ? 'Authenticating...' : 'Sign In'}
+          <Button type="submit" className="w-full" variant="primary" disabled={loading || !ready}>
+            {loading ? 'Authenticating...' : ready ? 'Sign In' : 'Loading…'}
           </Button>
         </form>
       </Card>
