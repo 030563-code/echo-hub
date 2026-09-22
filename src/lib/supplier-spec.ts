@@ -59,9 +59,9 @@ export interface SupplierSpecProduct {
   materials: SupplierSpecMaterial[]
   /**
    * The manufacturing specification for this model, or null when the Hub holds
-   * none. Null prints a visible "no specification held" line rather than
-   * nothing, because a silently bare document reads as "no special
-   * requirements" to whoever is building from it.
+   * none. Null prints NOTHING on the sheet since 22 Sep 2026 (Dean: "remove all
+   * tags on the client facing PO"); the editor and the order page are where a
+   * missing specification is said, and Martin or Juraj fill it in there.
    */
   spec: ModelSpec | null
   /**

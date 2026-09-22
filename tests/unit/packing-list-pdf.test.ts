@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { asGroupCopy, buildPackingList, type PackingListDoc } from '@/lib/despatch/packing-list'
 import { buildPackingListPdf } from '@/lib/despatch/packing-list-pdf'
 
@@ -122,5 +124,17 @@ describe('the packing list PDF', () => {
 
   it('is still renderable with no stamp, for a throwaway preview', async () => {
     expect((await buildPackingListPdf(jessup())).getNumberOfPages()).toBe(1)
+  })
+})
+
+describe('guard: the packing list says nothing about the Hub', () => {
+  // Dean, 22 Sep 2026: "remove all tags on the client facing PO". Whether the
+  // weight table is confirmed is shown on the order page, never to the forwarder.
+  it('prints no caveat about the weights', () => {
+    const src = readFileSync(join(process.cwd(), 'src/lib/despatch/packing-list-pdf.ts'), 'utf8')
+    expect(src).not.toContain('weighbridge')
+    expect(src).not.toContain('not yet been confirmed')
+    // The flag still travels with the document so the card can show it.
+    expect(readFileSync(join(process.cwd(), 'src/lib/despatch/packing-list.ts'), 'utf8')).toContain('weightsConfirmed: boolean')
   })
 })

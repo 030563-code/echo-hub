@@ -248,25 +248,15 @@ export async function buildSupplierSpecPdf(spec: SupplierSpec): Promise<import('
       y = finalY(doc, y + 20) + 4
     }
 
-    // 🔴 WHO SIGNED IT OFF IS NOT PRINTED. Dean, 17 Sep 2026, seeing "Specification confirmed by
-    // Operations on 2026-09-17. Read from template": "Please remove these on the client facing
-    // Document not needed at all."
+    // 🔴 NOTHING ON THIS SHEET IS ABOUT THE HUB. Dean, 17 Sep 2026, seeing "Specification
+    // confirmed by Operations on 2026-09-17. Read from template": "Please remove these on the
+    // client facing Document not needed at all." And on 22 Sep, seeing "No manufacturing
+    // specification held for H9X 2.1W.": "remove all tags on the client facing PO ... Martin and
+    // Juraj can edit the POs if something is missing so no need for it."
     //
-    // He is right, and the gate is what made it redundant. The line existed to warn the factory
-    // off a sheet nobody had checked, back when an unconfirmed specification could still be sent.
-    // Since sendManufacturingPoToBamida refuses an unconfirmed one, they can only ever receive a
-    // signed document, so the warning warns of nothing and the name is our own bookkeeping.
-    // Whether a specification is confirmed, and who by, is on the order page and in the editor.
-    //
-    // This line stays, because it is addressed to THEM and not to us: a product block with no
-    // requirements on it reads as "nothing special about this one" to whoever is building it, and
-    // that is not what an empty specification means.
-    if (product.specRows.length === 0 && product.bullets.length === 0) {
-      doc.setTextColor(150, 60, 0)
-      write(`No manufacturing specification held for ${product.model}.`, 7.5)
-      doc.setTextColor(0, 0, 0)
-      y += 7
-    }
+    // So a product with no rows and no bullets prints its name and quantity and nothing else.
+    // The editor and the order page are where the Hub says what it does not hold; the sheet the
+    // factory builds from says only what somebody signed. The send is gated on that signature.
   }
 
   // A multi-page build sheet that does not say how many pages it has is a build

@@ -13,10 +13,9 @@
  *
  *  - Their header says INCONTERMS. It is INCOTERMS and the Hub spells it
  *    correctly. A misspelling copied on purpose is a misspelling we own.
- *  - The weight table prints an UNCONFIRMED banner while WEIGHTS_CONFIRMED is
- *    false, the same way the manufacturing specification says it has not been
- *    signed. A document that quietly states an unverified weight is worse than
- *    one that says it is unverified.
+ *  - Nothing on the sheet is about the Hub. Whether the weight table has been
+ *    confirmed (WEIGHTS_CONFIRMED) is said on the order page, not here: Dean,
+ *    22 Sep 2026, "remove all tags on the client facing PO".
  *
  * 🔴 columnStyles reach the BODY only. A right-aligned column whose heading and
  * total are set through columnStyles prints the heading left-aligned, which is
@@ -231,8 +230,13 @@ export async function buildPackingListPdf(
   })
   y = finalY(doc, y) + 3
 
-  // ------------------------------------------------------ comments and caveat
-  const tailHeight = 5 + 12 + (pl.weightsConfirmed ? 0 : 7)
+  // ----------------------------------------------------------------- comments
+  // 🔴 No caveat about the weights here. `pl.weightsConfirmed` is shown on the
+  // order page, where the people who can fix it read it. Dean, 22 Sep 2026:
+  // "remove all tags on the client facing PO". A forwarder or a customs officer
+  // holding this sheet cannot act on "unconfirmed", and the earlier draft that
+  // printed it was the same mistake as the confirmation line on the -1.
+  const tailHeight = 5 + 12
   if (y + tailHeight > BODY_BOTTOM) {
     doc.addPage()
     y = 20
@@ -242,20 +246,6 @@ export async function buildPackingListPdf(
   doc.rect(MARGIN, y + 5, CONTENT_W, 12)
   if (pl.comments) block([pl.comments], MARGIN + 2, y + 10, CONTENT_W - 4, 8)
   y += 21
-
-  if (!pl.weightsConfirmed) {
-    set(7.5, 'bold')
-    doc.setTextColor(150, 60, 0)
-    doc.text(
-      doc.splitTextToSize(
-        'Weights are taken from Echo Barrier s.r.o. packing lists and have not yet been confirmed against a weighbridge.',
-        CONTENT_W,
-      ) as string[],
-      MARGIN,
-      y,
-    )
-    doc.setTextColor(0, 0, 0)
-  }
 
   // ------------------------------------------------------------------ footer
   // On EVERY page. The wordmark only on the last sheet reads as an unbranded

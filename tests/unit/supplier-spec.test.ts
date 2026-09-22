@@ -153,14 +153,12 @@ describe('guard: the specification document tells the truth about itself', () =>
     expect(send).toContain('if (!spec.confirmedAt)')
   })
 
-  it('says when it holds no specification at all rather than printing nothing', () => {
-    expect(pdf).toContain('No manufacturing specification held for')
-  })
-
-  it('decides what to say from what it PRINTED, not from a database field', () => {
-    // An edited document has no ModelSpec behind it and is still a specification;
-    // keying off `spec === null` would have called every hand-written one empty.
-    expect(pdf).toContain('product.specRows.length === 0 && product.bullets.length === 0')
+  it('prints nothing about the Hub for a product it holds no specification for', () => {
+    // Dean, 22 Sep 2026, seeing "No manufacturing specification held for H9X 2.1W.":
+    // "remove all tags on the client facing PO ... Martin and Juraj can edit the
+    // POs if something is missing so no need for it." The editor and the order
+    // page say what is missing; the sheet says only what was signed.
+    expect(pdf).not.toContain('No manufacturing specification held')
     expect(pdf).not.toContain('product.spec === null')
   })
 
