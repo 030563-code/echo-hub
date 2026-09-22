@@ -135,9 +135,10 @@ async function buildExplodeCtx(
     (catalog ?? []) as { sku: string; bom_model_code: string | null }[],
     (master ?? []) as { internal_sku: string; bom_model_code: string | null }[],
   )
-  const skuToModel = {
-    get: (sku: string) => modelForSku(sku, maps.catalogue, maps.master),
-  }
+  const skus = [...new Set(pos.flatMap((p) => (p.lines ?? []).map((l) => l.sku)))]
+  const skuToModel = new Map<string, string | null>(
+    skus.map((sku) => [sku, modelForSku(sku, maps.catalogue, maps.master)]),
+  )
   const week = await latestWeek(mfg)
   const priceMap = await loadMaterialPriceMap(mfg)
   const bomByModel = new Map<string, MfgBomRow>()

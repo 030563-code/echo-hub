@@ -593,7 +593,7 @@ export default function RaisePOForm({ parties, reason, products, addresses, hsCo
                   )}
                 </div>
               )}
-              {line.sku && party?.codeColumn && (
+              {line.sku && party && (
                 <p className="text-[10px] text-gray-400 mt-1 pl-1">
                   {fromEntity} Xero code:{" "}
                   {depotCode(line.sku) ? (
