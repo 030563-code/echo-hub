@@ -18,14 +18,22 @@ import { INVOICE_STAGES } from '@/lib/customer-invoice/constants'
  * it is the deals that have no invoice yet, plus any that were opened but not
  * yet taxed. Tax Setup sits last because it is configuration, not a queue.
  */
-const TABS = [
-  { href: '/invoicing/accepted', label: 'Accepted Quotes' },
-  ...INVOICE_STAGES.map((stage) => ({ href: stage.href, label: stage.label })),
-  { href: '/invoicing/tax-setup', label: 'Tax Setup' },
-]
+function tabs(filedLabel: string | undefined) {
+  return [
+    { href: '/invoicing/accepted', label: 'Accepted Quotes' },
+    ...INVOICE_STAGES.map((stage) => ({
+      href: stage.href,
+      // The numbering step is the one tab whose name depends on who is
+      // invoicing: TaxJar files the USA's sale, France's is simply numbered.
+      label: stage.status === 'filed' && filedLabel ? filedLabel : stage.label,
+    })),
+    { href: '/invoicing/tax-setup', label: 'Tax Setup' },
+  ]
+}
 
-export function InvoicingNav() {
+export function InvoicingNav({ filedLabel }: { filedLabel?: string }) {
   const pathname = usePathname()
+  const TABS = tabs(filedLabel)
 
   return (
     <nav aria-label="Invoicing" className="mb-6 border-b border-gray-200">

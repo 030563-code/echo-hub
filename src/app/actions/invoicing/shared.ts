@@ -9,14 +9,14 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { taxjarCreateOrder } from '@/lib/taxjar'
-import { US_ACCEPTED_DEAL_STATUS, INVOICING_QUEUE_SINCE } from '@/lib/customer-invoice/constants'
-import { CLOSED_LOST_STAGES } from '@/lib/hubspot-constants'
+import { INVOICING_QUEUE_SINCE } from '@/lib/customer-invoice/constants'
+import { CLOSED_LOST_STAGES, QUOTATION_ACCEPTED_STAGES } from '@/lib/hubspot-constants'
 import { buildFilingOrders, type ShipToAddress } from '@/lib/customer-invoice/tax-mapping'
 import { sanitizeUSAddress, normalizeUSState } from '@/lib/us-address'
 import { getAuthorizedUser, type AuthzOk } from '@/lib/authz'
 import { holdsOrganisation, type OrgCode } from '@/lib/organisations'
 import type { CustomerInvoiceStatus } from '@/lib/customer-invoice/constants'
-import type { USDepot } from '@/lib/customer-invoice/constants'
+import type { USDepot, InvoiceDepot } from '@/lib/customer-invoice/constants'
 
 export interface CustomerInvoiceRow {
   id: string
@@ -79,6 +79,11 @@ export interface CustomerInvoiceRow {
   idempotency_key: string
   xero_invoice_id: string | null
   xero_invoice_number: string | null
+  /** The Xero DRAFT posted to price the tax (France). Separate from
+   *  xero_invoice_id on purpose: that column means "authorised, in the ledger",
+   *  and three places refuse or short-circuit on it. The authorise leg updates
+   *  THIS id in place rather than creating a second Xero invoice. */
+  xero_draft_invoice_id: string | null
   authorized_at: string | null
   emailed_at: string | null
   taxjar_transaction_id: string | null
@@ -107,7 +112,7 @@ export interface CustomerInvoiceLineRow {
   discount_percentage: number
   line_total: number
   is_shipping: boolean
-  ship_from_depot: USDepot
+  ship_from_depot: InvoiceDepot
   ship_from_locked: boolean
   tax_amount: number | null
   taxable_amount: number | null
@@ -170,6 +175,26 @@ export async function loadInvoiceWithLines(
   }
 }
 
+/**
+ * Which organisation an invoice belongs to, for a caller that only needs that.
+ *
+ * Same scope rule as loadInvoiceWithLines: an invoice the caller's organisations
+ * do not include answers as a missing one. Used by the lookups that talk to Xero
+ * on the invoice's behalf, because Xero is per organisation and the wrong one
+ * would answer with a different company's items and contacts.
+ */
+export async function invoiceOrganisation(
+  invoiceId: string,
+  heldBy: readonly OrgCode[],
+): Promise<{ ok: true; org: OrgCode } | { ok: false; error: string }> {
+  const admin = createAdminClient()
+  const { data, error } = await admin.from('customer_invoices').select('organisation_code').eq('id', invoiceId).maybeSingle()
+  if (error) return { ok: false, error: 'Failed to load the invoice.' }
+  const org = (data as { organisation_code?: string } | null)?.organisation_code
+  if (!data || !holdsOrganisation(heldBy, org)) return { ok: false, error: 'Invoice not found.' }
+  return { ok: true, org }
+}
+
 /** Append-only audit event; best-effort by design (an event write must never
  *  fail the action that caused it). */
 export async function logInvoiceEvent(
@@ -195,7 +220,7 @@ export async function logInvoiceEvent(
  *  for each line's OWN ship-from depot (the registry enrichment assumed the
  *  deal depot). Returns a map keyed `sku|depot`. */
 export async function lookupXeroItemCodes(
-  pairs: readonly { sku: string | null; depot: USDepot }[],
+  pairs: readonly { sku: string | null; depot: InvoiceDepot }[],
 ): Promise<Map<string, string>> {
   const skus = [...new Set(pairs.map((p) => p.sku).filter((s): s is string => Boolean(s)))]
   const out = new Map<string, string>()
@@ -233,7 +258,10 @@ export async function getAcceptedAt(dealIds: readonly string[]): Promise<Map<str
   const { data } = await admin
     .from('deal_stage_history')
     .select('deal_id, changed_at')
-    .eq('new_status', US_ACCEPTED_DEAL_STATUS)
+    // Every pipeline's Quotation Accepted stage, by ID. The EURO one is
+    // 1266942995 and its HubSpot label carries a trailing space, which is why
+    // nothing here ever matches on a label.
+    .in('new_status', [...QUOTATION_ACCEPTED_STAGES])
     .in('deal_id', [...dealIds])
   for (const row of data ?? []) {
     const id = String(row.deal_id)
@@ -262,7 +290,7 @@ export async function getAcceptedSinceCutover(): Promise<Map<string, string>> {
   const { data } = await admin
     .from('deal_stage_history')
     .select('deal_id, changed_at')
-    .eq('new_status', US_ACCEPTED_DEAL_STATUS)
+    .in('new_status', [...QUOTATION_ACCEPTED_STAGES])
     .gte('changed_at', INVOICING_QUEUE_SINCE)
   const out = new Map<string, string>()
   for (const row of data ?? []) {

@@ -8,12 +8,20 @@
  * address, the accounts-payable email the invoice is sent to, and the payment
  * terms the due date is derived from, so it is read live rather than copied
  * into our schema and left to drift.
+ *
+ * Xero is also PER ORGANISATION. A contact looked up in Echo Barrier USA LLC's
+ * Xero for a French invoice would resolve a different customer under the same
+ * account number, or none. So the organisation is the invoice's when there is
+ * one, and the header organisation the rep is working in when there is not
+ * (the contact card before a draft exists), and never a default.
  */
 
 import { z } from 'zod'
-import { getAuthorizedUser } from '@/lib/authz'
-import { requireInvoicingManage, snapshotBillingContact } from '@/app/actions/invoicing/shared'
+import { getAuthorizedUser, type AuthzOk } from '@/lib/authz'
+import { activeOrganisation } from '@/lib/active-organisation.server'
+import { requireInvoicingManage, snapshotBillingContact, invoiceOrganisation } from '@/app/actions/invoicing/shared'
 import { xeroFindContact, xeroSaveContact, type XeroContact } from '@/lib/xero-hub'
+import type { OrgCode } from '@/lib/organisations'
 
 const AccountNumber = z.string().trim().min(1).max(64)
 
@@ -50,6 +58,14 @@ export type ContactLookupResult =
 
 export type ContactSaveResult = { success: true; contact: XeroContact } | { success: false; error: string }
 
+/** The Xero organisation this call is about: the invoice's, else the header's. */
+async function organisationFor(auth: AuthzOk, invoiceId: string | undefined): Promise<{ ok: true; org: OrgCode } | { ok: false; error: string }> {
+  if (invoiceId) return invoiceOrganisation(invoiceId, auth.profile.organisations)
+  const org = await activeOrganisation(auth)
+  if (!org) return { ok: false, error: 'Choose an organisation in the header first.' }
+  return { ok: true, org }
+}
+
 export async function lookupInvoiceContact(
   input: { accountNumber: string; invoiceId?: string },
 ): Promise<ContactLookupResult> {
@@ -62,7 +78,10 @@ export async function lookupInvoiceContact(
   const parsed = AccountNumber.safeParse(input.accountNumber)
   if (!parsed.success) return { success: false, error: 'Enter a Xero account number first.' }
 
-  const res = await xeroFindContact(parsed.data)
+  const scope = await organisationFor(auth, input.invoiceId)
+  if (!scope.ok) return { success: false, error: scope.error }
+
+  const res = await xeroFindContact(scope.org, parsed.data)
   if (!res.ok) return { success: false, error: res.error }
   // Looking the contact up on the invoice page IS the moment the rep confirms
   // who is being billed, so that is when it gets frozen onto the invoice.
@@ -82,7 +101,10 @@ export async function saveInvoiceContact(input: z.input<typeof SaveInput>): Prom
   }
   const d = parsed.data
 
-  const res = await xeroSaveContact({
+  const scope = await organisationFor(gate.auth, d.invoiceId)
+  if (!scope.ok) return { success: false, error: scope.error }
+
+  const res = await xeroSaveContact(scope.org, {
     contactId: d.contactId ?? null,
     accountNumber: d.accountNumber,
     name: d.name,

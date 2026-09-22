@@ -38,7 +38,11 @@ import { HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
 export const ORGANISATIONS = [
   { code: 'EB-USA', label: 'USA', legalName: 'Echo Barrier USA LLC', currency: 'USD', flag: 'US' },
   { code: 'EB-CANADA', label: 'Canada', legalName: 'Echo Barrier Canada, Inc', currency: 'CAD', flag: 'CA' },
-  { code: 'EB-FRANCE', label: 'France', legalName: 'Echo Barrier France', currency: 'EUR', flag: 'FR' },
+  // 'Echo Barrier SAS', not 'Echo Barrier France': the registered denomination is
+  // "Echo Barrier" with the legal form appended, per INSEE, BODACC and the Xero
+  // organisation record (read 22 Sep 2026). The old value named a company that
+  // does not exist and it reached purchase order documents.
+  { code: 'EB-FRANCE', label: 'France', legalName: 'Echo Barrier SAS', currency: 'EUR', flag: 'FR' },
   { code: 'EB-SRO', label: 'SRO', legalName: 'Echo Barrier s.r.o.', currency: 'EUR', flag: 'SK' },
   // The registered address is Dublin, hence the Irish flag. Dean to confirm;
   // the Xero tenant lists the company as UK.

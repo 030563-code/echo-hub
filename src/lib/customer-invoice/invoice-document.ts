@@ -13,8 +13,10 @@
 import { depotLabel } from '@/lib/depot-constants'
 import { deliveryAddressLines, requestedByLine } from '@/lib/customer-invoice/delivery-address-book'
 import { normalizeUSState, DELIVERY_COUNTRIES } from '@/lib/us-address'
+import { FR_DELIVERY_COUNTRIES } from '@/lib/fr-address'
 import { customerPaymentTerms } from './payment-terms'
-import { DEPOT_FROM_ADDRESSES, type USDepot } from './constants'
+import { DEPOT_FROM_ADDRESSES, type InvoiceDepot } from './constants'
+import type { TaxEngine } from './invoicing-profile'
 import { depotShipments, filingTransactionId } from './tax-mapping'
 import { summariseTaxResponse, type DepotTaxBreakdown } from './tax-breakdown'
 import type { RemittanceDetails } from './seller'
@@ -37,7 +39,7 @@ export interface InvoiceDocumentLineRow {
   unit_price: number | string
   line_total: number | string
   is_shipping: boolean
-  ship_from_depot: USDepot
+  ship_from_depot: InvoiceDepot
   tax_amount: number | string | null
   combined_tax_rate: number | string | null
   sort_order: number
@@ -94,11 +96,12 @@ export interface InvoiceDocumentLine {
 }
 
 export interface InvoiceDocumentShipment {
-  depot: USDepot
+  depot: InvoiceDepot
   /** "US-BAL, Jessup MD" — the code a rep recognises plus the place it left. */
   label: string
   /** What this shipment is, or will be, filed under in TaxJar. Absent until the
-   *  invoice has a number. */
+   *  invoice has a number, and ALWAYS absent for an organisation whose tax is
+   *  computed by Xero: nothing is filed, so there is no transaction to name. */
   taxjarTransactionId: string | null
   lines: InvoiceDocumentLine[]
   net: number
@@ -132,6 +135,9 @@ export interface InvoiceDocument {
   freight: number
   freightIsTaxed: boolean
   salesTax: number
+  /** What the document calls the tax line: "Sales tax" for the USA, "TVA" for
+   *  France. Comes from the organisation's invoicing profile. */
+  taxLabel: string
   jurisdictions: { label: string; rate: number; amount: number }[]
   totalDue: number
   taxDetail: DepotTaxBreakdown[]
@@ -152,7 +158,7 @@ export interface InvoiceDocument {
 function countryLabel(code: string | null): string {
   const raw = (code ?? '').trim()
   if (raw === '') return ''
-  return DELIVERY_COUNTRIES.find((c) => c.value === raw)?.label ?? raw
+  return [...DELIVERY_COUNTRIES, ...FR_DELIVERY_COUNTRIES].find((c) => c.value === raw)?.label ?? raw
 }
 
 function shipToLines(header: InvoiceDocumentHeaderRow): string[] {
@@ -211,9 +217,10 @@ function billToLines(header: InvoiceDocumentHeaderRow): string[] {
  * it is noise. Falls back to the code only when a depot has no configured
  * address, where a code is still better than a blank.
  */
-function depotPlace(depot: USDepot): string {
+function depotPlace(depot: InvoiceDepot): string {
   const from = DEPOT_FROM_ADDRESSES[depot]
-  return from ? `${from.city} ${from.state}` : depotLabel(depot)
+  // A French address has no state, so the place is the city alone.
+  return from ? [from.city, from.state].filter((p) => p).join(' ') : depotLabel(depot)
 }
 
 function toDocumentLine(row: InvoiceDocumentLineRow): InvoiceDocumentLine {
@@ -247,8 +254,11 @@ function toDocumentLine(row: InvoiceDocumentLineRow): InvoiceDocumentLine {
 export function buildInvoiceDocument(
   header: InvoiceDocumentHeaderRow,
   lines: readonly InvoiceDocumentLineRow[],
-  opts: { remittance: RemittanceDetails; paymentTerms?: string | null },
+  opts: { remittance: RemittanceDetails; paymentTerms?: string | null; taxEngine?: TaxEngine; taxLabel?: string },
 ): InvoiceDocument {
+  // Only the TaxJar engine files anything, so only it has a transaction id to
+  // print. Defaults to TaxJar because every caller before France was the USA.
+  const filesWithTaxJar = (opts.taxEngine ?? 'taxjar') === 'taxjar'
   const ordered = [...lines].sort((a, b) => a.sort_order - b.sort_order)
   const grouped = depotShipments(ordered)
 
@@ -262,9 +272,10 @@ export function buildInvoiceDocument(
     return {
       depot: group.depot,
       label: depotPlace(group.depot),
-      taxjarTransactionId: header.invoice_number
-        ? filingTransactionId(header.invoice_number, group.depot, grouped.length)
-        : null,
+      taxjarTransactionId:
+        filesWithTaxJar && header.invoice_number
+          ? filingTransactionId(header.invoice_number, group.depot, grouped.length)
+          : null,
       lines: docLines,
       net,
       tax,
@@ -311,6 +322,7 @@ export function buildInvoiceDocument(
     freight,
     freightIsTaxed: freightTax > 0,
     salesTax,
+    taxLabel: opts.taxLabel ?? 'Sales tax',
     jurisdictions: [...byLabel.values()],
     totalDue: roundCents(taxableNet + freight + salesTax),
     taxDetail,

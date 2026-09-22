@@ -55,7 +55,7 @@ function isUSA(country: string | null | undefined): boolean {
   return value === '' || value === 'usa' || value === 'us' || value === 'united states'
 }
 
-function toForm(c: XeroContact, fallbackName: string): Form {
+function toForm(c: XeroContact, fallbackName: string, defaultCountry: string): Form {
   return {
     name: c.name ?? fallbackName,
     email: c.email ?? '',
@@ -67,20 +67,28 @@ function toForm(c: XeroContact, fallbackName: string): Form {
     // address though: normalising "Ontario" would simply erase it.
     region: isUSA(c.address?.country) ? normalizeUSState(c.address?.region) : (c.address?.region ?? ''),
     postal_code: c.address?.postal_code ?? '',
-    country: c.address?.country ?? 'USA',
+    country: c.address?.country ?? defaultCountry,
     terms_day: c.payment_terms?.day != null ? String(c.payment_terms.day) : '',
     terms_type: c.payment_terms?.type ?? 'DAYSAFTERBILLDATE',
   }
 }
 
 export function XeroContactCard({
+  invoiceId,
   accountNumber,
   companyName,
   editable,
+  defaultCountry = 'USA',
 }: {
+  /** The invoice whose Xero organisation the contact lives in. Xero is per
+   *  organisation, so the lookup and the save both need to know which one. */
+  invoiceId: string
   accountNumber: string
   companyName: string | null
   editable: boolean
+  /** What a NEW contact's country field starts as, in Xero's free-text form:
+   *  'USA' for the USA, 'France' for France. */
+  defaultCountry?: string
 }) {
   const [status, setStatus] = useState<Status>('idle')
   const [contactId, setContactId] = useState<string | null>(null)
@@ -97,7 +105,7 @@ export function XeroContactCard({
     // needs no state at all, because the render branches on `account`.
     if (!account) return
     startTransition(async () => {
-      const res = await lookupInvoiceContact({ accountNumber: account })
+      const res = await lookupInvoiceContact({ accountNumber: account, invoiceId })
       if (!res.success) {
         setStatus('error')
         setError(res.error)
@@ -106,15 +114,15 @@ export function XeroContactCard({
       setError(null)
       if (res.found) {
         setContactId(res.contact.contact_id)
-        setForm(toForm(res.contact, companyName ?? ''))
+        setForm(toForm(res.contact, companyName ?? '', defaultCountry))
         setStatus('found')
       } else {
         setContactId(null)
-        setForm({ ...EMPTY, name: companyName ?? '' })
+        setForm({ ...EMPTY, name: companyName ?? '', country: defaultCountry })
         setStatus('missing')
       }
     })
-  }, [account, companyName])
+  }, [account, companyName, invoiceId, defaultCountry])
 
   useEffect(() => {
     load()
@@ -126,6 +134,7 @@ export function XeroContactCard({
     startTransition(async () => {
       const day = form.terms_day.trim()
       const res = await saveInvoiceContact({
+        invoiceId,
         contactId,
         accountNumber: account,
         name: form.name.trim(),
@@ -145,7 +154,7 @@ export function XeroContactCard({
         return
       }
       setContactId(res.contact.contact_id)
-      setForm(toForm(res.contact, companyName ?? ''))
+      setForm(toForm(res.contact, companyName ?? '', defaultCountry))
       setStatus('found')
       toast.success(contactId ? 'Xero contact updated.' : 'Xero contact created.')
     })

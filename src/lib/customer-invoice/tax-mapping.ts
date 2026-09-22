@@ -8,10 +8,13 @@
 
 import { roundCents } from '@/lib/quote-math'
 import {
-  DEPOT_FROM_ADDRESSES,
   US_DEPOTS,
   US_REGISTERED_STATES,
   type USDepot,
+  INVOICE_DEPOTS,
+  type InvoiceDepot,
+  usDepotAddress,
+  isUSDepot,
 } from '@/lib/customer-invoice/constants'
 
 export interface TaxableLine {
@@ -138,7 +141,7 @@ export function buildTaxRequests(
       continue
     }
 
-    const from = DEPOT_FROM_ADDRESSES[depot]
+    const from = usDepotAddress(depot)
     if (!from) {
       return {
         ok: false,
@@ -365,12 +368,12 @@ export interface TaxJarFilingOrder {
  */
 export interface ShipmentGroupable {
   is_shipping: boolean
-  ship_from_depot: USDepot
+  ship_from_depot: InvoiceDepot
 }
 
 /** One shipment: the goods leaving a depot, plus the freight attributed to it. */
 export interface DepotShipment<L extends ShipmentGroupable> {
-  depot: USDepot
+  depot: InvoiceDepot
   goodsLines: L[]
   shippingLines: L[]
 }
@@ -390,7 +393,7 @@ export interface DepotShipment<L extends ShipmentGroupable> {
  * other way puts the freight tax in a jurisdiction the calculation never used.
  */
 export function depotShipments<L extends ShipmentGroupable>(lines: readonly L[]): DepotShipment<L>[] {
-  const depotsWithGoods = US_DEPOTS.filter((d) => lines.some((l) => l.ship_from_depot === d && !l.is_shipping))
+  const depotsWithGoods = INVOICE_DEPOTS.filter((d) => lines.some((l) => l.ship_from_depot === d && !l.is_shipping))
   if (depotsWithGoods.length === 0) return []
   const host = depotsWithGoods[0]
 
@@ -418,8 +421,10 @@ export function depotShipments<L extends ShipmentGroupable>(lines: readonly L[])
  * mockup shows. Safe to fix rather than grandfather: nothing has ever been
  * filed, so no existing TaxJar transaction carries the longer id.
  */
-export function filingTransactionId(invoiceNumber: string, depot: USDepot, shipmentCount: number): string {
-  return shipmentCount > 1 ? `${invoiceNumber}-${depot.replace(/^US-/, '')}` : invoiceNumber
+export function filingTransactionId(invoiceNumber: string, depot: InvoiceDepot, shipmentCount: number): string {
+  // The two-letter country prefix comes off whichever country it is, so a split
+  // stays EBUS26-0001-BAL and never grows to -US-BAL.
+  return shipmentCount > 1 ? `${invoiceNumber}-${depot.replace(/^[A-Z]{2}-/, '')}` : invoiceNumber
 }
 
 export type BuildFilingOrdersResult =
@@ -452,14 +457,16 @@ export function buildFilingOrders(
 
   const shipments = depotShipments(lines)
   if (shipments.length === 0) return { ok: false, error: 'invoice has no product lines' }
-  const depotsWithGoods = shipments.map((s) => s.depot)
+  // FilingLine is USDepot-typed, so every shipment here left a US depot; the
+  // filter is the type's proof of it rather than a new rule.
+  const depotsWithGoods = shipments.map((s) => s.depot).filter(isUSDepot)
   const shippingFor = (depot: USDepot) =>
     shipments.find((s) => s.depot === depot)?.shippingLines ?? []
 
   const orders: TaxJarFilingOrder[] = []
 
   for (const depot of depotsWithGoods) {
-    const from = DEPOT_FROM_ADDRESSES[depot]
+    const from = usDepotAddress(depot)
     if (!from) return { ok: false, error: `${depot} dispatch address not configured` }
 
     // Per depot, not per invoice: a collected two-depot invoice has two

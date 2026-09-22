@@ -19,7 +19,9 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { US_STATES, DELIVERY_COUNTRIES } from '@/lib/us-address'
+import { US_STATES } from '@/lib/us-address'
+import { deliveryCountriesFor, hasStateField, postcodeLabel, postcodeExample } from '@/lib/delivery-address'
+import { invoicingProfile } from '@/lib/customer-invoice/invoicing-profile'
 import { saveDeliveryAddress } from '@/app/actions/invoicing/delivery-addresses'
 import {
   deliveryAddressLabel,
@@ -33,10 +35,9 @@ import {
   US_DEPOTS,
   DEPOT_FROM_ADDRESSES,
   type CustomerInvoiceStatus,
-  type USDepot,
-} from '@/lib/customer-invoice/constants'
+  type USDepot, type InvoiceDepot } from '@/lib/customer-invoice/constants'
 import { computeDraftLineTotal } from '@/lib/customer-invoice/build-draft'
-import { TaxDetail } from './tax-detail'
+import { TaxDetail, XeroDraftTaxDetail } from './tax-detail'
 import { getTrackingCategories } from '@/app/actions/invoicing/tracking-categories'
 import {
   parseLineTracking,
@@ -48,6 +49,8 @@ import { roundCents } from '@/lib/quote-math'
 import type { CustomerInvoiceLineRow, CustomerInvoiceRow } from '@/app/actions/invoicing/shared'
 import { saveInvoiceDraft } from '@/app/actions/invoicing/save-draft'
 import { calculateInvoiceTax } from '@/app/actions/invoicing/calculate-tax'
+import { calculateInvoiceTaxXero } from '@/app/actions/invoicing/calculate-tax-fr'
+import { fileInvoiceXeroDraft } from '@/app/actions/invoicing/file-invoice-fr'
 import { sendInvoiceToXero } from '@/app/actions/invoicing/send-to-xero'
 import { XeroContactCard } from './xero-contact-card'
 import { depotLabel } from '@/lib/depot-constants'
@@ -80,7 +83,7 @@ interface EditableLine {
   unit_price: string
   discount_percentage: string
   is_shipping: boolean
-  ship_from_depot: 'US-BAL' | 'US-SBD'
+  ship_from_depot: InvoiceDepot
   ship_from_locked: boolean
   tax_amount: string
   tax_override: boolean
@@ -100,7 +103,6 @@ interface InvoiceEditorProps {
   savedAddresses: SavedDeliveryAddress[]
 }
 
-const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 
 function toEditable(line: CustomerInvoiceLineRow): EditableLine {
   return {
@@ -128,6 +130,16 @@ function toEditable(line: CustomerInvoiceLineRow): EditableLine {
 
 export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesChanged, canManage, savedAddresses }: InvoiceEditorProps) {
   const router = useRouter()
+
+  // The invoice's own organisation decides what this editor is: which country
+  // the address is in, who prices the tax, what the tax is called and how money
+  // reads. Never the header organisation and never a default; an invoice with
+  // no profile cannot reach this page (open-invoice refuses it).
+  const profile = invoicingProfile(invoice.organisation_code)
+  const country = profile?.country ?? 'US'
+  const taxEngine = profile?.taxEngine ?? 'taxjar'
+  const taxLabel = profile?.taxLabel ?? 'Sales tax'
+  const money = new Intl.NumberFormat(profile?.locale ?? 'en-US', { style: 'currency', currency: invoice.currency || 'USD' })
   const [pendingAction, setPendingAction] = useState<string | null>(null)
   const [, startTransition] = useTransition()
 
@@ -197,8 +209,12 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
       zip: header.delivery_zip,
       location: header.delivery_location,
     }
-    if (!isSaveableDeliveryAddress(address)) {
-      setAddressNotice('Fill in the street, city, state and zip before saving the address.')
+    if (!isSaveableDeliveryAddress(address, { needsState: hasStateField(country) })) {
+      setAddressNotice(
+        hasStateField(country)
+          ? 'Fill in the street, city, state and zip before saving the address.'
+          : 'Fill in the street, city and postcode before saving the address.',
+      )
       return
     }
     setPendingAction('save-address')
@@ -207,9 +223,8 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
         invoiceId: invoice.id,
         street: header.delivery_street,
         city: header.delivery_city,
-        state: header.delivery_state,
+        state: hasStateField(country) ? header.delivery_state : null,
         zip: header.delivery_zip,
-        country: invoice.delivery_country || 'US',
         location: header.delivery_location.trim() || null,
         requestedBy: header.delivery_requested_by.trim() || null,
       })
@@ -239,7 +254,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
   const [trackingError, setTrackingError] = useState<string | null>(null)
   useEffect(() => {
     let cancelled = false
-    getTrackingCategories().then((result) => {
+    getTrackingCategories({ invoiceId: invoice.id }).then((result) => {
       if (cancelled) return
       if (result.success) {
         setTrackingCategories(result.categories)
@@ -253,7 +268,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [invoice.id])
   // What TaxJar last returned per line, used to decide whether an edited tax
   // cell is genuinely a manual override.
   const calculatedTaxByKey = useMemo(
@@ -378,7 +393,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
 
   const loadItemAccounts = () => {
     if (itemAccountsPromise.current) return itemAccountsPromise.current
-    const pending = getXeroItemAccounts()
+    const pending = getXeroItemAccounts({ invoiceId: invoice.id })
       .then((result) => {
         if (!result.success) {
           // Not fatal. The field stays typeable, which is how it behaved
@@ -570,7 +585,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
         unit_price: '0',
         discount_percentage: '0',
         is_shipping: false,
-        ship_from_depot: 'US-BAL',
+        ship_from_depot: profile?.depots[0] ?? 'US-BAL',
         ship_from_locked: false,
         tax_amount: '',
         tax_override: false,
@@ -595,6 +610,9 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
   }
 
   const resolveZip = async (raw: string) => {
+    // TaxJar's rates endpoint resolves US zips. A French code postal looks
+    // similar and would resolve to nothing, or to the wrong place.
+    if (country !== 'US') return
     const value = raw.trim()
     if (!/^\d{5}(-\d{4})?$/.test(value)) {
       setZipLookup({ status: 'idle' })
@@ -668,14 +686,17 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
         toast.error(saved.error)
         return
       }
-      const result = await calculateInvoiceTax({ invoiceId: invoice.id })
+      const result =
+        taxEngine === 'xero_draft'
+          ? await calculateInvoiceTaxXero({ invoiceId: invoice.id })
+          : await calculateInvoiceTax({ invoiceId: invoice.id })
       if (!result.success) {
-        toast.error(result.error)
+        toast.error(result.error, { duration: 12000 })
         router.refresh()
         return
       }
       for (const warning of result.warnings) toast.warning(warning, { duration: 10000 })
-      toast.success(`Saved. Tax ${money.format(result.taxTotal)}, total ${money.format(result.total)}.`)
+      toast.success(`Saved. ${taxLabel} ${money.format(result.taxTotal)}, total ${money.format(result.total)}.`)
       // These edits are on the invoice row now, so the draft has done its job.
       void clearDraft()
       router.refresh()
@@ -787,6 +808,18 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
 
   const onSendToTaxJar = () =>
     run('taxjar', async () => {
+      if (taxEngine === 'xero_draft') {
+        const result = await fileInvoiceXeroDraft({ invoiceId: invoice.id })
+        if (!result.success) {
+          toast.error(result.error)
+          router.refresh()
+          return
+        }
+        for (const warning of result.warnings) toast.warning(warning, { duration: 12000 })
+        toast.success(`Invoice number ${result.invoiceNumber} allocated.`)
+        router.refresh()
+        return
+      }
       const result = await sendOrderToTaxJar({ invoiceId: invoice.id })
       if (!result.success) {
         toast.error(result.error)
@@ -863,8 +896,9 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
           <div className="text-sm text-amber-800">
             <p className="font-semibold">No Xero account code</p>
             <p>
-              Sending to Xero is blocked and TaxJar reseller exemptions will not apply until this company has its
-              Xero account number filled in below.
+              {taxEngine === 'taxjar'
+                ? 'Sending to Xero is blocked and TaxJar reseller exemptions will not apply until this company has its Xero account number filled in below.'
+                : 'Xero cannot price the draft, and nothing can be sent to Xero, until this company has its Xero account number filled in below.'}
             </p>
           </div>
         </Card>
@@ -923,9 +957,10 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
       <Card className="bg-white border-gray-200 p-4 sm:p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 mb-1">Invoice details</h2>
         <p className="text-xs text-gray-500 mb-4">
-          The invoice date is blank on purpose: it is the date the invoice is sent, so Send to Xero stamps it.
-          The due date follows from it using the customer&apos;s Xero payment terms, or 30 days if Xero holds
-          none. Set either by hand here to override.
+          The invoice date is blank on purpose: it is the date the invoice is issued, so the numbering step
+          ({taxEngine === 'taxjar' ? 'Send to TaxJar' : 'Number invoice'}) stamps it. The due date follows from
+          it using the customer&apos;s Xero payment terms, or 30 days if Xero holds none. Set either by hand here
+          to override.
         </p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
@@ -964,7 +999,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
               id="xero_account"
               value={header.taxjar_customer_id}
               onChange={(e) => setHeader({ ...header, taxjar_customer_id: e.target.value })}
-              placeholder="Doubles as the TaxJar customer id"
+              placeholder={taxEngine === 'taxjar' ? 'Doubles as the TaxJar customer id' : 'The contact in Echo Barrier SAS Xero'}
               disabled={!editable}
             />
           </div>
@@ -972,9 +1007,11 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
       </Card>
 
       <XeroContactCard
+        invoiceId={invoice.id}
         accountNumber={header.taxjar_customer_id}
         companyName={invoice.company_name}
         editable={editable}
+        defaultCountry={country === 'FR' ? 'France' : 'USA'}
       />
 
       {/* TaxJar ship-to */}
@@ -983,7 +1020,9 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
         <p className="text-xs text-gray-500 mb-3">
           {header.is_collection
             ? 'Not used for tax on a collected order: the sale is taxed where the goods are picked up.'
-            : 'Used to calculate US sales tax: the ship-to address, not the billing address.'}
+            : taxEngine === 'taxjar'
+              ? 'Used to calculate US sales tax: the ship-to address, not the billing address.'
+              : `Printed on the invoice and decides the ${taxLabel} case: the ship-to address, not the billing address.`}
         </p>
 
         <label className="mb-3 flex items-start gap-2 text-sm text-gray-700">
@@ -997,7 +1036,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
           <span>
             Collected by the customer (Will Call)
             <span className="block text-xs text-gray-500">
-              Sales tax is charged at the collection depot, not at the address below.
+              {taxLabel} is charged at the collection depot, not at the address below.
             </span>
           </span>
         </label>
@@ -1005,7 +1044,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
         {header.is_collection && collectionDestinations.length > 0 && (
           <p className="mb-3 text-xs text-gray-600">
             Tax destination:{' '}
-            {collectionDestinations.map((d) => `${d.city}, ${d.state} ${d.zip}`).join(' and ')}
+            {collectionDestinations.map((d) => [d.city, d.state, d.zip].filter(Boolean).join(d.state ? ', ' : ' ')).join(' and ')}
           </p>
         )}
         {header.is_collection && unconfiguredCollectionDepots.length > 0 && (
@@ -1068,49 +1107,54 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
               disabled={!editable}
             />
           </div>
+          {/* A French address has no state, and the database refuses one on a
+              French row, so the field is not offered rather than offered and
+              refused. */}
+          {hasStateField(country) && (
+            <div>
+              <Label htmlFor="state">State</Label>
+              <select
+                id="state"
+                className="flex h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                value={header.delivery_state}
+                onChange={(e) => setHeader({ ...header, delivery_state: e.target.value })}
+                disabled={!editable}
+              >
+                <option value="">—</option>
+                {US_STATES.map((state) => (
+                  <option key={state.code} value={state.code}>
+                    {state.code} — {state.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
-            <Label htmlFor="state">State</Label>
-            <select
-              id="state"
-              className="flex h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-              value={header.delivery_state}
-              onChange={(e) => setHeader({ ...header, delivery_state: e.target.value })}
-              disabled={!editable}
-            >
-              <option value="">—</option>
-              {US_STATES.map((state) => (
-                <option key={state.code} value={state.code}>
-                  {state.code} — {state.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label htmlFor="zip">Zip</Label>
+            <Label htmlFor="zip">{postcodeLabel(country)}</Label>
             <Input
               id="zip"
               value={header.delivery_zip}
               onChange={(e) => setHeader({ ...header, delivery_zip: e.target.value })}
               onBlur={(e) => resolveZip(e.target.value)}
-              placeholder="20794"
+              placeholder={postcodeExample(country)}
               disabled={!editable}
             />
           </div>
           <div className="col-span-2 lg:col-span-1">
-            {/* One option today, and shown anyway. The column carries a CHECK
-                constraint accepting only 'US', so an invoice delivering
-                anywhere else is refused by the database rather than by a
-                message. Putting it on the form makes that a visible rule
-                instead of a surprise. Stored as 'US', shown as 'USA'. */}
+            {/* One option per organisation, and shown anyway. The column carries
+                a CHECK constraint accepting 'US' and 'FR', so an invoice
+                delivering anywhere else is refused by the database rather than
+                by a message. Putting it on the form makes that a visible rule
+                instead of a surprise. Stored as the code, shown as the name. */}
             <Label htmlFor="country">Country</Label>
             <select
               id="country"
               className="flex h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-              value="US"
+              value={country}
               onChange={() => undefined}
               disabled={!editable}
             >
-              {DELIVERY_COUNTRIES.map((c) => (
+              {deliveryCountriesFor(country).map((c) => (
                 <option key={c.value} value={c.value}>
                   {c.label}
                 </option>
@@ -1527,7 +1571,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
               <span className="tabular-nums">{money.format(totals.shipping)}</span>
             </div>
             <div className="flex justify-between gap-8">
-              <span>Sales tax</span>
+              <span>{taxLabel}</span>
               <span className="tabular-nums">{totals.tax === null ? 'not calculated' : money.format(totals.tax)}</span>
             </div>
             <div className="flex justify-between gap-8 border-t border-gray-200 pt-1 font-semibold text-gray-900">
@@ -1537,7 +1581,11 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
               </span>
             </div>
 
-            <TaxDetail taxjarResponse={invoice.taxjar_response} currency={invoice.currency} />
+            {taxEngine === 'xero_draft' ? (
+              <XeroDraftTaxDetail response={invoice.taxjar_response} currency={invoice.currency} locale={profile?.locale} taxLabel={taxLabel} />
+            ) : (
+              <TaxDetail taxjarResponse={invoice.taxjar_response} currency={invoice.currency} />
+            )}
           </div>
 
           <div className="flex flex-col items-stretch gap-3 sm:items-end">
@@ -1562,13 +1610,15 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
                 </Button>
                 <Button onClick={onSendToTaxJar} disabled={pendingAction !== null} className="bg-green-700 hover:bg-green-800">
                   {spinner('taxjar')}
-                  Send to TaxJar
+                  {taxEngine === 'taxjar' ? 'Send to TaxJar' : 'Number invoice'}
                 </Button>
               </div>
             )}
             {canManage && status === 'tax_calculated' && (
               <p className="text-xs text-gray-500 sm:text-right">
-                Sending to TaxJar files the sale and allocates the invoice number. Preview first: it changes nothing.
+                {taxEngine === 'taxjar'
+                  ? 'Sending to TaxJar files the sale and allocates the invoice number. Preview first: it changes nothing.'
+                  : 'Numbering allocates the invoice number and freezes the figures. Preview first: it changes nothing.'}
               </p>
             )}
 

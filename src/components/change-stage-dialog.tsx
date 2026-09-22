@@ -19,8 +19,9 @@ import {
 } from '@/lib/hubspot-constants'
 import { depotLabel } from '@/lib/depot-constants'
 import { WIN_PROBABILITY_VALUES } from '@/lib/quote-math'
-import { isUSDepot } from '@/lib/customer-invoice/constants'
-import { US_STATE_CODES, usAcceptanceComplete } from '@/lib/us-address'
+import { invoicingProfileForDepot } from '@/lib/customer-invoice/invoicing-profile'
+import { US_STATE_CODES } from '@/lib/us-address'
+import { acceptanceComplete, hasStateField, postcodeLabel } from '@/lib/delivery-address'
 import { lookupZipJurisdiction } from '@/app/actions/tax/lookup-zip'
 import { useRouter } from 'next/navigation'
 import { ArrowRightLeft, Loader2, MapPin } from 'lucide-react'
@@ -133,23 +134,33 @@ export default function ChangeStageDialog({
 
   const isTenderStage = TENDER_STAGES.includes(selectedStage)
   const isQuoteAcceptedStage = QUOTATION_ACCEPTED_STAGES.includes(selectedStage)
-  // A US depot routes the deal into the US invoicing flow (TaxJar destination
-  // tax), so acceptance additionally needs the probability, a full ship-to
-  // address and an associated company. All re-validated server-side.
-  const isUSAcceptance = isQuoteAcceptedStage && isUSDepot(depotForAccepted)
+  // A depot belonging to an organisation that invoices through the Hub (the
+  // USA, France) routes the deal into that invoicing flow, so acceptance
+  // additionally needs the probability, a full ship-to address in that
+  // country's shape and an associated company. All re-validated server-side.
+  const acceptanceProfile = isQuoteAcceptedStage ? invoicingProfileForDepot(depotForAccepted) : null
+  const isInvoicingAcceptance = acceptanceProfile !== null
+  const acceptanceCountry = acceptanceProfile?.country ?? 'US'
+  const needsState = hasStateField(acceptanceCountry)
+  const deliveryFields = {
+    street: street.trim(),
+    city: city.trim(),
+    state: needsState ? stateCode : null,
+    zip: zip.trim(),
+  }
   // The server's own predicate, so the button can never enable for something
   // updateDealStage is about to refuse. A collected order needs no address.
-  const usFieldsComplete = usAcceptanceComplete({
+  const fieldsComplete = acceptanceComplete(acceptanceCountry, {
     winProbability,
     isCollection,
     hasAssociatedCompany,
-    delivery: { street: street.trim(), city: city.trim(), state: stateCode, zip: zip.trim() },
+    delivery: deliveryFields,
   })
   const canUpdate =
     selectedStage !== currentStageId &&
     (!isTenderStage || tenderDate !== '') &&
     (!isQuoteAcceptedStage || depotForAccepted !== '') &&
-    (!isUSAcceptance || usFieldsComplete)
+    (!isInvoicingAcceptance || fieldsComplete)
 
   const handleUpdateStage = async () => {
     setLoading(true)
@@ -160,15 +171,13 @@ export default function ChangeStageDialog({
       isQuoteAcceptedStage ? depotForAccepted : undefined,
       undefined,
       isTenderStage ? tenderDate : undefined,
-      isUSAcceptance
+      isInvoicingAcceptance
         ? {
             winProbability,
             isCollection,
             // Omitted entirely when collecting: there is no address to send and
             // the server must not be asked to sanitize one.
-            delivery: isCollection
-              ? undefined
-              : { street: street.trim(), city: city.trim(), state: stateCode, zip: zip.trim() },
+            delivery: isCollection ? undefined : deliveryFields,
           }
         : undefined
     )
@@ -248,13 +257,13 @@ export default function ChangeStageDialog({
               </div>
             )}
 
-            {isUSAcceptance && !hasAssociatedCompany && (
+            {isInvoicingAcceptance && !hasAssociatedCompany && (
               <p className="text-sm text-red-600">
-                Associate a company with this deal in HubSpot first: the US invoice needs a customer.
+                Associate a company with this deal in HubSpot first: the invoice needs a customer.
               </p>
             )}
 
-            {isUSAcceptance && hasAssociatedCompany && (
+            {isInvoicingAcceptance && hasAssociatedCompany && (
               <>
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-gray-700">Deal Probability *</Label>
@@ -284,7 +293,7 @@ export default function ChangeStageDialog({
                   <span>
                     Collected by the customer (Will Call)
                     <span className="block text-xs text-gray-500">
-                      Sales tax is charged at the sending depot, so no delivery address is needed.
+                      Tax is charged at the sending depot, so no delivery address is needed.
                     </span>
                   </span>
                 </label>
@@ -312,30 +321,38 @@ export default function ChangeStageDialog({
                       onChange={(e) => setCity(e.target.value)}
                       className="bg-white border-gray-300 text-gray-900"
                     />
-                    <div className="grid grid-cols-2 gap-2">
-                      <Select value={stateCode} onValueChange={setStateCode}>
-                        <SelectTrigger className="h-11 sm:h-10 bg-white border-gray-300 text-gray-900">
-                          <SelectValue placeholder="State" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-white border-gray-200 text-gray-900 max-h-64">
-                          {US_STATE_CODES.map((code) => (
-                            <SelectItem key={code} value={code} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
-                              {code}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                    <div className={needsState ? 'grid grid-cols-2 gap-2' : ''}>
+                      {/* A French address has no state, so the field is not
+                          offered rather than offered and refused. */}
+                      {needsState && (
+                        <Select value={stateCode} onValueChange={setStateCode}>
+                          <SelectTrigger className="h-11 sm:h-10 bg-white border-gray-300 text-gray-900">
+                            <SelectValue placeholder="State" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white border-gray-200 text-gray-900 max-h-64">
+                            {US_STATE_CODES.map((code) => (
+                              <SelectItem key={code} value={code} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
+                                {code}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                       <Input
-                        placeholder="Zip"
+                        placeholder={postcodeLabel(acceptanceCountry)}
                         value={zip}
                         onChange={(e) => setZip(e.target.value)}
-                        onBlur={(e) => resolveZip(e.target.value)}
+                        // TaxJar's zip lookup knows US zips only.
+                        onBlur={(e) => (needsState ? resolveZip(e.target.value) : undefined)}
                         className="bg-white border-gray-300 text-gray-900"
                       />
                     </div>
                   </div>
-                  {zip.trim() !== '' && !ZIP_RE.test(zip.trim()) && (
+                  {zip.trim() !== '' && needsState && !ZIP_RE.test(zip.trim()) && (
                     <p className="text-xs text-red-600">Zip must be 5 digits (or ZIP+4, e.g. 20794-1234).</p>
+                  )}
+                  {zip.trim() !== '' && !needsState && !/^\d{5}$/.test(zip.trim()) && (
+                    <p className="text-xs text-red-600">Postcode must be 5 digits (e.g. 75008).</p>
                   )}
                   {zipLookup.status === 'loading' && (
                     <p className="flex items-center gap-1.5 text-xs text-gray-500">

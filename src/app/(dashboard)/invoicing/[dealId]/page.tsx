@@ -5,7 +5,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { sourceLinesHash } from '@/lib/customer-invoice/hash'
 import type { CustomerInvoiceLineRow, CustomerInvoiceRow } from '@/app/actions/invoicing/shared'
 import { getAcceptedAt, isAcceptedSinceCutover } from '@/app/actions/invoicing/shared'
-import { US_ACCEPTED_DEAL_STATUS, isUSDepot } from '@/lib/customer-invoice/constants'
+import { QUOTATION_ACCEPTED_STAGES } from '@/lib/hubspot-constants'
+import { invoicingProfileForDepot } from '@/lib/customer-invoice/invoicing-profile'
 import { holdsOrganisation, orgForDepot } from '@/lib/organisations'
 import { OpenInvoiceButton } from '../open-invoice-button'
 import { InvoiceEditor } from './invoice-editor'
@@ -55,8 +56,8 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   if (!invoice) {
     const eligible =
       deal &&
-      String(deal.deal_status ?? '') === US_ACCEPTED_DEAL_STATUS &&
-      isUSDepot(String(deal.depot_code ?? '').trim().toUpperCase()) &&
+      QUOTATION_ACCEPTED_STAGES.includes(String(deal.deal_status ?? '')) &&
+      invoicingProfileForDepot(String(deal.depot_code ?? '')) !== null &&
       isAcceptedSinceCutover((await getAcceptedAt([dealId])).get(dealId))
     if (!eligible) notFound()
   }

@@ -4,13 +4,8 @@ import { serverLogoDataUrl } from '@/lib/pdf-logo.server'
 import { createHash } from 'node:crypto'
 import { buildInvoiceDocument } from '@/lib/customer-invoice/invoice-document'
 import { buildInvoicePdf, invoicePdfFilename } from '@/lib/customer-invoice/invoice-pdf'
-import {
-  SELLER_ADDRESS_LINES,
-  SELLER_PHONE,
-  SELLER_EMAIL,
-  remittanceFromEnv,
-  remittanceIsIncomplete,
-} from '@/lib/customer-invoice/seller'
+import { sellerFor, remittanceFromEnv, remittanceIsIncomplete } from '@/lib/customer-invoice/seller'
+import { invoicingProfile } from '@/lib/customer-invoice/invoicing-profile'
 import type { CustomerInvoiceRow, CustomerInvoiceLineRow } from './shared'
 
 /**
@@ -53,7 +48,15 @@ export async function renderInvoicePdf(
   invoice: CustomerInvoiceRow,
   lines: CustomerInvoiceLineRow[],
 ): Promise<RenderedInvoice> {
-  const remittance = remittanceFromEnv()
+  // The invoice's own organisation decides the letterhead, the bank details,
+  // the tax label and the locale. Never the viewer's, and never a default: a
+  // document with the wrong issuer on it is the one thing this must not print.
+  const profile = invoicingProfile(invoice.organisation_code)
+  if (!profile) {
+    throw new Error(`${invoice.organisation_code} does not invoice through the Hub, so its document cannot be rendered.`)
+  }
+  const seller = sellerFor(profile.org)
+  const remittance = remittanceFromEnv(profile.org)
   const document = buildInvoiceDocument(
     {
       invoice_number: invoice.invoice_number,
@@ -93,19 +96,21 @@ export async function renderInvoicePdf(
       unit_price: Number(l.unit_price),
       line_total: Number(l.line_total),
       is_shipping: l.is_shipping,
-      ship_from_depot: l.ship_from_depot as 'US-BAL' | 'US-SBD',
+      ship_from_depot: l.ship_from_depot,
       tax_amount: l.tax_amount === null ? null : Number(l.tax_amount),
       combined_tax_rate: l.combined_tax_rate === null ? null : Number(l.combined_tax_rate),
       sort_order: l.sort_order,
     })),
-    { remittance, paymentTerms: invoice.payment_terms_label },
+    { remittance, paymentTerms: invoice.payment_terms_label, taxEngine: profile.taxEngine, taxLabel: profile.taxLabel },
   )
 
   const pdf = await buildInvoicePdf({
     document,
-    sellerLines: SELLER_ADDRESS_LINES,
-    sellerPhone: SELLER_PHONE,
-    sellerEmail: SELLER_EMAIL,
+    sellerLines: seller.addressLines,
+    sellerPhone: seller.phone,
+    sellerEmail: seller.email,
+    legalMentions: seller.legalMentions,
+    locale: profile.locale,
     logoDataUrl: await logoDataUrl(),
     // Stable per invoice, never the clock. The invoice date is what the
     // document itself says it was issued on; created_at covers a draft

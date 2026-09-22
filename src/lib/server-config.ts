@@ -67,6 +67,14 @@ const SPEC: Array<Omit<ConfigEntry, 'present' | 'host'> & { url?: boolean }> = [
     breaks: 'Customer invoices cannot be emailed.' },
   { name: 'N8N_CUSTOMER_INVOICE_WEBHOOK_SECRET', group: 'Invoicing', required: false,
     breaks: 'n8n answers 401 and the invoice is not sent.' },
+  // France posts to a DIFFERENT n8n workflow: Echo Barrier SAS is a different
+  // Xero organisation, and the USA workflow carries its tenant id in ten nodes.
+  // Not required until Claire is live; while unset, every French invoice action
+  // refuses with a sentence rather than posting into the USA ledger.
+  { name: 'N8N_CUSTOMER_INVOICE_WEBHOOK_URL_FR', group: 'Invoicing', required: false, url: true,
+    breaks: 'French invoices cannot be priced in, or sent to, Xero.' },
+  { name: 'N8N_CUSTOMER_INVOICE_WEBHOOK_SECRET_FR', group: 'Invoicing', required: false,
+    breaks: 'n8n answers 401 and the French invoice is not sent.' },
 
   { name: 'READY_NOTIFY_TO', group: 'Email', required: false,
     breaks: 'Ready-for-shipment falls back to its built-in recipient.' },

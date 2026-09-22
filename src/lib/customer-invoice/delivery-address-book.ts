@@ -87,11 +87,18 @@ export function deliveryAddressFingerprint(address: DeliveryAddressInput): strin
  * are exactly the four TaxJar needs, so anything the book offers is also
  * something tax can be calculated against.
  */
-export function isSaveableDeliveryAddress(address: DeliveryAddressInput): boolean {
+export function isSaveableDeliveryAddress(
+  address: DeliveryAddressInput,
+  opts: { needsState?: boolean } = {},
+): boolean {
+  // A French address has no state and the column that stores one is NOT NULL,
+  // so a French row keeps an empty string there and the rule does not ask for
+  // it. Defaults to requiring one, which is every US caller.
+  const needsState = opts.needsState ?? true
   return (
     squash(address.street) !== '' &&
     squash(address.city) !== '' &&
-    squash(address.state) !== '' &&
+    (!needsState || squash(address.state) !== '') &&
     squash(address.zip) !== ''
   )
 }

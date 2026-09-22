@@ -14,6 +14,7 @@
 import { z } from 'zod'
 import { BIO_MAX, JOB_TITLE_MAX } from '@/lib/profile/avatar'
 import { INVOICE_LEGS } from '@/lib/invoice-legs'
+import { INVOICE_DEPOTS } from '@/lib/customer-invoice/constants'
 
 // ---------------------------------------------------------------------------
 // Raise a purchase order
@@ -251,7 +252,7 @@ export const invoiceEditorDraftSchema = z.object({
         unit_price: z.string(),
         discount_percentage: z.string(),
         is_shipping: z.boolean(),
-        ship_from_depot: z.enum(['US-BAL', 'US-SBD']),
+        ship_from_depot: z.enum(INVOICE_DEPOTS),
         ship_from_locked: z.boolean(),
         tax_amount: z.string(),
         tax_override: z.boolean(),

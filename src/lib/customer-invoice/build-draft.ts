@@ -10,7 +10,7 @@ import {
   FITTING_KIT_PRODUCT_IDS,
   KIT_SHIP_FROM,
   SHIPPING_SKUS,
-  type USDepot,
+  type InvoiceDepot,
 } from '@/lib/customer-invoice/constants'
 
 /** Shape of one entry in deals_registry.line_items_raw (snake_case, written by
@@ -57,7 +57,7 @@ export interface DraftLineInput {
   discount_percentage: number
   line_total: number
   is_shipping: boolean
-  ship_from_depot: USDepot
+  ship_from_depot: InvoiceDepot
   ship_from_locked: boolean
 }
 
@@ -127,7 +127,7 @@ export function computeDraftLineTotal(quantity: number, unitPrice: number, disco
  * - Nothing is dropped silently: zero-qty and zero-price lines pass through
  *   for the reviewer to fix or remove.
  */
-export function buildDraftLines(rawLines: readonly RawDealLine[] | null | undefined, dealDepot: USDepot): DraftLineInput[] {
+export function buildDraftLines(rawLines: readonly RawDealLine[] | null | undefined, dealDepot: InvoiceDepot): DraftLineInput[] {
   const out: DraftLineInput[] = []
   const lines = Array.isArray(rawLines) ? rawLines : []
 

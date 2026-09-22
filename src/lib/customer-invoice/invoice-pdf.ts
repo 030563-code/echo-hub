@@ -36,6 +36,11 @@ export interface InvoicePdfInput {
   sellerLines: readonly string[]
   sellerPhone?: string
   sellerEmail?: string
+  /** Statutory mentions under the letterhead (France: SIREN, RCS, TVA). */
+  legalMentions?: readonly string[]
+  /** BCP 47 locale for money and dates. en-US prints "$1,234.56" and
+   *  "September 3, 2026"; fr-FR prints "1 234,56 €" and "3 septembre 2026". */
+  locale?: string
   /**
    * What makes the render REPRODUCIBLE, and both are required for it.
    *
@@ -62,20 +67,29 @@ export interface InvoicePdfInput {
   logoDataUrl?: string
 }
 
-function money(value: number, currency: string): string {
-  return value.toLocaleString('en-US', { style: 'currency', currency, currencyDisplay: 'narrowSymbol' })
+function money(value: number, currency: string, locale = 'en-US'): string {
+  return (
+    value
+      .toLocaleString(locale, { style: 'currency', currency, currencyDisplay: locale === 'en-US' ? 'narrowSymbol' : 'symbol' })
+      // 🔴 French formatting groups thousands with NARROW NO-BREAK SPACES
+      // (U+202F) and puts a no-break space before the symbol. Neither exists in
+      // the WinAnsi encoding jsPDF's Helvetica uses, and a missing glyph prints
+      // as a wrong character rather than a blank (the Slovak PO learned this the
+      // hard way). Plain spaces read the same and always render.
+      .replace(/[\u202F\u00A0]/g, ' ')
+  )
 }
 
 /** ISO date to "September 1, 2026", the form a US customer expects. Returns a
  *  dash for a missing date so the label still has something to sit against on a
  *  draft preview. Built and formatted in UTC: these are date-only values, and
  *  local formatting would print the previous day west of Greenwich. */
-function formatDate(iso: string | null): string {
+function formatDate(iso: string | null, locale = 'en-US'): string {
   if (!iso) return '—'
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim())
   if (!m) return iso
   const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
-  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+  return d.toLocaleDateString(locale, { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
 }
 
 /**
@@ -94,6 +108,7 @@ function stableFileId(documentId: string): string {
 export async function buildInvoicePdf(input: InvoicePdfInput): Promise<import('jspdf').jsPDF> {
   const { document: inv } = input
   const currency = inv.currency || 'USD'
+  const locale = input.locale ?? 'en-US'
   const { default: JsPDF } = await import('jspdf')
   const { default: autoTable } = await import('jspdf-autotable')
 
@@ -145,6 +160,9 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<import('j
       ...input.sellerLines,
       ...(input.sellerPhone ? [input.sellerPhone] : []),
       ...(input.sellerEmail ? [input.sellerEmail] : []),
+      // France's statutory mentions sit here, under the letterhead, where a
+      // French reader expects to find the SIREN and the TVA number.
+      ...(input.legalMentions ?? []),
     ]
     if (input.document.remittance.ein) sellerBlock.push(`EIN ${input.document.remittance.ein}`)
     doc.setFont('helvetica', 'normal')
@@ -179,11 +197,11 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<import('j
   y += 10
   const metaPairs: [string, string][] = [
     [inv.isDraftReference ? 'DRAFT REFERENCE' : 'INVOICE', inv.reference],
-    ['ISSUED', formatDate(inv.issuedOn)],
+    ['ISSUED', formatDate(inv.issuedOn, locale)],
     // The separator only earns its place when both halves exist. A draft has no
     // due date yet, and "—  ·  Net 30" reads as a broken field rather than as
     // terms that have not been applied to a date.
-    ['DUE', [inv.dueOn ? formatDate(inv.dueOn) : null, inv.paymentTerms].filter((p) => p).join('  ·  ') || '—'],
+    ['DUE', [inv.dueOn ? formatDate(inv.dueOn, locale) : null, inv.paymentTerms].filter((p) => p).join('  ·  ') || '—'],
   ]
   if (inv.customerPoNumber) metaPairs.push(['CUSTOMER PO', inv.customerPoNumber])
   // Depots are named by PLACE, never by our internal code (Dean, 2026-09-03).
@@ -276,22 +294,22 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<import('j
       body.push([
         line.detail ? `${line.description}\n${line.detail}` : line.description,
         String(line.quantity),
-        money(line.unitPrice, currency),
-        money(line.net, currency),
+        money(line.unitPrice, currency, locale),
+        money(line.net, currency, locale),
         // A null rate is "exempt", not zero: in a state that exempts
         // separately stated freight there is no rate to quote.
         line.taxRate === null ? 'exempt' : formatTaxRate(line.taxRate),
-        money(line.tax, currency),
-        money(line.lineTotal, currency),
+        money(line.tax, currency, locale),
+        money(line.lineTotal, currency, locale),
       ])
     }
     if (inv.isSplit) {
       body.push([
         { content: `Subtotal, ${shipment.label}`, colSpan: 3, styles: { fontStyle: 'bold' } },
-        { content: money(shipment.net, currency), styles: { fontStyle: 'bold' } },
+        { content: money(shipment.net, currency, locale), styles: { fontStyle: 'bold' } },
         '',
-        { content: money(shipment.tax, currency), styles: { fontStyle: 'bold' } },
-        { content: money(shipment.total, currency), styles: { fontStyle: 'bold' } },
+        { content: money(shipment.tax, currency, locale), styles: { fontStyle: 'bold' } },
+        { content: money(shipment.total, currency, locale), styles: { fontStyle: 'bold' } },
       ])
     }
   }
@@ -333,18 +351,18 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<import('j
     y += bold ? 7 : 5
   }
 
-  label('Taxable net', money(inv.taxableNet, currency))
+  label('Taxable net', money(inv.taxableNet, currency, locale))
   if (inv.freight > 0) {
-    label(inv.freightIsTaxed ? 'Freight (taxable)' : 'Freight (not taxable)', money(inv.freight, currency))
+    label(inv.freightIsTaxed ? 'Freight (taxable)' : 'Freight (not taxable)', money(inv.freight, currency, locale))
   }
-  label('Sales tax', money(inv.salesTax, currency))
+  label(inv.taxLabel, money(inv.salesTax, currency, locale))
   for (const j of inv.jurisdictions) {
-    label(`${j.label} ${formatTaxRate(j.rate)}`, money(j.amount, currency), false, 4)
+    label(`${j.label} ${formatTaxRate(j.rate)}`, money(j.amount, currency, locale), false, 4)
   }
   doc.setDrawColor(...BORDER_COLOR)
   doc.line(totalsLeft, y, right, y)
   y += 6
-  label('Total due', money(inv.totalDue, currency), true)
+  label('Total due', money(inv.totalDue, currency, locale), true)
 
   // --- Remittance, in the column beside the totals ---
   // Beside rather than below, which is where the design puts it and is also
@@ -366,16 +384,28 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<import('j
   const r = inv.remittance
   // Multi-line values, because the bank's address is three lines on the letter
   // and squeezing it onto one ran it straight across into the totals column.
-  const remitRows: [string, string[]][] = [
-    ['Account Name', [r.accountName]],
-    ['Bank', [remittanceValue(r.bankName, 'bank name')]],
-    ...(r.bankAddress.length > 0 ? ([['Address', r.bankAddress]] as [string, string[]][]) : []),
-    ['Routing Number', [remittanceValue(r.routingNumber, 'routing number')]],
-    ['Account No', [remittanceValue(r.accountNumber, 'account number')]],
-    // Not a bank detail, but the thing that makes a received payment
-    // reconcilable. The handover specifies the invoice number as the reference.
-    ['Reference', [inv.reference]],
-  ]
+  // A European account is paid by IBAN and BIC; an American one by routing and
+  // account number. The two never share a row, so the wrong scheme's fields
+  // never print as placeholders on the other scheme's invoice.
+  const remitRows: [string, string[]][] =
+    r.scheme === 'eu'
+      ? [
+          ['Account Name', [r.accountName]],
+          ['Bank', [remittanceValue(r.bankName, 'bank name')]],
+          ['IBAN', [remittanceValue(r.iban, 'IBAN')]],
+          ['BIC', [remittanceValue(r.bic, 'BIC')]],
+          ['Reference', [inv.reference]],
+        ]
+      : [
+          ['Account Name', [r.accountName]],
+          ['Bank', [remittanceValue(r.bankName, 'bank name')]],
+          ...(r.bankAddress.length > 0 ? ([['Address', r.bankAddress]] as [string, string[]][]) : []),
+          ['Routing Number', [remittanceValue(r.routingNumber, 'routing number')]],
+          ['Account No', [remittanceValue(r.accountNumber, 'account number')]],
+          // Not a bank detail, but the thing that makes a received payment
+          // reconcilable. The handover specifies the invoice number as the reference.
+          ['Reference', [inv.reference]],
+        ]
   // The remittance owns the left column only. Anything wider collides with the
   // totals sitting opposite it.
   const remitValueX = MARGIN + 30

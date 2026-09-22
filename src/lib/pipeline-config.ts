@@ -185,6 +185,17 @@ export const QUOTE_TEMPLATE_IDS: Record<string, string | null> = {
   // hand-made quotes used, chosen when the SKU column was still unwanted.
   US: '454422093232',
   CAN: '456904456263',
+  // Claire's own templates, one per language she sells in. Read live from the
+  // portal on 17 Sep 2026 (see the vault note "Claire on the Hub France").
+  // Picking the template IS picking the language: hs_language and hs_locale
+  // are inherited from it and cannot be set any other way. These belong on
+  // HER profile row (allowed_quote_templates), exactly as the note above
+  // says, not on the EURO SALES pipeline config, which s.r.o. shares.
+  FR: '126519595368', // Devis France (fr)
+  'FR-EN': '574629438027', // Devis France en Anglais (en-gb)
+  ES: '129627004693', // Presupuesto Espana (es)
+  DE: '574629427566', // Devis Allemagne depuis la France (de). Kostenvoranschlag 376965360697 is hers too.
+  PT: '431440096678', // PORTUGAL (pt)
   // Australia (Jack, the ANZ AI sales agent). NULL ON PURPOSE until the
   // Australian template cloned from "Geoff USA" (447512623874) exists and its
   // own id is pasted here. While null, quoteTemplateIdFor('AU') returns null,

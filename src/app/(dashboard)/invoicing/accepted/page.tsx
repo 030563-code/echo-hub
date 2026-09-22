@@ -7,10 +7,11 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { depotLabel } from '@/lib/depot-constants'
 import type { CustomerInvoiceStatus } from '@/lib/customer-invoice/constants'
 import { depotsForOrg, orgLabel, organisation } from '@/lib/organisations'
+import { invoicingProfile } from '@/lib/customer-invoice/invoicing-profile'
+import { sanitizeDeliveryAddress } from '@/lib/delivery-address'
 import { NoOrganisationCard } from '@/components/organisations/no-organisation-card'
 import { getAcceptedSinceCutover, isNotInvoiceableStage } from '@/app/actions/invoicing/shared'
 import { sourceLinesHash } from '@/lib/customer-invoice/hash'
-import { sanitizeUSAddress } from '@/lib/us-address'
 import { OpenInvoiceButton } from '../open-invoice-button'
 import { ExcludeFromQueueButton } from '../queue-exclusion-buttons'
 import { InvoiceStatusChip, type QueueChip } from '../status-chip'
@@ -39,13 +40,14 @@ export default async function AcceptedQueuePage() {
   const canManage = auth.capabilities.has('invoicing.manage')
 
   // The organisation being looked at decides the depots, and the depots go
-  // into the query. Dean, 15 Sep 2026: every organisation is listed, USA is
-  // the one whose invoicing flow exists; the others see their queue and cannot
-  // create an invoice here yet.
+  // into the query. Dean, 15 Sep 2026: every organisation is listed; the ones
+  // with an invoicing profile (the USA, and France since 22 Sep 2026) can
+  // create an invoice here, the others see their queue and cannot yet.
   const org = await activeOrganisation(auth)
   if (!org) return <NoOrganisationCard title="Accepted Quotes" what="accepted quotes" />
   const depots = depotsForOrg(org)
-  const invoicingLive = org === 'EB-USA'
+  const profile = invoicingProfile(org)
+  const invoicingLive = profile !== null
   const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: organisation(org).currency })
 
   const admin = createAdminClient()
@@ -115,15 +117,17 @@ export default async function AcceptedQueuePage() {
     rows = stillWaiting.map((deal) => {
       const dealId = String(deal.hubspot_deal_id)
       const invoice = invoiceByDeal.get(dealId)
-      // The address check is a US sales-tax check. Another organisation's
-      // deal is not held to it, because nothing here can tax it yet.
+      // The address is checked in the invoicing organisation's own shape (a
+      // US address needs a state, a French one must not have one). An
+      // organisation with no profile is not held to it, because nothing here
+      // can tax its deals yet.
       const addressOk =
-        !invoicingLive ||
-        sanitizeUSAddress({
-          street: deal.delivery_street ?? '',
-          city: deal.delivery_city ?? '',
-          state: deal.delivery_state ?? '',
-          zip: deal.delivery_zip ?? '',
+        !profile ||
+        sanitizeDeliveryAddress(profile.country, {
+          street: deal.delivery_street,
+          city: deal.delivery_city,
+          state: deal.delivery_state,
+          zip: deal.delivery_zip,
         }).ok
 
       let chip: QueueChip

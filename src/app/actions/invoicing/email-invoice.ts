@@ -23,7 +23,8 @@ import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { applyStockMovements } from '@/lib/stock/apply'
 import { buildDispatchMovements } from '@/lib/stock/movements'
-import { xeroFindContact } from '@/lib/xero-hub'
+import { xeroFindContact, xeroWebhookFor } from '@/lib/xero-hub'
+import type { OrgCode } from '@/lib/organisations'
 import { requireInvoicingManage, loadInvoiceWithLines, logInvoiceEvent } from './shared'
 import { renderInvoicePdf } from './document-data'
 import { buildInvoiceEmail } from '@/lib/customer-invoice/invoice-email'
@@ -54,14 +55,19 @@ export async function emailInvoiceToCustomer(input: { invoiceId: string }): Prom
     }
   }
 
-  const webhookUrl = process.env.N8N_CUSTOMER_INVOICE_WEBHOOK_URL
-  if (!webhookUrl) return { success: false, error: 'The invoice webhook is not configured on the server.' }
+  // The email leaves through the invoice's own organisation's n8n workflow,
+  // never a default one: each organisation's workflow carries its own sender.
+  const hook = xeroWebhookFor(invoice.organisation_code as OrgCode)
+  if (!hook.ok) return { success: false, error: hook.error }
+  const webhookUrl = hook.url
 
   // --- Recipient ---
   const testRecipient = String(process.env.INVOICE_EMAIL_TEST_RECIPIENT ?? '').trim()
   let recipient = testRecipient
   if (!recipient) {
-    const contact = invoice.taxjar_customer_id ? await xeroFindContact(invoice.taxjar_customer_id) : null
+    const contact = invoice.taxjar_customer_id
+      ? await xeroFindContact(invoice.organisation_code as OrgCode, invoice.taxjar_customer_id)
+      : null
     if (!contact || !contact.ok) {
       return { success: false, error: 'Xero could not be reached for the customer email address.' }
     }
@@ -122,9 +128,7 @@ export async function emailInvoiceToCustomer(input: { invoiceId: string }): Prom
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(process.env.N8N_CUSTOMER_INVOICE_WEBHOOK_SECRET
-          ? { 'x-hub-secret': process.env.N8N_CUSTOMER_INVOICE_WEBHOOK_SECRET }
-          : {}),
+        ...(hook.secret ? { 'x-hub-secret': hook.secret } : {}),
       },
       body: JSON.stringify({
         action: 'send_invoice_email',

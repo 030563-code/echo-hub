@@ -22,6 +22,7 @@
 
 import { z } from 'zod'
 import { xeroFindContact } from '@/lib/xero-hub'
+import type { OrgCode } from '@/lib/organisations'
 import { requireInvoicingManage, loadInvoiceWithLines, snapshotBillingContact } from './shared'
 import { renderInvoicePdf } from './document-data'
 
@@ -53,7 +54,7 @@ export async function previewInvoicePdf(input: { invoiceId: string }): Promise<P
   // preview and every later render agree.
   let current = invoice
   if (!invoice.billing_snapshot_at && invoice.taxjar_customer_id) {
-    const contact = await xeroFindContact(invoice.taxjar_customer_id)
+    const contact = await xeroFindContact(invoice.organisation_code as OrgCode, invoice.taxjar_customer_id)
     if (contact.ok && contact.data) {
       await snapshotBillingContact(invoice.id, contact.data)
       current = {

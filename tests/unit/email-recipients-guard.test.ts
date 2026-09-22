@@ -23,8 +23,13 @@ import { join } from 'node:path'
 
 const ROOT = join(process.cwd(), 'src/app/actions')
 
-/** Any env var whose name ends in _WEBHOOK_URL: the way out of this process. */
-const POSTS_TO_WEBHOOK = /process\.env\.[A-Z0-9_]*WEBHOOK_URL\b/
+/**
+ * Any env var whose name ends in _WEBHOOK_URL, or the per-organisation resolver
+ * that hands one back (xeroWebhookFor, since 22 Sep 2026 when the invoice
+ * webhook stopped being one URL and became one per Xero organisation). Either
+ * is the way out of this process, so either puts a file under this rule.
+ */
+const POSTS_TO_WEBHOOK = /process\.env\.[A-Z0-9_]*WEBHOOK_URL\b|\bxeroWebhookFor\(/
 const USES_HELPER = /\bresolveRecipients\b/
 const MARKER = /\/\/\s*email-recipients:\s*(none|legacy)\b/
 

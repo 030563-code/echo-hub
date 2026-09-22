@@ -23,7 +23,7 @@ import {
 import { linesHash } from '@/lib/customer-invoice/hash'
 import { roundCents } from '@/lib/quote-math'
 import { taxjarCalculateTax, taxjarNexusRegions, TaxJarError, TaxJarConfigError } from '@/lib/taxjar'
-import { US_REGISTERED_STATES } from '@/lib/customer-invoice/constants'
+import { US_REGISTERED_STATES, isUSDepot, type USDepot } from '@/lib/customer-invoice/constants'
 import {
   requireInvoicingManage,
   loadInvoiceWithLines,
@@ -54,6 +54,17 @@ export async function calculateInvoiceTax(input: { invoiceId: string }): Promise
   if (invoice.currency !== 'USD') {
     return { success: false, error: `US sales tax needs a USD invoice (this one is ${invoice.currency}).` }
   }
+  // TaxJar is the United States sales-tax engine and knows nothing else. A line
+  // shipping from any other depot is refused here, at the type level, rather
+  // than reaching a nexus lookup that would answer for the wrong country. The
+  // French step is calculate-tax-fr.ts.
+  const foreign = lines.filter((l) => !isUSDepot(l.ship_from_depot))
+  if (foreign.length > 0) {
+    return {
+      success: false,
+      error: `TaxJar prices US sales only; ${foreign.length} line${foreign.length === 1 ? '' : 's'} ship from ${[...new Set(foreign.map((l) => l.ship_from_depot))].join(', ')}.`,
+    }
+  }
 
   // A collected order is taxed at the depot it is collected from, so it needs
   // no delivery address. Only a delivered order requires one.
@@ -76,7 +87,7 @@ export async function calculateInvoiceTax(input: { invoiceId: string }): Promise
     discount_percentage: Number(l.discount_percentage),
     line_total: Number(l.line_total),
     is_shipping: l.is_shipping,
-    ship_from_depot: l.ship_from_depot,
+    ship_from_depot: l.ship_from_depot as USDepot,
   }))
 
   const built = buildTaxRequests(taxableLines, shipTo, invoice.taxjar_customer_id, invoice.is_collection)

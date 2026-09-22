@@ -63,6 +63,16 @@ export function isCADepot(value: unknown): value is CADepot {
   return value === 'CA-HAM'
 }
 
+/** France. One depot, and it is the organisation's only one. Dean, 22 Sep
+ *  2026: Claire's invoicing moves into the Hub on the USA ladder, with a Xero
+ *  DRAFT standing where TaxJar stands. See invoicing-profile.ts. */
+export const FR_DEPOTS = ['EU-FR'] as const
+export type FRDepot = (typeof FR_DEPOTS)[number]
+
+export function isFRDepot(value: unknown): value is FRDepot {
+  return value === 'EU-FR'
+}
+
 /**
  * Every depot the invoicing module can raise an invoice from.
  *
@@ -81,11 +91,11 @@ export function isCADepot(value: unknown): value is CADepot {
  * Widening `USDepot` itself would have been one character of work and would
  * have removed exactly the guard that makes this safe.
  */
-export const INVOICE_DEPOTS = [...US_DEPOTS, ...CA_DEPOTS] as const
+export const INVOICE_DEPOTS = [...US_DEPOTS, ...CA_DEPOTS, ...FR_DEPOTS] as const
 export type InvoiceDepot = (typeof INVOICE_DEPOTS)[number]
 
 export function isInvoiceDepot(value: unknown): value is InvoiceDepot {
-  return isUSDepot(value) || isCADepot(value)
+  return isUSDepot(value) || isCADepot(value) || isFRDepot(value)
 }
 
 /** Fitting kits (and their split components) always dispatch from Baltimore,
@@ -95,11 +105,12 @@ export const KIT_SHIP_FROM: USDepot = 'US-BAL'
 export interface DepotFromAddress {
   street: string
   city: string
-  /** US state code, or Canadian province code. */
-  state: string
-  /** US zip, or Canadian postal code. */
+  /** US state code, or Canadian province code. Null for a country that has no
+   *  such thing on an address, which is France. */
+  state: string | null
+  /** US zip, Canadian postal code, or French code postal. */
   zip: string
-  country: 'US' | 'CA'
+  country: 'US' | 'CA' | 'FR'
 }
 
 /**
@@ -136,6 +147,27 @@ export const DEPOT_FROM_ADDRESSES: Record<InvoiceDepot, DepotFromAddress | null>
    * calls TaxJar); this feeds the "Despatched from" line on the PDF.
    */
   'CA-HAM': null,
+  /**
+   * 🔴 NULL UNTIL DEAN SUPPLIES THE FRENCH DEPOT ADDRESS. Same rule as Hamilton:
+   * a guessed dispatch address would print on a customer's invoice and be
+   * believed. France never calls TaxJar, so this only feeds the "Despatched
+   * from" line and the collection address on the document. Note this is the
+   * DEPOT, not the registered office at 25 place de la Madeleine, which is the
+   * seller block's business (seller.ts).
+   */
+  'EU-FR': null,
+}
+
+/**
+ * A US depot's dispatch address with the state TaxJar needs, or null when the
+ * depot has no address configured. Exists so the TaxJar paths, which are
+ * US-only by construction, never see the `string | null` state the wider
+ * DepotFromAddress carries for France.
+ */
+export function usDepotAddress(depot: USDepot): (DepotFromAddress & { state: string }) | null {
+  const from = DEPOT_FROM_ADDRESSES[depot]
+  if (!from || from.state === null) return null
+  return { ...from, state: from.state }
 }
 
 /**

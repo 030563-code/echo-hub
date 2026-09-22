@@ -1,10 +1,14 @@
 'use server'
 
 /**
- * Find-or-create the draft customer invoice for an accepted US deal. Building
+ * Find-or-create the draft customer invoice for an accepted deal. Building
  * snapshots the deal's line_items_raw (fitting-kit split applied), delivery
  * address and Xero account code; the invoice is then edited independently of
  * the deal, with drift surfaced via the source snapshot hash.
+ *
+ * Which organisation invoices the deal follows from its depot, and that
+ * organisation's invoicing profile (currency, country, tax engine, Xero) drives
+ * everything below. An organisation with no profile is refused with a sentence.
  */
 
 import { z } from 'zod'
@@ -12,7 +16,8 @@ import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildDraftLines, type RawDealLine } from '@/lib/customer-invoice/build-draft'
 import { fetchHubSpotLineDescriptions } from '@/lib/customer-invoice/line-descriptions'
-import { isUSDepot } from '@/lib/customer-invoice/constants'
+import { isInvoiceDepot } from '@/lib/customer-invoice/constants'
+import { invoicingProfile } from '@/lib/customer-invoice/invoicing-profile'
 import { linesHash } from '@/lib/customer-invoice/hash'
 import { holdsOrganisation, orgForDepot, orgLabel } from '@/lib/organisations'
 import { xeroItemAccounts } from '@/lib/xero-hub'
@@ -91,10 +96,10 @@ export async function openInvoiceForDeal(input: {
   }
 
   // The deal's depot says which organisation invoices it. That organisation
-  // has to be one the caller holds, and, for now, has to be USA: Dean, 15 Sep
-  // 2026, the structure for every organisation now with USA the only one whose
-  // tax and Xero flow exists. Each of the others is its own follow-up, and
-  // until then the queue shows the deal and this is the answer.
+  // has to be one the caller holds, and has to have an invoicing profile: the
+  // USA since September 2026, France since Dean's decision of 22 Sep 2026.
+  // Each of the others is its own follow-up, and until then the queue shows
+  // the deal and this is the answer.
   const depot = String(deal.depot_code ?? '').trim().toUpperCase()
   const org = orgForDepot(depot)
   if (!org) {
@@ -103,48 +108,59 @@ export async function openInvoiceForDeal(input: {
   if (!holdsOrganisation(gate.auth.profile.organisations, org)) {
     return { success: false, error: 'This deal belongs to an organisation you do not hold.' }
   }
-  if (org !== 'EB-USA') {
+  const profile = invoicingProfile(org)
+  if (!profile) {
     return {
       success: false,
       error: `Invoicing for ${orgLabel(org)} is not set up in the Hub yet. The deal is listed for reference; its invoice has to be raised outside the Hub for now.`,
     }
   }
-  // USA's depots are the two US ones by definition; this is the type's proof
-  // of it, and the refusal if the mapping and the constant ever disagree.
-  if (!isUSDepot(depot)) {
-    return { success: false, error: `US invoicing handles US-BAL and US-SBD deals; this deal's depot is ${depot}.` }
+  // The organisation's depots are the profile's by definition; this is the
+  // type's proof of it, and the refusal if the mapping and the profile ever
+  // disagree.
+  if (!isInvoiceDepot(depot) || !(profile.depots as readonly string[]).includes(depot)) {
+    return {
+      success: false,
+      error: `${orgLabel(org)} invoicing handles ${profile.depots.join(' and ')} deals; this deal's depot is ${depot}.`,
+    }
   }
-  const currency = String(deal.currency ?? 'USD').trim().toUpperCase() || 'USD'
-  if (currency !== 'USD') {
-    // This check has never fired: create-quote used to write a literal 'USD'
-    // over whatever n8n had synced. Now that the deal's real currency reaches
-    // the registry, a genuinely Canadian deal lands here, so the message has
-    // to say what to do rather than just state a mismatch.
+  // The invoice is in the ORGANISATION's currency. For the USA the registry's
+  // currency is checked against it, because a genuinely Canadian deal landing
+  // here is the mistake that check exists to catch. For every other
+  // organisation the registry column is not trusted: n8n's EURO sync never
+  // wrote it, so all 63 French deals carry 'USD', the column default. Refusing
+  // on that would refuse every French invoice for a value nobody chose.
+  const registryCurrency = String(deal.currency ?? '').trim().toUpperCase()
+  if (org === 'EB-USA' && registryCurrency && registryCurrency !== profile.currency) {
     return {
       success: false,
       error:
-        `This deal is in ${currency}. US invoicing is USD only, because the TaxJar and Xero ` +
-        `flow behind it is a US sales-tax flow. Invoice a ${currency} deal through the Canadian ` +
-        `process instead, or correct the deal's currency in HubSpot if ${currency} is wrong.`,
+        `This deal is in ${registryCurrency}. US invoicing is USD only, because the TaxJar and Xero ` +
+        `flow behind it is a US sales-tax flow. Invoice a ${registryCurrency} deal through the Canadian ` +
+        `process instead, or correct the deal's currency in HubSpot if ${registryCurrency} is wrong.`,
     }
   }
+  const currency = profile.currency
 
-  // Xero account number doubles as the TaxJar customer id.
+  // The Xero account number for this customer in THIS organisation's Xero. It
+  // doubles as the TaxJar customer id for the USA, hence the column name it is
+  // stored under.
   let companyName: string | null = null
   let xeroAccountCode: string | null = null
   const companyIdClean = String(deal.hubspot_company_id ?? '').replace(/\D/g, '')
   if (companyIdClean) {
     const { data: account } = await admin
       .from('account_registry')
-      .select('hubspot_company_name, usa_xero_account_code')
+      .select(`hubspot_company_name, ${profile.accountCodeColumn}`)
       .eq('hubspot_company_id', Number(companyIdClean))
       .maybeSingle()
-    companyName = account?.hubspot_company_name ?? null
+    const row = (account ?? null) as Record<string, string | null> | null
+    companyName = row?.hubspot_company_name ?? null
     // `?? null` is not enough: account_registry holds 15,335 EMPTY STRINGS
     // against only 48 real codes, so `is not null` lies. Coerce blanks to null
     // here or the invoice stores '' and every "has an account code?" check
     // downstream has to remember to be falsy rather than null-checked.
-    xeroAccountCode = account?.usa_xero_account_code?.trim() || null
+    xeroAccountCode = row?.[profile.accountCodeColumn]?.trim() || null
   }
 
   const rawLines = (Array.isArray(deal.line_items_raw) ? deal.line_items_raw : []) as RawDealLine[]
@@ -185,7 +201,7 @@ export async function openInvoiceForDeal(input: {
   // A failure is deliberately not fatal: the column simply stays empty, which
   // is exactly how it behaved before, and drafting must not depend on Xero
   // being reachable.
-  const accounts = await xeroItemAccounts()
+  const accounts = await xeroItemAccounts(org)
   if (accounts.ok) {
     for (const line of lines) {
       const account = line.xero_item_code ? accounts.data[line.xero_item_code] : null
@@ -193,18 +209,23 @@ export async function openInvoiceForDeal(input: {
     }
   }
 
+  // A French address has no state, and the database refuses one on a French
+  // row. Whatever the registry holds there is not carried over.
+  const deliveryState = profile.country === 'US' ? (deal.delivery_state ?? null) : null
+
   const header = {
     hubspot_deal_id: dealId,
     organisation_code: org,
-    currency: 'USD',
+    currency,
+    holding_prefix: profile.holdingPrefix,
     hubspot_company_id: companyIdClean || null,
     company_name: companyName ?? deal.deal_name ?? null,
     taxjar_customer_id: xeroAccountCode,
     delivery_street: deal.delivery_street ?? null,
     delivery_city: deal.delivery_city ?? null,
-    delivery_state: deal.delivery_state ?? null,
+    delivery_state: deliveryState,
     delivery_zip: deal.delivery_zip ?? null,
-    delivery_country: 'US',
+    delivery_country: profile.country,
     is_collection: isCollection,
     subtotal: lines.filter((l) => !l.is_shipping).reduce((acc, l) => acc + l.line_total, 0),
     shipping_total: lines.filter((l) => l.is_shipping).reduce((acc, l) => acc + l.line_total, 0),
@@ -212,7 +233,7 @@ export async function openInvoiceForDeal(input: {
     lines_hash: linesHash(lines, {
       delivery_street: deal.delivery_street ?? null,
       delivery_city: deal.delivery_city ?? null,
-      delivery_state: deal.delivery_state ?? null,
+      delivery_state: deliveryState,
       delivery_zip: deal.delivery_zip ?? null,
       taxjar_customer_id: xeroAccountCode,
       is_collection: isCollection,

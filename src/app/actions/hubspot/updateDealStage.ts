@@ -5,16 +5,18 @@ import { externalCallsDisabled, STAGING_SKIP_NOTE } from '@/lib/env'
 import { createServerClient } from '@/lib/supabase/server'
 import { HUBSPOT_PIPELINES, QUOTATION_ACCEPTED_STAGES } from '@/lib/hubspot-constants'
 import { DEPOT_MAPPING } from '@/lib/depot-constants'
-import { isUSDepot } from '@/lib/customer-invoice/constants'
-import { sanitizeUSAddress, type USDeliveryAddress } from '@/lib/us-address'
+import { invoicingProfileForDepot } from '@/lib/customer-invoice/invoicing-profile'
+import { sanitizeDeliveryAddress, type DeliveryAddressInput, type DeliveryAddress } from '@/lib/delivery-address'
 import { parseWinProbability } from '@/lib/quote-math'
 
 export interface AcceptanceExtras {
   /** HubSpot win_probability option value ('10%'..'100%'). Written to HubSpot
    *  and deals_registry when provided. */
   winProbability?: string
-  /** US delivery (ship-to) address, captured at acceptance for TaxJar. */
-  delivery?: Partial<USDeliveryAddress>
+  /** Delivery (ship-to) address, captured at acceptance in the invoicing
+   *  organisation's own country shape: a US one for TaxJar, a French one for
+   *  the invoice document and the TVA case. */
+  delivery?: DeliveryAddressInput
   /**
    * Will Call. When true the delivery address is neither required nor written:
    * a collected order is taxed at the depot it is collected from. Absent falls
@@ -129,16 +131,19 @@ export async function updateDealStage(dealId: string, pipelineId: string, stageI
     return { success: false, error: 'HubSpot Access Token not configured' }
   }
 
-  // US acceptance gate: a US dispatch depot means this deal enters the US
-  // invoicing flow (destination-based sales tax via TaxJar), so a complete
-  // delivery address, a probability of close, and an associated company are
-  // mandatory BEFORE the stage moves. Keyed on the depot, not the pipeline:
-  // CA-HAM and EU acceptances keep the depot-only requirement above. The
-  // registry write happens BEFORE the HubSpot PATCH so the row is already
-  // complete when the acceptance echoes back into the admin queue (and a
-  // failed PATCH leaves nothing worse than a saved address).
+  // Invoicing acceptance gate: a dispatch depot belonging to an organisation
+  // that invoices through the Hub (the USA since September 2026, France since
+  // 22 Sep 2026) means this deal enters that flow, so a complete delivery
+  // address in that country's shape, a probability of close, and an associated
+  // company are mandatory BEFORE the stage moves. Keyed on the depot, not the
+  // pipeline: CA-HAM and EU-SK acceptances keep the depot-only requirement
+  // above until their organisations invoice here too. The registry write
+  // happens BEFORE the HubSpot PATCH so the row is already complete when the
+  // acceptance echoes back into the admin queue (and a failed PATCH leaves
+  // nothing worse than a saved address).
   const parsedProbability = parseWinProbability(acceptance?.winProbability)
-  if (QUOTATION_ACCEPTED_STAGES.includes(stageId) && isUSDepot(sendingDepot)) {
+  const invoicing = QUOTATION_ACCEPTED_STAGES.includes(stageId) ? invoicingProfileForDepot(sendingDepot) : null
+  if (invoicing) {
     // 1) The deal must have an associated company (the invoice customer).
     const assocRes = await fetch(
       `https://api.hubapi.com/crm/v3/objects/deals/${dealId}?properties=dealname&associations=companies`,
@@ -158,7 +163,8 @@ export async function updateDealStage(dealId: string, pipelineId: string, stageI
     }
 
     // 2) Delivery address: the submitted one, falling back to what the
-    //    registry already holds. Sanitized to TaxJar's format either way.
+    //    registry already holds. Sanitized in the organisation's own country
+    //    shape either way (TaxJar's format for the USA).
     const supabase = await createServerClient()
     const { data: regRow, error: regError } = await supabase
       .from('deals_registry')
@@ -173,9 +179,10 @@ export async function updateDealStage(dealId: string, pipelineId: string, stageI
     // the address for exactly this case), so demanding one would block the
     // acceptance for a deal that legitimately has none.
     const isCollection = acceptance?.isCollection ?? regRow?.is_collection === true
-    let address: USDeliveryAddress | null = null
+    let address: DeliveryAddress | null = null
     if (!isCollection) {
-      const sanitized = sanitizeUSAddress(
+      const sanitized = sanitizeDeliveryAddress(
+        invoicing.country,
         acceptance?.delivery ?? {
           street: regRow?.delivery_street ?? '',
           city: regRow?.delivery_city ?? '',
@@ -219,7 +226,7 @@ export async function updateDealStage(dealId: string, pipelineId: string, stageI
             delivery_city: address.city,
             delivery_state: address.state,
             delivery_zip: address.zip,
-            delivery_country: 'US',
+            delivery_country: invoicing.country,
           }
         : {}),
       ...(parsedProbability !== null ? { deal_probability: parsedProbability } : {}),

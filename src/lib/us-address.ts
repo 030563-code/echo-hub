@@ -86,13 +86,16 @@ const ZIP_RE = /^\d{5}(-\d{4})?$/
 const CONTROL_CHARS_RE = /[\u0000-\u001F\u007F]/g
 
 /** Replace control characters with spaces (a tab between words must separate
- *  them, not glue them) and collapse runs of whitespace to single spaces. */
-function clean(value: unknown): string {
+ *  them, not glue them) and collapse runs of whitespace to single spaces.
+ *  Exported for fr-address.ts, so both countries clean a field the same way. */
+export function cleanAddressField(value: unknown): string {
   return String(value ?? '')
     .replace(CONTROL_CHARS_RE, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 }
+
+const clean = cleanAddressField
 
 export type SanitizeAddressResult =
   | { ok: true; value: USDeliveryAddress }

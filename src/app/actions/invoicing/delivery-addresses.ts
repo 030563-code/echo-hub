@@ -13,7 +13,9 @@ import {
 // 'use server' module is a callable endpoint, and this one reads any customer's
 // address history from a contact key through the admin client.
 import { listDeliveryAddresses } from '@/lib/customer-invoice/delivery-address-store'
-import { US_STATE_CODES } from '@/lib/us-address'
+import { invoicingProfile } from '@/lib/customer-invoice/invoicing-profile'
+import { sanitizeDeliveryAddress, hasStateField } from '@/lib/delivery-address'
+import { orgLabel } from '@/lib/organisations'
 import { loadInvoiceWithLines, requireInvoicingManage } from './shared'
 
 /**
@@ -39,9 +41,10 @@ const addressSchema = z.object({
   invoiceId: z.string().uuid(),
   street: z.string().trim().min(1).max(255),
   city: z.string().trim().min(1).max(100),
-  state: z.enum(US_STATE_CODES),
-  zip: z.string().trim().regex(/^\d{5}(-\d{4})?$/, 'Zip must be 5 digits or ZIP+4.'),
-  country: z.string().trim().max(2).default('US'),
+  // Shape checked below in the invoice's own country: a US address needs a
+  // state and a ZIP, a French one has no state and a five digit code postal.
+  state: z.string().trim().max(2).nullable().default(null),
+  zip: z.string().trim().min(1).max(12),
   // Both optional and both free text: a depot label is whatever the customer
   // calls it, and a requester is a person's name.
   location: z.string().trim().max(120).nullable().default(null),
@@ -87,17 +90,29 @@ export async function saveDeliveryAddress(input: unknown): Promise<DeliveryAddre
     }
   }
 
-  const address = {
+  // The country is the invoice's organisation's, never the client's to say.
+  const profile = invoicingProfile(invoice.organisation_code)
+  if (!profile) return { success: false, error: `${orgLabel(invoice.organisation_code)} does not invoice through the Hub.` }
+  const sanitized = sanitizeDeliveryAddress(profile.country, {
     street: value.street,
     city: value.city,
     state: value.state,
     zip: value.zip,
-    country: value.country || 'US',
+  })
+  if (!sanitized.ok) return { success: false, error: sanitized.error }
+
+  const address = {
+    street: sanitized.value.street,
+    city: sanitized.value.city,
+    // The column is NOT NULL, so a country with no state stores an empty string.
+    state: sanitized.value.state ?? '',
+    zip: sanitized.value.zip,
+    country: profile.country,
     location: value.location,
     requestedBy: value.requestedBy,
   }
-  if (!isSaveableDeliveryAddress(address)) {
-    return { success: false, error: 'Fill in the street, city, state and zip before saving the address.' }
+  if (!isSaveableDeliveryAddress(address, { needsState: hasStateField(profile.country) })) {
+    return { success: false, error: 'Fill in the street, city and postcode before saving the address.' }
   }
 
   const { error } = await createAdminClient()

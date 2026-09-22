@@ -16,17 +16,20 @@
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sanitizeUSAddress } from '@/lib/us-address'
+import { sanitizeDeliveryAddress } from '@/lib/delivery-address'
+import { invoicingProfile } from '@/lib/customer-invoice/invoicing-profile'
 import { linesHash } from '@/lib/customer-invoice/hash'
 import { parseLineTracking, toXeroTracking } from '@/lib/customer-invoice/tracking'
 import { dueDateFromTerms } from '@/lib/customer-invoice/payment-terms'
-import { xeroFindContact } from '@/lib/xero-hub'
+import { xeroFindContact, xeroWebhookFor } from '@/lib/xero-hub'
+import { orgLabel } from '@/lib/organisations'
 import { renderInvoicePdf } from './document-data'
 import { closeDealWon } from '@/app/actions/hubspot/closeDealWon'
 import {
   requireInvoicingManage,
   loadInvoiceWithLines,
   logInvoiceEvent,
+  type CustomerInvoiceLineRow,
 } from '@/app/actions/invoicing/shared'
 
 const Input = z.object({
@@ -51,12 +54,19 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
   if (!parsed.success) return { success: false, error: 'Invalid input' }
   const { invoiceId } = parsed.data
 
-  const webhookUrl = process.env.N8N_CUSTOMER_INVOICE_WEBHOOK_URL
-  if (!webhookUrl) return { success: false, error: 'The invoice webhook is not configured on the server.' }
-
   const loaded = await loadInvoiceWithLines(invoiceId, gate.auth.profile.organisations)
   if (!loaded.ok) return { success: false, error: loaded.error }
   const { invoice, lines } = loaded
+
+  // The invoice's organisation decides whose Xero this goes to, which webhook
+  // carries it, which tax type the lines are posted under and whether our own
+  // tax amounts travel with them. Never a default: the USA workflow carries its
+  // tenant id in ten nodes, and a French invoice down that path would land in
+  // Echo Barrier USA LLC's ledger.
+  const profile = invoicingProfile(invoice.organisation_code)
+  if (!profile) return { success: false, error: `${orgLabel(invoice.organisation_code)} does not invoice through the Hub.` }
+  const hook = xeroWebhookFor(profile.org)
+  if (!hook.ok) return { success: false, error: hook.error }
 
   // Xero is now the LAST step, after the customer already has their PDF. The
   // ledger should only carry invoices that actually went out.
@@ -68,6 +78,11 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
   }
   if (invoice.xero_invoice_id) {
     return { success: false, error: `This invoice is already in Xero as ${invoice.xero_invoice_number ?? invoice.xero_invoice_id}.` }
+  }
+  // An organisation priced by a Xero draft authorises THAT draft. Without one
+  // the tax on this invoice did not come from Xero and must not be posted.
+  if (profile.taxEngine === 'xero_draft' && !invoice.xero_draft_invoice_id) {
+    return { success: false, error: 'This invoice has no Xero draft behind its tax, so there is nothing to authorise. Save and calculate tax again first.' }
   }
   if (!invoice.taxjar_customer_id) {
     return {
@@ -102,11 +117,11 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
   // A collected order carries no delivery address requirement: it was taxed
   // at the depot and is invoiced the same way.
   if (!invoice.is_collection) {
-    const address = sanitizeUSAddress({
-      street: invoice.delivery_street ?? '',
-      city: invoice.delivery_city ?? '',
-      state: invoice.delivery_state ?? '',
-      zip: invoice.delivery_zip ?? '',
+    const address = sanitizeDeliveryAddress(profile.country, {
+      street: invoice.delivery_street,
+      city: invoice.delivery_city,
+      state: invoice.delivery_state,
+      zip: invoice.delivery_zip,
     })
     if (!address.ok) return { success: false, error: address.error }
   }
@@ -187,7 +202,7 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
   const invoiceDate = invoice.invoice_date ?? today
   let dueDate = invoice.due_date
   if (!dueDate) {
-    const contact = await xeroFindContact(invoice.taxjar_customer_id)
+    const contact = await xeroFindContact(profile.org, invoice.taxjar_customer_id)
     dueDate = dueDateFromTerms(invoiceDate, contact.ok && contact.data ? contact.data.payment_terms : null)
   }
   await admin
@@ -240,6 +255,11 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
     // and posts AUTHORISED when it says so, DRAFT otherwise. No n8n change was
     // needed for the flip itself.
     xero_status: 'AUTHORISED' as const,
+    // France: the DRAFT that priced the tax, to be authorised IN PLACE. n8n
+    // posts against this InvoiceID with the real number and Status AUTHORISED,
+    // so the ledger ends up with one invoice, not a draft and a duplicate. Null
+    // for the USA, which never drafts.
+    xero_draft_invoice_id: invoice.xero_draft_invoice_id ?? null,
     hubspot_deal_id: invoice.hubspot_deal_id,
     quote_reference: null as string | null,
     reference: invoice.customer_po_number ?? '',
@@ -275,37 +295,14 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
     // NOT TAX002 or TAX003. Those are this org's real California rates, 8.75
     // and 7.25, which Xero WOULD compute and which are wrong for a sale
     // shipped anywhere but California.
-    tax_type: 'OUTPUT' as const,
-    lines: lines
-      .filter((l) => !l.is_shipping)
-      .map((l) => ({
-        item_code: l.xero_item_code,
-        account_code: l.account_code,
-        description: l.description || l.name,
-        quantity: Number(l.quantity),
-        unit_amount: Number(l.unit_price),
-        discount_rate: Number(l.discount_percentage),
-        tax_amount: Number(l.tax_amount ?? 0),
-        // Xero's LineItem.Tracking shape, built here rather than in n8n so the
-        // mapping is versioned and testable. Xero's own spec caps this at two
-        // elements per line; toXeroTracking enforces that.
-        tracking: toXeroTracking(parseLineTracking(l.tracking)),
-      })),
-    shipping_lines: lines
-      .filter((l) => l.is_shipping)
-      .map((l) => ({
-        item_code: l.xero_item_code,
-        account_code: l.account_code,
-        description: l.description || l.name,
-        quantity: Number(l.quantity),
-        unit_amount: Number(l.unit_price),
-        // Freight can be discounted too; without this Xero would bill the
-        // undiscounted price while our stored total and the tax base used the
-        // discounted one.
-        discount_rate: Number(l.discount_percentage),
-        tax_amount: Number(l.tax_amount ?? 0),
-        tracking: toXeroTracking(parseLineTracking(l.tracking)),
-      })),
+    //
+    // France sends TAX001, "Sales Tax FR" at 20%, and NO tax_amount at all
+    // (see the line builder): Xero computed the TVA on the draft and computes
+    // it again here. A supplied amount would silently override it, and zero is
+    // a supplied amount.
+    tax_type: profile.xeroTaxType,
+    lines: lines.filter((l) => !l.is_shipping).map((l) => xeroLine(l, profile.sendsTaxAmount)),
+    shipping_lines: lines.filter((l) => l.is_shipping).map((l) => xeroLine(l, profile.sendsTaxAmount)),
     totals: {
       subtotal: Number(invoice.subtotal ?? 0),
       shipping_total: Number(invoice.shipping_total ?? 0),
@@ -348,13 +345,11 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
     const timer = setTimeout(() => controller.abort(), 30_000)
     let res: Response
     try {
-      res = await fetch(webhookUrl, {
+      res = await fetch(hook.url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(process.env.N8N_CUSTOMER_INVOICE_WEBHOOK_SECRET
-            ? { 'x-hub-secret': process.env.N8N_CUSTOMER_INVOICE_WEBHOOK_SECRET }
-            : {}),
+          ...(hook.secret ? { 'x-hub-secret': hook.secret } : {}),
         },
         body: JSON.stringify(payload),
         signal: controller.signal,
@@ -456,9 +451,10 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
   // number, so it must not be created as a side effect of drafting: a draft
   // that is later discarded would leave a filed sale behind. Send to TaxJar
   // does it explicitly, once the number exists.
-  const warnings: string[] = [
-    `Invoice ${invoiceNumber} is AUTHORISED in Xero and has not been filed to TaxJar. Use Send to TaxJar to file it.`,
-  ]
+  const warnings: string[] =
+    profile.taxEngine === 'taxjar'
+      ? [`Invoice ${invoiceNumber} is AUTHORISED in Xero and has not been filed to TaxJar. Use Send to TaxJar to file it.`]
+      : []
   if (pdfError) {
     warnings.push(
       'The invoice PDF could not be rendered, so it is not attached to the Xero invoice. The customer still has the copy that was emailed.',
@@ -476,3 +472,29 @@ export async function sendInvoiceToXero(input: { invoiceId: string }): Promise<S
   return { success: true, xeroInvoiceNumber: invoiceNumber, warnings }
 }
 
+/**
+ * One invoice line as the n8n payload carries it.
+ *
+ * `tax_amount` is present ONLY for an organisation whose tax was priced
+ * elsewhere (TaxJar) and must be posted as an override. For an organisation
+ * whose tax Xero computes, the key is absent, not zero: Xero treats any
+ * supplied TaxAmount as an override of its own figure.
+ *
+ * Xero's LineItem.Tracking shape is built here rather than in n8n so the
+ * mapping is versioned and testable. Xero's own spec caps it at two elements
+ * per line; toXeroTracking enforces that. Freight can be discounted too;
+ * without discount_rate Xero would bill the undiscounted price while our
+ * stored total and the tax base used the discounted one.
+ */
+function xeroLine(l: CustomerInvoiceLineRow, sendsTaxAmount: boolean) {
+  return {
+    item_code: l.xero_item_code,
+    account_code: l.account_code,
+    description: l.description || l.name,
+    quantity: Number(l.quantity),
+    unit_amount: Number(l.unit_price),
+    discount_rate: Number(l.discount_percentage),
+    ...(sendsTaxAmount ? { tax_amount: Number(l.tax_amount ?? 0) } : {}),
+    tracking: toXeroTracking(parseLineTracking(l.tracking)),
+  }
+}

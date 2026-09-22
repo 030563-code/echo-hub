@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { xeroItemAccounts } from '@/lib/xero-hub'
-import { loadInvoiceWithLines, requireInvoicingManage } from './shared'
+import { loadInvoiceWithLines, requireInvoicingManage, invoiceOrganisation } from './shared'
 
 /**
  * Editing the Xero CODING on an invoice that is otherwise frozen.
@@ -136,11 +136,17 @@ export type ItemAccountsResult =
  * the "1 line has no Xero account code" error, so the editor has to tell those
  * two situations apart rather than silently leaving the field empty.
  */
-export async function getXeroItemAccounts(): Promise<ItemAccountsResult> {
+export async function getXeroItemAccounts(input: { invoiceId: string }): Promise<ItemAccountsResult> {
   const gate = await requireInvoicingManage()
   if (!gate.ok) return { success: false, error: gate.error }
 
-  const accounts = await xeroItemAccounts()
+  // The map belongs to the invoice's Xero organisation. Echo Barrier SAS and
+  // Echo Barrier USA LLC hold different items under different codes, so the
+  // organisation comes from the invoice and never from a default.
+  const org = await invoiceOrganisation(input.invoiceId, gate.auth.profile.organisations)
+  if (!org.ok) return { success: false, error: org.error }
+
+  const accounts = await xeroItemAccounts(org.org)
   if (!accounts.ok) return { success: false, error: accounts.error }
   return { success: true, accounts: accounts.data }
 }

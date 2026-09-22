@@ -12,7 +12,10 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { computeDraftLineTotal } from '@/lib/customer-invoice/build-draft'
-import { US_DEPOTS, KIT_SHIP_FROM } from '@/lib/customer-invoice/constants'
+import { INVOICE_DEPOTS, KIT_SHIP_FROM } from '@/lib/customer-invoice/constants'
+import { invoicingProfile } from '@/lib/customer-invoice/invoicing-profile'
+import { hasStateField } from '@/lib/delivery-address'
+import { orgLabel } from '@/lib/organisations'
 import { MAX_TRACKING_PER_LINE } from '@/lib/customer-invoice/tracking'
 import { linesHash } from '@/lib/customer-invoice/hash'
 import { US_STATE_CODES } from '@/lib/us-address'
@@ -40,7 +43,7 @@ const LineInput = z.object({
   unit_price: z.number().finite().min(0),
   discount_percentage: z.number().finite().min(0).max(100),
   is_shipping: z.boolean(),
-  ship_from_depot: z.enum(US_DEPOTS),
+  ship_from_depot: z.enum(INVOICE_DEPOTS),
   // Xero's own limit: "Any LineItem can have a maximum of 2 <TrackingCategory>
   // elements." Refused here as well as by a CHECK constraint, so a bad payload
   // never reaches the database or n8n.
@@ -68,8 +71,12 @@ const Input = z.object({
     taxjar_customer_id: z.string().max(64).nullable(),
     delivery_street: z.string().max(255).nullable(),
     delivery_city: z.string().max(100).nullable(),
-    delivery_state: z.enum(US_STATE_CODES).nullable(),
-    delivery_zip: z.string().regex(/^\d{5}(-\d{4})?$/, 'Delivery zip must be 5 digits or ZIP+4.').nullable(),
+    // Shape only here. WHICH shape is the invoice's organisation's business,
+    // and the invoice has not been loaded yet: a US row wants a state code and
+    // a ZIP, a French row must carry no state and a five digit code postal.
+    // Checked below, once the organisation is known.
+    delivery_state: z.string().trim().max(2).nullable(),
+    delivery_zip: z.string().trim().max(12).nullable(),
     // Both optional and free text. A site label is whatever the customer calls
     // that yard ("Location G52") and a requester is a person's name, so neither
     // can be validated beyond a length. Neither is a tax input, which is why
@@ -111,6 +118,37 @@ export async function saveInvoiceDraft(input: z.infer<typeof Input>): Promise<Sa
     return { success: false, error: `This invoice is ${invoice.status} and can no longer be edited.` }
   }
 
+  // --- The organisation's shape, now that we know whose invoice this is ---
+  const profile = invoicingProfile(invoice.organisation_code)
+  if (!profile) return { success: false, error: `${orgLabel(invoice.organisation_code)} does not invoice through the Hub.` }
+
+  // The address fields are checked for FORMAT, not presence: a draft may be
+  // saved half-filled and calculated later, which is when presence is enforced.
+  const state = header.delivery_state?.trim().toUpperCase() || null
+  const zip = header.delivery_zip?.replace(/ /g, '') || null
+  if (hasStateField(profile.country)) {
+    if (state !== null && !US_STATE_CODES.includes(state)) {
+      return { success: false, error: 'Delivery state must be a 2-letter US state code.' }
+    }
+    if (zip !== null && !/^\d{5}(-\d{4})?$/.test(zip)) {
+      return { success: false, error: 'Delivery zip must be 5 digits or ZIP+4.' }
+    }
+  } else {
+    // 🔴 The database refuses a state on a French row. Refusing here as well
+    // gives the reviewer a sentence instead of a constraint name.
+    if (state !== null) return { success: false, error: `A ${orgLabel(profile.org)} delivery address has no state field.` }
+    if (zip !== null && !/^\d{5}$/.test(zip)) {
+      return { success: false, error: 'Delivery postcode must be 5 digits (e.g. 75008).' }
+    }
+  }
+  const normalizedHeader = { ...header, delivery_state: state, delivery_zip: zip }
+
+  // Every line ships from one of THIS organisation's depots. The zod enum above
+  // admits any invoicing depot so the schema stays one schema; the organisation
+  // narrows it here. A kit component pinned to Baltimore on a non-US invoice is
+  // the case this catches.
+  const allowedDepots = new Set<string>(profile.depots)
+
   // Kit components stay pinned to Baltimore. The pin is decided from the
   // STORED line (matched by line_key), never from the client-supplied origin:
   // a crafted payload could otherwise relabel a kit component as 'manual' and
@@ -139,6 +177,14 @@ export async function saveInvoiceDraft(input: z.infer<typeof Input>): Promise<Sa
     discount_percentage: roundCents(l.discount_percentage),
     }
   })
+
+  const foreignDepots = [...new Set(normalized.map((l) => l.ship_from_depot).filter((d) => !allowedDepots.has(d)))]
+  if (foreignDepots.length > 0) {
+    return {
+      success: false,
+      error: `${orgLabel(profile.org)} invoices ship from ${profile.depots.join(' or ')}; these lines ship from ${foreignDepots.join(', ')}.`,
+    }
+  }
 
   // Xero item codes are always re-resolved server-side for the line's own
   // ship-from depot; the client never supplies them.
@@ -171,17 +217,17 @@ export async function saveInvoiceDraft(input: z.infer<typeof Input>): Promise<Sa
   }))
 
   const newHash = linesHash(rpcLines, {
-    delivery_street: header.delivery_street,
-    delivery_city: header.delivery_city,
-    delivery_state: header.delivery_state,
-    delivery_zip: header.delivery_zip,
+    delivery_street: normalizedHeader.delivery_street,
+    delivery_city: normalizedHeader.delivery_city,
+    delivery_state: normalizedHeader.delivery_state,
+    delivery_zip: normalizedHeader.delivery_zip,
     // delivery_location and delivery_requested_by are deliberately absent. This
     // hash exists to detect a STALE TAX CALCULATION, and a yard's site label or
     // the name of whoever ordered changes nothing about where the sale is
     // taxed. Including them would throw away a valid TaxJar result every time
     // someone typed a name.
-    taxjar_customer_id: header.taxjar_customer_id,
-    is_collection: header.is_collection,
+    taxjar_customer_id: normalizedHeader.taxjar_customer_id,
+    is_collection: normalizedHeader.is_collection,
   })
   const preserveTax = invoice.status === 'tax_calculated' && newHash === invoice.lines_hash
 
@@ -202,7 +248,7 @@ export async function saveInvoiceDraft(input: z.infer<typeof Input>): Promise<Sa
   const admin = createAdminClient()
   const { data, error } = await admin.rpc('save_customer_invoice', {
     p_invoice_id: invoiceId,
-    p_header: header,
+    p_header: normalizedHeader,
     p_lines: rpcLines,
     p_actor: gate.auth.user.id,
     p_preserve_tax: preserveTax,
