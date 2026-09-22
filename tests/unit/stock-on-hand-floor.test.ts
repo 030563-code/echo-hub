@@ -15,8 +15,8 @@ import { join } from 'node:path'
  */
 
 const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
-const UP = 'supabase/migrations/pending/20260922090000_stock_on_hand_floor.sql'
-const DOWN = 'supabase/migrations/rollback/20260922090000_stock_on_hand_floor.down.sql'
+const UP = 'supabase/migrations/pending/20260922110000_stock_on_hand_floor.sql'
+const DOWN = 'supabase/migrations/rollback/20260922110000_stock_on_hand_floor.down.sql'
 const up = read(UP)
 const down = read(DOWN)
 
@@ -54,7 +54,7 @@ describe('the migration', () => {
   it('floors the rows that are negative today through the ledger, never by a bare update', () => {
     // Both tables: one adjustment movement per negative row, then the level to zero.
     for (const kind of ["'material'", "'finished'"]) {
-      expect(up).toMatch(new RegExp(`select ${kind}, l\\.warehouse_code, l\\.[a-z_]+, 'adjustment', -l\\.[a-z_]+, 0,\\s+'floor', '20260922090000', false`))
+      expect(up).toMatch(new RegExp(`select ${kind}, l\\.warehouse_code, l\\.[a-z_]+, 'adjustment', -l\\.[a-z_]+, 0,\\s+'floor', '20260922110000', false`))
     }
     expect(up).toMatch(/update public\.material_stock_levels\s+set quantity = 0, updated_at = now\(\)\s+where quantity < 0/)
     expect(up).toMatch(/update public\.warehouse_stock_levels\s+set quantity_on_hand = 0, updated_at = now\(\)\s+where quantity_on_hand < 0/)
@@ -65,7 +65,7 @@ describe('the migration', () => {
   it('adds the CHECK on both level tables after the rows are floored', () => {
     const material = up.indexOf('add constraint material_stock_levels_quantity_not_negative check (quantity >= 0)')
     const finished = up.indexOf('add constraint warehouse_stock_levels_on_hand_not_negative check (quantity_on_hand >= 0)')
-    const floor = up.indexOf("'floor', '20260922090000'")
+    const floor = up.indexOf("'floor', '20260922110000'")
     expect(material).toBeGreaterThan(floor)
     expect(finished).toBeGreaterThan(floor)
   })

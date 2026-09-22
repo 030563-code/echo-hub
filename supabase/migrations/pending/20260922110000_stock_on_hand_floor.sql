@@ -1,17 +1,34 @@
--- Undo 20260922090000_stock_on_hand_floor.sql.
+-- On hand is never negative.
 --
--- Drops the two CHECK constraints and restores the four writers to what they
--- were: the two Hub functions from the migrations that last defined them, the
--- two database-only functions from their live text on 22 Sep 2026.
+-- Dean, 22 Sep 2026: "we can never have negative values for materials in the
+-- stock levels for both finished products and materials. That being said all
+-- on hand values should have a minimum value of 0."
 --
--- THE FLOOR ADJUSTMENTS ARE KEPT. They are ledger movements that explain a
--- balance change; deleting them would leave the balance table saying something
--- no movement accounts for, which is the fault the ledger exists to prevent.
+-- What could go below zero before this, and how:
+--   1. hub_apply_stock_movements added a signed delta to the balance with no
+--      floor. Estimated consumption at EB-SRO against a level nobody had ever
+--      counted took four s.r.o. materials to -4,824 (PC350FR-UV21), -3,776
+--      (DAT-01), -1,764 (ACI-T35) and -920 (ACI-T40).
+--   2. hub_sync_xero_stock_to_warehouse copied Xero's qty_on_hand as it came.
+--   3. apply_manufacturing_stocktake wrote Onix's Available figure, which is
+--      net of reservations and runs negative.
+--   4. decrement_stock subtracted with no floor (legacy; no caller in the Hub).
+--
+-- Every writer now floors at zero. A floored movement keeps its true signed
+-- quantity and records on its note what the balance would have been, so a
+-- count can settle it. The rows that are negative today are floored THROUGH
+-- the ledger, one adjustment movement each, so the balance table never changes
+-- without a line that explains it. A CHECK on both level tables refuses any
+-- writer this file forgot.
+--
+-- PENDING: written against the schema at 20260922100000, not applied; renumbered from 20260922090000 on 22 Sep 2026 so it sorts after the priced document table. Apply
+-- live via MCP apply_migration, then move this file and its rollback up.
 
 begin;
 
-alter table public.warehouse_stock_levels drop constraint if exists warehouse_stock_levels_on_hand_not_negative;
-alter table public.material_stock_levels drop constraint if exists material_stock_levels_quantity_not_negative;
+-- ---------------------------------------------------------------------------
+-- 1. The ledger writer floors, and says so on the movement
+-- ---------------------------------------------------------------------------
 
 create or replace function public.hub_apply_stock_movements(p_rows jsonb, p_uid uuid default null)
 returns jsonb
@@ -31,6 +48,7 @@ declare
   v_est      boolean;
   v_note     text;
   v_bal      numeric;
+  v_after    numeric;
   v_id       uuid;
   v_applied  integer := 0;
   v_skipped  integer := 0;
@@ -79,13 +97,22 @@ begin
          for update;
     end if;
 
+    -- ON HAND IS NEVER NEGATIVE. Dean, 22 Sep 2026. The movement keeps its true
+    -- signed quantity; the balance stops at zero and the note says what it
+    -- would have been, so the next count can settle the difference.
+    v_after := greatest(0, v_bal + v_qty);
+    if v_bal + v_qty < 0 then
+      v_note := concat_ws(' ', v_note,
+        format('Balance floored at 0; without the floor it would be %s.', v_bal + v_qty));
+    end if;
+
     -- The movement. A duplicate (same kind, cause, place, item) conflicts on
     -- stock_movements_once and returns no id: skipped, balance untouched.
     insert into public.stock_movements
       (item_kind, warehouse_code, sku, kind, quantity, balance_after,
        ref_type, ref_id, estimated, note, created_by_uid)
     values
-      (v_item, v_wh, v_sku, v_kind, v_qty, v_bal + v_qty,
+      (v_item, v_wh, v_sku, v_kind, v_qty, v_after,
        v_ref_type, v_ref_id, v_est, v_note, p_uid)
     on conflict (kind, ref_type, ref_id, warehouse_code, sku) do nothing
     returning id into v_id;
@@ -97,12 +124,12 @@ begin
 
     if v_item = 'finished' then
       update public.warehouse_stock_levels
-         set quantity_on_hand = (v_bal + v_qty)::integer,
+         set quantity_on_hand = v_after::integer,
              updated_at = now()
        where warehouse_code = v_wh and sku = v_sku;
     else
       update public.material_stock_levels
-         set quantity = v_bal + v_qty,
+         set quantity = v_after,
              updated_at = now()
        where warehouse_code = v_wh and component_code = v_sku;
     end if;
@@ -115,6 +142,10 @@ $$;
 
 revoke all on function public.hub_apply_stock_movements(jsonb, uuid) from public, anon, authenticated;
 grant execute on function public.hub_apply_stock_movements(jsonb, uuid) to service_role;
+
+-- ---------------------------------------------------------------------------
+-- 2. The Xero feed sync floors
+-- ---------------------------------------------------------------------------
 
 create or replace function public.hub_sync_xero_stock_to_warehouse()
 returns table (depot text, skus int, units numeric)
@@ -152,7 +183,8 @@ begin
   written as (
     insert into public.warehouse_stock_levels
       (warehouse_code, sku, quantity_on_hand, source, source_org, source_item_code, source_synced_at, updated_at)
-    select w.depot_code, w.sku, w.qty::int, 'xero_sync', w.org, w.codes, now(), now()
+    -- Floored at zero: on hand is never negative, whatever a snapshot says.
+    select w.depot_code, w.sku, greatest(0, w.qty)::int, 'xero_sync', w.org, w.codes, now(), now()
     from mapped w
     on conflict (warehouse_code, sku) do update
       set quantity_on_hand = excluded.quantity_on_hand,
@@ -171,6 +203,11 @@ $$;
 
 revoke all on function public.hub_sync_xero_stock_to_warehouse() from public, anon;
 grant execute on function public.hub_sync_xero_stock_to_warehouse() to service_role;
+
+-- ---------------------------------------------------------------------------
+-- 3. The Onix stocktake floors. This function was created outside the
+--    migrations; the body below is the live one with the one line changed.
+-- ---------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION public.apply_manufacturing_stocktake(p_stocktake_id uuid)
  RETURNS manufacturing_stocktakes
@@ -253,8 +290,10 @@ BEGIN
             CONTINUE;
         END IF;
 
-        -- Prefer Available; fall back to Balance; never write NULL
-        v_qty := round(coalesce(v_line.available, v_line.balance, 0))::integer;
+        -- Prefer Available; fall back to Balance; never write NULL.
+        -- Floored at zero (Dean, 22 Sep 2026): Onix's Available is net of
+        -- reservations and runs negative; on hand is never negative.
+        v_qty := greatest(0, round(coalesce(v_line.available, v_line.balance, 0)))::integer;
 
         UPDATE public.warehouse_stock_levels
            SET quantity_on_hand = v_qty,
@@ -300,13 +339,18 @@ BEGIN
 END;
 $function$;
 
+-- ---------------------------------------------------------------------------
+-- 4. The legacy decrement floors. Same provenance as 3.
+-- ---------------------------------------------------------------------------
+
 CREATE OR REPLACE FUNCTION public.decrement_stock(p_warehouse_code text, p_sku text, p_qty integer)
  RETURNS void
  LANGUAGE plpgsql
 AS $function$
 BEGIN
   UPDATE warehouse_stock_levels
-  SET quantity_on_hand = quantity_on_hand - p_qty,
+  -- Floored at zero (Dean, 22 Sep 2026): on hand is never negative.
+  SET quantity_on_hand = greatest(0, quantity_on_hand - p_qty),
       updated_at = now()
   WHERE warehouse_code = p_warehouse_code AND sku = p_sku;
   IF NOT FOUND THEN
@@ -314,5 +358,45 @@ BEGIN
   END IF;
 END;
 $function$;
+
+-- ---------------------------------------------------------------------------
+-- 5. The rows that are negative today, floored through the ledger
+-- ---------------------------------------------------------------------------
+
+insert into public.stock_movements
+  (item_kind, warehouse_code, sku, kind, quantity, balance_after, ref_type, ref_id, estimated, note)
+select 'material', l.warehouse_code, l.component_code, 'adjustment', -l.quantity, 0,
+       'floor', '20260922110000', false,
+       'Floored at 0 on 22 Sep 2026: on hand is never negative. This level was never counted and estimated consumption took it below zero. Count it.'
+  from public.material_stock_levels l
+ where l.quantity < 0
+on conflict (kind, ref_type, ref_id, warehouse_code, sku) do nothing;
+
+update public.material_stock_levels
+   set quantity = 0, updated_at = now()
+ where quantity < 0;
+
+insert into public.stock_movements
+  (item_kind, warehouse_code, sku, kind, quantity, balance_after, ref_type, ref_id, estimated, note)
+select 'finished', l.warehouse_code, l.sku, 'adjustment', -l.quantity_on_hand, 0,
+       'floor', '20260922110000', false,
+       'Floored at 0 on 22 Sep 2026: on hand is never negative. Count it.'
+  from public.warehouse_stock_levels l
+ where l.quantity_on_hand < 0
+on conflict (kind, ref_type, ref_id, warehouse_code, sku) do nothing;
+
+update public.warehouse_stock_levels
+   set quantity_on_hand = 0, updated_at = now()
+ where quantity_on_hand < 0;
+
+-- ---------------------------------------------------------------------------
+-- 6. The backstop
+-- ---------------------------------------------------------------------------
+
+alter table public.warehouse_stock_levels
+  add constraint warehouse_stock_levels_on_hand_not_negative check (quantity_on_hand >= 0);
+
+alter table public.material_stock_levels
+  add constraint material_stock_levels_quantity_not_negative check (quantity >= 0);
 
 commit;
