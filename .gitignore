@@ -64,3 +64,4 @@ scripts/demo/out/
 
 # Supabase CLI scratch
 supabase/.temp/
+.probe/

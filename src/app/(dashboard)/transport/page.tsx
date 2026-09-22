@@ -1,64 +1,73 @@
-import { redirect } from "next/navigation";
-import { createServerClient } from "@/lib/supabase/server";
-import { getAuthorizedUser } from "@/lib/authz";
-import { activeOrganisation } from "@/lib/active-organisation.server";
-import { depotsForOrg, transportSeesAll } from "@/lib/organisations";
-import { NoOrganisationCard } from "@/components/organisations/no-organisation-card";
-import ShippingClient from "./transport-client";
-import type { ShipmentContent } from "@/lib/erp-types";
-import { groupBySpotId } from "@/lib/shipment-grouping";
+import { redirect } from 'next/navigation'
+import { getAuthorizedUser } from '@/lib/authz'
+import { activeOrganisation } from '@/lib/active-organisation.server'
+import { depotsForOrg, transportSeesAll } from '@/lib/organisations'
+import { NoOrganisationCard } from '@/components/organisations/no-organisation-card'
+import { loadCargoBoard } from '@/lib/cargo/store'
+import CargoBoard from './cargo-board'
 
-export const dynamic = "force-dynamic";
+/**
+ * Logistics and Shipping: where every container actually is.
+ *
+ * Dean, 22 Sep 2026: "Create a visual representation of cargo currently in
+ * transit, showing its status."
+ *
+ * WHAT THIS REPLACED. The page read public.shipment_contents, eleven rows that
+ * somebody typed in by hand and that all say "delivered". The live position of
+ * every container was already in the database, in a table the Hub never opened,
+ * refreshed each morning by Dave's n8n workflow. So the screen showed eleven
+ * finished shipments while three containers were on the water.
+ *
+ * Scope is in the query, not in a check. Every container leaves s.r.o. and
+ * belongs to Group on the way, so those two see all of them; a depot's
+ * organisation sees what is bound for its own depots.
+ */
 
-export default async function ShippingPage() {
-  const supabase = await createServerClient();
-  const auth = await getAuthorizedUser();
-  if (!auth.ok) redirect("/");
+export const dynamic = 'force-dynamic'
 
-  // Every container leaves s.r.o. and belongs to Group on the way, so those two
-  // see all of them; a depot's organisation sees what is bound for its depots.
-  const org = await activeOrganisation(auth);
-  if (!org) return <NoOrganisationCard title="Logistics & Shipping" what="shipments" />;
-  const query = supabase.from("shipment_contents").select("*");
-  const { data: shipments } = await (transportSeesAll(org)
-    ? query
-    : query.in("depot_destination", [...depotsForOrg(org)])
-  ).order("eta", { ascending: true });
+export default async function TransportPage() {
+  const auth = await getAuthorizedUser()
+  if (!auth.ok) redirect('/')
 
-  const items = (shipments ?? []) as ShipmentContent[];
+  const org = await activeOrganisation(auth)
+  if (!org) return <NoOrganisationCard title="Logistics & Shipping" what="shipments" />
 
-  // Counted over SHIPMENTS, not SKU lines, so the strip agrees with the board
-  // underneath it. A container of four models is one thing on water, not four.
-  const grouped = groupBySpotId(items);
-  const onWater = grouped.filter((g) => g.status === "on_water").length;
-  const atPort = grouped.filter((g) => g.status === "at_port").length;
-  const customs = grouped.filter((g) => g.status === "customs").length;
-  const totalUnits = items.reduce((sum, i) => sum + i.qty, 0);
+  const rows = await loadCargoBoard(transportSeesAll(org) ? null : depotsForOrg(org))
+  const today = new Date().toISOString().slice(0, 10)
+
+  const inTransit = rows.filter((r) => !r.isComplete)
+  const onWater = inTransit.filter((r) => r.departedOn && !r.currentStatus?.startsWith('Unloaded')).length
+  // Slipped against the forwarder's own first plan, which is the number that
+  // makes somebody pick up the phone.
+  const slipping = inTransit.filter((r) => (r.slipDays ?? 0) >= 1).length
+  const pieces = inTransit.reduce((sum, r) => sum + (r.totalPieces ?? 0), 0)
 
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: "Varela Round, sans-serif" }}>
-          Logistics & Shipping
+        <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'Varela Round, sans-serif' }}>
+          Logistics &amp; Shipping
         </h1>
-        <p className="text-gray-500 text-sm mt-1">Active containers and shipments in transit</p>
+        <p className="mt-1 text-sm text-gray-500">
+          Live from Cargo Partner. Open a container to see its route and send a tracking link.
+        </p>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { label: "Shipments", value: grouped.length, color: "text-gray-900" },
-          { label: "On Water", value: onWater, color: "text-blue-700" },
-          { label: "At Port / Customs", value: atPort + customs, color: "text-amber-700" },
-          { label: "Units in Transit", value: totalUnits, color: "text-echo-orange" },
+          { label: 'In transit', value: inTransit.length, color: 'text-gray-900' },
+          { label: 'Sailed', value: onWater, color: 'text-blue-700' },
+          { label: 'Running late', value: slipping, color: slipping ? 'text-amber-700' : 'text-gray-900' },
+          { label: 'Pieces in transit', value: pieces, color: 'text-echo-orange' },
         ].map(({ label, value, color }) => (
-          <div key={label} className="bg-white border border-gray-200 rounded-lg px-4 py-3">
-            <p className="text-gray-500 text-xs mb-0.5">{label}</p>
-            <p className={`text-2xl font-bold ${color}`}>{value}</p>
+          <div key={label} className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+            <p className="mb-0.5 text-xs text-gray-500">{label}</p>
+            <p className={`text-2xl font-bold tabular-nums ${color}`}>{value}</p>
           </div>
         ))}
       </div>
 
-      <ShippingClient items={items} />
+      <CargoBoard rows={rows} today={today} />
     </div>
-  );
+  )
 }

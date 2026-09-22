@@ -35,7 +35,15 @@ const LIST_PAGES: Record<string, string[]> = {
   'src/app/(dashboard)/stock/materials/page.tsx': ['activeOrganisation(', 'SRO_WAREHOUSE'],
   'src/app/(dashboard)/stock/movements/page.tsx': ['activeOrganisation(', 'loadMovements({ warehouses'],
   'src/app/(dashboard)/stock/reconciliation/page.tsx': ['activeOrganisation('],
-  'src/app/(dashboard)/transport/page.tsx': ['activeOrganisation(', 'query.in("depot_destination"'],
+  // Rebuilt on 22 Sep 2026 to read the live Cargo Partner shipments instead of
+  // eleven hand-typed rows. The scope is the argument to loadCargoBoard: the
+  // caller's depots, or null for the two organisations every container passes
+  // through, and the loader puts it in the query with .in('destination_depot').
+  'src/app/(dashboard)/transport/page.tsx': [
+    'activeOrganisation(',
+    'transportSeesAll(org) ? null : depotsForOrg(org)',
+  ],
+  'src/lib/cargo/store.ts': ["query.in('destination_depot', [...depots])"],
   'src/app/(dashboard)/invoices/page.tsx': ['activeOrganisation(', 'seller_entity_code.eq.', 'buyer_entity_code.eq.'],
 }
 
@@ -49,6 +57,13 @@ const LIST_ACTIONS: Record<string, string[]> = {
 const RECORD_PAGES: Record<string, string[]> = {
   'src/app/(dashboard)/invoicing/[dealId]/page.tsx': ['holdsOrganisation(auth.profile.organisations, recordOrg)'],
   'src/app/(dashboard)/purchase-orders/[id]/page.tsx': ['poChainHeldBy(id, auth.profile.organisations)'],
+  // A container bound for a depot the caller's organisation does not hold is
+  // NOT FOUND, rather than hidden by a filter somebody could take off.
+  'src/app/(dashboard)/transport/[spotId]/page.tsx': [
+    'transportSeesAll(org)',
+    'depotsForOrg(org)',
+    'notFound()',
+  ],
 }
 
 /** Writes on a record that belongs to an organisation, and the question each asks. */
@@ -69,6 +84,7 @@ const WRITE_GATES: Record<string, string> = {
   'src/app/actions/purchase-orders/send-manufacturing-po.ts': 'poChainHeldBy(',
   'src/app/actions/purchase-orders/download-packing-list.ts': 'poChainHeldBy(parsed.data.poId, auth.profile.organisations)',
   'src/app/actions/purchase-orders/priced-document.ts': 'poChainHeldBy(',
+  'src/app/actions/cargo/share-link.ts': 'shipmentInScope(',
   'src/app/(dashboard)/stock/actions.ts': 'warehouseHeld(',
   'src/app/(dashboard)/transport/actions.ts': 'depotsForOrgs(held).includes(d.depot_destination)',
   'src/app/actions/invoices/generate-commercial-invoice.ts': 'holdsOrganisation(held, cfg.seller)',

@@ -18,7 +18,13 @@ import { isAgentUserId } from '@/lib/agent-account'
 // would be fetched as a redirect and the login page would end up cached under
 // that name. Listed here rather than adding "html" to the matcher's extension
 // allowlist, so exactly one path is exempt instead of a shape of path.
-const PUBLIC_PATHS = ['/login', '/onboarding', '/auth/callback', '/offline.html']
+// /track/<token> is a customer's view of ONE container. It carries its own
+// authentication in the URL: 32 random bytes minted per link, revocable, with an
+// optional expiry, and a revoked, expired or invented token all give the same
+// "not available" page so a guess cannot be told from a link that used to work.
+// The page shows the route and the position and nothing commercial; the
+// whitelist is toPublicView in src/lib/cargo/store.ts.
+const PUBLIC_PATHS = ['/login', '/onboarding', '/auth/callback', '/offline.html', '/track']
 
 // Machine endpoints that carry their OWN authentication and must never be
 // session-gated: a cookieless caller (n8n cron) would otherwise be 307'd to

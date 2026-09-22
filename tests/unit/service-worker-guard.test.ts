@@ -107,7 +107,17 @@ describe('installable app', () => {
     const paths = [...(list?.[1] ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1])
     // /manufacturing left on 16 Sep 2026: the factory has a Hub login now, so
     // the signed-link page it exempted no longer exists.
-    expect(paths).toEqual(['/login', '/onboarding', '/auth/callback', '/offline.html'])
+    //
+    // /track joined on 22 Sep 2026: a customer's view of ONE container, opened
+    // from a link we sent them. It carries its own authentication in the URL, 32
+    // random bytes per link, revocable and optionally expiring, and a revoked,
+    // expired or invented token all render the same "not available" page so a
+    // guess cannot be told from a link that used to work. It shows the route and
+    // the position only; the whitelist is toPublicView in src/lib/cargo/store.ts.
+    //
+    // 🔴 This list is the whole of what the internet can reach. Anything added
+    // here must authenticate itself and must be worth the risk of being wrong.
+    expect(paths).toEqual(['/login', '/onboarding', '/auth/callback', '/offline.html', '/track'])
     // The worker itself and the manifest ride the matcher's extension list.
     expect(mw).toContain('webmanifest')
   })
