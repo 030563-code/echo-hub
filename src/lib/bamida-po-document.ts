@@ -33,12 +33,14 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { loadSroPoBom } from '@/lib/bom'
 import { getSupplierByCode } from '@/lib/suppliers'
-import { buildBamidaPo, DEFAULT_SUPPLIER, type BamidaSupplier } from '@/lib/bamida-po'
+import { buildBamidaPo, DEFAULT_SUPPLIER, type BamidaPo, type BamidaSupplier } from '@/lib/bamida-po'
 import { buildBamidaPoPdf } from '@/lib/bamida-po-pdf'
 import { BUYER } from '@/lib/bamida-po'
 import { STANDARD_PRINTING } from '@/lib/supplier-spec'
 import { specFromDraft } from '@/lib/po-spec-draft'
 import { loadSpecDocument, specSavedPacking } from '@/lib/po-spec-store'
+import { readPricedDocument } from '@/lib/po-priced-store'
+import { pricedFromDraft } from '@/lib/po-priced-draft'
 import { buildSupplierSpecPdf } from '@/lib/supplier-spec-pdf'
 import { buildTransportOrderPdf } from '@/lib/transport-order-pdf'
 import { loadCargoRequest } from '@/lib/cargo-request-store'
@@ -153,7 +155,12 @@ export async function renderSupplierDocument(
     // WHAT PRINTS IS WHAT WAS SIGNED, on this document too. The pallets, covers
     // and frames come from the saved -1 where there is one; see buildBamidaPo.
     const packing = await specSavedPacking(poId)
-    const document = buildBamidaPo(bom, documentDate, supplier, number, packing)
+    const generated = buildBamidaPo(bom, documentDate, supplier, number, packing)
+    // And where somebody has saved the priced order itself, its lines print
+    // instead of the generated ones, totals worked out from them. Martin,
+    // 21 Sep 2026: "is it possible to change purchase order with prices?"
+    const saved = await readPricedDocument(poId)
+    const document = saved ? pricedFromDraft(generated, saved.draft) : generated
     if (document.lines.length === 0) return { ok: false, reason: 'no_lines' }
     const pdf = await buildBamidaPoPdf(document)
     return {
@@ -192,4 +199,53 @@ export async function renderSupplierDocument(
     filename: `Specification-${displayPoNumber(po.po_number)}.pdf`,
     base64: Buffer.from(pdf.output('arraybuffer') as ArrayBuffer).toString('base64'),
   }
+}
+
+/**
+ * The priced order as the -3 would print it right now, ignoring any saved draft. The editor
+ * starts from this and the drift notice compares against it. Same reads as the priced branch of
+ * renderSupplierDocument, kept in step by the test that pins both.
+ */
+export async function generatePricedOrder(
+  poId: string,
+): Promise<{ ok: true; document: BamidaPo } | { ok: false; reason: SupplierDocumentRefusal }> {
+  const admin = createAdminClient()
+  const read = async (id: string) =>
+    (
+      await admin
+        .from('purchase_orders')
+        .select('po_number, parent_po_id, from_entity, delivery_address')
+        .eq('id', id)
+        .maybeSingle<Row>()
+    ).data ?? null
+
+  const po = await read(poId)
+  if (!po?.parent_po_id) return { ok: false, reason: 'no_parent' }
+  const group = await read(po.parent_po_id)
+
+  const bom = await loadSroPoBom(po.parent_po_id, admin)
+  if (!bom) return { ok: false, reason: 'no_bom' }
+
+  const supplierRow = await getSupplierByCode('BAMIDA, s.r.o.', admin).catch(() => null)
+  const addressLines = (supplierRow?.address ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const supplier: BamidaSupplier | undefined =
+    supplierRow && addressLines.length
+      ? { name: supplierRow.name, address: addressLines, taxNumber: supplierRow.tax_number ?? undefined }
+      : undefined
+
+  const manufacturing = await admin
+    .from('po_manufacturing')
+    .select('sent_at')
+    .eq('po_id', poId)
+    .maybeSingle<{ sent_at: string | null }>()
+  const documentDate = supplierDocumentDate(manufacturing.data?.sent_at, new Date())
+
+  const number = sroDocumentNumber(group?.po_number, 'Accounting') ?? po.po_number
+  const packing = await specSavedPacking(poId)
+  const document = buildBamidaPo(bom, documentDate, supplier, number, packing)
+  if (document.lines.length === 0) return { ok: false, reason: 'no_lines' }
+  return { ok: true, document }
 }

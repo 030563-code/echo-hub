@@ -12,6 +12,7 @@ import { assessOrderCapability } from '@/lib/manufacturing-capability'
 import { loadPurchaseOrderDetail } from '@/lib/po-detail'
 import { loadCargoRequest, type CargoRequestRow } from '@/lib/cargo-request-store'
 import { specActorNames, specDocumentStatus } from '@/lib/po-spec-store'
+import { pricedDocumentStatus } from '@/lib/po-priced-store'
 import { loadSendContacts } from '@/lib/send-contacts'
 import DownloadPoPdfButton from '@/components/po/download-po-pdf-button'
 import AttachPoPdfButton from '@/components/po/attach-po-pdf-button'
@@ -113,6 +114,12 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
   const specStatus = isManufacturingOrder ? await specDocumentStatus(id) : null
   const specConfirmedBy = specStatus?.confirmedByUid
     ? ((await specActorNames([specStatus.confirmedByUid])).get(specStatus.confirmedByUid) ?? null)
+    : null
+
+  // The -3 priced order's state, only for those who may see prices. One row read.
+  const pricedStatus = isManufacturingOrder && canViewCost ? await pricedDocumentStatus(id) : null
+  const pricedConfirmedBy = pricedStatus?.confirmedByUid
+    ? ((await specActorNames([pricedStatus.confirmedByUid])).get(pricedStatus.confirmedByUid) ?? null)
     : null
 
   // The stock branch. EB-SRO has never held a counted figure, so this reads as
@@ -373,6 +380,16 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
             specSaved={Boolean(specStatus?.saved)}
             specConfirmedAt={specStatus?.confirmedAt ?? null}
             specConfirmedBy={specConfirmedBy}
+            priced={
+              pricedStatus
+                ? {
+                    canEdit: canEditSpec,
+                    saved: pricedStatus.saved,
+                    confirmedAt: pricedStatus.confirmedAt,
+                    confirmedBy: pricedConfirmedBy,
+                  }
+                : null
+            }
             sentAt={progress?.sentAt ?? null}
             documents={
               <DownloadPoPdfButton

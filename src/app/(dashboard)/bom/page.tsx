@@ -2,6 +2,8 @@ import { requireCapability } from "@/lib/authz";
 import { loadSroPoBoms, loadBomMaster, loadMaterials, loadManufacturingPoNumbers } from "@/lib/bom";
 import { getSupplierByCode } from "@/lib/suppliers";
 import { specSavedPackingBySroOrder } from "@/lib/po-spec-store";
+import { pricedDraftsBySroOrder } from "@/lib/po-priced-store";
+import { pricedFromDraft } from "@/lib/po-priced-draft";
 import { buildBamidaPo, type BamidaPo, type BamidaSupplier } from "@/lib/bamida-po";
 import { stripBamidaPo, stripSroPoBomCosts, stripBomMasterCosts } from "@/lib/price-visibility";
 import BomSection from "./bom-section";
@@ -40,10 +42,17 @@ export default async function BomPage() {
   // The packing somebody signed on each manufacturing order's specification,
   // so this tab and the -3 download never state different pallet counts.
   const ids = orders.pos.map((p) => p.id);
-  const [mfgNumbers, packingBySro] = await Promise.all([loadManufacturingPoNumbers(ids), specSavedPackingBySroOrder(ids)]);
+  // And the priced order somebody saved on it, which is what the -3 prints.
+  const [mfgNumbers, packingBySro, pricedBySro] = await Promise.all([
+    loadManufacturingPoNumbers(ids),
+    specSavedPackingBySroOrder(ids),
+    pricedDraftsBySroOrder(ids),
+  ]);
   const bamidaByPo: Record<string, BamidaPo> = {};
   for (const po of orders.pos) {
-    const bp = buildBamidaPo(po, today, bamidaSupplier, mfgNumbers[po.id], packingBySro[po.id] ?? null);
+    const generated = buildBamidaPo(po, today, bamidaSupplier, mfgNumbers[po.id], packingBySro[po.id] ?? null);
+    const savedDraft = pricedBySro[po.id];
+    const bp = savedDraft ? pricedFromDraft(generated, savedDraft) : generated;
     bamidaByPo[po.id] = canViewCost ? bp : stripBamidaPo(bp);
   }
 

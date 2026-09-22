@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Check, CircleDot, Lock } from 'lucide-react'
+import { Check, Lock } from 'lucide-react'
 import InfoHint from '@/components/ui/info-hint'
 
 /**
@@ -68,12 +68,21 @@ function Step({
   )
 }
 
+/** The -3 priced order's state, for the people who may see prices. Null hides the step. */
+export interface PricedStep {
+  canEdit: boolean
+  saved: boolean
+  confirmedAt: string | null
+  confirmedBy: string | null
+}
+
 export default function ManufacturingSteps({
   poId,
   canEditSpec,
   specSaved,
   specConfirmedAt,
   specConfirmedBy,
+  priced,
   sentAt,
   documents,
 }: {
@@ -82,6 +91,8 @@ export default function ManufacturingSteps({
   specSaved: boolean
   specConfirmedAt: string | null
   specConfirmedBy: string | null
+  /** Only for cost.view holders: every line on the priced order is a price. */
+  priced: PricedStep | null
   sentAt: string | null
   /** The existing download buttons, passed in so this panel owns the order and not the wiring. */
   documents: React.ReactNode
@@ -89,6 +100,9 @@ export default function ManufacturingSteps({
   const confirmed = Boolean(specConfirmedAt)
   const sent = Boolean(sentAt)
   const date = (v: string | null) => (v ? new Date(v).toLocaleDateString('en-GB') : null)
+  // The priced step sits between the specification and the documents, for those who see it.
+  const documentsStep = priced ? 3 : 2
+  const sendStep = priced ? 4 : 3
 
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-5">
@@ -98,9 +112,9 @@ export default function ManufacturingSteps({
       >
         Manufacturing order
         <InfoHint label="About this order" align="left">
-          Three steps, in order. The factory cannot be sent anything until the specification has
-          been confirmed, because an unconfirmed sheet prints a warning telling them not to build
-          from it.
+          {priced ? 'Four' : 'Three'} steps, in order. The factory cannot be sent anything until the
+          specification has been confirmed. The priced order is the accounting copy and is checked
+          the same way.
         </InfoHint>
       </h2>
       <p className="mb-4 text-sm text-gray-500">
@@ -121,8 +135,8 @@ export default function ManufacturingSteps({
           ) : (
             <p className="text-sm text-amber-700">
               {specSaved
-                ? 'Saved, but nobody has confirmed it. Until somebody does, the PDF tells the factory not to build from it.'
-                : 'Not checked yet. The PDF tells the factory not to build from it until somebody confirms it.'}
+                ? 'Saved, but nobody has confirmed it. Nothing can be sent to the factory until somebody does.'
+                : 'Not checked yet. Nothing can be sent to the factory until somebody confirms it.'}
             </p>
           )}
           <Link
@@ -133,23 +147,50 @@ export default function ManufacturingSteps({
           </Link>
         </Step>
 
+        {priced && (
+          <Step
+            n={2}
+            title="Check the priced order"
+            state={priced.confirmedAt ? 'done' : 'now'}
+            hint="The accounting copy: Bamida's prices per unit, the printing, the pallet covers and metal frames. It is filled in from the bill of materials and the confirmed specification. Change a price, add or remove a line, then confirm it. What you save is what the priced PDF prints."
+          >
+            {priced.confirmedAt ? (
+              <p className="text-sm text-emerald-700">
+                Confirmed{priced.confirmedBy ? ` by ${priced.confirmedBy}` : ''} on {date(priced.confirmedAt)}.
+              </p>
+            ) : (
+              <p className="text-sm text-amber-700">
+                {priced.saved
+                  ? 'Saved, but nobody has confirmed it. The PDF prints the saved lines.'
+                  : 'Not checked yet. The PDF prints the generated lines until somebody saves it.'}
+              </p>
+            )}
+            <Link
+              href={`/purchase-orders/${poId}/priced`}
+              className="mt-2 inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+            >
+              {priced.canEdit ? 'Review priced order' : 'View priced order'}
+            </Link>
+          </Step>
+        )}
+
         <Step
-          n={2}
+          n={documentsStep}
           title="Download the documents"
           state={confirmed ? 'now' : 'locked'}
           hint="The manufacturing order is the specification with no prices on it, which is what the factory gets. The priced order is the accounting copy. The shipping order is the transport request, and it only exists once the barriers do."
         >
           {!confirmed && (
             <p className="mb-2 text-sm text-gray-500">
-              You can still download these, but the manufacturing order will carry the unconfirmed
-              warning across its face.
+              You can download these now, but the manufacturing order is not the factory&apos;s
+              until the specification is confirmed and sent.
             </p>
           )}
           {documents}
         </Step>
 
         <Step
-          n={3}
+          n={sendStep}
           title="Send to the factory"
           state={sent ? 'done' : confirmed ? 'now' : 'locked'}
           hint="Emails the factory to say an order is waiting and links them into the Hub, where they download it, confirm it with their dates and mark it finished. No PDF is attached to that email."
