@@ -96,3 +96,29 @@ describe('the screens and the engine clamp what they read', () => {
     expect(read(file)).toContain(needle)
   })
 })
+
+describe('the floor is a floor, never a gate', () => {
+  // Dean, 22 Sep 2026: "they should still be able to continue with a purchase
+  // order even though theres no stock level ... Sometimes they get stock from
+  // supplier and the system is just not in sync." So a movement that would
+  // take a balance below zero is recorded and floored, never refused, and no
+  // order step asks the balance table for permission.
+  it('the ledger writer records a short movement rather than raising', () => {
+    const b = body(up, 'hub_apply_stock_movements')
+    expect(b).toContain('v_after := greatest(0, v_bal + v_qty)')
+    // The function's own name carries the word stock; only refusal wording counts.
+    expect(b).not.toMatch(/raise exception[^;]*(not enough|insufficient|below zero|go negative|on hand)/i)
+  })
+
+  it('fulfilling from stock and raising an order never read the balance to say no', () => {
+    for (const file of [
+      'src/app/actions/purchase-orders/fulfil-from-stock.ts',
+      'src/app/actions/purchase-orders/create-po.ts',
+      'src/app/actions/purchase-orders/receive-po.ts',
+    ]) {
+      const src = read(file)
+      expect(src, `${file} reads the balance`).not.toContain('quantity_on_hand')
+      expect(src, `${file} refuses on stock`).not.toMatch(/insufficient|not enough stock|out of stock/i)
+    }
+  })
+})
