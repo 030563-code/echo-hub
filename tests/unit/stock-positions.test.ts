@@ -116,3 +116,21 @@ describe('deriveFinishedPositions', () => {
     expect(rows.map((r) => `${r.warehouse_code}/${r.sku}`)).toEqual(['CA-HAM/BUNNA', 'CA-HAM/HKNA', 'US-SBD/EBH9NA'])
   })
 })
+
+describe('on hand is never negative', () => {
+  it('shows zero for a balance row that somehow went below it', () => {
+    // Dean, 22 Sep 2026: "all on hand values should have a minimum value of 0".
+    // The ledger floors and the table carries a CHECK; the screen never trusts either alone.
+    const rows = deriveFinishedPositions(
+      {
+        ...empty,
+        levels: [{ warehouse_code: 'EB-SRO', sku: 'EBH9NA', product_name: null, quantity_on_hand: -50, last_counted_at: null }],
+        sroCommitted: [{ sku: 'EBH9NA', quantity: 10 }],
+      },
+      NOW,
+    )
+    expect(rows[0].on_hand).toBe(0)
+    // Available still says what is spoken for and not there.
+    expect(rows[0].available).toBe(-10)
+  })
+})

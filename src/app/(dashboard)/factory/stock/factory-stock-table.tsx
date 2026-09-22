@@ -36,7 +36,7 @@ function columns(locale: FactoryLocale): ColumnDef<FactoryStockLine, unknown>[] 
     accessorKey: 'quantity',
     header: t.colQuantity,
     cell: ({ row }) => (
-      <span className="tabular-nums font-semibold text-gray-900">{row.original.quantity ?? 0}</span>
+      <span className="tabular-nums font-semibold text-gray-900">{Math.max(0, row.original.quantity ?? 0)}</span>
     ),
   },
   { accessorKey: 'unit', header: t.colUnit, cell: ({ row }) => <span className="text-gray-600">{row.original.unit ?? ''}</span> },

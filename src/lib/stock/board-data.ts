@@ -118,7 +118,7 @@ export async function loadFinishedBoard(now = new Date(), warehouses?: readonly 
         warehouse_code: String(l.warehouse_code),
         sku: String(l.sku),
         product_name: l.product_name ?? null,
-        quantity_on_hand: Number(l.quantity_on_hand ?? 0),
+        quantity_on_hand: Math.max(0, Number(l.quantity_on_hand ?? 0)),
         last_counted_at: l.last_counted_at ?? null,
       })),
       sroCommitted,
@@ -234,7 +234,9 @@ export async function loadMaterialsBoard(): Promise<MaterialPosition[]> {
       .reduce((sum, m) => sum + Number(m.quantity ?? 0), 0)
     const bamidaName = bamidaNameByCode.get(code) ?? null
     const card = bamidaName ? bamidaByName.get(bamidaName) : undefined
-    const onHand = Number(l.quantity ?? 0)
+    // On hand is never negative (Dean, 22 Sep 2026). The ledger floors at zero
+    // and the table carries a CHECK; this is the board's own backstop.
+    const onHand = Math.max(0, Number(l.quantity ?? 0))
     const committed = committedByCode.get(code) ?? 0
     return {
       component_code: code,
@@ -247,7 +249,8 @@ export async function loadMaterialsBoard(): Promise<MaterialPosition[]> {
       estimated_since_count: Math.round(est * 1000) / 1000,
       last_counted_at: l.last_counted_at ?? null,
       bamida_item_name: bamidaName,
-      bamida_quantity: card?.quantity ?? null,
+      // Bamida's physical figure, never below zero on our screen whatever their system says.
+      bamida_quantity: card ? Math.max(0, card.quantity) : null,
       bamida_unit: card?.unit ?? null,
       bamida_synced_at: card?.synced ?? null,
     }

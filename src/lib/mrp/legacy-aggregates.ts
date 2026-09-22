@@ -43,12 +43,12 @@ export function sumStockBySku(
   for (const row of rows) {
     const prev = out.get(row.sku);
     if (prev) {
-      prev.in_stock += row.quantity_on_hand ?? 0;
+      prev.in_stock += Math.max(0, row.quantity_on_hand ?? 0);
       if (prev.product_name === null) prev.product_name = row.product_name;
     } else {
       out.set(row.sku, {
         product_name: row.product_name,
-        in_stock: row.quantity_on_hand ?? 0,
+        in_stock: Math.max(0, row.quantity_on_hand ?? 0),
       });
     }
   }

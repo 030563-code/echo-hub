@@ -18,7 +18,8 @@
  * - Inbound to a depot: outstanding lines of approved depot orders, split into
  *   in transit (the chain has a Cargo Partner SPOT id) and on order.
  * - Available = on hand minus committed. It may go negative, and the board
- *   shows that in red rather than clamping it away.
+ *   shows that in red rather than clamping it away. On hand itself never is:
+ *   Dean, 22 Sep 2026, "all on hand values should have a minimum value of 0".
  *
  * Pure. Imports only constants.
  */
@@ -123,7 +124,9 @@ export function deriveFinishedPositions(input: PositionInputs, now: Date): Finis
   for (const l of input.levels) {
     const row = get(l.warehouse_code, l.sku)
     row.product_name = l.product_name ?? row.product_name
-    row.on_hand = Math.trunc(Number(l.quantity_on_hand) || 0)
+    // On hand is never negative (Dean, 22 Sep 2026). The ledger floors at
+    // zero and the table carries a CHECK; this is the display's own backstop.
+    row.on_hand = Math.max(0, Math.trunc(Number(l.quantity_on_hand) || 0))
     row.last_counted_at = l.last_counted_at
     row.count_state = countState(l.last_counted_at, now)
   }
