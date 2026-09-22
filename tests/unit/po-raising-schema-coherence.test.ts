@@ -63,7 +63,7 @@ const codeOnly = (text: string) =>
 // A product_depot_mapping shaped fixture, taken from the live table on 22 Sep 2026.
 const row = (
   depot_code: string,
-  hubspot_sku_code: string,
+  hubspot_sku_code: string | null,
   xero_item_code: string,
   xero_item_description: string,
   product_family: string,
@@ -86,6 +86,13 @@ const MAPPING: DepotProduct[] = [
   row('EB-GROUP', 'EBH9', '01-EBH9', 'Echo Barrier H9', 'H9'),
   row('EB-SRO', 'EBH9SK', 'H9SK', 'Echo Barrier H9', 'H9'),
   row('EB-SRO', 'BLANK', '   ', 'A row with no code', 'H9'),
+  // Dean, 22 Sep 2026: every Xero item is orderable "even if they dont have a
+  // hubspot sku code". A shipping line and an ex-rental charge never get one.
+  row('EU-FR', null, 'LTL-FR-001', 'Shipping', 'Accessories'),
+  row('US-BAL', null, 'ADMIN-FEE', 'Administration charge', 'Accessories'),
+  // Two HubSpot SKUs pointing at ONE Xero item, which the live Baltimore data
+  // really does: EBH10HERC and EBH10HERCNA both mean H10HERCB.
+  row('CA-HAM', 'EBH10HERCNA', 'H10HERCHAM', 'H10 Herc Logo', 'H10'),
 ]
 const skusFor = (code: string) => catalogueFor(raisingParty(code)!, MAPPING).map((p) => p.sku)
 
@@ -131,10 +138,11 @@ describe('the depot-specific line items come from product_depot_mapping', () => 
   it("offers each party its own region's SKUs, and never the North American ones to France", () => {
     // Dean, 21 Sep 2026: "The line items have to be loaded depot specific."
     // Dean, 22 Sep 2026: "when I go to France it still shows the US/NA hubspot_sku_codes".
-    expect(skusFor('EU-FR')).toEqual(['EBH9', 'V2'])
+    // Sorted by family then by the XERO code, which is the identity now.
+    expect(skusFor('EU-FR')).toEqual(['LTL-FR-001', 'EBH9', 'V2'])
     expect(skusFor('GB-BSE')).toEqual(['EBH9', 'NDS'])
     expect(skusFor('EB-GROUP')).toEqual(['EBH9'])
-    expect(skusFor('US-BAL')).toEqual(['EBVFKNA', 'EBH9NA', 'V2NA'])
+    expect(skusFor('US-BAL')).toEqual(['ADMIN-FEE', 'EBVFKNA', 'EBH9NA', 'V2NA'])
     expect(skusFor('EU-FR')).not.toContain('EBH9NA')
   })
 
@@ -156,16 +164,76 @@ describe('the depot-specific line items come from product_depot_mapping', () => 
   it('trims the code, skips a retired row and a row with no code', () => {
     // A Xero ItemCode with a trailing space does not match the item.
     expect(xeroItemCodeFor(raisingParty('US-BAL')!, 'V2NA', MAPPING)).toBe('V2BALT')
-    expect(skusFor('CA-HAM')).toEqual(['EBH9NA'])
+    expect(skusFor('CA-HAM')).toEqual(['EBH10HERCNA', 'EBH9NA'])
     expect(skusFor('EB-SRO')).toEqual(['EBH9SK'])
   })
 
   it('names a product by its Xero description, so the dropdown reads like the region', () => {
     const fr = catalogueFor(raisingParty('EU-FR')!, MAPPING)
     expect(fr.map((p) => [p.sku, p.product_name, p.product_family])).toEqual([
+      ['LTL-FR-001', 'Shipping', 'Accessories'],
       ['EBH9', 'Echo Barrier H9', 'H9'],
       ['V2', 'V2', 'V2'],
     ])
+  })
+
+  // Dean, 22 Sep 2026: "pull through all xero_item_codes for all organisations
+  // onto the product_depot_mapping table even if they dont have a hubspot sku
+  // code ... And also when you select the line items dropdown it should show the
+  // Xero item code instead of the hubspot sku code."
+  describe('a product with no HubSpot SKU', () => {
+    it('is offered, because the Xero item code is the identity', () => {
+      const fr = catalogueFor(raisingParty('EU-FR')!, MAPPING)
+      const shipping = fr.find((p) => p.xeroItemCode === 'LTL-FR-001')
+      expect(shipping).toBeDefined()
+      expect(shipping!.hubspotSku).toBeNull()
+      // The order line has to carry something, and the Xero code is the only
+      // identifier such a product has.
+      expect(shipping!.sku).toBe('LTL-FR-001')
+      expect(shipping!.product_name).toBe('Shipping')
+    })
+
+    it('still refuses a row with no Xero code, because the line would vanish in Xero', () => {
+      // n8n drops an unmapped line into unmapped_skus and carries on, so the
+      // order would reach Xero missing a line and nobody would be told.
+      expect(skusFor('EB-SRO')).not.toContain('BLANK')
+    })
+
+    it('every product carries the code Xero will receive, whether or not it has a SKU', () => {
+      for (const party of ['EU-FR', 'US-BAL', 'CA-HAM', 'GB-BSE', 'EB-SRO', 'EB-GROUP']) {
+        for (const p of catalogueFor(raisingParty(party)!, MAPPING)) {
+          expect(p.xeroItemCode, `${party} ${p.sku}`).toBeTruthy()
+          expect(p.xeroItemCode).toBe(p.xeroItemCode.trim())
+        }
+      }
+    })
+  })
+
+  describe('two SKUs pointing at one Xero item', () => {
+    it('offers the item once, because a repeat is a choice that is not one', () => {
+      // Live data: EBH10HERC and EBH10HERCNA both mean H10HERCHAM at Hamilton,
+      // and the first of them is switched off.
+      const ham = catalogueFor(raisingParty('CA-HAM')!, MAPPING)
+      const herc = ham.filter((p) => p.xeroItemCode === 'H10HERCHAM')
+      expect(herc).toHaveLength(1)
+      expect(herc[0].hubspotSku).toBe('EBH10HERCNA')
+    })
+
+    it('never offers a product twice under one Xero code, for any party', () => {
+      for (const party of ['EU-FR', 'US-BAL', 'US-SBD', 'CA-HAM', 'GB-BSE', 'EB-SRO', 'EB-GROUP']) {
+        const codes = catalogueFor(raisingParty(party)!, MAPPING).map((p) => p.xeroItemCode)
+        expect(new Set(codes).size, party).toBe(codes.length)
+      }
+    })
+  })
+
+  it('the dropdown shows the Xero item code, not the HubSpot SKU', () => {
+    const form = read('src/app/(dashboard)/purchase-orders/create/raise-po-form.tsx')
+    const option = form.slice(form.indexOf('{items.map('), form.indexOf('</optgroup>'))
+    expect(option).toContain('{c.xeroItemCode}')
+    expect(option).not.toMatch(/>\s*\{c\.sku\}/)
+    // The value stays the line identity, which is what the order carries.
+    expect(option).toContain('value={c.sku}')
   })
 
   it('is read from the same columns by every reader, and nothing reads the old tables for it', () => {

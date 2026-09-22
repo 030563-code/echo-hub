@@ -527,8 +527,13 @@ export default function RaisePOForm({ parties, reason, products, addresses, hsCo
                 {families.map(([fam, items]) => (
                   <optgroup key={fam} label={fam}>
                     {items.map((c) => (
-                      <option key={c.sku} value={c.sku}>
-                        {c.sku} — {c.product_name}
+                      // Dean, 22 Sep 2026: "when you select the line items
+                      // dropdown it should show the Xero item code instead of
+                      // the hubspot sku code." The Xero code is what lands on
+                      // the purchase order in Xero, so it is the one worth
+                      // recognising, and it is the only code some products have.
+                      <option key={c.xeroItemCode} value={c.sku}>
+                        {c.xeroItemCode} · {c.product_name}
                       </option>
                     ))}
                   </optgroup>

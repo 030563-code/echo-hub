@@ -112,8 +112,10 @@ export const RAISABLE_PARTIES: readonly RaisingParty[] = RAISING_PARTIES.filter(
 export interface DepotProduct {
   /** The raising party: a depot code, EB-GROUP or EB-SRO. */
   depot_code: string
-  /** The SKU that region uses, and the SKU the order line and the stock row carry. */
-  hubspot_sku_code: string
+  /** The SKU that region uses, where it has one. Null since 22 Sep 2026: a Xero
+   *  item can exist with no HubSpot SKU at all (shipping lines, ex-rental
+   *  stock), and the Xero item code is the identity now. */
+  hubspot_sku_code: string | null
   /** The ItemCode in that party's Xero organisation. */
   xero_item_code: string | null
   xero_item_description: string | null
@@ -127,10 +129,14 @@ export const DEPOT_MAPPING_COLUMNS =
 
 /** A product this party may put on an order, with the code Xero will receive. */
 export interface OrderableProduct {
+  /** What the order line carries. The HubSpot SKU where there is one, otherwise
+   *  the Xero item code, which is the only identifier such a product has. */
   sku: string
   product_name: string
   product_family: string | null
   xeroItemCode: string
+  /** Null when nobody has given this product a HubSpot SKU. */
+  hubspotSku: string | null
 }
 
 const clean = (v: string | null | undefined) => (v ?? '').trim()
@@ -146,22 +152,32 @@ const clean = (v: string | null | undefined) => (v ?? '').trim()
  * and a Xero ItemCode with a trailing space does not match the item.
  */
 export function catalogueFor(party: RaisingParty, mapping: readonly DepotProduct[]): OrderableProduct[] {
-  const bySku = new Map<string, OrderableProduct>()
+  const byCode = new Map<string, OrderableProduct>()
   for (const row of mapping) {
     if (clean(row.depot_code).toUpperCase() !== party.code) continue
     if (row.is_active === false) continue
-    const sku = clean(row.hubspot_sku_code)
     const code = clean(row.xero_item_code)
-    if (!sku || !code) continue
-    bySku.set(sku, {
-      sku,
-      product_name: clean(row.xero_item_description) || sku,
+    // 🔴 Only the Xero code is required. A HubSpot SKU is optional since Dean
+    // asked on 22 Sep 2026 for every Xero item to be orderable "even if they
+    // dont have a hubspot sku code"; a row with no Xero code is still refused,
+    // because the order would reach Xero without that line.
+    if (!code) continue
+    const sku = clean(row.hubspot_sku_code)
+    // Keyed on the Xero code, which is now the identity. Two HubSpot SKUs can
+    // point at one Xero item (EBH10HERC and EBH10HERCNA both mean H10HERCB) and
+    // offering the same item twice is offering a choice that is not one.
+    byCode.set(code, {
+      sku: sku || code,
+      product_name: clean(row.xero_item_description) || sku || code,
       product_family: clean(row.product_family) || null,
       xeroItemCode: code,
+      hubspotSku: sku || null,
     })
   }
-  return [...bySku.values()].sort(
-    (a, b) => (a.product_family ?? '').localeCompare(b.product_family ?? '') || a.sku.localeCompare(b.sku),
+  return [...byCode.values()].sort(
+    (a, b) =>
+      (a.product_family ?? '').localeCompare(b.product_family ?? '') ||
+      a.xeroItemCode.localeCompare(b.xeroItemCode),
   )
 }
 
