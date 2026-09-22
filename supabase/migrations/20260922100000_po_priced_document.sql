@@ -12,7 +12,8 @@
 -- and the totals. The first four are derived at print time; the totals are worked out from the
 -- lines every time, so a saved total can never disagree with the lines under it.
 --
--- PENDING: written against the schema at 20260922090000, not applied.
+-- Applied live via MCP apply_migration on 22 Sep 2026 (the on-hand floor, 20260922090000, was
+-- still pending at the time; nothing here depends on it).
 create table if not exists public.po_priced_document (
   -- One document per manufacturing order. Cascades because it is worthless without the order.
   po_id uuid primary key references public.purchase_orders(id) on delete cascade,

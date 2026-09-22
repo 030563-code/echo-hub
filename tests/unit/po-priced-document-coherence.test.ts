@@ -10,7 +10,7 @@ import { join } from 'node:path'
  */
 
 const read = (file: string) => readFileSync(join(process.cwd(), file), 'utf8')
-const UP = 'supabase/migrations/pending/20260922100000_po_priced_document.sql'
+const UP = 'supabase/migrations/20260922100000_po_priced_document.sql'
 const DOWN = 'supabase/migrations/rollback/20260922100000_po_priced_document.down.sql'
 
 describe('the table', () => {
