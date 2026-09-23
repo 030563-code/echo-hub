@@ -69,13 +69,19 @@ export function readingChip(row: Pick<CustomsBillFacts, 'ocr_status'>): StatusCh
 
 export function checksChip(check: PackageCheck | null): StatusChip | null {
   if (!check) return null
+  // Duty on the invoice with no entry summary to test it against is not a wrong sum.
+  if (check.checks.some((c) => c.level === 'error' && c.code === 'no_entry')) return { label: 'Cannot be checked', tone: 'red' }
   if (check.worst === 'error') return { label: 'Does not add up', tone: 'red' }
   if (check.worst === 'warn') return { label: 'Needs a look', tone: 'amber' }
   return { label: 'Adds up', tone: 'green' }
 }
 
-export function xeroChip(row: Pick<CustomsBillFacts, 'duplicate_of' | 'xero_status' | 'xero_invoice_id' | 'xero_error' | 'ocr_status'>): StatusChip {
+export function xeroChip(
+  row: Pick<CustomsBillFacts, 'duplicate_of' | 'xero_status' | 'xero_invoice_id' | 'xero_error' | 'ocr_status'>,
+  pkg: CustomsPackage | null = null,
+): StatusChip {
   if (row.duplicate_of) return { label: 'A resend, not billed', tone: 'grey' }
+  if (pkg?.is_invoice === false && !row.xero_invoice_id) return { label: 'Not a bill', tone: 'grey' }
   const status = (row.xero_status ?? '').toUpperCase()
   if (row.xero_invoice_id) {
     if (status === 'DRAFT' || status === 'SUBMITTED') return { label: 'Draft in Xero', tone: 'blue' }
@@ -107,7 +113,7 @@ export function listRow(row: CustomsBillFacts): CustomsListRow {
     total: row.invoice_total,
     reading: readingChip(row),
     checks: checksChip(check),
-    xero: xeroChip(row),
+    xero: xeroChip(row, pkg),
     awaitingApproval: Boolean(row.xero_invoice_id) && !row.duplicate_of && (status === 'DRAFT' || status === 'SUBMITTED'),
   }
 }

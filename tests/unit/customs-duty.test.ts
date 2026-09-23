@@ -9,7 +9,8 @@ import {
   wholeDollars,
 } from '@/lib/customs/fees'
 import { dutyRuleFor, originGroup, productClassOfHts } from '@/lib/customs/duty'
-import { checkPackage } from '@/lib/customs/checks'
+import { checkPackage, holdsDraftBack } from '@/lib/customs/checks'
+import { checksChip } from '@/lib/customs/view'
 import { estimateCustoms } from '@/lib/customs/estimate'
 import { customsPackageSchema, type CustomsPackage } from '@/lib/customs/nippon-invoice'
 import { PACKAGE_D0806, PACKAGE_D1518, PACKAGE_D8400 } from '../fixtures/customs/nippon-packages'
@@ -57,13 +58,21 @@ describe('CBP rounding and fees', () => {
     expect(entryMpf([250000], '2026-10-01')).toMatchObject({ amount: 670.86, clamped: 'max' })
   })
 
-  it('charges the harbor fee once, on the total entered value', () => {
+  it('charges the harbor fee line by line, each rounded to the cent', () => {
     expect(entryHmf([55803, 1516])).toBe(71.65)
     expect(entryHmf([25007, 18019])).toBe(53.78)
     expect(entryHmf([59090])).toBe(73.86)
-    // The three real entries round the same either way, so this is the case that tells them
-    // apart: per line, 1.255 rounds up twice to 2.52; on the total of 2,008 it is 2.51.
-    expect(entryHmf([1004, 1004])).toBe(2.51)
+    // A real March 2026 entry from the history import charged 81.38 where 0.125 per cent of its
+    // total would be 81.39. These invented lines reproduce it: 50.00 and 31.38 per line.
+    expect(entryHmf([40003, 25107])).toBe(81.38)
+    // And the other way: per line, 1.255 rounds up twice to 2.52; on the total of 2,008 it is 2.51.
+    expect(entryHmf([1004, 1004])).toBe(2.52)
+  })
+
+  it('knows the fiscal 2025 processing fee limits', () => {
+    // Federal Register Vol. 89 No. 140, 22 Jul 2024: minimum 32.71, maximum 634.62.
+    expect(entryMpf([2000], '2025-08-10')).toMatchObject({ amount: 32.71, clamped: 'min' })
+    expect(entryMpf([250000], '2025-09-30')).toMatchObject({ amount: 634.62, clamped: 'max' })
   })
 
   it("shows how far the sheet's MPF formula was out: 0.464 per cent of the barrier cost", () => {
@@ -219,7 +228,26 @@ describe('a changed figure is caught', () => {
     const raw = clone(PACKAGE_D0806)
     raw.entry.lines[1].entered_value = 18119
     raw.entry.total_entered_value = 43126
-    expect(codes(parse(raw))).toContain('value_build_lines')
+    expect(codes(parse(raw))).toContain('value_build')
+  })
+
+  it('does not mind which printed figure the reading calls the dollar value', () => {
+    // On two history bills Claude put the invoice value where the E.V. goes. The build still
+    // arrives at what the line was entered at, so nothing is wrong with the entry.
+    const raw = clone(PACKAGE_D8400)
+    const build = raw.entry.value_builds[0]
+    build.usd_value = build.invoice_value
+    expect(codes(parse(raw))).toEqual([])
+  })
+
+  it('allows block 39 a dollar for every line after the first', () => {
+    // Each line is rounded to the dollar and block 39 is the total rounded once.
+    const near = clone(PACKAGE_D0806)
+    near.entry.total_entered_value = 43027
+    expect(codes(parse(near))).toEqual([])
+    const far = clone(PACKAGE_D0806)
+    far.entry.total_entered_value = 43028
+    expect(codes(parse(far))).toEqual(['entered_value_total'])
   })
 
   it('a package with no entry summary cannot pass', () => {
@@ -228,12 +256,26 @@ describe('a changed figure is caught', () => {
     const result = checkPackage(parse(raw))
     expect(result.checks.map((c) => c.code)).toEqual(['no_entry'])
     expect(result.worst).toBe('error')
+    // It is not a wrong sum, so it does not say so.
+    expect(checksChip(result)?.label).toBe('Cannot be checked')
+    expect(result.checks[0].message).toMatch(/\$6,002\.10 of duty and fees on the invoice cannot be checked/)
   })
 
-  it("Claude's own doubts are shown to Dave", () => {
+  it("Claude's remarks do not change the status: the sums do", () => {
     const raw = clone(PACKAGE_D1518)
-    raw.warnings = ['page 2 is skewed; the entered value of line 002 may be 1518']
+    raw.warnings = ['The invoice prints SHIPPED FROM as PRESOV,CY; the entry says SK.']
     const result = checkPackage(parse(raw))
-    expect(result.checks.map((c) => c.code)).toEqual(['ocr_warning'])
+    expect(result.checks).toEqual([])
+    expect(result.worst).toBe('ok')
+  })
+
+  it('holds a draft back from Xero when the PDF is not an invoice or the sums fail', () => {
+    expect(holdsDraftBack(parse(clone(PACKAGE_D1518)))).toBe(false)
+    const notice = clone(PACKAGE_D1518) as Record<string, unknown>
+    notice.is_invoice = false
+    expect(holdsDraftBack(parse(notice))).toBe(true)
+    const noEntry = clone(PACKAGE_D1518) as Record<string, unknown>
+    noEntry.entry = null
+    expect(holdsDraftBack(parse(noEntry))).toBe(true)
   })
 })

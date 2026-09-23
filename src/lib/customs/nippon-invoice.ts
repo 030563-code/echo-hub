@@ -152,8 +152,11 @@ export const customsPackageSchema = z.object({
   entry: entrySchema.nullish().transform((v) => v ?? null),
   waybill: waybillSchema.nullish().transform((v) => v ?? { spot_id: null, hbl: null, container_numbers: [] }),
   other_documents: z.array(z.object({ kind: text, summary: optionalText })).default([]),
-  /** Anything Claude could not read with confidence, in its own words. */
+  /** Claude's remarks, in its own words: shown beside the bill, never counted as a check. */
   warnings: z.array(z.string()).default([]),
+  /** False when the PDF is not a Nippon Express invoice at all (an arrival notice, a statement).
+   *  Missing on readings made before 23 Sep 2026, which were all invoices. */
+  is_invoice: z.boolean().optional(),
 })
 
 export type CustomsCharge = z.infer<typeof chargeSchema>

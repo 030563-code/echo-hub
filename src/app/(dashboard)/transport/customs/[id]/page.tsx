@@ -96,7 +96,7 @@ export default async function CustomsBillPage({ params }: { params: Promise<{ id
 
       <div className="mb-5 flex flex-wrap items-center gap-2">
         <Chip chip={check ? checksChip(check) : readingChip(row)} />
-        <Chip chip={xeroChip(row)} />
+        <Chip chip={xeroChip(row, pkg)} />
         {row.spot_id ? (
           <Link
             href={`/transport/${row.spot_id}`}
@@ -129,6 +129,16 @@ export default async function CustomsBillPage({ params }: { params: Promise<{ id
           canReadAgain={canReadAgain}
           totalLabel={formatMoney(row.invoice_total)}
         />
+        {canMakeDraft && pkg?.is_invoice === false && (
+          <p className="mt-2 text-sm text-gray-600">
+            Claude says this PDF is not a Nippon Express invoice, so no draft was made in Xero. Make one only if it is a bill.
+          </p>
+        )}
+        {canMakeDraft && pkg?.is_invoice !== false && check?.worst === 'error' && (
+          <p className="mt-2 text-sm text-gray-600">
+            No draft was made in Xero, because of what is flagged below. Make the draft once you are happy with it.
+          </p>
+        )}
       </div>
 
       {row.ocr_status === 'failed' && (
@@ -367,6 +377,16 @@ export default async function CustomsBillPage({ params }: { params: Promise<{ id
               <p className="text-sm text-gray-600">The duty cannot be checked line by line without it.</p>
             )}
           </Card>
+
+          {pkg.warnings.length > 0 && (
+            <Card title="What Claude noticed" hint="Its remarks while reading, for context. They do not change the status; the sums do.">
+              <ul className="list-disc space-y-1 pl-5 text-sm text-gray-700">
+                {pkg.warnings.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+            </Card>
+          )}
         </div>
       )}
     </div>

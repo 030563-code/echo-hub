@@ -91,10 +91,14 @@ export function checkPackage(pkg: CustomsPackage, rules: readonly DutyRule[] = D
 
   const entry = pkg.entry
   if (!entry) {
+    // With duty on the invoice this stays an error, so no draft goes to Xero unseen; the chip
+    // says it cannot be checked rather than that it does not add up.
     checks.push({
       level: customs ? 'error' : 'warn',
       code: 'no_entry',
-      message: 'This PDF has no CBP entry summary, so the duty cannot be checked line by line.',
+      message: customs
+        ? `This PDF has no CBP entry summary, so the ${usd(customs.amount)} of duty and fees on the invoice cannot be checked. Ask Nippon Express for the 7501.`
+        : 'This PDF has no CBP entry summary, so the duty cannot be checked line by line.',
     })
     return finish({
       lines: [],
@@ -105,7 +109,6 @@ export function checkPackage(pkg: CustomsPackage, rules: readonly DutyRule[] = D
       serviceCharges: service,
       invoiceTotal: { stated: invoice.total, sum: chargeSum },
       checks,
-      warnings: pkg.warnings,
     })
   }
 
@@ -169,7 +172,9 @@ export function checkPackage(pkg: CustomsPackage, rules: readonly DutyRule[] = D
 
   const evs = lines.map((l) => l.enteredValue)
   const evTotal = evs.reduce((sum, ev) => sum + ev, 0)
-  if (Math.abs(evTotal - wholeDollars(entry.total_entered_value)) > 0.5) {
+  // Each line is rounded to the dollar on its own and block 39 is the total rounded once, so they
+  // can part by up to a dollar for every line after the first.
+  if (Math.abs(evTotal - wholeDollars(entry.total_entered_value)) > Math.max(0.5, lines.length - 1)) {
     checks.push({
       level: 'error',
       code: 'entered_value_total',
@@ -240,29 +245,22 @@ export function checkPackage(pkg: CustomsPackage, rules: readonly DutyRule[] = D
 
   // How each invoice's entered value was built: invoice value, plus the palletising, less any
   // freight in the price, at CBP's exchange rate.
+  // What matters is that the build arrives at the value the lines were entered at. Which printed
+  // figure the reading calls usd_value (the E.V., or the invoice value in dollars) does not.
   for (const build of entry.value_builds) {
+    if (build.invoice_value == null || build.fx_rate == null) continue
     const its = entry.lines.filter((l) => build.invoice_number && l.invoice_number === build.invoice_number)
-    if (build.invoice_value != null && build.fx_rate != null && build.usd_value != null) {
-      const deductions = build.deductions.reduce((sum, d) => sum + d.amount, 0)
-      const worked = roundCents((build.invoice_value + (build.added_value ?? 0) - deductions) * build.fx_rate)
-      if (Math.abs(worked - build.usd_value) > 0.02) {
-        checks.push({
-          level: 'warn',
-          code: 'value_build',
-          message: `${build.invoice_number ?? 'An invoice'}: ${build.currency ?? ''} ${build.invoice_value} plus ${build.added_value ?? 0} less ${deductions} at ${build.fx_rate} is ${usd(worked)}, the entry says ${usd(build.usd_value)}.`,
-        })
-      }
-    }
-    if (its.length && build.usd_value != null) {
+    const deductions = build.deductions.reduce((sum, d) => sum + d.amount, 0)
+    const worked = roundCents((build.invoice_value + (build.added_value ?? 0) - deductions) * build.fx_rate)
+    const built = `${build.invoice_number ?? 'An invoice'}: ${build.currency ?? ''} ${build.invoice_value} plus ${build.added_value ?? 0} less ${deductions} at ${build.fx_rate} is ${usd(worked)}`
+    if (its.length) {
       const linesTotal = its.reduce((sum, l) => sum + wholeDollars(l.entered_value), 0)
       // Each line is rounded to the dollar on its own, so allow a dollar a line.
-      if (Math.abs(linesTotal - build.usd_value) > its.length) {
-        checks.push({
-          level: 'warn',
-          code: 'value_build_lines',
-          message: `${build.invoice_number}: the lines' entered values add up to ${usd(linesTotal)}, the value was built as ${usd(build.usd_value)}.`,
-        })
+      if (Math.abs(linesTotal - worked) > its.length) {
+        checks.push({ level: 'warn', code: 'value_build', message: `${built}, but its lines are entered at ${usd(linesTotal)}.` })
       }
+    } else if (build.usd_value != null && Math.abs(worked - build.usd_value) > 0.02) {
+      checks.push({ level: 'warn', code: 'value_build', message: `${built}, the entry says ${usd(build.usd_value)}.` })
     }
   }
 
@@ -275,17 +273,24 @@ export function checkPackage(pkg: CustomsPackage, rules: readonly DutyRule[] = D
     serviceCharges: service,
     invoiceTotal: { stated: invoice.total, sum: chargeSum },
     checks,
-    warnings: pkg.warnings,
   })
 }
 
-/** Claude's own doubts count as things to look at. Linking the shipment is reported by the
- *  match, not here: a package with no waybill still matches on its master bill. */
-function finish(input: Omit<PackageCheck, 'worst'> & { warnings: string[] }): PackageCheck {
-  const { warnings, ...result } = input
-  for (const w of warnings) {
-    result.checks.push({ level: 'warn', code: 'ocr_warning', message: `Claude could not read everything: ${w}` })
-  }
+/**
+ * Whether a bill read from the inbox must wait for Dave instead of going to Xero as a draft: the
+ * PDF is not an invoice, or its sums fail (an entry summary missing counts, when there is duty).
+ */
+export function holdsDraftBack(pkg: CustomsPackage): boolean {
+  return pkg.is_invoice === false || checkPackage(pkg).worst === 'error'
+}
+
+/**
+ * The sums decide. Claude's own remarks are shown beside the bill, not counted here: on the 28
+ * history bills it read, all 162 remarks were differences between documents or notes made as
+ * printed, and a doubtful figure that mattered would break a sum. Linking the shipment is
+ * reported by the match: a package with no waybill still matches on its master bill.
+ */
+function finish(result: Omit<PackageCheck, 'worst'>): PackageCheck {
   const worst: CheckLevel = result.checks.some((c) => c.level === 'error')
     ? 'error'
     : result.checks.length
