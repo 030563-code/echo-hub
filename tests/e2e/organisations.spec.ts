@@ -71,9 +71,10 @@ test.describe('Organisations (privileged user)', () => {
   })
 
   test('the header flag goes home when the page cannot show the chosen organisation', async ({ page }) => {
-    await page.goto('/quotes')
+    await page.goto('/calls')
     await page.getByTestId('active-organisation').click()
-    // s.r.o. has no sales pipeline, so Quotes has nothing to show for it.
+    // s.r.o. takes no phone office, so Calls has nothing to show for it. This
+    // used to be Quotes and SRO, until s.r.o. took EURO SALES on 16 Sep 2026.
     await page.getByRole('menuitem', { name: 'SRO', exact: true }).click()
     await expect(page).toHaveURL(/\/$/)
     await expect(page.getByTestId('active-organisation')).toHaveText(/SRO/)
@@ -92,16 +93,16 @@ test.describe('Organisations (privileged user)', () => {
     await expect(page.getByTestId('active-organisation')).toHaveText(before)
   })
 
-  test('Quotes lists only the organisations with a sales pipeline', async ({ page }) => {
+  test('Quotes lists every organisation, each of the seven having a sales pipeline', async ({ page }) => {
     await page.locator('aside').getByRole('link', { name: 'Quotes', exact: true }).click()
     await expect(page).toHaveURL(/\/quotes/)
     const aside = page.locator('aside')
     await expect(aside.getByRole('button', { name: 'Organisations for Quotes' })).toHaveAttribute('aria-expanded', 'true')
-    for (const org of ['USA', 'Canada', 'France', 'Group', 'Australia', 'UK']) {
+    // s.r.o. included: it manufactures, but since 16 Sep 2026 it shares EURO
+    // SALES with France (Juraj quotes in it), so Quotes has something for it.
+    for (const org of ALL_SEVEN) {
       await expect(aside.getByRole('link', { name: org, exact: true })).toBeVisible()
     }
-    // s.r.o. manufactures; it has no pipeline and no entry here.
-    await expect(aside.getByRole('link', { name: 'SRO', exact: true })).toHaveCount(0)
   })
 })
 

@@ -5,11 +5,21 @@ import { resolve } from 'node:path'
 // Load .env.local into process.env so specs can read E2E_USERNAME / E2E_PASSWORD
 // (and the dev server it starts inherits the Supabase keys). Manual parse — no
 // dotenv dependency.
+//
+// A value written as KEY="value" or KEY='value' is the value without the
+// quotes, as the shell and Next's own loader read it. Until 23 Sep 2026 this
+// parser kept them, so a quoted password was typed into the login form with
+// its quotes and every spec for that persona failed at "Invalid login
+// credentials" while the same credentials signed in everywhere else.
+const unquote = (value: string) =>
+  value.length >= 2 && ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))
+    ? value.slice(1, -1)
+    : value
 try {
   const raw = readFileSync(resolve(process.cwd(), '.env.local'), 'utf8')
   for (const line of raw.split('\n')) {
     const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/)
-    if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2]
+    if (m && process.env[m[1]] === undefined) process.env[m[1]] = unquote(m[2])
   }
 } catch {
   // no .env.local — specs that need creds will fail with a clear message

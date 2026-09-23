@@ -16,6 +16,14 @@ export function limitedCreds(): Creds | null {
   return email && password ? { email, password } : null
 }
 
+/** Claire, the France persona: one organisation, and invoicing.manage as a
+ *  real row rather than through super admin. CLAIRE_EMAIL/CLAIRE_PASSWORD. */
+export function claireCreds(): Creds | null {
+  const email = process.env.CLAIRE_EMAIL
+  const password = process.env.CLAIRE_PASSWORD
+  return email && password ? { email, password } : null
+}
+
 /** Any usable login — prefers admin, falls back to the scoped user. */
 export function anyCreds(): Creds | null {
   return adminCreds() ?? limitedCreds()
@@ -32,7 +40,17 @@ export async function login(page: Page, c: Creds) {
   // localhost:3000 pinned it to one port and broke on any machine where
   // something else already held it. The generous timeouts are for a cold
   // dev server compiling the route on first visit.
-  await page.waitForURL((u) => new URL(u).pathname === '/', { timeout: 25_000 })
+  try {
+    await page.waitForURL((u) => new URL(u).pathname === '/', { timeout: 25_000 })
+  } catch (error) {
+    // 🔴 On a failure Playwright attaches a snapshot of the page to the report
+    // (error-context.md), and that snapshot includes the TEXT typed into every
+    // field, password fields included. A login that fails must therefore not
+    // leave the password on the page, or the secret lands in the test output
+    // and in whatever reads it. Best effort: the page may already be gone.
+    await page.getByPlaceholder('••••••••').fill('').catch(() => {})
+    throw error
+  }
   await expect(page.getByText('Welcome to the Echo Barrier Hub')).toBeVisible({ timeout: 15_000 })
 }
 
