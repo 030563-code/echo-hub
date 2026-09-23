@@ -107,7 +107,7 @@ describe('buildSupplierSpec attaches the manufacturing specification', () => {
     expect(out.products[0].materials.map((m) => m.code)).toEqual(['SK-PVC'])
   })
 
-  it('resolves each product independently when an order carries several', () => {
+  it('resolves each product independently when an order carries several (colours below)', () => {
     const specs = new Map([
       ['H9', spec({ modelCode: 'H9', packConfig: '9x70 ks' })],
       ['H10Japan', spec({ modelCode: 'H10Japan', packConfig: '8x65', includeWithOrder: 'Háky Japonský typ: 700 ks' })],
@@ -121,6 +121,63 @@ describe('buildSupplierSpec attaches the manufacturing specification', () => {
   })
 })
 
+
+describe('a coloured fabric starts from the standing colour, and the sheet prints it', () => {
+  // Juraj, 22 Sep 2026: "could we also add colours options to the PC350FR and P200".
+  const options = new Map<string, readonly string[]>([
+    ['PC350FR', ['Black', 'Navy blue', 'Maroon', 'Beige', 'White']],
+    ['P200', ['Flo orange', 'Flo yellow', 'White']],
+  ])
+  const fabricLine = (model_code: string, code: string, sku = 'EBH9NA') =>
+    line({
+      model_code,
+      sku,
+      components: [
+        { code, desc: code, qty: 1.5, line_qty: 210, line_extended_eur: 0 },
+        { code: 'DAT-01', desc: 'Datatag', qty: 1, line_qty: 140, line_extended_eur: 0 },
+      ] as SroPoBomLine['components'],
+    })
+
+  it("prefills PC350FR from the model's Goretex colour when it names an option", () => {
+    const specs = new Map([['H9', spec({ modelCode: 'H9', goretexColour: 'Čierna/Black' })]])
+    const out = buildSupplierSpec(bom([fabricLine('H9', 'PC350FR-UV21')]), '2026-09-23', undefined, 'X', null, specs, options)
+    const [fabric, tag] = out.products[0].materials
+    expect(fabric).toMatchObject({ code: 'PC350FR-UV21', colour: 'Black' })
+    // Datatag does not come in colours, so it carries no colour key at all.
+    expect('colour' in tag).toBe(false)
+  })
+
+  it("the H10 family's P200 starts orange, as its standing specification says", () => {
+    const specs = new Map([['H10', spec({ modelCode: 'H10', goretexType: 'PC200FR', goretexColour: 'Oranžová/Orange' })]])
+    const out = buildSupplierSpec(bom([fabricLine('H10', 'P200', 'EBH10SK')]), '2026-09-23', undefined, 'X', null, specs, options)
+    expect(out.products[0].materials[0]).toMatchObject({ code: 'P200', colour: 'Flo orange' })
+  })
+
+  it('a coloured fabric with no usable standing colour starts with none chosen, never a guess', () => {
+    const specs = new Map([['H9', spec({ modelCode: 'H9', goretexColour: 'Zelená/Green' })]])
+    const withGreen = buildSupplierSpec(bom([fabricLine('H9', 'PC350FR-UV21')]), '2026-09-23', undefined, 'X', null, specs, options)
+    expect(withGreen.products[0].materials[0].code).toBe('PC350FR-UV21')
+    expect(withGreen.products[0].materials[0].colour ?? null).toBeNull()
+    // And with no standing specification at all, the same: unchosen, and the key simply absent,
+    // which is how the stored document spells "none" too (sanitiseDraft drops a blank colour).
+    const withoutSpec = buildSupplierSpec(bom([fabricLine('H9X', 'PC350FR-UV21')]), '2026-09-23', undefined, 'X', null, new Map(), options)
+    expect('colour' in withoutSpec.products[0].materials[0]).toBe(false)
+  })
+
+  it('no options means no colour key anywhere, so every older caller gets the document it had', () => {
+    const specs = new Map([['H9', spec({ modelCode: 'H9', goretexColour: 'Čierna/Black' })]])
+    const out = buildSupplierSpec(bom([fabricLine('H9', 'PC350FR-UV21')]), '2026-09-23', undefined, 'X', null, specs)
+    for (const m of out.products[0].materials) expect('colour' in m, m.code).toBe(false)
+  })
+
+  it('the PDF adds a colour column only when a material on the product carries one', () => {
+    const pdf = readFileSync(join(process.cwd(), 'src/lib/supplier-spec-pdf.ts'), 'utf8')
+    expect(pdf).toContain('const coloured = product.materials.some((m) => m.colour)')
+    expect(pdf).toContain("'Colour (farba)'")
+    // The uncoloured table is the one that always printed, byte for byte.
+    expect(pdf).toContain("[['Code', 'Material', right('Per barrier'), right('Total')]]")
+  })
+})
 
 /** Source with comments removed, so a guard cannot pass or fail on its own prose. */
 const codeOnly = (text: string) =>

@@ -169,6 +169,10 @@ export function sanitiseDraft(input: unknown): SpecDraft {
               const description = text(row.description, 400)
               if (!code && !description) return null
               const perUnit = num(row.perUnit)
+              // The chosen colour of a fabric that comes in several (Juraj, 22 Sep 2026). Free
+              // text at this boundary rather than checked against the options: an option
+              // withdrawn after a document was signed must still print what was signed.
+              const colour = text(row.colour, 60)
               return {
                 code,
                 description: description || code,
@@ -176,6 +180,7 @@ export function sanitiseDraft(input: unknown): SpecDraft {
                 // Always derived. A total that disagrees with per-barrier times quantity is a
                 // picking list that sends the wrong amount of fabric to the floor.
                 total: round3(perUnit * quantity),
+                ...(colour ? { colour } : {}),
               }
             })
             .filter((m): m is SupplierSpecMaterial => m !== null),

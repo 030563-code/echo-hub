@@ -12,12 +12,36 @@ import 'server-only'
  *   CONFIRMED        prints who signed it and when, instead of the red warning.
  */
 
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { loadSroPoBom } from '@/lib/bom'
 import { loadModelSpecs } from '@/lib/model-spec'
 import { buildSupplierSpec, type SupplierSpecPacking } from '@/lib/supplier-spec'
 import { sanitiseDraft, toSpecDraft, type SpecDraft } from '@/lib/po-spec-draft'
 import { entityLabel } from '@/lib/depot-constants'
+import { toColourOptions } from '@/lib/material-colours'
+
+/**
+ * The colours each fabric family can be ordered in, from material_colour_option, active rows in
+ * their stated order. Juraj's list of 22 Sep 2026 seeded it; adding a colour is a row, not a
+ * deploy. Empty on a read failure, so the document still generates, with no colour to choose and
+ * nothing invented.
+ */
+export async function loadColourOptions(
+  client: SupabaseClient = createAdminClient(),
+): Promise<Record<string, string[]>> {
+  const { data } = await client
+    .from('material_colour_option')
+    .select('family, colour')
+    .eq('active', true)
+    .order('family', { ascending: true })
+    .order('sort_order', { ascending: true })
+  const out: Record<string, string[]> = {}
+  for (const row of (data ?? []) as { family: string; colour: string }[]) {
+    ;(out[row.family] ??= []).push(row.colour)
+  }
+  return out
+}
 
 /**
  * Where the barriers on this order end up, so the factory can pack and label to it.
@@ -75,9 +99,9 @@ export async function generateSpecDraft(
   const bom = await loadSroPoBom(po.parent_po_id, admin)
   if (!bom) return null
 
-  const specs = await loadModelSpecs(admin)
+  const [specs, colours] = await Promise.all([loadModelSpecs(admin), loadColourOptions(admin)])
   // The header is put on at print time, so the placeholders here never reach paper.
-  const built = buildSupplierSpec(bom, '', undefined, '', destination, specs)
+  const built = buildSupplierSpec(bom, '', undefined, '', destination, specs, toColourOptions(colours))
   if (built.products.length === 0) return null
   return toSpecDraft(built)
 }

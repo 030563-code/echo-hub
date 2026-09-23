@@ -58,6 +58,36 @@ describe('sanitiseDraft accepts what a browser sends and prints none of its mist
     expect(out.products[0].pallets).toBe(3)
   })
 
+  it('keeps the colour chosen for a fabric and stores nothing for a material without one', () => {
+    // Juraj, 22 Sep 2026: PC350FR and P200 come in colours, chosen per order. A blank is not a
+    // colour, and a material that never had one carries no key, so every document saved before
+    // colours existed round-trips byte for byte.
+    const out = sanitiseDraft(
+      draft({
+        products: [{ ...draft().products[0], materials: [
+          { code: 'PC350FR-UV21', description: 'PC350 FR UV 2.1 Wide', perUnit: 1.5, total: 0, colour: ' Beige ' },
+          { code: 'P200', description: 'P200', perUnit: 2.2, total: 0, colour: '' },
+          { code: 'DAT-01', description: 'Datatag', perUnit: 1, total: 0 },
+        ] }],
+      }),
+    )
+    const [fabric, p200, tag] = out.products[0].materials
+    expect(fabric.colour).toBe('Beige')
+    expect('colour' in p200).toBe(false)
+    expect('colour' in tag).toBe(false)
+  })
+
+  it('cuts a colour down to the length of a colour', () => {
+    const out = sanitiseDraft(
+      draft({
+        products: [{ ...draft().products[0], materials: [
+          { code: 'PC350FR-UV21', description: 'x', perUnit: 1, total: 0, colour: 'B'.repeat(200) },
+        ] }],
+      }),
+    )
+    expect(out.products[0].materials[0].colour).toHaveLength(60)
+  })
+
   it('drops a specification row with a label and no value', () => {
     // An empty requirement on a factory sheet reads as "none", not as "not filled in".
     const out = sanitiseDraft(

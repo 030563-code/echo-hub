@@ -23,6 +23,7 @@ import { poChainHeldBy } from '@/lib/po-organisations'
 import { sanitiseDraft, specDrift, type SpecDraft, type SpecDrift } from '@/lib/po-spec-draft'
 import {
   generateSpecDraft,
+  loadColourOptions,
   loadSpecDocument,
   resetSpecDraft,
   specActorNames,
@@ -44,6 +45,12 @@ export interface SpecEditorState {
   /** What the saved document says that the order no longer does. Never applied on its own. */
   drift: SpecDrift[]
   canEdit: boolean
+  /**
+   * Fabric family to the colours it can be ordered in (PC350FR, P200), for the colour picker on a
+   * material line. Plain JSON here because this crosses to the browser; the rules that read it take
+   * the Map form (material-colours.ts).
+   */
+  colourOptions: Record<string, string[]>
 }
 
 export type SpecEditorResult =
@@ -92,7 +99,10 @@ async function editorState(poId: string, canEdit: boolean): Promise<SpecEditorRe
   // generation and comparing it with itself would find nothing.
   const generated = document.saved ? await generateSpecDraft(poId, destination) : document.draft
 
-  const names = await specActorNames([document.updatedByUid, document.confirmedByUid])
+  const [names, colourOptions] = await Promise.all([
+    specActorNames([document.updatedByUid, document.confirmedByUid]),
+    loadColourOptions(),
+  ])
   return {
     ok: true,
     state: {
@@ -105,6 +115,7 @@ async function editorState(poId: string, canEdit: boolean): Promise<SpecEditorRe
       confirmedBy: document.confirmedByUid ? (names.get(document.confirmedByUid) ?? null) : null,
       drift: generated ? specDrift(document.draft, generated) : [],
       canEdit,
+      colourOptions,
     },
   }
 }

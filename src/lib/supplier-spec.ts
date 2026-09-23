@@ -1,6 +1,7 @@
 import type { SroPoBom } from '@/lib/erp-types'
 import { BUYER, DEFAULT_SUPPLIER, type BamidaSupplier } from '@/lib/bamida-po'
 import { packSizeFor } from '@/lib/pack-size'
+import { colourOptionsFor, pickColourOption, type ColourOptions } from '@/lib/material-colours'
 // Type-only, so the `server-only` guard in model-spec.ts never reaches this pure module
 // or the unit tests that exercise it.
 import type { ModelSpec } from '@/lib/model-spec'
@@ -36,6 +37,13 @@ export interface SupplierSpecMaterial {
   perUnit: number
   /** perUnit x the line quantity, which is what has to leave the s.r.o. store. */
   total: number
+  /**
+   * The colour of this fabric on THIS order, for a material that comes in more than one
+   * (PC350FR, P200; Juraj, 22 Sep 2026). Absent for anything else, and absent when nobody has
+   * chosen yet, which the editor shows and the sheet prints as no colour rather than a guess.
+   * Absent, never null: sanitiseDraft drops a blank, so "none" has exactly one spelling.
+   */
+  colour?: string
 }
 
 /**
@@ -185,6 +193,12 @@ export function buildSupplierSpec(
    * document rather than a crash.
    */
   specs: ReadonlyMap<string, ModelSpec> = new Map(),
+  /**
+   * Fabric family to the colours it comes in (material_colour_option). A material in a family
+   * starts with the standing Goretex colour of its model where that names one of the options,
+   * so the usual black or orange order needs no click; anything else starts unchosen.
+   */
+  colourOptions: ColourOptions = new Map(),
 ): SupplierSpec {
   const products: SupplierSpecProduct[] = []
   let pallets = 0
@@ -204,12 +218,19 @@ export function buildSupplierSpec(
       pallets: linePallets,
       materials: line.components
         .filter((c) => !NON_MATERIAL.test(c.code))
-        .map((c) => ({
-          code: c.code,
-          description: c.desc ?? c.code,
-          perUnit: round3(c.qty),
-          total: round3(c.qty * line.quantity),
-        })),
+        .map((c) => {
+          const options = colourOptionsFor(c.code, colourOptions)
+          const colour = options.length > 0 ? pickColourOption(model?.goretexColour, options) : null
+          return {
+            code: c.code,
+            description: c.desc ?? c.code,
+            perUnit: round3(c.qty),
+            total: round3(c.qty * line.quantity),
+            // The key is only present when there is a colour, so a document for a model with
+            // no colour choice is byte for byte what it was before colours existed.
+            ...(colour ? { colour } : {}),
+          }
+        }),
       spec: model,
       sourceDocument: model?.sourceDocument ?? null,
       specRows: model ? specificationRows(model) : [],

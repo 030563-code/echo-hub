@@ -202,19 +202,38 @@ export async function buildSupplierSpecPdf(spec: SupplierSpec): Promise<import('
     y += 3
 
     if (product.materials.length) {
+      // The colour column exists only when a material on this product carries a colour
+      // (Juraj, 22 Sep 2026: PC350FR and P200 come in colours, chosen per order). A document
+      // saved before colours existed, or one whose fabric has none chosen, prints exactly as
+      // it always did, so nothing already signed changes shape.
+      const coloured = product.materials.some((m) => m.colour)
       autoTable(doc, {
         startY: y,
         margin: { left: MARGIN, right: MARGIN },
-        head: [['Code', 'Material', right('Per barrier'), right('Total')]],
-        body: product.materials.map((m) => [m.code, m.description, qty(m.perUnit), qty(m.total)]),
+        head: coloured
+          ? [['Code', 'Material', 'Colour (farba)', right('Per barrier'), right('Total')]]
+          : [['Code', 'Material', right('Per barrier'), right('Total')]],
+        body: product.materials.map((m) =>
+          coloured
+            ? [m.code, m.description, m.colour ?? '', qty(m.perUnit), qty(m.total)]
+            : [m.code, m.description, qty(m.perUnit), qty(m.total)],
+        ),
         styles: { font, fontSize: 9, overflow: 'linebreak', cellWidth: 'wrap' },
         headStyles: { font, fontStyle: 'bold', fillColor: [40, 40, 40] },
-        columnStyles: {
-          0: { cellWidth: 30 },
-          1: { cellWidth: CONTENT_W - 30 - 26 - 26 },
-          2: { cellWidth: 26, halign: 'right' },
-          3: { cellWidth: 26, halign: 'right' },
-        },
+        columnStyles: coloured
+          ? {
+              0: { cellWidth: 30 },
+              1: { cellWidth: CONTENT_W - 30 - 30 - 26 - 26 },
+              2: { cellWidth: 30 },
+              3: { cellWidth: 26, halign: 'right' },
+              4: { cellWidth: 26, halign: 'right' },
+            }
+          : {
+              0: { cellWidth: 30 },
+              1: { cellWidth: CONTENT_W - 30 - 26 - 26 },
+              2: { cellWidth: 26, halign: 'right' },
+              3: { cellWidth: 26, halign: 'right' },
+            },
       })
       y = finalY(doc, y + 20) + 8
     }

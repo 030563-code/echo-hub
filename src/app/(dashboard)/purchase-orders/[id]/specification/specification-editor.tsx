@@ -16,6 +16,7 @@ import {
 } from '@/app/actions/purchase-orders/spec-document'
 import { downloadSupplierPoPdf } from '@/app/actions/purchase-orders/download-supplier-po'
 import { confirmButton, driftSentence, type SpecDraft, type SpecDraftProduct } from '@/lib/po-spec-draft'
+import { colourOptionsFor, toColourOptions } from '@/lib/material-colours'
 
 /**
  * The manufacturing specification as a form.
@@ -59,6 +60,8 @@ export default function SpecificationEditor({
   // The rule lives in po-spec-draft.ts and is unit tested: an unsigned document can ALWAYS be
   // signed, with or without an edit first.
   const signOff = confirmButton({ confirmedAt: state.confirmedAt, dirty, pending })
+  // Which fabrics come in colours, and in which. Juraj, 22 Sep 2026: PC350FR and P200.
+  const colours = toColourOptions(state.colourOptions)
 
   /** Every edit goes through here, so nothing can change the draft without marking it unsaved. */
   const edit = (next: SpecDraft) => {
@@ -247,7 +250,7 @@ export default function SpecificationEditor({
           {/* --------------------------------------------------- materials */}
           <RowGroup
             title="Materials"
-            hint="What goes into one barrier. The total is worked out from the quantity, so it can never disagree with it."
+            hint="What goes into one barrier. The total is worked out from the quantity, so it can never disagree with it. A fabric that comes in colours has its colour chosen here, and the sheet prints it beside the material."
             readOnly={readOnly}
             onAdd={() =>
               editProduct(pi, {
@@ -256,8 +259,12 @@ export default function SpecificationEditor({
             }
           >
             {product.materials.length === 0 && <Empty>No materials on this product.</Empty>}
-            {product.materials.map((m, mi) => (
-              <div key={mi} className="grid gap-2 sm:grid-cols-[8rem_1fr_6rem_2rem]">
+            {product.materials.map((m, mi) => {
+              // The colours this material can be ordered in, by the family its code starts with.
+              // Nothing for a material that is not a coloured fabric, so its row stays as it was.
+              const options = colourOptionsFor(m.code, colours)
+              return (
+              <div key={mi} className="grid gap-2 sm:grid-cols-[8rem_1fr_9rem_6rem_2rem]">
                 <input
                   className={input}
                   value={m.code}
@@ -284,6 +291,34 @@ export default function SpecificationEditor({
                     })
                   }
                 />
+                {options.length > 0 ? (
+                  <select
+                    className={`${input} ${m.colour ? '' : 'border-amber-300 text-amber-800'}`}
+                    value={m.colour ?? ''}
+                    aria-label={`Colour of ${m.code}`}
+                    title="The colour this order wants this fabric in"
+                    disabled={readOnly}
+                    onChange={(e) =>
+                      editProduct(pi, {
+                        materials: product.materials.map((x, i) =>
+                          i === mi ? { ...x, colour: e.target.value || undefined } : x,
+                        ),
+                      })
+                    }
+                  >
+                    <option value="">Colour not chosen</option>
+                    {/* A colour typed before it was an option, or since removed, stays selectable
+                        rather than silently turning into "not chosen" on a signed document. */}
+                    {m.colour && !options.includes(m.colour) && <option value={m.colour}>{m.colour}</option>}
+                    {options.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span aria-hidden className="hidden sm:block" />
+                )}
                 <input
                   className={input}
                   type="number"
@@ -308,7 +343,8 @@ export default function SpecificationEditor({
                   }
                 />
               </div>
-            ))}
+              )
+            })}
           </RowGroup>
 
           {/* ---------------------------------------------- specification */}
