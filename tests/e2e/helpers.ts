@@ -24,6 +24,13 @@ export function claireCreds(): Creds | null {
   return email && password ? { email, password } : null
 }
 
+/** Dave Lindsay, who handles the customs bills (Transport, Customs). DAVE_EMAIL/DAVE_PASSWORD. */
+export function daveCreds(): Creds | null {
+  const email = process.env.DAVE_EMAIL
+  const password = process.env.DAVE_PASSWORD
+  return email && password ? { email, password } : null
+}
+
 /** Any usable login — prefers admin, falls back to the scoped user. */
 export function anyCreds(): Creds | null {
   return adminCreds() ?? limitedCreds()

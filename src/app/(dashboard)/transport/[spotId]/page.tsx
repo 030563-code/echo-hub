@@ -10,6 +10,7 @@ import { listCargoShareLinks } from '@/app/actions/cargo/share-link'
 import CargoTimeline from '@/components/cargo/cargo-timeline'
 import ShareLinkCard from './share-link-card'
 import CargoEventList from './cargo-event-list'
+import { CustomsCard } from './customs-card'
 
 /**
  * One container: where it is, how it got there, and a link to send somebody.
@@ -168,6 +169,18 @@ export default async function CargoShipmentPage({ params }: { params: Promise<{ 
           canShare={links.ok}
         />
       </div>
+
+      {auth.capabilities.has('customs.manage') && (
+        <CustomsCard
+          spotId={shipment.spotId}
+          destinationCountry={shipment.destinationCountry}
+          originCountry={shipment.originCountry}
+          goodsValue={shipment.goodsValue}
+          currencyCode={shipment.currencyCode}
+          eta={shipment.eta}
+          today={today}
+        />
+      )}
 
       <section className="mt-5 rounded-xl border border-gray-200 bg-white p-5">
         <h2 className="mb-1 text-base font-semibold text-gray-900" style={{ fontFamily: 'Varela Round, sans-serif' }}>
