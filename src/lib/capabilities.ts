@@ -38,6 +38,7 @@ export const CAPABILITY_KEYS = [
   'calls.view',
   'factory.view',
   'factory.update',
+  'customs.manage',
   'admin',
 ] as const
 
@@ -73,6 +74,7 @@ export const CAPABILITIES: CapabilityMeta[] = [
   { key: 'calls.view', module: 'calls', description: "See your region's call log with transcripts, and link a call to the right HubSpot contact" },
   { key: 'factory.view', module: 'factory', description: "Open the Factory tabs: the purchase orders sent to the manufacturer, and their own material stock feed" },
   { key: 'factory.update', module: 'factory', description: 'From the Factory tab, confirm a sent order with estimated dates and press Manufacturing finished' },
+  { key: 'customs.manage', module: 'customs', description: 'See the Nippon Express customs bills under Transport and approve them into Xero' },
   { key: 'admin', module: 'admin', description: 'Full administrative access (implies all capabilities)' },
 ]
 

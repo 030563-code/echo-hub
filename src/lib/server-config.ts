@@ -56,6 +56,12 @@ const SPEC: Array<Omit<ConfigEntry, 'present' | 'host'> & { url?: boolean }> = [
   { name: 'CARGO_NOTIFY_TO', group: 'Transport', required: false,
     breaks: 'The collection request has no default recipient and the screen must be filled in.' },
   { name: 'CARGO_NOTIFY_CC', group: 'Transport', required: false, breaks: 'No default copy.' },
+  { name: 'CUSTOMS_INGEST_SECRET', group: 'Transport', required: true,
+    breaks: "n8n cannot hand the Hub a Nippon Express PDF or Claude's reading of one; both are refused with 401." },
+  { name: 'N8N_CUSTOMS_WEBHOOK_URL', group: 'Transport', required: true, url: true,
+    breaks: 'A Nippon Express invoice is stored but never read, and no draft bill reaches Xero.' },
+  { name: 'N8N_CUSTOMS_WEBHOOK_SECRET', group: 'Transport', required: false,
+    breaks: 'n8n answers 401 and the customs step (reading, draft bill, approval) does not run.' },
 
   { name: 'N8N_PO_APPROVED_WEBHOOK_URL', group: 'Invoicing', required: true, url: true,
     breaks: 'Approving a purchase order no longer creates it in Xero.' },
