@@ -9,6 +9,10 @@ import {
   cargoEta,
   cargoComplete,
   daysBetween,
+  legProgress,
+  type CargoEventRow,
+  type CargoRoutingPoint,
+  type TimelineStop,
 } from '@/lib/cargo/payload'
 import { delayDaysFromRemark, eventKind, CARGO_EVENT_TYPES } from '@/lib/cargo/event-types'
 import { placeName, tidyCity, legMode } from '@/lib/cargo/places'
@@ -315,5 +319,160 @@ describe('the event vocabulary', () => {
     }
     const unknown = [...seen].filter((i) => !CARGO_EVENT_TYPES[i])
     expect(unknown, `unclassified event identifiers: ${unknown.join(', ')}`).toEqual([])
+  })
+})
+
+describe('a finished journey is drawn as travelled', () => {
+  it('reaches every stop once the empty container is back, even the ones never dated', () => {
+    const p = parseCargoPayload(fixture(BALTIMORE_OLD), BALTIMORE_OLD)
+    expect(cargoComplete(p.events)).toBe(true)
+    const stops = cargoTimeline(p.route, p.events, TODAY)
+    expect(stops.at(-1)?.state).toBe('current')
+    expect(stops.slice(0, -1).every((s) => s.state === 'done')).toBe(true)
+    expect(stops.at(-1)?.caption).toBe('Delivered')
+  })
+
+  it('never calls a stop the cargo is past "Due"', () => {
+    for (const id of [HAMILTON_WAITING, NORFOLK_BOOKED, NORFOLK_SAILING, HAMILTON_DONE, BALTIMORE_OLD, FROM_BRITAIN]) {
+      const p = parseCargoPayload(fixture(id), id)
+      for (const s of cargoTimeline(p.route, p.events, TODAY)) {
+        if (s.state !== 'upcoming') expect(s.caption, `${id} ${s.label}`).not.toBe('Due')
+      }
+    }
+  })
+})
+
+describe('a stop the cargo is past, on a made-up route shaped like a real one', () => {
+  // Road to a rail hub nobody dates, sea, then rail and road inland: the shape that showed
+  // "Due" under a green tick on 23 Sep 2026. Invented figures, not a real shipment.
+  const point = (seq: number, type: string, city: string, dates: Partial<CargoRoutingPoint> = {}): CargoRoutingPoint => ({
+    seq,
+    type,
+    unlocode: null,
+    countryCode: null,
+    city,
+    legModality: null,
+    estimatedDeparture: null,
+    realDeparture: null,
+    estimatedArrival: null,
+    realArrival: null,
+    ...dates,
+  })
+  const route = [
+    point(1, 'PICKUP', 'Presov', { legModality: 'ROAD', estimatedDeparture: '2026-06-22' }),
+    point(2, 'TRANSIT_HUB', 'Zlin', { legModality: 'RAIL', estimatedArrival: '2026-07-01' }),
+    point(3, 'PORT_OF_LOADING', 'Bremerhaven', { legModality: 'SEA', realDeparture: '2026-07-24' }),
+    point(4, 'PORT_OF_DISCHARGE', 'Norfolk', { legModality: 'RAIL', realArrival: '2026-08-07' }),
+    point(5, 'TRANSIT_HUB', 'Harrisburg', { legModality: 'ROAD', estimatedArrival: '2026-08-08' }),
+    point(6, 'DELIVERY', 'Jessup'),
+  ]
+  const event = (identifier: string, date: string): CargoEventRow => ({
+    identifier,
+    name: identifier,
+    kind: 'actual',
+    date,
+    time: '',
+    locationCode: null,
+    locationName: null,
+    containerNumber: null,
+    remark: null,
+    delayDays: null,
+    delaySeconds: null,
+  })
+
+  it('shows no "Due" under a stop already passed', () => {
+    const stops = cargoTimeline(route, [event('9', '2026-06-23')], '2026-08-07')
+    const zlin = stops.find((s) => s.place === 'Zlin')!
+    expect(zlin.state).toBe('done')
+    expect(zlin.caption).toBeNull()
+    // Still ahead, so still due.
+    expect(stops.find((s) => s.place === 'Harrisburg')?.caption).toBe('Due')
+  })
+
+  it('does not call a rail hub late once its date has gone by, since nobody confirms one', () => {
+    const stops = cargoTimeline(route, [event('9', '2026-06-23')], '2026-08-20')
+    const harrisburg = stops.find((s) => s.place === 'Harrisburg')!
+    expect(harrisburg.state).toBe('upcoming')
+    expect(harrisburg.caption).toBeNull()
+  })
+
+  it('reaches Harrisburg and Jessup once the empty container is back', () => {
+    const stops = cargoTimeline(route, [event('9', '2026-06-23'), event('35', '2026-08-24')], '2026-08-25')
+    expect(stops.map((s) => s.state)).toEqual(['done', 'done', 'done', 'done', 'done', 'current'])
+    expect(stops.find((s) => s.place === 'Harrisburg')?.caption).toBeNull()
+    expect(stops.at(-1)?.caption).toBe('Delivered')
+  })
+})
+
+describe('the ship on the leg under way', () => {
+  const stop = (state: TimelineStop['state'], date: string | null, type = 'TRANSIT_HUB'): TimelineStop => ({
+    label: 'x',
+    type,
+    code: null,
+    place: null,
+    countryCode: null,
+    date,
+    caption: null,
+    actual: state !== 'upcoming',
+    state,
+    legToNext: 'sea',
+  })
+
+  it('sits where the calendar puts it between the stop it left and the one it is due at', () => {
+    // Left Bremerhaven on 9 Sep, due at Norfolk on 27 Sep: on 23 Sep it is 14 of 18 days out.
+    const stops = [stop('done', '2026-08-24'), stop('current', '2026-09-09'), stop('upcoming', '2026-09-27')]
+    const at = legProgress(stops, '2026-09-23')!
+    expect(at.leg).toBe(1)
+    expect(at.fraction).toBeCloseTo(14 / 18, 6)
+    expect(at.overdue).toBe(false)
+  })
+
+  it('waits at the end of the leg, marked late, once the due date has gone by', () => {
+    const at = legProgress([stop('current', '2026-09-01'), stop('upcoming', '2026-09-10')], '2026-09-23')!
+    expect(at.fraction).toBe(1)
+    expect(at.overdue).toBe(true)
+  })
+
+  it('gives an undated stop an even share of the time to the next dated one', () => {
+    // Harrisburg has no date: Norfolk 1 Oct to Jessup 11 Oct is ten days, five of them to Harrisburg.
+    const stops = [stop('current', '2026-10-01'), stop('upcoming', null), stop('upcoming', '2026-10-11')]
+    expect(legProgress(stops, '2026-10-03')!.fraction).toBeCloseTo(2 / 5, 6)
+  })
+
+  it('passes a rail hub the forwarder never confirms, on its date alone', () => {
+    // Picked up 11 Sep, the Zlin hub due 21 Sep, Bremerhaven 26 Sep: on 23 Sep it is 2 of 5 days past Zlin.
+    const stops = [
+      stop('current', '2026-09-11', 'PICKUP'),
+      stop('upcoming', '2026-09-21', 'TRANSIT_HUB'),
+      stop('upcoming', '2026-09-26', 'PORT_OF_LOADING'),
+    ]
+    const at = legProgress(stops, '2026-09-23')!
+    expect(at.leg).toBe(1)
+    expect(at.fraction).toBeCloseTo(2 / 5, 6)
+    expect(at.overdue).toBe(false)
+  })
+
+  it('waits, late, at a port whose date has gone by, never past it', () => {
+    const stops = [
+      stop('current', '2026-09-11', 'PICKUP'),
+      stop('upcoming', '2026-09-15', 'TRANSIT_HUB'),
+      stop('upcoming', '2026-09-20', 'PORT_OF_LOADING'),
+      stop('upcoming', '2026-10-10', 'PORT_OF_DISCHARGE'),
+    ]
+    expect(legProgress(stops, '2026-09-23')).toEqual({ leg: 1, fraction: 1, overdue: true })
+  })
+
+  it('draws no ship before anything has moved, or after the journey is over', () => {
+    expect(legProgress([stop('upcoming', '2026-09-30'), stop('upcoming', '2026-10-20')], '2026-09-23')).toBeNull()
+    expect(legProgress([stop('done', '2026-09-01'), stop('current', '2026-09-20')], '2026-09-23')).toBeNull()
+  })
+
+  it('places the ship on the real sailing on the day the fixtures were pulled', () => {
+    const p = parseCargoPayload(fixture(NORFOLK_SAILING), NORFOLK_SAILING)
+    const stops = cargoTimeline(p.route, p.events, TODAY)
+    const at = legProgress(stops, TODAY)!
+    expect(stops[at.leg].type).toBe('PORT_OF_LOADING')
+    expect(at.fraction).toBeGreaterThan(0)
+    expect(at.fraction).toBeLessThan(1)
   })
 })

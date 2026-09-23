@@ -136,7 +136,7 @@ export default function CargoBoard({ rows, today }: { rows: CargoBoardRow[]; tod
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Container, vessel, order number, depot"
+            placeholder="SPOT ID, container, vessel, order number, depot"
             className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm placeholder:text-gray-400 focus:border-[#025945] focus:outline-none"
           />
         </div>
@@ -175,7 +175,11 @@ export default function CargoBoard({ rows, today }: { rows: CargoBoardRow[]; tod
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-gray-900">
-                        {r.containerNumbers.length ? r.containerNumbers.join(', ') : `SPOT ${r.spotId}`}
+                        {/* Dean, 23 Sep 2026: the SPOT id first, the container next to it. */}
+                        <span className="tabular-nums">SPOT {r.spotId}</span>
+                        {r.containerNumbers.length > 0 && (
+                          <span className="font-normal tabular-nums text-gray-600">{r.containerNumbers.join(', ')}</span>
+                        )}
                         {r.isComplete ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
                             <PackageCheck className="h-3 w-3" /> Arrived

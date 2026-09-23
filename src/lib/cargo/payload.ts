@@ -532,13 +532,84 @@ export function cargoTimeline(route: CargoRoutingPoint[], events: CargoEventRow[
     }
   })
 
-  // The last stop that has actually happened is where the cargo is.
+  // The last stop that has actually happened is where the cargo is, and a finished journey is at
+  // its end. Cargo Partner often records no arrival at a rail hub or at the delivery address, but a
+  // container that has gone back empty has been unloaded, so its route is drawn as travelled.
   let lastDone = -1
   for (let i = 0; i < stops.length; i++) if (stops[i].actual) lastDone = i
+  if (cargoComplete(events)) lastDone = stops.length - 1
   for (let i = 0; i < stops.length; i++) {
-    stops[i].state = i < lastDone ? 'done' : i === lastDone ? 'current' : 'upcoming'
+    const stop = stops[i]
+    stop.state = i < lastDone ? 'done' : i === lastDone ? 'current' : 'upcoming'
+    // A stop the cargo is already past is not "Due": it just has no recorded date of its own.
+    if (stop.state !== 'upcoming' && !stop.actual) stop.caption = stop.type === 'DELIVERY' ? 'Delivered' : null
+    // Nor is a rail or road hub whose date has gone by: Cargo Partner never confirms those, so a
+    // passed date is not a delay. A port or the delivery keeps its "Due", because there it is.
+    if (stop.state === 'upcoming' && stop.type === 'TRANSIT_HUB' && stop.date && stop.date.slice(0, 10) < today) stop.caption = null
   }
   return stops
+}
+
+/** Where the cargo is on the leg it is travelling, by the calendar. */
+export interface LegProgress {
+  /** The leg: from stops[leg] to stops[leg + 1]. */
+  leg: number
+  /** 0 when it has just left, 1 when the next stop is due. */
+  fraction: number
+  /** The next stop's date has passed and it has not arrived. */
+  overdue: boolean
+}
+
+const dayOf = (iso: string | null) => (iso ? Date.parse(`${iso.slice(0, 10)}T00:00:00Z`) : Number.NaN)
+
+/**
+ * Where the cargo is along its route by the calendar: the days since the last stop it reached,
+ * against the dates the stops after it are due.
+ *
+ * Dean, 23 Sep 2026: "a little ship/little truck that shows progress along the shipment timeline
+ * that is really just using the estimated date as a progress bar compared to todays date".
+ *
+ * Cargo Partner confirms ports and the delivery, but never records an arrival at a rail or road
+ * hub in between: a finished journey through Zlin has no Zlin date. So the marker passes a transit
+ * hub on its date alone, and waits, amber, only at a port or the delivery whose date has gone by. A
+ * stop with no date takes an even share of the time between the dated stops either side of it.
+ * Null when nothing has moved yet or the journey is over.
+ */
+export function legProgress(stops: TimelineStop[], today: string): LegProgress | null {
+  const at = stops.findIndex((s) => s.state === 'current')
+  if (at < 0 || at >= stops.length - 1) return null
+
+  // The furthest the marker may go: the next stop Cargo Partner confirms.
+  let target = stops.findIndex((s, i) => i > at && s.type !== 'TRANSIT_HUB')
+  if (target < 0) target = stops.length - 1
+
+  const now = dayOf(today)
+  const due = stops.map((s, i) => (i < at ? Number.NaN : dayOf(s.date)))
+  // Fill an undated stop from the dated stops either side of it.
+  for (let i = at + 1; i <= target; i++) {
+    if (Number.isFinite(due[i])) continue
+    const before = i - 1
+    let after = i + 1
+    while (after < due.length && !Number.isFinite(due[after])) after++
+    if (after < due.length && Number.isFinite(due[before])) {
+      due[i] = due[before] + (due[after] - due[before]) / (after - before)
+    }
+  }
+  if (!Number.isFinite(now) || !Number.isFinite(due[at])) return { leg: at, fraction: 0, overdue: false }
+
+  if (Number.isFinite(due[target]) && now >= due[target]) {
+    return { leg: target - 1, fraction: 1, overdue: now > due[target] }
+  }
+  for (let i = at; i < target; i++) {
+    const from = due[i]
+    const to = due[i + 1]
+    // Beyond the last known date the marker waits at the start of the leg it cannot place.
+    if (!Number.isFinite(to)) return { leg: i, fraction: 0, overdue: false }
+    if (now < to) {
+      return { leg: i, fraction: to > from ? Math.min(1, Math.max(0, (now - from) / (to - from))) : 1, overdue: false }
+    }
+  }
+  return { leg: target - 1, fraction: 1, overdue: false }
 }
 
 /**
