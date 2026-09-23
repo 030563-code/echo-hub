@@ -1,7 +1,7 @@
-import { NextResponse } from 'next/server'
 import { getAuthorizedUser } from '@/lib/authz'
 import { isOrgCode } from '@/lib/organisations'
 import { ACTIVE_ORG_COOKIE, ACTIVE_ORG_COOKIE_MAX_AGE, safeNextPath } from '@/lib/active-organisation'
+import { redirectToPath } from '@/lib/same-site-redirect'
 
 /**
  * Switch the active organisation: GET /org/EB-CANADA?next=/invoicing
@@ -25,8 +25,10 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request, context: { params: Promise<{ code: string }> }) {
   const { code } = await context.params
+  // Read for its query only. 🔴 Its HOST is not to be trusted on Netlify (see same-site-redirect.ts),
+  // so every redirect below is a relative path, never new URL(path, request.url).
   const url = new URL(request.url)
-  const home = NextResponse.redirect(new URL('/', request.url))
+  const home = redirectToPath('/')
 
   let wanted = ''
   try {
@@ -37,12 +39,12 @@ export async function GET(request: Request, context: { params: Promise<{ code: s
   if (!isOrgCode(wanted)) return home
 
   const auth = await getAuthorizedUser()
-  if (!auth.ok) return NextResponse.redirect(new URL('/login', request.url))
+  if (!auth.ok) return redirectToPath('/login')
   // Same answer as a code that does not exist: whether an organisation exists
   // is not this person's business either.
   if (!auth.profile.organisations.includes(wanted)) return home
 
-  const response = NextResponse.redirect(new URL(safeNextPath(url.searchParams.get('next')), request.url))
+  const response = redirectToPath(safeNextPath(url.searchParams.get('next')))
   response.cookies.set(ACTIVE_ORG_COOKIE, wanted, {
     httpOnly: true,
     sameSite: 'lax',

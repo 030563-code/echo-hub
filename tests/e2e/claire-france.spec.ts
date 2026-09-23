@@ -150,7 +150,10 @@ test.describe("Claire's Hub: France only, invoicing live, nothing else", () => {
     // And the route that sets it refuses an organisation she does not hold,
     // answering exactly as it would for one that does not exist.
     await page.goto('/org/EB-USA?next=%2Fquotes')
-    await expect(page).toHaveURL(DASHBOARD)
+    // The dashboard by its path. Netlify re-appends the request's query to a redirect, so the live
+    // site lands on /?next=%2Fquotes where localhost lands on /, and both are the dashboard.
+    await expect.poll(() => new URL(page.url()).pathname).toBe('/')
+    expect(new URL(page.url()).host).toBe(new URL(baseURL!).host)
     await expect(page.getByTestId('active-organisation')).toHaveText(/France/)
   })
 })

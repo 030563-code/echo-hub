@@ -171,21 +171,23 @@ describe('/auth/callback', () => {
   it('signs the agent straight back out instead of landing on the dashboard', async () => {
     callbackGetUser.mockResolvedValue({ data: { user: { id: JACK_ID } } })
     const res = await callback()
-    expect(res.headers.get('location')).toBe('https://hub.echobarrier.com/login?error=agent_account')
+    // Relative since 23 Sep 2026: on Netlify request.url can carry the deploy's own host, and an
+    // absolute redirect built from it lands the person where their session does not exist.
+    expect(res.headers.get('location')).toBe('/login?error=agent_account')
     expect(callbackSignOut).toHaveBeenCalledTimes(1)
     expect(profileSingle).not.toHaveBeenCalled()
   })
 
   it('still lets a real user in', async () => {
     const res = await callback()
-    expect(res.headers.get('location')).toBe('https://hub.echobarrier.com/')
+    expect(res.headers.get('location')).toBe('/')
     expect(callbackSignOut).not.toHaveBeenCalled()
   })
 
   it('still sends a user with no profile name to onboarding', async () => {
     profileSingle.mockResolvedValue({ data: { pipeline_id: null, display_name: null } })
     const res = await callback()
-    expect(res.headers.get('location')).toBe('https://hub.echobarrier.com/onboarding')
+    expect(res.headers.get('location')).toBe('/onboarding')
   })
 })
 

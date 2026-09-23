@@ -123,7 +123,10 @@ test.describe('Organisations (single-organisation user)', () => {
     // Australia is Jack's, the AI agent's: no human persona holds it. The
     // switch is refused with a redirect home and the badge is unchanged.
     await page.goto('/org/EB-AUSTRALIA?next=/invoicing')
-    await expect(page).toHaveURL(/\/$/)
+    // By path, and on the same host: Netlify re-appends the query to a redirect, and the bug this
+    // guards against (23 Sep 2026) was a redirect to the deploy's own host.
+    await expect.poll(() => new URL(page.url()).pathname).toBe('/')
+    expect(new URL(page.url()).host).toBe(new URL(test.info().project.use.baseURL ?? page.url()).host)
     await expect(page.getByTestId('active-organisation')).toHaveText(before)
   })
 })

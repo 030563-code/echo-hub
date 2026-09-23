@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
+import { redirectToPath } from '@/lib/same-site-redirect'
 
 /**
  * Sign out: POST /sign-out
@@ -56,6 +57,7 @@ export async function POST(request: Request) {
   await supabase.auth.signOut()
 
   // 303: the browser follows it with a GET, so the login page is not a resubmit
-  // of this POST and Back does not offer to send it again.
-  return NextResponse.redirect(new URL('/login', request.url), { status: 303 })
+  // of this POST and Back does not offer to send it again. Relative, because
+  // request.url can carry the Netlify deploy's own host (same-site-redirect.ts).
+  return redirectToPath('/login', 303)
 }

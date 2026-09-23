@@ -50,13 +50,15 @@ describe('sign out does not depend on which build rendered the page', () => {
   })
 
   it('redirects with 303, so the login page is not a resubmit of the POST', () => {
-    expect(code(ROUTE)).toMatch(/NextResponse\.redirect\(new URL\('\/login', request\.url\), \{ status: 303 \}\)/)
+    // Relative, never built from request.url: on Netlify that can be the deploy's own host.
+    expect(code(ROUTE)).toContain("redirectToPath('/login', 303)")
+    expect(code(ROUTE)).not.toContain('request.url')
   })
 
   it('actually signs the session out before redirecting', () => {
     const src = code(ROUTE)
     const out = src.indexOf('supabase.auth.signOut()')
-    const redirect = src.indexOf('NextResponse.redirect')
+    const redirect = src.indexOf('redirectToPath(')
     expect(out).toBeGreaterThan(-1)
     expect(redirect).toBeGreaterThan(out)
   })

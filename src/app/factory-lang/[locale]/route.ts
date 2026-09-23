@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server'
 import { safeNextPath } from '@/lib/active-organisation'
+import { redirectToPath } from '@/lib/same-site-redirect'
 import {
   FACTORY_LOCALE_COOKIE,
   FACTORY_LOCALE_COOKIE_MAX_AGE,
@@ -24,7 +24,8 @@ export async function GET(request: Request, context: { params: Promise<{ locale:
   const { locale } = await context.params
   const url = new URL(request.url)
   const next = safeNextPath(url.searchParams.get('next'))
-  const response = NextResponse.redirect(new URL(next, request.url))
+  // Relative: request.url can carry the Netlify deploy's own host (same-site-redirect.ts).
+  const response = redirectToPath(next)
 
   let wanted = ''
   try {

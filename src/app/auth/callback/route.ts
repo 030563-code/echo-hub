@@ -1,23 +1,26 @@
-import { NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { isAgentUserId } from '@/lib/agent-account'
+import { redirectToPath } from '@/lib/same-site-redirect'
 
 // OAuth / magic-link / invite callback. Exchanges the code for a session, then
 // routes: an invited user (carries hubspot_owner_id / team metadata, no profile
 // yet) → /onboarding; everyone else → the dashboard. Never reads a client-
 // supplied `next` param, so this can't be turned into an open redirect.
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
+  // Only the query is read from request.url. Its origin can be the Netlify deploy's own host, and
+  // a redirect built from it would land a freshly signed-in person on a host where their new
+  // session cookie does not exist (same-site-redirect.ts). Every redirect here is a relative path.
+  const { searchParams } = new URL(request.url)
   const code = searchParams.get('code')
 
   if (!code) {
-    return NextResponse.redirect(`${origin}/login?error=missing_code`)
+    return redirectToPath('/login?error=missing_code')
   }
 
   const supabase = await createServerClient()
   const { error } = await supabase.auth.exchangeCodeForSession(code)
   if (error) {
-    return NextResponse.redirect(`${origin}/login?error=auth_callback_failed`)
+    return redirectToPath('/login?error=auth_callback_failed')
   }
 
   const {
@@ -29,7 +32,7 @@ export async function GET(request: Request) {
   // exchange is undone here rather than only refused later by the middleware.
   if (isAgentUserId(user?.id)) {
     await supabase.auth.signOut()
-    return NextResponse.redirect(`${origin}/login?error=agent_account`)
+    return redirectToPath('/login?error=agent_account')
   }
 
   // If the user has no profile row yet (or no region set), send them to onboarding.
@@ -42,9 +45,9 @@ export async function GET(request: Request) {
 
     const needsOnboarding = !profile || !profile.display_name
     if (needsOnboarding) {
-      return NextResponse.redirect(`${origin}/onboarding`)
+      return redirectToPath('/onboarding')
     }
   }
 
-  return NextResponse.redirect(`${origin}/`)
+  return redirectToPath('/')
 }
