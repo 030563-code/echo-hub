@@ -5,6 +5,7 @@ import {
   isChapter99,
   originGroup,
   productClassOfHts,
+  transitExemptionOf,
   type DutyRule,
 } from '@/lib/customs/duty'
 import { customsChargeOf, serviceChargesOf, type CustomsPackage, type EntryLine } from '@/lib/customs/nippon-invoice'
@@ -65,6 +66,13 @@ const pct = (rate: number) => `${roundCents(rate * 100).toFixed(2).replace(/\.?0
 
 function lineOrigin(line: EntryLine, entryOrigin: string | null): string | null {
   return line.origin ?? entryOrigin
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+/** "2026-07-28" as "28 Jul 2026". */
+function dayMonth(iso: string): string {
+  const [y, m, d] = iso.slice(0, 10).split('-')
+  return `${Number(d)} ${MONTHS[Number(m) - 1] ?? m} ${y}`
 }
 
 export function checkPackage(pkg: CustomsPackage, rules: readonly DutyRule[] = DUTY_RULES): PackageCheck {
@@ -147,13 +155,20 @@ export function checkPackage(pkg: CustomsPackage, rules: readonly DutyRule[] = D
     const goods = line.hts.find((row) => !isChapter99(row.code))
     const productClass = goods ? productClassOfHts(goods.code) : null
     const origin = originGroup(lineOrigin(line, entry.country_of_origin))
-    const expected = productClass && origin ? dutyRuleFor(productClass, origin, entry.entry_date, rules) : null
+    // An in-transit exemption claimed inside its window pays the rate from before the new duty,
+    // which this check cannot rebuild, so it trusts the broker. Claimed outside it, it says so.
+    const exemption = transitExemptionOf(line.hts.map((row) => row.code))
+    const exempt = exemption != null && entry.entry_date < exemption.enteredBefore
+    const expected = productClass && origin && !exempt ? dutyRuleFor(productClass, origin, entry.entry_date, rules) : null
     const effectiveRate = ev > 0 ? dutyStated / ev : 0
     if (expected && Math.abs(effectiveRate - expected.rate) > 0.0005) {
+      const claimed = exemption
+        ? ` Nippon filed ${exemption.heading}, the exemption for goods loaded before ${dayMonth(exemption.loadedBefore)} and entered before 12:01 a.m. Eastern on ${dayMonth(exemption.enteredBefore)}, but this entry is dated ${dayMonth(entry.entry_date)}; at ${pct(expected.rate)} the duty would be ${usd(roundCents(ev * expected.rate))}.`
+        : ''
       checks.push({
         level: 'warn',
         code: 'unexpected_rate',
-        message: `Line ${line.line_no} was charged ${pct(effectiveRate)} where ${pct(expected.rate)} is expected (${expected.basis}). Check with Nippon, or the rule is out of date.`,
+        message: `Line ${line.line_no} was charged ${pct(effectiveRate)} where ${pct(expected.rate)} is expected (${expected.basis}).${claimed} Check with Nippon, or the rule is out of date.`,
       })
     }
 

@@ -218,6 +218,35 @@ describe('a changed figure is caught', () => {
     expect(result.worst).toBe('warn')
   })
 
+  describe('goods already at sea on 24 July 2026 (9903.05.85)', () => {
+    // As if line 001 had been loaded before the new duty: the exemption heading at FREE and the
+    // 5.3 per cent base rate only. CSMS 69326983 allows it for entries before 12:01 a.m. on 28 Jul.
+    const inTransit = (entryDate: string) => {
+      const raw = clone(PACKAGE_D1518)
+      raw.entry.entry_date = entryDate
+      raw.entry.lines[0].hts = [
+        { code: '9903.05.85', description: 'IN TRANSIT', rate: 0, rate_text: 'FREE', amount: 0 },
+        { code: '3925.90.0000', description: 'PLAST, BUILDERS WARE, OTHER', rate: 0.053, rate_text: '5.30%', amount: 2957.56 },
+      ]
+      raw.entry.duty_total = 3109.16
+      raw.entry.total = 3379.36
+      raw.invoice.charges[3].amount = 3379.36
+      raw.invoice.total = 3779.36
+      return checkPackage(parse(raw))
+    }
+
+    it('accepts the base rate when the entry is inside the window', () => {
+      expect(inTransit('2026-07-27').checks).toEqual([])
+    })
+
+    it('says the exemption was claimed too late when the entry is dated 28 July', () => {
+      const result = inTransit('2026-07-28')
+      expect(result.checks.map((c) => c.code)).toEqual(['unexpected_rate'])
+      expect(result.checks[0].message).toMatch(/Nippon filed 9903\.05\.85/)
+      expect(result.checks[0].message).toMatch(/this entry is dated 28 Jul 2026; at 10% the duty would be \$5,580\.30/)
+    })
+  })
+
   it('an entered value that was not built the way the continuation sheet says', () => {
     const raw = clone(PACKAGE_D8400)
     raw.entry.value_builds[0].deductions = []
