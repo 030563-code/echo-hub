@@ -43,6 +43,22 @@ test.describe('Quotes: the EH mark and Create Deal (privileged user)', () => {
     await card.screenshot({ path: test.info().outputPath('card-with-mark.png') })
   })
 
+  test("an admin's banner counts every rep in the organisation, with whose each deal is", async ({ page }) => {
+    // Dean, 23 Sep 2026, signed in as Dave on USA and shown Dave's own 2: "there should be alot
+    // more from the past". There were 200, 186 of them Jillian's.
+    await page.goto('/org/EB-USA?next=%2Fquotes%2Fboard')
+    await expect.poll(() => new URL(page.url()).pathname).toBe('/quotes/board')
+    await page.waitForLoadState('networkidle')
+    const banner = page.getByTestId('past-close-banner')
+    test.skip((await banner.count()) === 0, 'No open USA deal is past its close date today')
+    await expect(banner).toContainText(/\d+ open USA deals? (is|are) past (its|their) close date\./)
+    await expect(banner).not.toContainText('of your open deals')
+    await banner.getByText(/^Show the/).click()
+    // Every row names its owner, and the USA book is mostly Jillian's.
+    await expect(banner.getByRole('listitem').filter({ hasText: 'Jillian Rocco' }).first()).toBeVisible()
+    test.info().annotations.push({ type: 'USA past close', description: await banner.locator('p').first().innerText() })
+  })
+
   test('Create Deal sits on the Board and on Deals, and opens the form', async ({ page }) => {
     for (const path of ['/quotes/board', '/quotes/deals']) {
       await page.goto(path)

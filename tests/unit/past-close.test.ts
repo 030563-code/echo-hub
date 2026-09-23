@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { byCsoOrder, closeDay, daysPastClose, isPastClose, pastCloseFilters, startOfUtcDay } from '@/lib/past-close'
+import {
+  byCsoOrder,
+  closeDay,
+  daysPastClose,
+  isPastClose,
+  pastCloseFilters,
+  pastCloseOrgFilters,
+  startOfUtcDay,
+} from '@/lib/past-close'
 
 /**
  * The Quotes banner's rule, which must be the CSO's rule (cso-brain/scripts/crm-hygiene-check.mjs
@@ -66,6 +74,15 @@ describe('past close date', () => {
       { id: 'big-old', amount: 9000, closeDay: '2025-02-01' },
     ]
     expect([...rows].sort(byCsoOrder).map((r) => r.id)).toEqual(['big-old', 'big-new', 'small-old', 'none'])
+  })
+
+  it("searches an admin's whole organisation by its pipeline, whoever owns the deal", () => {
+    expect(pastCloseOrgFilters('dfc85d9e-7eb9-4ade-a9cf-4e726cbcc9cc', NOW)).toEqual([
+      { propertyName: 'pipeline', operator: 'EQ', value: 'dfc85d9e-7eb9-4ade-a9cf-4e726cbcc9cc' },
+      { propertyName: 'hs_is_closed', operator: 'EQ', value: 'false' },
+      { propertyName: 'closedate', operator: 'LT', value: String(Date.parse('2026-09-23T00:00:00Z')) },
+    ])
+    expect(pastCloseOrgFilters('x', NOW).some((f) => f.propertyName === 'hubspot_owner_id')).toBe(false)
   })
 
   it('searches one owner, open deals only by hs_is_closed, and nothing else', () => {

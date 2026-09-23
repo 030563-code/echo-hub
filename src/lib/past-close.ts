@@ -14,9 +14,12 @@ import type { HubSpotSearchFilter } from '@/lib/deal-filters'
  * today's UTC date. As a HubSpot search that is a closedate strictly before today's UTC midnight,
  * so a close date of today is not past and one of yesterday at 23:59 is.
  *
- * One difference, on purpose. The CSO reads the whole portal and routes each deal to a region; the
- * banner reads the deals the person signed in owns, in every pipeline, because those are the ones
- * they can fix.
+ * Who is counted follows who is looking. A salesperson sees the deals they own, in every pipeline,
+ * because those are the ones they can fix. An admin, who sees every rep on the board, sees every
+ * open deal in the active organisation's pipeline, whoever owns it: Dean, 23 Sep 2026, looking at
+ * USA as an admin and seeing Dave's own 2, "there should be alot more from the past" (there were
+ * 200). The CSO reads the whole portal and routes each deal to a region, so an admin's count for
+ * an organisation is that region's share of the CSO's.
  */
 
 export const DAY_MS = 86_400_000
@@ -62,6 +65,15 @@ export function byCsoOrder(
 export function pastCloseFilters(ownerId: string, nowMs: number): HubSpotSearchFilter[] {
   return [
     { propertyName: 'hubspot_owner_id', operator: 'EQ', value: ownerId },
+    { propertyName: 'hs_is_closed', operator: 'EQ', value: 'false' },
+    { propertyName: 'closedate', operator: 'LT', value: String(startOfUtcDay(nowMs)) },
+  ]
+}
+
+/** The search for every open deal in one pipeline past its close date, whoever owns it. */
+export function pastCloseOrgFilters(pipelineId: string, nowMs: number): HubSpotSearchFilter[] {
+  return [
+    { propertyName: 'pipeline', operator: 'EQ', value: pipelineId },
     { propertyName: 'hs_is_closed', operator: 'EQ', value: 'false' },
     { propertyName: 'closedate', operator: 'LT', value: String(startOfUtcDay(nowMs)) },
   ]

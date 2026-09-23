@@ -1,16 +1,28 @@
 import Link from 'next/link'
 import { AlertTriangle, ExternalLink } from 'lucide-react'
-import { myPastCloseDeals } from '@/lib/past-close.server'
+import { pastCloseDealsForViewer, type PastCloseSummary } from '@/lib/past-close.server'
 import { hubspotRecordUrl } from '@/lib/hubspot-links'
 import { formatDate, formatMoney } from '@/lib/utils'
 
+/** "7 of your open deals are past their close date." or "200 open USA deals are past ...". */
+function headline({ scope, organisation, total }: PastCloseSummary): string {
+  const one = total === 1
+  if (scope === 'organisation') {
+    return one
+      ? `1 open ${organisation} deal is past its close date.`
+      : `${total} open ${organisation} deals are past their close date.`
+  }
+  return one ? '1 of your open deals is past its close date.' : `${total} of your open deals are past their close date.`
+}
+
 /**
- * The red reminder above the Quotes tabs: your open deals whose close date has passed.
+ * The red reminder above the Quotes tabs: open deals whose close date has passed.
  *
  * Dean, 23 Sep 2026: "a red warning on the top of the deals board across all tabs teling them they
  * have deals open and past ecpiry date that need fixing", by the rule the CSO applies (see
  * src/lib/past-close.ts). The same deals reach the person from the CSO, so the Hub and the CSO
- * never disagree about which ones need a decision.
+ * never disagree about which ones need a decision. A salesperson sees their own; an admin sees
+ * every rep's in the organisation they are looking at, with whose each one is.
  *
  * Each deal opens in the Hub, where it can be closed won or lost, and in HubSpot, where the close
  * date is edited: the Hub has no close date field. The list is folded away so it does not push the
@@ -20,7 +32,7 @@ import { formatDate, formatMoney } from '@/lib/utils'
  * Renders nothing when there is nothing to fix, and nothing when HubSpot could not be read.
  */
 export async function PastCloseBanner() {
-  const summary = await myPastCloseDeals()
+  const summary = await pastCloseDealsForViewer()
   if (!summary || summary.total === 0) return null
 
   const { total, deals } = summary
@@ -35,11 +47,7 @@ export async function PastCloseBanner() {
       <div className="flex items-start gap-3">
         <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" aria-hidden="true" />
         <div className="min-w-0 flex-1">
-          <p className="font-semibold">
-            {one
-              ? '1 of your open deals is past its close date.'
-              : `${total} of your open deals are past their close date.`}
-          </p>
+          <p className="font-semibold">{headline(summary)}</p>
           <p className="mt-0.5">
             {one
               ? 'Give it a new close date, or close it as won or lost.'
@@ -65,6 +73,7 @@ export async function PastCloseBanner() {
                       {deal.name}
                     </Link>
                     <span className="flex flex-wrap items-baseline gap-x-3 text-xs text-gray-600 tabular-nums">
+                      {deal.owner && <span className="font-medium text-gray-800">{deal.owner}</span>}
                       <span>
                         Close date {formatDate(deal.closeDay)}, {deal.daysPast} {deal.daysPast === 1 ? 'day' : 'days'} ago
                       </span>
