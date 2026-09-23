@@ -535,7 +535,9 @@ function RowGroup({
           <p className="text-xs text-gray-500">{hint}</p>
         </div>
         {!readOnly && (
-          <button onClick={onAdd} className={ghost} type="button">
+          // Never squeezed by a long hint beside it: the Materials hint grew a sentence about
+          // colours on 23 Sep 2026 and folded the button onto two lines.
+          <button onClick={onAdd} className={`${ghost} shrink-0 whitespace-nowrap`} type="button">
             <Plus className="h-3.5 w-3.5" />
             Add line
           </button>
