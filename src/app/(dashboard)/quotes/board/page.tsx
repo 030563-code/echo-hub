@@ -5,6 +5,8 @@ import { requireCapability } from '@/lib/authz'
 import { TableSkeleton } from '@/components/ui/table-skeleton'
 import { getDealsForBoard, type BoardScope } from '@/app/actions/hubspot/getDealsForBoard'
 import { DealsBoard } from '@/components/quotes/deals-board'
+import { HubQuotedBadge } from '@/components/quotes/hub-quoted-badge'
+import { CreateDealButton } from '@/components/quotes/create-deal-button'
 import { Card } from '@/components/ui/card'
 import { FilterNotice } from '@/components/quotes/filter-notice'
 import { DealFilterBar } from '@/components/quotes/deal-filter-bar'
@@ -76,28 +78,34 @@ export default async function DealsBoardPage({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* Title left, Create Deal right: the same place the Deals tab puts it. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Board</h1>
           <p className="text-sm text-gray-600">
             Deals by their real HubSpot stage. Drag a card, or use Move on it, to change stage.
           </p>
+          <p className="mt-1 flex items-center gap-1.5 text-xs text-gray-500">
+            <HubQuotedBadge decorative />
+            marks a deal quoted in the Hub.
+          </p>
         </div>
+        {auth.capabilities.has('quotes.create') && <CreateDealButton />}
+      </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {isAdmin && (
-            <div className="flex items-center gap-1">
-              <Link href={link({ scope: 'mine' })} className={chip(scope === 'mine')}>My deals</Link>
-              <Link href={link({ scope: 'all' })} className={chip(scope === 'all')}>All reps</Link>
-            </div>
-          )}
+      <div className="flex flex-wrap items-center gap-2">
+        {isAdmin && (
           <div className="flex items-center gap-1">
-            {[30, 60, 120, 365].map((days) => (
-              <Link key={days} href={link({ window: String(days) })} className={chip(windowDays === days)}>
-                {days === 365 ? '1 year' : `${days}d`}
-              </Link>
-            ))}
+            <Link href={link({ scope: 'mine' })} className={chip(scope === 'mine')}>My deals</Link>
+            <Link href={link({ scope: 'all' })} className={chip(scope === 'all')}>All reps</Link>
           </div>
+        )}
+        <div className="flex items-center gap-1">
+          {[30, 60, 120, 365].map((days) => (
+            <Link key={days} href={link({ window: String(days) })} className={chip(windowDays === days)}>
+              {days === 365 ? '1 year' : `${days}d`}
+            </Link>
+          ))}
         </div>
       </div>
 
@@ -160,7 +168,18 @@ async function BoardSection({
         </div>
       )}
 
-      <DealsBoard groups={result.groups} owners={result.owners} showOwner={shown === 'all'} />
+      {!result.hubQuotedIds && (
+        <p className="text-xs text-amber-800">
+          The Hub could not check which of these deals it quoted, so no EH marks are shown. Reload to try again.
+        </p>
+      )}
+
+      <DealsBoard
+        groups={result.groups}
+        owners={result.owners}
+        showOwner={shown === 'all'}
+        hubQuotedIds={result.hubQuotedIds}
+      />
 
       {result.truncated && (
         <p className="text-xs text-gray-500">

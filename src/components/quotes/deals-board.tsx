@@ -11,6 +11,7 @@ import { ownerLabel, teamLabel, type OwnerIndex } from '@/lib/hubspot-owners'
 import { isClosedStage } from '@/lib/deals-board'
 import type { BoardColumn } from '@/lib/deals-board'
 import type { HubSpotDeal } from '@/lib/hubspot-types'
+import { HubQuotedBadge } from '@/components/quotes/hub-quoted-badge'
 
 /**
  * The deals board, one column per real HubSpot stage.
@@ -34,14 +35,18 @@ export function DealsBoard({
   groups,
   owners,
   showOwner,
+  hubQuotedIds,
 }: {
   groups: { column: BoardColumn; deals: HubSpotDeal[] }[]
   owners?: OwnerIndex
   showOwner: boolean
+  /** Deals whose quote was made in the Hub. They carry the EH mark, bottom right. */
+  hubQuotedIds?: readonly string[]
 }) {
   const router = useRouter()
   const [dragging, setDragging] = useState<string | null>(null)
   const [over, setOver] = useState<string | null>(null)
+  const hubQuoted = new Set(hubQuotedIds)
 
   function move(dealId: string, stageId: string) {
     if (!stageId) return
@@ -128,29 +133,35 @@ export function DealsBoard({
                       )}
                     </Link>
 
-                    {/* Drag does not exist on touch, so the same journey has a
-                        button. Both land on the deal with the stage chosen. */}
-                    <details className="mt-2">
-                      <summary className="flex cursor-pointer list-none items-center gap-1 text-xs text-gray-500 hover:text-gray-800">
-                        <MoveRight className="h-3.5 w-3.5" />
-                        Move
-                      </summary>
-                      <ul className="mt-1 max-h-40 overflow-y-auto rounded border border-gray-200 bg-white">
-                        {groups
-                          .filter((g) => g.column.stageId && g.column.stageId !== deal.properties.dealstage)
-                          .map((g) => (
-                            <li key={g.column.stageId}>
-                              <button
-                                type="button"
-                                onClick={() => move(deal.id, g.column.stageId)}
-                                className="block w-full px-2 py-1.5 text-left text-xs text-gray-700 hover:bg-gray-50"
-                              >
-                                {g.column.label}
-                              </button>
-                            </li>
-                          ))}
-                      </ul>
-                    </details>
+                    {/* The card's last row: Move on the left, the EH mark on the
+                        right. Top-aligned, so opening Move grows the row downwards
+                        and the mark stays level with the word Move. */}
+                    <div className="mt-2 flex items-start justify-between gap-2">
+                      {/* Drag does not exist on touch, so the same journey has a
+                          button. Both land on the deal with the stage chosen. */}
+                      <details className="min-w-0 flex-1">
+                        <summary className="flex cursor-pointer list-none items-center gap-1 text-xs text-gray-500 hover:text-gray-800">
+                          <MoveRight className="h-3.5 w-3.5" />
+                          Move
+                        </summary>
+                        <ul className="mt-1 max-h-40 overflow-y-auto rounded border border-gray-200 bg-white">
+                          {groups
+                            .filter((g) => g.column.stageId && g.column.stageId !== deal.properties.dealstage)
+                            .map((g) => (
+                              <li key={g.column.stageId}>
+                                <button
+                                  type="button"
+                                  onClick={() => move(deal.id, g.column.stageId)}
+                                  className="block w-full px-2 py-1.5 text-left text-xs text-gray-700 hover:bg-gray-50"
+                                >
+                                  {g.column.label}
+                                </button>
+                              </li>
+                            ))}
+                        </ul>
+                      </details>
+                      {hubQuoted.has(deal.id) && <HubQuotedBadge />}
+                    </div>
                   </div>
                 ))
               )}

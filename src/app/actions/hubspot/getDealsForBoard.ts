@@ -11,6 +11,7 @@ import { EMPTY_DEAL_FILTERS, buildDealFilterGroup, type HubSpotSearchFilter, typ
 import { resolveAssociationFilters } from '@/lib/hubspot-association-filter'
 import { getOwnerIndex } from '@/app/actions/hubspot/getOwners'
 import type { OwnerIndex } from '@/lib/hubspot-owners'
+import { hubQuotedDealIds } from '@/lib/hub-quoted'
 
 /**
  * The deals behind the board, grouped by their real HubSpot stage.
@@ -60,6 +61,12 @@ export interface GetBoardResult {
    * do something the page had just taken away.
    */
   filterError?: string
+  /**
+   * The deals on this board whose quote was made in the Hub, for the EH mark. Undefined when the
+   * Hub could not be read, which the page says out loud: no marks at all would otherwise read as
+   * "nothing here went through the Hub".
+   */
+  hubQuotedIds?: string[]
 }
 
 export async function getDealsForBoard(input: {
@@ -153,6 +160,7 @@ export async function getDealsForBoard(input: {
     scope,
     pipelineId,
     owners,
+    hubQuotedIds: [],
     ...extra,
   })
 
@@ -201,6 +209,9 @@ export async function getDealsForBoard(input: {
     if (page === MAX_PAGES - 1) truncated = true
   }
 
+  // Asked only about the deals this search returned, so the answer never reaches past the board.
+  const hubQuoted = await hubQuotedDealIds(deals.map((deal) => deal.id))
+
   return {
     success: true,
     groups: groupDealsByStage(deals, columns),
@@ -209,5 +220,6 @@ export async function getDealsForBoard(input: {
     scope,
     pipelineId,
     owners,
+    hubQuotedIds: hubQuoted.ok ? hubQuoted.ids : undefined,
   }
 }

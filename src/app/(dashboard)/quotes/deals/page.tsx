@@ -1,5 +1,6 @@
-import Link from 'next/link'
-import { Plus, FileText } from 'lucide-react'
+import { FileText } from 'lucide-react'
+import { getAuthorizedUser } from '@/lib/authz'
+import { CreateDealButton } from '@/components/quotes/create-deal-button'
 import { StageQueue } from '../stage-queue'
 
 export default async function QuoteRequestsPage({
@@ -7,6 +8,8 @@ export default async function QuoteRequestsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
+  const auth = await getAuthorizedUser()
+  const canCreate = auth.ok && auth.capabilities.has('quotes.create')
   return (
     <StageQueue
       category="quote_requests"
@@ -19,15 +22,7 @@ export default async function QuoteRequestsPage({
       emptyBody="There are no deals assigned to your HubSpot account at this time."
       showTime
       actionStyle="yellowOutline"
-      headerAction={
-        <Link
-          href="/quotes/create/manual"
-          className="w-full sm:w-auto inline-flex items-center justify-center font-bold uppercase tracking-wider transition-all focus:outline-none focus:ring-2 border-2 rounded-none bg-echo-yellow text-black border-echo-yellow hover:bg-yellow-400 hover:border-yellow-400 focus:ring-yellow-500/50 px-6 py-3 text-sm font-medium"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Create Deal
-        </Link>
-      }
+      headerAction={canCreate ? <CreateDealButton /> : undefined}
       searchParams={await searchParams}
     />
   )
