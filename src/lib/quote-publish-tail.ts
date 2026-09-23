@@ -95,7 +95,7 @@ export type PublishQuoteResult =
 export interface AgentQuoteStamp {
   /** 'list' or 'urgent'. Recorded even for 'list' so the reissue check can read
    *  the newest Jack row and tell the two apart without inference. */
-  pricingMode: 'list' | 'urgent'
+  pricingMode: 'list' | 'urgent' | 'negotiated'
   /** ISO, created time plus 24 hours. Urgent only; null on a list quote. */
   acceptBy: string | null
   /** The urgent deal_quotes row this quote reissues at standard prices. */

@@ -43,6 +43,9 @@ export type AgentQuoteCode =
   | 'NO_FLOOR'
   /** The floor discount was refused by the discount cap or the floor check. */
   | 'DISCOUNT_REFUSED'
+  /** Negotiated asked for, but an agreed price is above the unit price or below
+   *  the higher of 15% off list and the floor. Never clamped: refused. */
+  | 'OFFER_REFUSED'
   | 'AMOUNT_CEILING'
   | 'TEMPLATE_MISSING'
   | 'NO_JACK_QUOTE'
@@ -74,6 +77,7 @@ export const CODE_STATUS: Record<AgentQuoteCode, number> = {
   NO_PRICE: 422,
   NO_FLOOR: 422,
   DISCOUNT_REFUSED: 422,
+  OFFER_REFUSED: 422,
   AMOUNT_CEILING: 422,
   TEMPLATE_MISSING: 422,
   NO_JACK_QUOTE: 422,
@@ -176,7 +180,7 @@ const lineSchema = z
   })
   .strict()
 
-export type QuotePricing = 'list' | 'urgent'
+export type QuotePricing = 'list' | 'urgent' | 'negotiated'
 
 const createSchema = z
   .object({
@@ -184,10 +188,14 @@ const createSchema = z
     conversationId,
     dealId,
     lines: z.array(lineSchema).min(1).max(MAX_LINES),
-    pricing: z.enum(['list', 'urgent']),
+    pricing: z.enum(['list', 'urgent', 'negotiated']),
     /** What the caller said made the job urgent. Kept for the audit only: it is
      *  never printed on the quote and never emailed. */
     urgencyNote: z.string().min(1).max(MAX_URGENCY_NOTE).optional(),
+    /** Negotiated only: the unit price the caller agreed on the call, per HubSpot
+     *  product id, in AUD. n8n only sends a price its check_offer tool allowed on
+     *  that call, and negotiatedPerUnitDiscounts checks it again here anyway. */
+    agreedPrices: z.record(z.string().max(32).regex(/^\d+$/), z.number().positive().max(1_000_000)).optional(),
   })
   .strict()
 
@@ -224,6 +232,7 @@ export type AgentQuoteBody =
       lines: AgentQuoteLine[]
       pricing: QuotePricing
       urgencyNote?: string
+      agreedPrices?: Record<string, number>
     }
   | { action: 'mark_sent'; conversationId: string; dealId: string }
   | { action: 'reissue'; dealId: string }
@@ -250,8 +259,10 @@ export function mergeLines(lines: readonly AgentQuoteLine[]): AgentQuoteLine[] {
  * lines, a quantity outside 1..400 (after merging) or more than 200 panels in
  * total is BAD_REQUEST. So is an urgent create with no urgencyNote, or a list
  * create that carries one: the note only exists to record why a floor price was
- * offered. The product allowlist is checked separately (PRODUCT_NOT_ALLOWED) so
- * the caller learns which rule it broke.
+ * offered. So is a negotiated create with an urgencyNote, with no agreedPrices,
+ * with an agreed price for a product not on its lines or not in whole cents, and
+ * any list or urgent create that carries agreedPrices. The product allowlist is
+ * checked separately (PRODUCT_NOT_ALLOWED) so the caller learns which rule it broke.
  */
 export function parseAgentQuoteBody(raw: unknown): GuardResult<AgentQuoteBody> {
   const parsed = bodySchema.safeParse(raw)
@@ -261,9 +272,16 @@ export function parseAgentQuoteBody(raw: unknown): GuardResult<AgentQuoteBody> {
 
   const note = body.urgencyNote?.trim()
   if (body.pricing === 'urgent' && !note) return { ok: false, code: 'BAD_REQUEST' }
-  if (body.pricing === 'list' && body.urgencyNote !== undefined) return { ok: false, code: 'BAD_REQUEST' }
+  if (body.pricing !== 'urgent' && body.urgencyNote !== undefined) return { ok: false, code: 'BAD_REQUEST' }
+  if (body.pricing !== 'negotiated' && body.agreedPrices !== undefined) return { ok: false, code: 'BAD_REQUEST' }
 
   const lines = mergeLines(body.lines)
+  if (body.pricing === 'negotiated') {
+    const agreed = Object.entries(body.agreedPrices ?? {})
+    const onLines = new Set(lines.map((l) => l.productId))
+    if (agreed.length === 0) return { ok: false, code: 'BAD_REQUEST' }
+    if (agreed.some(([id, price]) => !onLines.has(id) || roundCents(price) !== price)) return { ok: false, code: 'BAD_REQUEST' }
+  }
   if (lines.some((l) => l.quantity > MAX_LINE_QUANTITY)) return { ok: false, code: 'BAD_REQUEST' }
   const panels = lines
     .filter((l) => ANZ_PANEL_PRODUCT_IDS.has(l.productId))
@@ -429,6 +447,50 @@ export function urgentPerUnitDiscounts(
     out.push(roundCents(unit - floorPrice))
   }
   return out
+}
+
+/** Negotiated pricing never goes further than this off the list price. */
+export const NEGOTIATED_MAX_DISCOUNT_PCT = 15
+
+/**
+ * Negotiated pricing (Dean, 2026-09-23): a caller with no urgency who asks for a
+ * discount may be given up to 15% off the list price, and never less than the
+ * line's floor (cost) either, whichever is higher. The urgent floor stays the
+ * only way to cost price, and only for a caller who needs the barriers now.
+ *
+ * The per-unit cash discount that takes each line from its unit price down to
+ * the price the caller agreed, in line order: 0 for a line with no agreed price,
+ * which stays at list. Null when ANY agreed price is above its unit price or
+ * below that limit, so nothing is ever clamped to a price nobody agreed.
+ *
+ * Worked in whole cents, and the limit rounds UP, so 15% off 275.00 is 233.75
+ * and 15% off 1.50 is 1.28, never 1.27. The n8n layer applies the same rule twice
+ * before this (check_offer on the call, SQ Decide at send time); this is the
+ * check a published quote cannot get past.
+ */
+export function negotiatedPerUnitDiscounts(
+  lines: readonly Pick<PricedCartLine, 'productId' | 'priced' | 'floorPrice'>[],
+  agreed: Readonly<Record<string, number>>,
+): number[] | null {
+  if (lines.length === 0) return null
+  const out: number[] = []
+  let any = false
+  for (const line of lines) {
+    const raw = agreed[line.productId]
+    if (raw === undefined) {
+      out.push(0)
+      continue
+    }
+    const unitCents = Math.round(Number(line.priced?.listUnitPrice) * 100)
+    const priceCents = Math.round(Number(raw) * 100)
+    const floor = line.floorPrice
+    const floorCents = floor !== null && floor !== undefined && Number.isFinite(Number(floor)) && Number(floor) > 0 ? Math.round(Number(floor) * 100) : 0
+    const lowestCents = Math.max(Math.ceil((unitCents * (100 - NEGOTIATED_MAX_DISCOUNT_PCT)) / 100), floorCents)
+    if (!(unitCents > 0) || !(priceCents > 0) || priceCents > unitCents || priceCents < lowestCents) return null
+    out.push((unitCents - priceCents) / 100)
+    any = true
+  }
+  return any ? out : null
 }
 
 /** AGENT_QUOTE_AMOUNT_CEILING, or 50000 when unset or not a positive number. */

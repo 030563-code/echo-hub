@@ -172,6 +172,12 @@ const urgent = (lines = [{ productId: H9, quantity: 40 }, { productId: HOOKS, qu
   pricing: 'urgent',
   urgencyNote: 'site starts Monday',
 })
+/** Dean, 2026-09-23: a caller with no urgency may negotiate up to 15% off list. */
+const negotiated = (agreedPrices: Record<string, number> = { [H9]: 230 }, lines = [{ productId: H9, quantity: 40 }, { productId: HOOKS, quantity: 40 }]) => ({
+  ...create(lines),
+  pricing: 'negotiated',
+  agreedPrices,
+})
 const markSent = { action: 'mark_sent', conversationId: CONV, dealId: DEAL }
 const reissue = { action: 'reissue', dealId: DEAL }
 
@@ -652,6 +658,81 @@ describe('urgent pricing', () => {
     expect(mintJackClient).not.toHaveBeenCalled()
     expect((await call(req(create()))).status).toBe(200)
     expect(data.countUrgentQuotes).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('negotiated pricing (Dean, 2026-09-23)', () => {
+  it('quotes the agreed line down to the agreed price and leaves the rest at list', async () => {
+    readyToQuote()
+    createQuote.mockResolvedValue({
+      success: true,
+      quoteReference: 'JA202600123',
+      quote: { ...publishedQuote, amount: 9400, hubAmount: 9400 },
+    })
+    const { status, body } = await call(req(negotiated()))
+    expect(status).toBe(200)
+    const sent = createQuote.mock.calls[0][0]
+    // H9 250 -> 230 (8% off, inside the 15%), hooks untouched at 5.
+    expect(sent.lineItems).toEqual([
+      { productId: H9, name: 'Echo Barrier H9', quantity: 40, unitPrice: 250, total: 9200, sku: 'EBH9NA', discountMode: 'amount', discountValue: 20 },
+      { productId: HOOKS, name: 'Echo Barrier Metal Hooks (Part of Fitting Kit)', quantity: 40, unitPrice: 5, total: 200, sku: 'HKNA' },
+    ])
+    expect(sent.totalAmount).toBe(9400)
+    // No acceptance deadline and the house expiry: that belongs to urgent alone.
+    expect(sent.expiryDate).toBeUndefined()
+    expect(sent.comments).toBe(AGENT_QUOTE_COMMENTS.join('\n'))
+    expect(sent.agentQuote).toEqual({ pricingMode: 'negotiated', acceptBy: null, reissueOf: null, urgencyNote: null })
+    expect(body).toMatchObject({ code: 'CREATED', pricing: 'negotiated', amount: 9400 })
+  })
+
+  it('allows exactly 15 per cent off (212.50 on a 250 H9) and refuses a cent under', async () => {
+    readyToQuote()
+    expect((await call(req(negotiated({ [H9]: 212.5 })))).status).toBe(200)
+    vi.clearAllMocks()
+    data.isConversationBound.mockResolvedValue(true)
+    data.countJackQuotes.mockResolvedValue({ dealLast7Days: 0, allLast24Hours: 0 })
+    data.findRepeatQuote.mockResolvedValue(null)
+    readyToQuote()
+    expect(await call(req(negotiated({ [H9]: 212.49 })))).toEqual({ status: 422, body: { ok: false, code: 'OFFER_REFUSED' } })
+    expectNoWrites()
+  })
+
+  it('OFFER_REFUSED at the floor: cost price is only for the urgent path', async () => {
+    readyToQuote()
+    expect(await call(req(negotiated({ [H9]: 200 })))).toEqual({ status: 422, body: { ok: false, code: 'OFFER_REFUSED' } })
+    expectNoWrites()
+  })
+
+  it('OFFER_REFUSED above list, never a quote raised over the list price', async () => {
+    readyToQuote()
+    expect(await call(req(negotiated({ [H9]: 260 })))).toEqual({ status: 422, body: { ok: false, code: 'OFFER_REFUSED' } })
+    expectNoWrites()
+  })
+
+  it('BAD_REQUEST for agreed prices on a list quote, or a negotiated quote without them', async () => {
+    readyToQuote()
+    expect((await call(req({ ...create(), agreedPrices: { [H9]: 230 } }))).status).toBe(400)
+    expect((await call(req({ ...create(), pricing: 'negotiated' }))).status).toBe(400)
+    expectNoWrites()
+  })
+
+  it('DISCOUNT_REFUSED when the cap row is missing, as for urgent', async () => {
+    readyToQuote(null)
+    expect(await call(req(negotiated()))).toEqual({ status: 422, body: { ok: false, code: 'DISCOUNT_REFUSED' } })
+    expectNoWrites()
+  })
+
+  it('is not an urgent quote: no urgent cap, and a repeat is looked up as negotiated', async () => {
+    readyToQuote()
+    data.countUrgentQuotes.mockResolvedValue(5)
+    expect((await call(req(negotiated()))).status).toBe(200)
+    expect(data.findRepeatQuote).toHaveBeenCalledWith({ tag: 'admin' }, JACK_ID, DEAL, expect.any(Array), 'negotiated', expect.any(Date))
+  })
+
+  it('a repeat of a negotiated quote says negotiated', async () => {
+    readyToQuote()
+    data.findRepeatQuote.mockResolvedValue({ ...repeatRow(), pricing_mode: 'negotiated' })
+    expect((await call(req(negotiated()))).body).toMatchObject({ code: 'REPEAT', pricing: 'negotiated' })
   })
 })
 
