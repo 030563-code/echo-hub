@@ -17,6 +17,8 @@ import {
   urgentCommentLine,
   quoteComments,
   urgentPerUnitDiscounts,
+  negotiatedPerUnitDiscounts,
+  NEGOTIATED_MAX_DISCOUNT_PCT,
   linesFromRow,
   linesKey,
   mergeLines,
@@ -301,7 +303,7 @@ describe('caps, ids and fixed values', () => {
     for (const c of ['CAP_REACHED', 'IN_PROGRESS', 'URGENT_CAP', 'REISSUE_CAP'] as const) {
       expect(CODE_STATUS[c]).toBe(409)
     }
-    for (const c of ['NOT_ANZ_DEAL', 'DEAL_CLOSED', 'BAD_STAGE', 'WRONG_OWNER', 'NOT_AUD', 'CONTACT_COUNT', 'CONTRACT_CUSTOMER', 'FOREIGN_QUOTE', 'PRODUCT_NOT_ALLOWED', 'NO_PRICE', 'NO_FLOOR', 'DISCOUNT_REFUSED', 'AMOUNT_CEILING', 'TEMPLATE_MISSING', 'NO_JACK_QUOTE', 'NO_URGENT_QUOTE', 'NOT_LAPSED'] as const) {
+    for (const c of ['NOT_ANZ_DEAL', 'DEAL_CLOSED', 'BAD_STAGE', 'WRONG_OWNER', 'NOT_AUD', 'CONTACT_COUNT', 'CONTRACT_CUSTOMER', 'FOREIGN_QUOTE', 'PRODUCT_NOT_ALLOWED', 'NO_PRICE', 'NO_FLOOR', 'DISCOUNT_REFUSED', 'OFFER_REFUSED', 'AMOUNT_CEILING', 'TEMPLATE_MISSING', 'NO_JACK_QUOTE', 'NO_URGENT_QUOTE', 'NOT_LAPSED'] as const) {
       expect(CODE_STATUS[c]).toBe(422)
     }
     expect(CODE_STATUS.QUOTE_PUBLISH_FAILED).toBe(502)
@@ -396,6 +398,89 @@ describe('urgent pricing: the floor maths', () => {
     expect(urgentPerUnitDiscounts([line(275, 0.004)])).toBeNull()
     // One cent is a real floor, however daft, and is quoted as one.
     expect(urgentPerUnitDiscounts([line(275, 0.01)])).toEqual([274.99])
+  })
+})
+
+describe('negotiated pricing: the parse rules (Dean, 2026-09-23)', () => {
+  const neg = { ...base, pricing: 'negotiated', lines: [{ productId: H10, quantity: 44 }, { productId: HOOKS, quantity: 44 }] }
+
+  it('accepts a negotiated create with an agreed price for a product on its lines', () => {
+    const r = parseAgentQuoteBody({ ...neg, agreedPrices: { [H10]: 262 } })
+    expect(r.ok).toBe(true)
+    if (r.ok && r.value.action === 'create') expect(r.value.agreedPrices).toEqual({ [H10]: 262 })
+  })
+
+  it('refuses a negotiated create with no agreed price, or an empty map', () => {
+    expect(parseAgentQuoteBody(neg).ok).toBe(false)
+    expect(parseAgentQuoteBody({ ...neg, agreedPrices: {} }).ok).toBe(false)
+  })
+
+  it('refuses an agreed price for a product that is not on the lines', () => {
+    expect(parseAgentQuoteBody({ ...neg, agreedPrices: { [H9]: 200 } }).ok).toBe(false)
+  })
+
+  it('refuses a price that is not whole cents, zero or negative', () => {
+    expect(parseAgentQuoteBody({ ...neg, agreedPrices: { [H10]: 262.505 } }).ok).toBe(false)
+    expect(parseAgentQuoteBody({ ...neg, agreedPrices: { [H10]: 0 } }).ok).toBe(false)
+    expect(parseAgentQuoteBody({ ...neg, agreedPrices: { [H10]: -5 } }).ok).toBe(false)
+  })
+
+  it('refuses an urgencyNote on a negotiated create: urgency is the urgent path', () => {
+    expect(parseAgentQuoteBody({ ...neg, agreedPrices: { [H10]: 262 }, urgencyNote: 'site stopped' }).ok).toBe(false)
+  })
+
+  it('refuses agreed prices on a list or an urgent create, so they cannot ride along unchecked', () => {
+    expect(parseAgentQuoteBody({ ...base, lines: [{ productId: H10, quantity: 1 }], agreedPrices: { [H10]: 262 } }).ok).toBe(false)
+    expect(parseAgentQuoteBody({ ...base, pricing: 'urgent', urgencyNote: 'now', lines: [{ productId: H10, quantity: 1 }], agreedPrices: { [H10]: 262 } }).ok).toBe(false)
+  })
+})
+
+describe('negotiated pricing: 15 per cent off list at most, never under the floor', () => {
+  const line = (productId: string, listUnitPrice: number, floorPrice: number | null) => ({
+    productId,
+    priced: { listUnitPrice, netUnitPrice: listUnitPrice, registry: { unit_price: listUnitPrice, discount_percentage: 0 }, hubspot: { price: listUnitPrice } },
+    floorPrice,
+  })
+
+  it('is 15 per cent', () => {
+    expect(NEGOTIATED_MAX_DISCOUNT_PCT).toBe(15)
+  })
+
+  it('takes an agreed line down to the agreed price and leaves the rest at list', () => {
+    expect(negotiatedPerUnitDiscounts([line(H10, 275, 205), line(HOOKS, 3, 2)], { [H10]: 262 })).toEqual([13, 0])
+  })
+
+  it('allows exactly 15 per cent off, 233.75 on a 275.00 H10, and not a cent under', () => {
+    expect(negotiatedPerUnitDiscounts([line(H10, 275, 205)], { [H10]: 233.75 })).toEqual([41.25])
+    expect(negotiatedPerUnitDiscounts([line(H10, 275, 205)], { [H10]: 233.74 })).toBeNull()
+  })
+
+  it('never reaches the urgent floor: cost price is for a caller who needs it now', () => {
+    expect(negotiatedPerUnitDiscounts([line(H10, 275, 205)], { [H10]: 205 })).toBeNull()
+  })
+
+  it('rounds the limit UP, so 15 per cent off 1.50 is 1.28, never 1.27', () => {
+    expect(negotiatedPerUnitDiscounts([line(BUNGEES, 1.5, 1)], { [BUNGEES]: 1.28 })).toEqual([0.22])
+    expect(negotiatedPerUnitDiscounts([line(BUNGEES, 1.5, 1)], { [BUNGEES]: 1.27 })).toBeNull()
+  })
+
+  it('holds the floor where cost is above 85 per cent of list', () => {
+    expect(negotiatedPerUnitDiscounts([line(H9, 100, 90)], { [H9]: 90 })).toEqual([10])
+    expect(negotiatedPerUnitDiscounts([line(H9, 100, 90)], { [H9]: 89.99 })).toBeNull()
+  })
+
+  it('refuses an agreed price above list rather than raising the quote', () => {
+    expect(negotiatedPerUnitDiscounts([line(H10, 275, 205)], { [H10]: 280 })).toBeNull()
+  })
+
+  it('needs at least one agreed line, and a priced line', () => {
+    expect(negotiatedPerUnitDiscounts([line(H10, 275, 205)], {})).toBeNull()
+    expect(negotiatedPerUnitDiscounts([], { [H10]: 262 })).toBeNull()
+  })
+
+  it('works without a floor on the row: the 15 per cent still binds', () => {
+    expect(negotiatedPerUnitDiscounts([line(H10, 275, null)], { [H10]: 233.75 })).toEqual([41.25])
+    expect(negotiatedPerUnitDiscounts([line(H10, 275, null)], { [H10]: 233.74 })).toBeNull()
   })
 })
 

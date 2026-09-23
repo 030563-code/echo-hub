@@ -28,6 +28,7 @@ import {
   quoteReferenceOf,
   urgentExpiryDate,
   urgentPerUnitDiscounts,
+  negotiatedPerUnitDiscounts,
   type AgentQuoteCode,
   type AgentQuoteLine,
   type QuotePricing,
@@ -134,7 +135,7 @@ function rowResponse(code: 'REPEAT' | 'REISSUED', row: RepeatRow): NextResponse 
     expiresOn: row.expires_on,
     dealQuoteId: row.id,
     amountMismatch: hasAmountMismatch(row.amount, row.hub_amount),
-    pricing: row.pricing_mode === 'urgent' ? 'urgent' : 'list',
+    pricing: row.pricing_mode === 'urgent' || row.pricing_mode === 'negotiated' ? row.pricing_mode : 'list',
     acceptBy: row.accept_by ?? null,
   })
 }
@@ -194,7 +195,14 @@ export async function POST(request: Request) {
     }
 
     /** Set for create and reissue: what to quote and how. */
-    let plan: { lines: AgentQuoteLine[]; pricing: QuotePricing; reissueOf: string | null; stages: readonly string[] } | null = null
+    let plan: {
+      lines: AgentQuoteLine[]
+      pricing: QuotePricing
+      reissueOf: string | null
+      stages: readonly string[]
+      /** Negotiated only: the agreed unit price per product id. */
+      agreedPrices: Readonly<Record<string, number>> | null
+    } | null = null
     /** Set instead of `plan` when this cart has already been quoted. */
     let repeat: RepeatRow | null = null
 
@@ -233,7 +241,7 @@ export async function POST(request: Request) {
         const capped = checkCaps(await countJackQuotes(admin, jackUserId, body.dealId, now))
         if (capped) return fail(capped)
 
-        plan = { lines: body.lines, pricing: body.pricing, reissueOf: null, stages: ANZ_QUOTABLE_STAGES }
+        plan = { lines: body.lines, pricing: body.pricing, reissueOf: null, stages: ANZ_QUOTABLE_STAGES, agreedPrices: body.agreedPrices ?? null }
       }
     } else if (body.action === 'reissue') {
       const latest = await findLatestJackQuote(admin, jackUserId, body.dealId)
@@ -266,7 +274,7 @@ export async function POST(request: Request) {
 
       // The customer is holding a lapsed quote on Quotation sent and nowhere
       // else, so a reissue is refused from any other stage.
-      plan = { lines, pricing: 'list', reissueOf: latest.id, stages: [ANZ_QUOTATION_SENT_STAGE] }
+      plan = { lines, pricing: 'list', reissueOf: latest.id, stages: [ANZ_QUOTATION_SENT_STAGE], agreedPrices: null }
     } else if (!(await hasPublishedJackQuote(admin, jackUserId, body.dealId))) {
       return fail('NO_JACK_QUOTE')
     }
@@ -325,6 +333,7 @@ interface CreateForJackInput {
   pricing: QuotePricing
   reissueOf: string | null
   stages: readonly string[]
+  agreedPrices: Readonly<Record<string, number>> | null
   urgencyNote: string | null
   code: 'CREATED' | 'REISSUED'
   startedAt: Date
@@ -413,6 +422,20 @@ async function createForJack(input: CreateForJackInput): Promise<NextResponse> {
       return fail('DISCOUNT_REFUSED')
     }
     priced = floored
+  } else if (pricing === 'negotiated') {
+    // Negotiated: each agreed line drops from its unit price to the price the
+    // caller agreed, again as a CASH per-unit discount off the Hub's own list
+    // row. An agreed price above list, or below the higher of 15% off list and
+    // the floor, refuses the whole quote rather than being clamped.
+    setStep('negotiated')
+    const discounts = negotiatedPerUnitDiscounts(base.lines, input.agreedPrices ?? {})
+    if (!discounts) return fail('OFFER_REFUSED')
+    const offered = cart(discounts)
+    if (!offered.ok) {
+      console.error('agent-quote: negotiated discount refused')
+      return fail('DISCOUNT_REFUSED')
+    }
+    priced = offered
   }
 
   const overCeiling = checkAmountCeiling(priced.total, amountCeiling(process.env.AGENT_QUOTE_AMOUNT_CEILING))
