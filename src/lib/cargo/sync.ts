@@ -2,8 +2,9 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@supabase/supabase-js'
-import { getCargoToken } from '@/lib/cargo-client'
+import { fetchSpotIds, getCargoToken } from '@/lib/cargo-client'
 import { externalCallsDisabled } from '@/lib/env'
+import { looksLikeSpotId, sheetReferenceList, spotIdsToRefresh } from './references'
 import {
   parseCargoPayload,
   cargoMilestones,
@@ -20,7 +21,7 @@ import {
  * There is no create, no update and no event POST anywhere in the Hub: a
  * transport order is a real booking and Dean flips that switch, not the code.
  *
- * WHERE THE SPOT IDS COME FROM. Two places, unioned, and neither is a new
+ * WHERE THE SPOT IDS COME FROM. Three places, unioned, and none is a new
  * integration:
  *   eb_operations.shipments  Dave's n8n WF2 reads the three "Spot ID" tabs of the
  *                            Container Shipment sheet every morning at 06:15 and
@@ -29,6 +30,8 @@ import {
  *                            on it, and two writers on one table is how they
  *                            come to disagree.
  *   public.po_shipments      what the Hub resolved itself from a PO reference.
+ *   public.cargo_tracked_spot somebody added it by hand, by SPOT ID or by a reference
+ *                            (23 Sep 2026), after Cargo Partner confirmed it exists.
  *
  * So the Google Sheet stays where it is and keeps its one owner. The Hub takes
  * the identifiers it already produces and goes and gets the detail.
@@ -87,8 +90,11 @@ export async function knownSpotIds(): Promise<{ spotId: string; depot: string | 
   }
 
   const admin = createAdminClient()
-  const { data: po } = await admin.from('po_shipments').select('spot_id').not('spot_id', 'is', null)
-  for (const row of (po ?? []) as { spot_id: string | null }[]) {
+  const [{ data: po }, { data: tracked }] = await Promise.all([
+    admin.from('po_shipments').select('spot_id').not('spot_id', 'is', null),
+    admin.from('cargo_tracked_spot').select('spot_id'),
+  ])
+  for (const row of [...(po ?? []), ...(tracked ?? [])] as { spot_id: string | null }[]) {
     const id = String(row.spot_id ?? '').trim()
     if (id && !found.has(id)) found.set(id, null)
   }
@@ -96,6 +102,29 @@ export async function knownSpotIds(): Promise<{ spotId: string; depot: string | 
   return [...found.entries()]
     .map(([spotId, depot]) => ({ spotId, depot }))
     .sort((a, b) => b.spotId.localeCompare(a.spotId, undefined, { numeric: true }))
+}
+
+/**
+ * Dave's order numbers per SPOT ID (order_no, order_no_local), read from his table and never
+ * written. Shown on the board and searched, so a container can be found by the number in his sheet.
+ */
+export async function sheetReferencesBySpot(spotIds: readonly string[]): Promise<Map<string, string[]>> {
+  const bySpot = new Map<string, string[]>()
+  if (!spotIds.length) return bySpot
+  try {
+    const { data } = await createOperationsClient()
+      .from('shipments')
+      .select('spot_id, order_no, order_no_local')
+      .in('spot_id', [...spotIds])
+    const rows = (data ?? []) as { spot_id: string | null; order_no: string | null; order_no_local: string | null }[]
+    for (const id of spotIds) {
+      const refs = sheetReferenceList(rows.filter((r) => String(r.spot_id ?? '').trim() === id))
+      if (refs.length) bySpot.set(id, refs)
+    }
+  } catch {
+    // Somebody else's schema: no sheet references rather than no board.
+  }
+  return bySpot
 }
 
 /** The whole response, unparsed. The stored copy is the raw one. */
@@ -237,15 +266,22 @@ export async function storeCargoShipment(
  * failing does not stop the rest: a board that is mostly right today beats a
  * board that is entirely absent because one identifier was mistyped.
  */
-export async function syncAllCargo(options?: { spotIds?: string[]; today?: string }): Promise<CargoSyncResult> {
+export async function syncAllCargo(options?: { spotIds?: string[]; today?: string; onlyOpen?: boolean }): Promise<CargoSyncResult> {
   if (externalCallsDisabled()) {
     return { attempted: 0, synced: 0, failed: [{ spotId: '-', error: 'Cargo Partner is disabled in the staging sandbox' }] }
   }
 
   const all = await knownSpotIds()
-  const wanted = options?.spotIds?.length
+  let wanted = options?.spotIds?.length
     ? all.filter((s) => options.spotIds!.includes(s.spotId))
     : all
+  if (options?.onlyOpen) {
+    // The scheduled run: a finished journey does not change, so it is not asked about again.
+    const { data: done } = await createAdminClient().from('cargo_shipment').select('spot_id').eq('is_complete', true)
+    const finished = new Set(((done ?? []) as { spot_id: string }[]).map((r) => r.spot_id))
+    const open = new Set(spotIdsToRefresh(wanted.map((s) => s.spotId), finished))
+    wanted = wanted.filter((s) => open.has(s.spotId))
+  }
   const today = options?.today ?? new Date().toISOString().slice(0, 10)
 
   const token = await getCargoToken()
@@ -268,3 +304,66 @@ export async function syncAllCargo(options?: { spotIds?: string[]; today?: strin
 
   return { attempted: wanted.length, synced, failed }
 }
+
+export type TrackResult =
+  | { ok: true; added: string[]; alreadyOnBoard: string[] }
+  | { ok: false; error: string }
+
+/**
+ * Put a shipment on the board by hand, from a SPOT ID or a reference.
+ *
+ * Dean, 23 Sep 2026: "theres no way to manually add spot ids or shipments or references?"
+ *
+ * Only the two reads the Hub already makes: the shipment by SPOT ID and, failing that, the lookup
+ * by reference. Nothing is sent to Cargo Partner but the question. A SPOT ID already known from
+ * Dave's sheet or a PO is refreshed and left to that source; a new one is kept in
+ * cargo_tracked_spot so every later sync picks it up.
+ */
+export async function trackShipment(typed: string, uid: string, today?: string): Promise<TrackResult> {
+  if (externalCallsDisabled()) return { ok: false, error: 'Cargo Partner is switched off in this environment.' }
+  const value = typed.trim()
+  const day = today ?? new Date().toISOString().slice(0, 10)
+
+  let token: string
+  try {
+    token = await getCargoToken()
+  } catch {
+    return { ok: false, error: 'Could not sign in to Cargo Partner. Try again in a minute.' }
+  }
+
+  const found = new Map<string, unknown>()
+  try {
+    if (looksLikeSpotId(value)) {
+      const raw = await fetchRawShipment(token, value)
+      if (raw) found.set(value, raw)
+    }
+    if (!found.size) {
+      for (const spotId of await fetchSpotIds(token, value)) {
+        const raw = await fetchRawShipment(token, spotId)
+        if (raw) found.set(spotId, raw)
+      }
+    }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Cargo Partner did not answer.' }
+  }
+  if (!found.size) return { ok: false, error: `Cargo Partner has no shipment with the SPOT ID or reference ${value}.` }
+
+  const known = new Set((await knownSpotIds()).map((s) => s.spotId))
+  const added: string[] = []
+  const alreadyOnBoard: string[] = []
+  const admin = createAdminClient()
+  for (const [spotId, raw] of found) {
+    await storeCargoShipment(parseCargoPayload(raw, spotId), raw, null, day)
+    if (known.has(spotId)) {
+      alreadyOnBoard.push(spotId)
+      continue
+    }
+    const { error } = await admin
+      .from('cargo_tracked_spot')
+      .upsert({ spot_id: spotId, added_from: value.slice(0, 80), added_by: uid }, { onConflict: 'spot_id', ignoreDuplicates: true })
+    if (error) return { ok: false, error: `SPOT ${spotId} was read but could not be kept: ${error.message}` }
+    added.push(spotId)
+  }
+  return { ok: true, added, alreadyOnBoard }
+}
+

@@ -43,6 +43,7 @@ const SELF_AUTHENTICATED_PATHS = [
   '/api/calls/ingest',
   '/api/customs/ingest',
   '/api/customs/extraction',
+  '/api/cargo/refresh',
 ]
 
 function isPublic(pathname: string): boolean {

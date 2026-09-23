@@ -11,6 +11,7 @@ import CargoTimeline from '@/components/cargo/cargo-timeline'
 import ShareLinkCard from './share-link-card'
 import CargoEventList from './cargo-event-list'
 import { CustomsCard } from './customs-card'
+import ShipmentReferences from './shipment-references'
 
 /**
  * One container: where it is, how it got there, and a link to send somebody.
@@ -161,6 +162,8 @@ export default async function CargoShipmentPage({ params }: { params: Promise<{ 
               </ul>
             </div>
           )}
+
+          <ShipmentReferences spotId={shipment.spotId} own={shipment.ownReferences} sheet={shipment.sheetReferences} />
         </section>
 
         <ShareLinkCard

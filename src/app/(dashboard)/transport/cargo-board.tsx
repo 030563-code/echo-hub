@@ -10,6 +10,8 @@ import { usePersistedView } from '@/hooks/use-page-state'
 import { depotLabel } from '@/lib/depot-constants'
 import { syncCargo } from '@/app/actions/cargo/sync-cargo'
 import type { CargoBoardRow } from '@/lib/cargo/store'
+import { matchesSearch } from '@/lib/cargo/references'
+import AddShipment from './add-shipment'
 
 /**
  * Containers, as a list you can act on.
@@ -71,25 +73,9 @@ export default function CargoBoard({ rows, today }: { rows: CargoBoardRow[]; tod
   const [lastSync, setLastSync] = useState<string | null>(null)
   const router = useRouter()
 
-  const needle = query.trim().toLowerCase()
   const shown = rows
     .filter((r) => (tab === 'transit' ? !r.isComplete : tab === 'arrived' ? r.isComplete : true))
-    .filter((r) =>
-      !needle
-        ? true
-        : [
-            r.spotId,
-            r.generalReference,
-            r.vesselName,
-            r.oceanCarrier,
-            r.destinationCity,
-            r.destinationDepot,
-            r.cargoDescription,
-            ...r.containerNumbers,
-          ]
-            .filter(Boolean)
-            .some((v) => String(v).toLowerCase().includes(needle)),
-    )
+    .filter((r) => matchesSearch(r, query))
 
   function refresh() {
     startSync(async () => {
@@ -136,7 +122,7 @@ export default function CargoBoard({ rows, today }: { rows: CargoBoardRow[]; tod
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="SPOT ID, container, vessel, order number, depot"
+            placeholder="SPOT ID, container or reference"
             className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm placeholder:text-gray-400 focus:border-[#025945] focus:outline-none"
           />
         </div>
@@ -149,6 +135,7 @@ export default function CargoBoard({ rows, today }: { rows: CargoBoardRow[]; tod
           <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
           {syncing ? 'Refreshing' : 'Refresh from Cargo Partner'}
         </button>
+        <AddShipment />
         {lastSync && <span className="text-xs text-gray-400">Refreshed {lastSync}</span>}
       </div>
 
@@ -197,7 +184,13 @@ export default function CargoBoard({ rows, today }: { rows: CargoBoardRow[]; tod
                         {r.destinationDepot ? ` (${depotLabel(r.destinationDepot)})` : ''}
                       </p>
                       <p className="mt-1 text-xs text-gray-500">
-                        {[r.cargoDescription, r.totalPieces ? `${r.totalPieces} pieces` : null, r.vesselName, r.generalReference]
+                        {[
+                          r.cargoDescription,
+                          r.totalPieces ? `${r.totalPieces} pieces` : null,
+                          r.vesselName,
+                          r.generalReference,
+                          ...r.references.filter((ref) => ref !== r.generalReference),
+                        ]
                           .filter(Boolean)
                           .join(' · ')}
                       </p>

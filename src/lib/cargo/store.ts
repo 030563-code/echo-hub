@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { sheetReferencesBySpot } from './sync'
 import { cargoTimeline, cargoStatus, type CargoRoutingPoint, type CargoEventRow, type TimelineStop } from './payload'
 import type { EventKind } from './event-types'
 
@@ -35,6 +36,14 @@ export interface CargoBoardRow {
   syncedAt: string | null
   /** Days late against the forwarder's own schedule changes, summed. */
   slipDays: number | null
+  /** Ours, typed on the shipment, then Dave's sheet order numbers. Searched; never on a shared page. */
+  references: string[]
+}
+
+export interface ShipmentReference {
+  id: string
+  reference: string
+  addedAt: string
 }
 
 export interface CargoShipmentView extends CargoBoardRow {
@@ -52,6 +61,10 @@ export interface CargoShipmentView extends CargoBoardRow {
   goodsValue: number | null
   currencyCode: string | null
   containers: { number: string; code: string | null; seal: string | null }[]
+  /** The references people typed on this shipment, which they can remove. */
+  ownReferences: ShipmentReference[]
+  /** Dave's sheet order numbers, read from his table. */
+  sheetReferences: string[]
   route: CargoRoutingPoint[]
   events: CargoEventRow[]
   timeline: TimelineStop[]
@@ -79,7 +92,7 @@ const SHIPMENT_COLUMNS = `
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-function toBoardRow(s: any, containers: string[], slipDays: number | null): CargoBoardRow {
+function toBoardRow(s: any, containers: string[], slipDays: number | null, references: string[] = []): CargoBoardRow {
   return {
     spotId: s.spot_id,
     containerNumbers: containers,
@@ -100,7 +113,15 @@ function toBoardRow(s: any, containers: string[], slipDays: number | null): Carg
     isComplete: Boolean(s.is_complete),
     syncedAt: s.synced_at ?? null,
     slipDays,
+    references,
   }
+}
+
+/** Our references first, then the sheet's, each once. */
+function mergeReferences(own: readonly string[], sheet: readonly string[]): string[] {
+  const all: string[] = []
+  for (const r of [...own, ...sheet]) if (!all.includes(r)) all.push(r)
+  return all
 }
 
 /**
@@ -126,10 +147,16 @@ export async function loadCargoBoard(depots: readonly string[] | null): Promise<
   if (!rows.length) return []
   const ids = rows.map((r) => r.spot_id)
 
-  const [{ data: containers }, { data: slips }] = await Promise.all([
+  const [{ data: containers }, { data: slips }, { data: ownRefs }, sheet] = await Promise.all([
     admin.from('cargo_container').select('spot_id, container_number, container_index').in('spot_id', ids),
     admin.from('cargo_event').select('spot_id, delay_days, delay_seconds').in('spot_id', ids).eq('event_kind', 'exception'),
+    admin.from('cargo_shipment_reference').select('spot_id, reference, added_at').in('spot_id', ids).order('added_at'),
+    sheetReferencesBySpot(ids),
   ])
+  const ownBy = new Map<string, string[]>()
+  for (const r of (ownRefs ?? []) as { spot_id: string; reference: string }[]) {
+    ownBy.set(r.spot_id, [...(ownBy.get(r.spot_id) ?? []), r.reference])
+  }
 
   const byShipment = new Map<string, string[]>()
   for (const c of ((containers ?? []) as any[]).sort((a, b) => a.container_index - b.container_index)) {
@@ -152,6 +179,7 @@ export async function loadCargoBoard(depots: readonly string[] | null): Promise<
       s,
       byShipment.get(s.spot_id) ?? [],
       slipBy.has(s.spot_id) ? Math.round(slipBy.get(s.spot_id)!) : null,
+      mergeReferences(ownBy.get(s.spot_id) ?? [], sheet.get(s.spot_id) ?? []),
     ),
   )
 }
@@ -163,7 +191,7 @@ export async function loadCargoShipment(spotId: string, today: string): Promise<
   const { data: s } = await admin.from('cargo_shipment').select(SHIPMENT_COLUMNS).eq('spot_id', spotId).maybeSingle()
   if (!s) return null
 
-  const [{ data: containers }, { data: points }, { data: events }] = await Promise.all([
+  const [{ data: containers }, { data: points }, { data: events }, { data: ownRefs }, sheet] = await Promise.all([
     admin.from('cargo_container').select('*').eq('spot_id', spotId).order('container_index'),
     admin.from('cargo_routing_point').select('*').eq('spot_id', spotId).order('seq'),
     admin
@@ -172,7 +200,15 @@ export async function loadCargoShipment(spotId: string, today: string): Promise<
       .eq('spot_id', spotId)
       .order('event_on', { ascending: true })
       .order('event_time', { ascending: true }),
+    admin.from('cargo_shipment_reference').select('id, reference, added_at').eq('spot_id', spotId).order('added_at'),
+    sheetReferencesBySpot([spotId]),
   ])
+  const ownReferences: ShipmentReference[] = ((ownRefs ?? []) as any[]).map((r) => ({
+    id: r.id,
+    reference: r.reference,
+    addedAt: r.added_at,
+  }))
+  const sheetReferences = sheet.get(spotId) ?? []
 
   const route: CargoRoutingPoint[] = ((points ?? []) as any[]).map((p) => ({
     seq: p.seq,
@@ -214,7 +250,10 @@ export async function loadCargoShipment(spotId: string, today: string): Promise<
       anyShipment,
       ((containers ?? []) as any[]).map((c) => c.container_number),
       slip == null ? null : Math.round(slip),
+      mergeReferences(ownReferences.map((r) => r.reference), sheetReferences),
     ),
+    ownReferences,
+    sheetReferences,
     modality: anyShipment.modality,
     category: anyShipment.category,
     voyageNumber: anyShipment.voyage_number,

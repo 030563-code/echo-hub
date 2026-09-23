@@ -56,6 +56,8 @@ const SPEC: Array<Omit<ConfigEntry, 'present' | 'host'> & { url?: boolean }> = [
   { name: 'CARGO_NOTIFY_TO', group: 'Transport', required: false,
     breaks: 'The collection request has no default recipient and the screen must be filled in.' },
   { name: 'CARGO_NOTIFY_CC', group: 'Transport', required: false, breaks: 'No default copy.' },
+  { name: 'CARGO_REFRESH_SECRET', group: 'Transport', required: false,
+    breaks: 'The scheduled refresh is refused with 401, so the board only moves when someone presses Refresh.' },
   { name: 'CUSTOMS_INGEST_SECRET', group: 'Transport', required: true,
     breaks: "n8n cannot hand the Hub a Nippon Express PDF or Claude's reading of one; both are refused with 401." },
   { name: 'N8N_CUSTOMS_WEBHOOK_URL', group: 'Transport', required: true, url: true,
