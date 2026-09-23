@@ -7,12 +7,15 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2, Paperclip, Download, Upload, Trash2 } from "lucide-react";
 import {
-  uploadPoAttachment,
+  beginPoAttachmentUpload,
+  finishPoAttachmentUpload,
   getPoAttachmentUrl,
   deletePoAttachment,
   setPoAttachmentShared,
 } from "@/app/actions/purchase-orders/attachments";
 import DetailSection from "@/components/po/detail-section";
+import { createClient } from "@/lib/supabase/client";
+import { PO_ATTACHMENT_BUCKET, PO_ATTACHMENT_MAX_BYTES } from "@/lib/po-attachments";
 import type { PurchaseOrder } from "@/lib/erp-types";
 
 /**
@@ -48,23 +51,68 @@ export default function AttachmentsSection({ po, canManage }: { po: PurchaseOrde
     });
   }
 
+  function fail(message: string) {
+    setErr(message);
+    toast.error(message);
+  }
+
+  /** Browser to Storage with a signed token, never through a server action:
+   *  Next caps an action's body at 1 MB. See src/lib/po-attachments.ts. */
+  async function upload(file: File) {
+    if (file.size > PO_ATTACHMENT_MAX_BYTES) {
+      fail(`${file.name} is larger than 10 MB.`);
+      return;
+    }
+    // Some browsers leave the type empty for uncommon extensions; the server and
+    // the bucket both refuse that, and the server says so readably.
+    const contentType = file.type || "application/octet-stream";
+    const begun = await beginPoAttachmentUpload({
+      poId: po.id,
+      filename: file.name,
+      contentType,
+      sizeBytes: file.size,
+    });
+    if (!begun.success) {
+      fail(`${file.name}: ${begun.error}`);
+      return;
+    }
+    const { error } = await createClient()
+      .storage.from(PO_ATTACHMENT_BUCKET)
+      .uploadToSignedUrl(begun.path, begun.token, file);
+    if (error) {
+      fail(`${file.name} could not be uploaded: ${error.message}`);
+      return;
+    }
+    const finished = await finishPoAttachmentUpload({
+      poId: po.id,
+      path: begun.path,
+      filename: file.name,
+      contentType,
+      sizeBytes: file.size,
+    });
+    if (!finished.success) {
+      fail(`${file.name}: ${finished.error}`);
+      return;
+    }
+    toast.success(`${file.name} attached`);
+  }
+
   function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setErr(null);
-    const fd = new FormData();
-    fd.append("poId", po.id);
-    fd.append("file", file);
     startTransition(async () => {
-      const res = await uploadPoAttachment(fd);
-      if (!res.success) {
-        setErr(res.error);
-        toast.error(res.error);
-      } else {
-        toast.success(`${file.name} attached`);
+      try {
+        await upload(file);
+      } catch (error) {
+        // Said here, never thrown: an error thrown inside a transition replaces
+        // the whole page with the error card, which is what a large file did.
+        console.error("PO attachment upload failed", error);
+        fail(`${file.name} could not be uploaded. Please try again.`);
+      } finally {
+        if (fileRef.current) fileRef.current.value = "";
+        router.refresh();
       }
-      if (fileRef.current) fileRef.current.value = "";
-      router.refresh();
     });
   }
 

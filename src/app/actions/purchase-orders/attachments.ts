@@ -5,94 +5,136 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { createServerClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthorizedUser } from "@/lib/authz";
+import { getAuthorizedUser, type AuthzOk } from "@/lib/authz";
 import { poChainHeldBy } from "@/lib/po-organisations";
+import {
+  PO_ATTACHMENT_BUCKET,
+  checkPoAttachment,
+  isPathInsidePo,
+  poAttachmentPath,
+} from "@/lib/po-attachments";
+import { safeAttachmentName } from "@/lib/customer-invoice/attachment-path";
 
 // ---------------------------------------------------------------------------
 // PO file attachments. Objects live in the PRIVATE `po-attachments` bucket;
 // storage.objects has no authenticated policy, so every object op goes through
-// the service-role client here AFTER a capability check (upload / signed-url
-// download / delete). Metadata rows are read via RLS (read-all authenticated),
-// written service-role.
+// the service-role client here AFTER a capability check (signed upload /
+// signed-url download / delete). Metadata rows are read via RLS (read-all
+// authenticated), written service-role.
+//
+// 🔴 THE BYTES NEVER PASS THROUGH A SERVER ACTION. Next caps an action's body
+// at 1 MB, so a PDF posted here failed inside Next and took the page down
+// (23 Sep 2026, "H10 2026 Celtic.pdf"). The browser uploads straight to Storage
+// with a signed token minted against a path THIS FILE chose, then calls back to
+// record the row. See src/lib/po-attachments.ts.
 // ---------------------------------------------------------------------------
 
-const BUCKET = "po-attachments";
-const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
-const ALLOWED = new Set([
-  "application/pdf",
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-  "image/gif",
-  "text/plain",
-  "text/csv",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-]);
+const BUCKET = PO_ATTACHMENT_BUCKET;
 
 const MANAGE_CAPS = ["po.create", "po.approve", "po.receive"] as const;
 const uuid = z.string().uuid();
 
 export type AttachmentResult = { success: true } | { success: false; error: string };
 
-export async function uploadPoAttachment(formData: FormData): Promise<AttachmentResult> {
+export type BeginPoUploadResult =
+  | { success: true; path: string; token: string }
+  | { success: false; error: string };
+
+/** The person may attach files, and the order is one their organisations hold. */
+async function gateAttach(poId: string): Promise<{ ok: true; auth: AuthzOk } | { ok: false; error: string }> {
   const auth = await getAuthorizedUser();
-  if (!auth.ok) return { success: false, error: auth.error };
+  if (!auth.ok) return { ok: false, error: auth.error };
   if (!MANAGE_CAPS.some((c) => auth.capabilities.has(c))) {
-    return { success: false, error: "Forbidden: you can't attach files to purchase orders." };
+    return { ok: false, error: "Forbidden: you can't attach files to purchase orders." };
   }
-
-  const poId = formData.get("poId");
-  const file = formData.get("file");
-  if (typeof poId !== "string" || !uuid.safeParse(poId).success) {
-    return { success: false, error: "Invalid PO id" };
-  }
-  if (!(file instanceof File) || file.size === 0) {
-    return { success: false, error: "No file provided" };
-  }
-  if (file.size > MAX_BYTES) {
-    return { success: false, error: "File is larger than 10 MB." };
-  }
-  const contentType = file.type || "application/octet-stream";
-  if (!ALLOWED.has(contentType)) {
-    return { success: false, error: `Unsupported file type (${contentType}).` };
-  }
-
   const supabase = await createServerClient();
   const { data: po } = await supabase.from("purchase_orders").select("id").eq("id", poId).maybeSingle();
-  if (!po) return { success: false, error: "Purchase order not found" };
-  if (!(await poChainHeldBy(poId, auth.profile.organisations))) {
-    return { success: false, error: "Purchase order not found" };
+  if (!po || !(await poChainHeldBy(poId, auth.profile.organisations))) {
+    return { ok: false, error: "Purchase order not found" };
   }
+  return { ok: true, auth };
+}
 
-  const safeName = file.name.replace(/[^\w.\-]+/g, "_").slice(0, 120) || "file";
-  const path = `${poId}/${randomUUID()}-${safeName}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
+const BeginInput = z.object({
+  poId: uuid,
+  filename: z.string().trim().min(1).max(300),
+  contentType: z.string().trim().min(1).max(200),
+  sizeBytes: z.number().int().positive(),
+});
 
+/** Checks the person, the order, the size and the type, then mints a signed
+ *  upload for a path chosen here. The browser sends the file itself. */
+export async function beginPoAttachmentUpload(input: unknown): Promise<BeginPoUploadResult> {
+  const parsed = BeginInput.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? "Invalid file" };
+  }
+  const { poId, filename, contentType, sizeBytes } = parsed.data;
+
+  const gate = await gateAttach(poId);
+  if (!gate.ok) return { success: false, error: gate.error };
+
+  const allowed = checkPoAttachment(contentType, sizeBytes);
+  if (!allowed.ok) return { success: false, error: allowed.error };
+
+  // The server picks the path. This is the whole containment guarantee.
+  const path = poAttachmentPath(poId, randomUUID(), filename);
   const admin = createAdminClient();
-  const { error: upErr } = await admin.storage.from(BUCKET).upload(path, buffer, {
-    contentType,
-    upsert: false,
-  });
-  if (upErr) {
-    console.error("uploadPoAttachment storage upload failed", upErr.message);
-    return { success: false, error: "Upload failed." };
+  const { data, error } = await admin.storage.from(BUCKET).createSignedUploadUrl(path);
+  if (error || !data) {
+    console.error("beginPoAttachmentUpload signing failed", error?.message);
+    return { success: false, error: "Could not start the upload. Please try again." };
   }
+  return { success: true, path: data.path, token: data.token };
+}
+
+const FinishInput = BeginInput.extend({ path: z.string().trim().min(1).max(500) });
+
+/** Records the row once the object is really in Storage at the minted path. */
+export async function finishPoAttachmentUpload(input: unknown): Promise<AttachmentResult> {
+  const parsed = FinishInput.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? "Invalid file" };
+  }
+  const { poId, path, filename, contentType, sizeBytes } = parsed.data;
+
+  const gate = await gateAttach(poId);
+  if (!gate.ok) return { success: false, error: gate.error };
+
+  // The path comes back from the browser, so it is re-checked rather than
+  // trusted: this is what stops a crafted call recording another order's file.
+  if (!isPathInsidePo(path, poId)) {
+    return { success: false, error: "That file does not belong to this purchase order." };
+  }
+
+  // Confirm the object is actually there, or the list would offer a download
+  // that 404s.
+  const admin = createAdminClient();
+  const objectName = path.slice(poId.length + 1);
+  const { data: listed, error: listError } = await admin.storage
+    .from(BUCKET)
+    .list(poId, { search: objectName, limit: 1 });
+  if (listError) {
+    console.error("finishPoAttachmentUpload list failed", listError.message);
+    return { success: false, error: "Could not confirm the upload. Please try again." };
+  }
+  const object = (listed ?? []).find((item) => item.name === objectName);
+  if (!object) return { success: false, error: "The upload did not complete. Please try again." };
+  const storedSize = Number(object.metadata?.size);
 
   const { error: rowErr } = await admin.from("po_attachments").insert({
     po_id: poId,
     storage_path: path,
-    filename: safeName,
+    filename: safeAttachmentName(filename),
     content_type: contentType,
-    size_bytes: file.size,
-    uploaded_by_uid: auth.user.id,
+    size_bytes: Number.isFinite(storedSize) && storedSize > 0 ? storedSize : sizeBytes,
+    uploaded_by_uid: gate.auth.user.id,
   });
   if (rowErr) {
-    // best-effort: don't leave an orphan object if the row failed
+    // The object is uploaded but unrecorded. Remove it rather than leave a file
+    // nothing points at.
     await admin.storage.from(BUCKET).remove([path]);
-    console.error("uploadPoAttachment row insert failed", rowErr.message);
+    console.error("finishPoAttachmentUpload row insert failed", rowErr.message);
     return { success: false, error: "Upload failed." };
   }
 
