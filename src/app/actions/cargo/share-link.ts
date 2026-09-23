@@ -3,10 +3,9 @@
 import { randomBytes } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { getAuthorizedUser } from '@/lib/authz'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { hubBaseUrl } from '@/lib/env'
-import { depotsForOrgs, transportSeesAllFor, type OrgCode } from '@/lib/organisations'
+import { shipmentInScope, transportScope } from '@/lib/cargo/scope.server'
 
 /**
  * Links that let somebody outside the company watch one container.
@@ -46,33 +45,6 @@ export interface ShareLink {
   revokedAt: string | null
   lastViewedAt: string | null
   viewCount: number
-}
-
-/** The depots the caller may act on, or null when they see every shipment. */
-async function transportScope(): Promise<
-  { ok: true; depots: readonly string[] | null; uid: string } | { ok: false; error: string }
-> {
-  const auth = await getAuthorizedUser()
-  if (!auth.ok || !auth.capabilities.has('transport.view')) {
-    return { ok: false, error: 'You do not have access to transport.' }
-  }
-  const held = auth.profile.organisations as OrgCode[]
-  // Every container leaves s.r.o. and belongs to Group on the way, so those two
-  // see all of them; anyone else sees what is bound for their own depots.
-  return {
-    ok: true,
-    depots: transportSeesAllFor(held) ? null : depotsForOrgs(held),
-    uid: auth.user.id,
-  }
-}
-
-async function shipmentInScope(spotId: string, depots: readonly string[] | null): Promise<boolean> {
-  const admin = createAdminClient()
-  const { data } = await admin.from('cargo_shipment').select('destination_depot').eq('spot_id', spotId).maybeSingle()
-  if (!data) return false
-  if (!depots) return true
-  const depot = (data as { destination_depot: string | null }).destination_depot
-  return Boolean(depot && depots.includes(depot))
 }
 
 function shareUrl(token: string): string {

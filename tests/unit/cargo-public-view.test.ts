@@ -65,6 +65,10 @@ describe('the customer view is a whitelist, not a delete list', () => {
       'slipDays',
       'events',
       'route',
+      // Our own references and the shipping sheet's order numbers (23 Sep 2026).
+      'references',
+      'ownReferences',
+      'sheetReferences',
     ]) {
       expect(fields, `${banned} must not be on the customer's page`).not.toContain(banned)
     }
@@ -130,7 +134,10 @@ describe('the door the customer comes through', () => {
     const action = read('src/app/actions/cargo/share-link.ts')
     // Both writes, and the read that lists them, go through the same check.
     expect((action.match(/await shipmentInScope\(/g) ?? []).length).toBe(3)
-    expect(action).toContain("auth.capabilities.has('transport.view')")
+    expect((action.match(/await transportScope\(\)/g) ?? []).length).toBe(3)
+    // The capability check lives with the scope, shared with the other Transport actions.
+    expect(action).toContain("from '@/lib/cargo/scope.server'")
+    expect(read('src/lib/cargo/scope.server.ts')).toContain("auth.capabilities.has('transport.view')")
   })
 
   it('keeps our note about the recipient off their page', () => {
