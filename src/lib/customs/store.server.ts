@@ -6,6 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { customsPackageSchema, customsChargeOf, type CustomsPackage } from '@/lib/customs/nippon-invoice'
 import { matchShipment, type ShipmentKeys } from '@/lib/customs/match'
 import { buildXeroBill, type GroupBill } from '@/lib/customs/xero-bill'
+import { holdsDraftBack } from '@/lib/customs/checks'
 import { callCustomsWebhook, type XeroBillLineOut } from '@/lib/customs/n8n.server'
 
 /**
@@ -316,7 +317,7 @@ export interface ExtractionIn {
 }
 
 export type ExtractionOutcome =
-  | { ok: true; invoiceNumber: string; spotId: string | null; duplicateOf: string | null; draft: 'created' | 'existing' | 'skipped' | 'failed' }
+  | { ok: true; invoiceNumber: string; spotId: string | null; duplicateOf: string | null; draft: 'created' | 'existing' | 'skipped' | 'held' | 'failed' }
   | { ok: false; status: number; error: string }
 
 export async function recordExtraction(input: ExtractionIn): Promise<ExtractionOutcome> {
@@ -386,9 +387,12 @@ export async function recordExtraction(input: ExtractionIn): Promise<ExtractionO
   }
 
   // "Draft initially": a new invoice from the inbox becomes a draft bill in Xero straight away.
-  // One from history is already in Xero, and a resend never is.
-  let draft: 'created' | 'existing' | 'skipped' | 'failed' = 'skipped'
-  if (row.source === 'email' && !duplicateOf && !row.xero_invoice_id) {
+  // One from history is already in Xero, and a resend never is. Nor is a PDF that is not an
+  // invoice, or one whose sums fail: those wait for Dave to look and press Make the draft.
+  let draft: 'created' | 'existing' | 'skipped' | 'held' | 'failed' = 'skipped'
+  const heldBack = holdsDraftBack(pkg)
+  if (row.source === 'email' && !duplicateOf && !row.xero_invoice_id && heldBack) draft = 'held'
+  else if (row.source === 'email' && !duplicateOf && !row.xero_invoice_id) {
     const made = await requestDraft(row.id)
     draft = made.ok ? (made.existing ? 'existing' : 'created') : 'failed'
   }

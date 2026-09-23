@@ -35,6 +35,7 @@ export interface MpfLimits {
 
 /** Add the next year's row when CBP publishes it each summer; an entry with no row says so. */
 export const MPF_LIMITS: readonly MpfLimits[] = [
+  { fiscalYear: 2025, min: 32.71, max: 634.62, source: 'Federal Register Vol. 89 No. 140, 22 Jul 2024, 2024-15990' },
   { fiscalYear: 2026, min: 33.58, max: 651.5, source: 'CBP Dec. 25-10, Federal Register 23 Jul 2025' },
   { fiscalYear: 2027, min: 34.58, max: 670.86, source: 'Federal Register Vol. 91 No. 146, 31 Jul 2026' },
 ]
@@ -84,8 +85,11 @@ export function entryMpf(lineEnteredValues: readonly number[], entryDate: string
   return { sum, amount: sum, clamped: null, limits }
 }
 
-/** The HMF, once per entry, on the total of the lines' whole-dollar entered values. */
+/**
+ * The HMF: 0.125 per cent of each line's whole-dollar entered value, rounded to the cent line by
+ * line, then added up. Of the 27 entries read from history on 23 Sep 2026, one reconciles only
+ * this way (81.38, where 0.125 per cent of its total would be 81.39); the rest agree either way.
+ */
 export function entryHmf(lineEnteredValues: readonly number[]): number {
-  const total = lineEnteredValues.reduce((sum, ev) => sum + wholeDollars(ev), 0)
-  return roundCents(total * HMF_RATE)
+  return roundCents(lineEnteredValues.reduce((sum, ev) => sum + roundCents(wholeDollars(ev) * HMF_RATE), 0))
 }

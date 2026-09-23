@@ -79,6 +79,34 @@ export const DUTY_RULES: readonly DutyRule[] = [
   },
 ]
 
+/**
+ * Goods already at sea when a new duty began, which pay the rate before it. The broker claims one
+ * by filing its heading at FREE; whether the goods were loaded in time cannot be seen on the entry,
+ * but the entry date can.
+ */
+export interface TransitExemption {
+  heading: string
+  /** Loaded onto the vessel before this day. */
+  loadedBefore: string
+  /** Entered for consumption before 12:01 a.m. Eastern on this day. */
+  enteredBefore: string
+  source: string
+}
+
+export const TRANSIT_EXEMPTIONS: readonly TransitExemption[] = [
+  {
+    heading: '9903.05.85',
+    loadedBefore: '2026-07-24',
+    enteredBefore: '2026-07-28',
+    source: 'CBP CSMS 69326983, 23 Jul 2026, "General Exemptions For All Economies"',
+  },
+]
+
+/** The in-transit exemption a line claims, if it files one of the headings. */
+export function transitExemptionOf(codes: readonly string[]): TransitExemption | null {
+  return TRANSIT_EXEMPTIONS.find((e) => codes.some((c) => c.startsWith(e.heading))) ?? null
+}
+
 const EU_MEMBER_STATES = new Set([
   'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IE',
   'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE',
