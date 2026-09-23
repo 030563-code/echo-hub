@@ -1,4 +1,5 @@
 import type { CustomerInvoiceStatus } from '@/lib/customer-invoice/constants'
+import { filedChipLabel, type TaxEngine } from '@/lib/customer-invoice/invoicing-profile'
 
 export type QueueChip = CustomerInvoiceStatus | 'new' | 'missing_address'
 
@@ -19,11 +20,19 @@ const CHIP_STYLES: Record<QueueChip, { label: string; className: string }> = {
   voided: { label: 'Discarded', className: 'bg-gray-200 text-gray-700' },
 }
 
-export function InvoiceStatusChip({ chip }: { chip: QueueChip }) {
+/**
+ * `taxEngine` is the invoicing organisation's. One chip reads differently by
+ * it: a numbered USA invoice has been filed with TaxJar, a numbered French one
+ * has only been numbered, and "Filed with TaxJar" on Claire's screen would
+ * describe something that never happened. Callers that do not know the
+ * organisation get the USA's words, as before.
+ */
+export function InvoiceStatusChip({ chip, taxEngine }: { chip: QueueChip; taxEngine?: TaxEngine }) {
   const style = CHIP_STYLES[chip] ?? CHIP_STYLES.draft
+  const label = chip === 'filed' && taxEngine ? filedChipLabel(taxEngine) : style.label
   return (
     <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${style.className}`}>
-      {style.label}
+      {label}
     </span>
   )
 }

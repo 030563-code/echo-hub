@@ -17,6 +17,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { buildDraftLines, type RawDealLine } from '@/lib/customer-invoice/build-draft'
 import { fetchHubSpotLineDescriptions } from '@/lib/customer-invoice/line-descriptions'
 import { isInvoiceDepot } from '@/lib/customer-invoice/constants'
+import { depotCode } from '@/lib/depot-constants'
 import { invoicingProfile } from '@/lib/customer-invoice/invoicing-profile'
 import { linesHash } from '@/lib/customer-invoice/hash'
 import { holdsOrganisation, orgForDepot, orgLabel } from '@/lib/organisations'
@@ -100,10 +101,14 @@ export async function openInvoiceForDeal(input: {
   // USA since September 2026, France since Dean's decision of 22 Sep 2026.
   // Each of the others is its own follow-up, and until then the queue shows
   // the deal and this is the answer.
-  const depot = String(deal.depot_code ?? '').trim().toUpperCase()
+  // Whichever spelling the sync wrote: the code, or HubSpot's internal value
+  // for it ('EU-France' for EU-FR). A depot the Hub does not know is refused
+  // by the name the record actually carries.
+  const rawDepot = String(deal.depot_code ?? '').trim()
+  const depot = depotCode(rawDepot)
   const org = orgForDepot(depot)
-  if (!org) {
-    return { success: false, error: `This deal's depot (${depot || 'not set'}) belongs to no organisation the Hub knows, so it cannot be invoiced here.` }
+  if (!depot || !org) {
+    return { success: false, error: `This deal's depot (${rawDepot || 'not set'}) belongs to no organisation the Hub knows, so it cannot be invoiced here.` }
   }
   if (!holdsOrganisation(gate.auth.profile.organisations, org)) {
     return { success: false, error: 'This deal belongs to an organisation you do not hold.' }

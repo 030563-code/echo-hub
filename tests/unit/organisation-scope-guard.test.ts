@@ -19,7 +19,9 @@ const read = (file: string) => readFileSync(join(process.cwd(), file), 'utf8')
 
 /** Pages that resolve the active organisation themselves and put it in the query. */
 const LIST_PAGES: Record<string, string[]> = {
-  'src/app/(dashboard)/invoicing/accepted/page.tsx': ['activeOrganisation(', ".in('depot_code', [...depots])"],
+  // Both spellings of the organisation's depots go into the IN: the EURO sync
+  // writes HubSpot's 'EU-France', the USA sync writes the code.
+  'src/app/(dashboard)/invoicing/accepted/page.tsx': ['activeOrganisation(', ".in('depot_code', depotQueryValues(depots))"],
   'src/app/(dashboard)/invoicing/stage-queue.tsx': ['activeOrganisation(', ".eq('organisation_code', org)"],
   'src/app/(dashboard)/pricing/list/page.tsx': ['activeOrganisation(', 'getListPrices(currencies)'],
   'src/app/(dashboard)/pricing/contracts/page.tsx': ['activeOrganisation(', 'getContractPrices(currencies)'],

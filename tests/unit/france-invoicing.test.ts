@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { invoicingProfile, invoicingProfileForDepot, INVOICING_LIVE_ORGS, filedStageLabel } from '@/lib/customer-invoice/invoicing-profile'
+import { invoicingProfile, invoicingProfileForDepot, INVOICING_LIVE_ORGS, filedStageLabel, filedChipLabel } from '@/lib/customer-invoice/invoicing-profile'
 import { INVOICE_DEPOTS, isInvoiceDepot, DEPOT_FROM_ADDRESSES, usDepotAddress } from '@/lib/customer-invoice/constants'
 import { sellerFor, remittanceIsIncomplete, type RemittanceDetails } from '@/lib/customer-invoice/seller'
 import { buildInvoiceDocument, type InvoiceDocumentHeaderRow, type InvoiceDocumentLineRow } from '@/lib/customer-invoice/invoice-document'
@@ -240,5 +240,57 @@ describe('🔴 the two mistakes that would look like success', () => {
     expect(read('src/app/actions/invoicing/open-invoice.ts')).not.toMatch(/is not set up in the Hub yet.*org !== /)
     expect(read('src/app/(dashboard)/invoicing/accepted/page.tsx')).not.toMatch(/invoicingLive = org === 'EB-USA'/)
     expect(read('src/app/(dashboard)/invoicing/[dealId]/page.tsx')).not.toMatch(/US_ACCEPTED_DEAL_STATUS|isUSDepot/)
+  })
+})
+
+describe('🔴 the French depot is spelled two ways, and Claire reads both', () => {
+  // HubSpot's sending_depot stores 'EU-France' (its internal value) where the
+  // Hub says 'EU-FR', and the EURO deal sync copies that value into
+  // deals_registry.depot_code; the USA sync writes the code. A queue keyed on
+  // the code alone showed France nothing, ever, and Open Invoice refused every
+  // French deal as belonging to no organisation. Found 23 Sep 2026 walking
+  // Claire's screens before her first login.
+  it('the accepted queue asks the registry for both spellings and reads the code back', () => {
+    const src = read('src/app/(dashboard)/invoicing/accepted/page.tsx')
+    expect(src).toContain(".in('depot_code', depotQueryValues(depots))")
+    expect(src).not.toContain(".in('depot_code', [...depots])")
+    expect(src).toContain('depotCode(deal.depot_code)')
+  })
+
+  it('opening an invoice and the per-deal page read the depot through depotCode', () => {
+    const open = read('src/app/actions/invoicing/open-invoice.ts')
+    expect(open).toContain('const depot = depotCode(rawDepot)')
+    expect(open).not.toMatch(/const depot = String\(deal\.depot_code/)
+    const page = read('src/app/(dashboard)/invoicing/[dealId]/page.tsx')
+    expect(page).toContain('orgForDepot(depotCode(')
+    expect(page).toContain('invoicingProfileForDepot(depotCode(')
+  })
+
+  it('the quote builder uses the same reader instead of its own inverse map', () => {
+    const src = read('src/app/(dashboard)/quotes/create/[dealId]/page.tsx')
+    expect(src).toContain('depotCode(deal?.properties?.sending_depot)')
+    expect(src).not.toContain('depotNameToCode')
+  })
+
+  it('the two steps France reads differently never say TaxJar or EBUS to her', () => {
+    expect(invoicingProfile('EB-FRANCE')!.invoiceSeries).toBe('EBFR')
+    expect(invoicingProfile('EB-USA')!.invoiceSeries).toBe('EBUS')
+    // The series is decided in SQL; the profile says the same word.
+    const sql = read('supabase/migrations/20260922230000_a_french_customer_invoice_can_exist.sql')
+    expect(sql).toContain("when 'EB-FRANCE' then 'EBFR'")
+    expect(sql).toContain("when 'EB-USA' then 'EBUS'")
+    expect(filedChipLabel('xero_draft')).toBe('Numbered')
+    expect(filedChipLabel('taxjar')).toBe('Filed with TaxJar')
+    const queue = read('src/app/(dashboard)/invoicing/stage-queue.tsx')
+    expect(queue).toContain('${profile.invoiceSeries} number')
+    expect(queue).toContain("'Preview and number'")
+    expect(queue).toContain('filedStageLabel(profile.taxEngine)')
+  })
+
+  it("Tax Setup shows France its own tax, not TaxJar's states", () => {
+    const src = read('src/app/(dashboard)/invoicing/tax-setup/page.tsx')
+    expect(src).toContain("profile?.taxEngine === 'xero_draft'")
+    expect(src).toContain('XeroDraftTaxSetup')
+    expect(invoicingProfile('EB-FRANCE')!.xeroTaxTypeName).toBe('Sales Tax FR, 20%')
   })
 })

@@ -7,6 +7,7 @@ import { activeOrganisation } from '@/lib/active-organisation.server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { INVOICE_STAGES, type CustomerInvoiceStatus, type InvoiceStage } from '@/lib/customer-invoice/constants'
 import { organisation } from '@/lib/organisations'
+import { invoicingProfile, filedStageLabel, type InvoicingProfile } from '@/lib/customer-invoice/invoicing-profile'
 import { InvoiceStatusChip } from './status-chip'
 import { NoOrganisationCard } from '@/components/organisations/no-organisation-card'
 
@@ -23,7 +24,8 @@ import { NoOrganisationCard } from '@/components/organisations/no-organisation-c
  * five copies of a queue are five places for the columns to drift.
  */
 
-/** What a rep does next with anything sitting in this queue. */
+/** What a rep does next with anything sitting in this queue. The USA's words;
+ *  engineNextStep below has the two steps France reads differently. */
 const NEXT_STEP: Record<CustomerInvoiceStatus, string> = {
   draft: 'Add the tax to move this on.',
   tax_calculated: 'Preview the invoice, then send the order to TaxJar. That allocates the EBUS number.',
@@ -52,6 +54,25 @@ const ACTION_LABEL: Record<CustomerInvoiceStatus, string> = {
   voided: 'Open',
 }
 
+/**
+ * The same two steps for an organisation whose tax Xero prices. Nothing is
+ * filed anywhere: the invoice is numbered from the organisation's own series
+ * (EBFR for France), and the button says so. "Send the order to TaxJar" on
+ * Claire's screen would describe a step that does not exist for her.
+ */
+function engineNextStep(status: CustomerInvoiceStatus, profile: InvoicingProfile | null): string {
+  if (profile?.taxEngine === 'xero_draft') {
+    if (status === 'tax_calculated') return `Preview the invoice, then number it. That allocates the ${profile.invoiceSeries} number.`
+    if (status === 'filed') return 'Numbered. Generate the invoice PDF next.'
+  }
+  return NEXT_STEP[status]
+}
+
+function engineActionLabel(status: CustomerInvoiceStatus, profile: InvoicingProfile | null): string {
+  if (profile?.taxEngine === 'xero_draft' && status === 'tax_calculated') return 'Preview and number'
+  return ACTION_LABEL[status]
+}
+
 export async function InvoiceStageQueue({ stage }: { stage: InvoiceStage }) {
   const auth = await getAuthorizedUser()
   if (!auth.ok || !(auth.capabilities.has('invoicing.view') || auth.capabilities.has('invoicing.manage'))) {
@@ -63,6 +84,10 @@ export async function InvoiceStageQueue({ stage }: { stage: InvoiceStage }) {
   const org = await activeOrganisation(auth)
   if (!org) return <NoOrganisationCard title={stage.label} what="invoices" />
   const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: organisation(org).currency })
+  // The numbering step is named for what it does for THIS organisation, the
+  // same rule the tab bar follows.
+  const profile = invoicingProfile(org)
+  const label = stage.status === 'filed' && profile ? filedStageLabel(profile.taxEngine) : stage.label
 
   const admin = createAdminClient()
   const { data: invoices, error } = await admin
@@ -100,9 +125,9 @@ export async function InvoiceStageQueue({ stage }: { stage: InvoiceStage }) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">{stage.label}</h1>
+        <h1 className="text-2xl font-bold text-gray-900">{label}</h1>
         <p className="text-gray-500 text-sm mt-1">
-          Step {position} of {INVOICE_STAGES.length}. {NEXT_STEP[stage.status]}
+          Step {position} of {INVOICE_STAGES.length}. {engineNextStep(stage.status, profile)}
         </p>
       </div>
 
@@ -118,7 +143,7 @@ export async function InvoiceStageQueue({ stage }: { stage: InvoiceStage }) {
           <FileText className="w-8 h-8 mx-auto mb-3 text-gray-300" />
           <p className="font-medium text-gray-700">Nothing waiting here</p>
           <p className="text-sm mt-1">
-            An invoice appears in this queue when it reaches {stage.label.toLowerCase()}, and leaves it on the next step.
+            An invoice appears in this queue when it reaches {label.toLowerCase()}, and leaves it on the next step.
           </p>
         </Card>
       ) : (
@@ -146,7 +171,7 @@ export async function InvoiceStageQueue({ stage }: { stage: InvoiceStage }) {
                     </td>
                     <td className="px-4 py-3 text-gray-600">{row.company ?? '—'}</td>
                     <td className="px-4 py-3">
-                      <InvoiceStatusChip chip={row.status} />
+                      <InvoiceStatusChip chip={row.status} taxEngine={profile?.taxEngine} />
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-gray-900">
                       {row.total === null ? '—' : money.format(row.total)}
@@ -164,7 +189,7 @@ export async function InvoiceStageQueue({ stage }: { stage: InvoiceStage }) {
                         href={`/invoicing/${row.dealId}`}
                         className="inline-flex items-center whitespace-nowrap rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:border-echo-orange hover:text-gray-900"
                       >
-                        {ACTION_LABEL[stage.status]}
+                        {engineActionLabel(stage.status, profile)}
                       </Link>
                     </td>
                   </tr>
@@ -179,13 +204,13 @@ export async function InvoiceStageQueue({ stage }: { stage: InvoiceStage }) {
                 <Card className="bg-white border-gray-200 p-4 space-y-1.5 hover:border-echo-orange">
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-medium text-gray-900">{row.number}</p>
-                    <InvoiceStatusChip chip={row.status} />
+                    <InvoiceStatusChip chip={row.status} taxEngine={profile?.taxEngine} />
                   </div>
                   <p className="text-sm text-gray-500">
                     {row.company ?? 'No company'} ·{' '}
                     {row.total === null ? 'no total yet' : `${money.format(row.total)}${row.taxed ? '' : ' ex tax'}`}
                   </p>
-                  <p className="pt-1 text-sm font-medium text-echo-orange">{ACTION_LABEL[stage.status]}</p>
+                  <p className="pt-1 text-sm font-medium text-echo-orange">{engineActionLabel(stage.status, profile)}</p>
                 </Card>
               </Link>
             ))}

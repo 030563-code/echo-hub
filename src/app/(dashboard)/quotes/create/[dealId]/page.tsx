@@ -8,7 +8,7 @@ import { getContactDetails } from '@/app/actions/hubspot/getContactDetails'
 import { getCompanyDetails } from '@/app/actions/hubspot/getCompanyDetails'
 import { getLineItems } from '@/app/actions/hubspot/getLineItems'
 import { getMappedSkus } from '@/app/actions/sales/get-mapped-skus'
-import { DEPOT_MAPPING } from '@/lib/depot-constants'
+import { depotCode } from '@/lib/depot-constants'
 import { createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertDealAccess, requireCapability } from '@/lib/authz'
@@ -107,12 +107,6 @@ export default async function CreateQuotePage(props: {
   // Filter products based on mapped SKUs
   const products = allProducts.filter(p => p.properties.hs_sku && mappedSkus.includes(p.properties.hs_sku))
 
-  // The deal may already carry a sending depot (HubSpot stores the internal
-  // NAME, e.g. "US Baltimore"); reverse-map it to the code the form works in.
-  // A raw code is accepted too, in case the property was ever set directly.
-  const depotNameToCode = Object.fromEntries(
-    Object.entries(DEPOT_MAPPING).map(([code, name]) => [name, code])
-  )
   // The deal's own currency drives the builder's money formatting and the
   // quote PDF. Falls back to USD only when the deal genuinely has none.
   const dealCurrency = (deal?.properties?.deal_currency_code || '').trim().toUpperCase() || 'USD'
@@ -125,9 +119,10 @@ export default async function CreateQuotePage(props: {
     userId: auth.user.id,
   })
 
-  const rawSendingDepot = (deal?.properties?.sending_depot || '').trim()
-  const initialDepot =
-    depotNameToCode[rawSendingDepot] ?? (rawSendingDepot in DEPOT_MAPPING ? rawSendingDepot : '')
+  // The deal may already carry a sending depot. HubSpot stores its internal
+  // value ("US Baltimore"); depotCode reads that, or a raw code, back to the
+  // code the form works in, and anything else seeds nothing.
+  const initialDepot = depotCode(deal?.properties?.sending_depot) ?? ''
 
   // Edit mode. The row is read with the admin client (deal_quotes is
   // service-role only) but ONLY after requireCapability above and only when it

@@ -25,6 +25,50 @@ export function depotLabel(code: string | null | undefined, fallback = "—"): s
 }
 
 /**
+ * HubSpot's own spelling of each depot, keyed the other way round.
+ *
+ * The `sending_depot` deal property is an enumeration whose display LABEL is
+ * the code (EU-FR) and whose internal VALUE is the long name (EU-France), for
+ * all seven depots (read live from the property definition, 23 Sep 2026). So
+ * DEPOT_MAPPING is also, exactly, code to HubSpot value, which is why
+ * updateDealStage writes it to HubSpot. The EURO deal sync copies HubSpot's
+ * value straight into deals_registry.depot_code, so 66 French deals read
+ * 'EU-France' where the Hub says 'EU-FR'; the USA sync writes the code. A
+ * record the Hub did not write can therefore carry either spelling, and it is
+ * read back through depotCode() rather than compared to a code directly.
+ */
+const HUBSPOT_VALUE_TO_CODE: Record<string, string> = Object.fromEntries(
+  Object.entries(DEPOT_MAPPING).map(([code, value]) => [value.toUpperCase(), code]),
+)
+
+/**
+ * The depot code for whatever spelling a record holds: the code itself, or
+ * HubSpot's internal value for it, in any case. null for anything else,
+ * because a depot the Hub does not know has to be refused by name, not
+ * passed along as if it were one.
+ */
+export function depotCode(value: string | null | undefined): string | null {
+  const upper = String(value ?? '').trim().toUpperCase()
+  if (!upper) return null
+  if (upper in DEPOT_MAPPING) return upper
+  return HUBSPOT_VALUE_TO_CODE[upper] ?? null
+}
+
+/**
+ * Every spelling deals_registry.depot_code may hold for these depots: each
+ * code and HubSpot's internal value for it. For an IN (...) that has to find
+ * the French deals whichever sync wrote them.
+ */
+export function depotQueryValues(codes: readonly string[]): string[] {
+  const out = new Set<string>()
+  for (const code of codes) {
+    out.add(code)
+    if (code in DEPOT_MAPPING) out.add(DEPOT_MAPPING[code])
+  }
+  return [...out]
+}
+
+/**
  * The other codes a purchase order carries in from_entity and to_entity.
  *
  * These are not depots, they are the companies and the outside parties the

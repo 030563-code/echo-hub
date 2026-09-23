@@ -8,6 +8,7 @@ import { getAcceptedAt, isAcceptedSinceCutover } from '@/app/actions/invoicing/s
 import { QUOTATION_ACCEPTED_STAGES } from '@/lib/hubspot-constants'
 import { invoicingProfileForDepot } from '@/lib/customer-invoice/invoicing-profile'
 import { holdsOrganisation, orgForDepot } from '@/lib/organisations'
+import { depotCode } from '@/lib/depot-constants'
 import { OpenInvoiceButton } from '../open-invoice-button'
 import { InvoiceEditor } from './invoice-editor'
 import { InvoiceAttachments } from '@/components/invoicing/invoice-attachments'
@@ -46,7 +47,9 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   // The invoice's organisation, or the deal's depot's before one exists, has
   // to be one this person holds. Same answer as a deal that does not exist:
   // whether it does is not their business either.
-  const recordOrg = invoice ? String(invoice.organisation_code) : orgForDepot(deal?.depot_code as string | null)
+  // The registry holds the depot in whichever spelling its sync wrote (the
+  // EURO one copies HubSpot's 'EU-France'), so it is read through depotCode.
+  const recordOrg = invoice ? String(invoice.organisation_code) : orgForDepot(depotCode(deal?.depot_code as string | null))
   if (!holdsOrganisation(auth.profile.organisations, recordOrg)) notFound()
 
   // Without an invoice, this page is only meaningful for a deal that is
@@ -57,7 +60,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     const eligible =
       deal &&
       QUOTATION_ACCEPTED_STAGES.includes(String(deal.deal_status ?? '')) &&
-      invoicingProfileForDepot(String(deal.depot_code ?? '')) !== null &&
+      invoicingProfileForDepot(depotCode(deal.depot_code as string | null)) !== null &&
       isAcceptedSinceCutover((await getAcceptedAt([dealId])).get(dealId))
     if (!eligible) notFound()
   }

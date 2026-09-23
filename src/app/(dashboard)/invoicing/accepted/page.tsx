@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card'
 import { getAuthorizedUser } from '@/lib/authz'
 import { activeOrganisation } from '@/lib/active-organisation.server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { depotLabel } from '@/lib/depot-constants'
+import { depotCode, depotLabel, depotQueryValues } from '@/lib/depot-constants'
 import type { CustomerInvoiceStatus } from '@/lib/customer-invoice/constants'
 import { depotsForOrg, orgLabel, organisation } from '@/lib/organisations'
 import { invoicingProfile } from '@/lib/customer-invoice/invoicing-profile'
@@ -84,7 +84,10 @@ export default async function AcceptedQueuePage() {
           'hubspot_deal_id, deal_name, hubspot_company_id, depot_code, amount, quote_reference, line_items_raw, deal_status, delivery_street, delivery_city, delivery_state, delivery_zip, is_collection',
         )
         .in('hubspot_deal_id', acceptedIds)
-        .in('depot_code', [...depots])
+        // Both spellings of each depot. The EURO sync writes HubSpot's own
+        // value ('EU-France'), the USA sync writes the code ('US-BAL'), and a
+        // queue keyed on the code alone showed France nothing, ever.
+        .in('depot_code', depotQueryValues(depots))
         .limit(500)
 
   let rows: QueueRow[] = []
@@ -144,7 +147,7 @@ export default async function AcceptedQueuePage() {
         dealId,
         dealName: String(deal.deal_name ?? dealId),
         companyId: deal.hubspot_company_id ? String(deal.hubspot_company_id) : null,
-        depot: String(deal.depot_code),
+        depot: depotCode(deal.depot_code) ?? String(deal.depot_code),
         amount: deal.amount === null ? null : Number(deal.amount),
         quoteRef: deal.quote_reference ? String(deal.quote_reference) : null,
         updatedAt: acceptedAt.get(String(deal.hubspot_deal_id)) as string,
@@ -218,7 +221,7 @@ export default async function AcceptedQueuePage() {
                     </td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1.5">
-                        <InvoiceStatusChip chip={row.chip} />
+                        <InvoiceStatusChip chip={row.chip} taxEngine={profile?.taxEngine} />
                         {row.linesChanged && (
                           <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
                             Lines changed
@@ -252,7 +255,7 @@ export default async function AcceptedQueuePage() {
               <Card key={row.dealId} className="bg-white border-gray-200 p-4 space-y-2">
                 <div className="flex items-start justify-between gap-2">
                   <p className="font-medium text-gray-900">{row.dealName}</p>
-                  <InvoiceStatusChip chip={row.chip} />
+                  <InvoiceStatusChip chip={row.chip} taxEngine={profile?.taxEngine} />
                 </div>
                 <p className="text-sm text-gray-500">
                   {row.quoteRef ?? 'No quote ref'} · {depotLabel(row.depot)} ·{' '}
