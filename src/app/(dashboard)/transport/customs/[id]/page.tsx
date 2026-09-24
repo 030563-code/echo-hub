@@ -1,14 +1,16 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { AlertTriangle, ArrowLeft, CircleAlert, ExternalLink } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CircleAlert, ExternalLink, PencilLine } from 'lucide-react'
 import { requireCapability } from '@/lib/authz'
 import { groupBillsOf, loadCustomsBill, xeroLinesOf } from '@/lib/customs/store.server'
 import { checkPackage } from '@/lib/customs/checks'
 import { buildXeroBill } from '@/lib/customs/xero-bill'
 import { chargeLabel, serviceChargesOf } from '@/lib/customs/nippon-invoice'
-import { checksChip, packageFrom, readingChip, TONE_CLASSES, xeroChip, type StatusChip } from '@/lib/customs/view'
+import { checksChip, isSignedOff, packageFrom, readingChip, TONE_CLASSES, xeroChip, type StatusChip } from '@/lib/customs/view'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { formatDate, formatMoney } from '@/lib/utils'
 import { CustomsBillActions } from './customs-bill-actions'
+import { CustomsBillCheck } from './customs-bill-check'
 
 /**
  * One Nippon Express invoice: what Claude read, whether it adds up, which shipment it is, and the
@@ -67,6 +69,13 @@ export default async function CustomsBillPage({ params }: { params: Promise<{ id
   const canApprove = Boolean(row.xero_invoice_id) && !row.duplicate_of && (status === 'DRAFT' || status === 'SUBMITTED')
   const canMakeDraft = row.source === 'email' && Boolean(pkg) && !row.xero_invoice_id && !row.duplicate_of
   const canReadAgain = row.ocr_status === 'failed' || row.ocr_status === 'pending' || (check?.worst === 'error')
+  const signedOff = isSignedOff(check, row.reviewed_checks)
+  const reviewer =
+    signedOff && row.reviewed_by_uid
+      ? (((await createAdminClient().from('profiles').select('display_name').eq('id', row.reviewed_by_uid).maybeSingle()).data as {
+          display_name: string | null
+        } | null)?.display_name ?? 'somebody')
+      : null
 
   return (
     <div className="p-6">
@@ -95,7 +104,7 @@ export default async function CustomsBillPage({ params }: { params: Promise<{ id
       </div>
 
       <div className="mb-5 flex flex-wrap items-center gap-2">
-        <Chip chip={check ? checksChip(check) : readingChip(row)} />
+        <Chip chip={check ? checksChip(check, row.reviewed_checks) : readingChip(row)} />
         <Chip chip={xeroChip(row, pkg)} />
         {row.spot_id ? (
           <Link
@@ -122,6 +131,19 @@ export default async function CustomsBillPage({ params }: { params: Promise<{ id
       </div>
 
       <div className="mb-5">
+        {pkg && (
+          <div className="mb-3 flex flex-wrap items-center gap-3">
+            <Link
+              href={`/transport/customs/${row.id}/edit`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+            >
+              <PencilLine className="h-4 w-4" /> Correct the reading
+            </Link>
+            {row.edited_at && (
+              <span className="text-xs text-gray-500">Corrected by hand on {formatDate(row.edited_at)}; Claude&apos;s first reading is kept.</span>
+            )}
+          </div>
+        )}
         <CustomsBillActions
           billId={row.id}
           canApprove={canApprove}
@@ -165,6 +187,15 @@ export default async function CustomsBillPage({ params }: { params: Promise<{ id
 
       {check && check.checks.length > 0 && (
         <div className="mb-5 space-y-2">
+          <CustomsBillCheck
+            billId={row.id}
+            signedOff={
+              signedOff
+                ? { by: reviewer ?? 'somebody', on: formatDate(row.reviewed_at ?? null), note: row.review_note ?? '' }
+                : null
+            }
+            lapsed={Boolean(row.reviewed_checks) && !signedOff}
+          />
           {check.checks.map((c, i) => (
             <div
               key={`${c.code}-${i}`}

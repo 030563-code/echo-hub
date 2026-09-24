@@ -31,6 +31,8 @@ export interface CustomsBillFacts {
   xero_error: string | null
   file_name: string
   created_at: string
+  /** The checks Dave signed off, as checksFingerprint wrote them. Missing on rows read before 24 Sep 2026. */
+  reviewed_checks?: string | null
 }
 
 export interface CustomsListRow {
@@ -67,8 +69,27 @@ export function readingChip(row: Pick<CustomsBillFacts, 'ocr_status'>): StatusCh
   }
 }
 
-export function checksChip(check: PackageCheck | null): StatusChip | null {
+/**
+ * What a bill's checks said, in one string, so a sign-off can tell whether it still applies. The
+ * messages carry the figures, so a corrected reading gives a different fingerprint even when the
+ * same kind of check fails.
+ */
+export function checksFingerprint(check: PackageCheck): string {
+  return check.checks
+    .map((c) => `${c.level}:${c.code}:${c.message}`)
+    .sort()
+    .join('\n')
+}
+
+/** Dave's sign-off holds while the checks are the ones he looked at. */
+export function isSignedOff(check: PackageCheck | null, reviewedChecks: string | null | undefined): boolean {
+  return Boolean(check && check.worst !== 'ok' && reviewedChecks != null && reviewedChecks === checksFingerprint(check))
+}
+
+export function checksChip(check: PackageCheck | null, reviewedChecks?: string | null): StatusChip | null {
   if (!check) return null
+  // Looked at and understood: no longer something to look at.
+  if (isSignedOff(check, reviewedChecks)) return { label: 'Checked', tone: 'green' }
   // Duty on the invoice with no entry summary to test it against is not a wrong sum.
   if (check.checks.some((c) => c.level === 'error' && c.code === 'no_entry')) return { label: 'Cannot be checked', tone: 'red' }
   if (check.worst === 'error') return { label: 'Does not add up', tone: 'red' }
@@ -112,7 +133,7 @@ export function listRow(row: CustomsBillFacts): CustomsListRow {
     service: pkg ? serviceChargesOf(pkg.invoice).reduce((sum, c) => Math.round((sum + c.amount) * 100) / 100, 0) : null,
     total: row.invoice_total,
     reading: readingChip(row),
-    checks: checksChip(check),
+    checks: checksChip(check, row.reviewed_checks),
     xero: xeroChip(row, pkg),
     awaitingApproval: Boolean(row.xero_invoice_id) && !row.duplicate_of && (status === 'DRAFT' || status === 'SUBMITTED'),
   }
