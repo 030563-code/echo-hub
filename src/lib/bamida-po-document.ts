@@ -72,7 +72,11 @@ type Row = {
   parent_po_id: string | null
   from_entity: string | null
   delivery_address: string | null
+  /** When the order was raised: the date its documents print until it is sent. */
+  created_at: string | null
 }
+
+const ROW = 'po_number, parent_po_id, from_entity, delivery_address, created_at'
 
 export async function renderSupplierDocument(
   poId: string,
@@ -83,7 +87,7 @@ export async function renderSupplierDocument(
     (
       await admin
         .from('purchase_orders')
-        .select('po_number, parent_po_id, from_entity, delivery_address')
+        .select(ROW)
         .eq('id', id)
         .maybeSingle<Row>()
     ).data ?? null
@@ -138,7 +142,8 @@ export async function renderSupplierDocument(
 
   // The order is dated the day it was SENT, on both the specification and the
   // priced order, so it reads the same however many times it is downloaded.
-  // An unsent order has no send yet and shows today, which is what a draft is.
+  // An unsent order has no send yet and prints the day it was raised, which is
+  // just as fixed.
   // Dean, 18 Sep 2026: "Fix the order date so it is the Date the PO was sent
   // not just todays date."
   const manufacturing = await admin
@@ -146,7 +151,7 @@ export async function renderSupplierDocument(
     .select('sent_at')
     .eq('po_id', poId)
     .maybeSingle<{ sent_at: string | null }>()
-  const documentDate = supplierDocumentDate(manufacturing.data?.sent_at, new Date())
+  const documentDate = supplierDocumentDate(manufacturing.data?.sent_at, po.created_at)
 
   if (kind === 'priced') {
     // -3, derived from the Group order's number. An order raised before the
@@ -214,7 +219,7 @@ export async function generatePricedOrder(
     (
       await admin
         .from('purchase_orders')
-        .select('po_number, parent_po_id, from_entity, delivery_address')
+        .select(ROW)
         .eq('id', id)
         .maybeSingle<Row>()
     ).data ?? null
@@ -241,7 +246,7 @@ export async function generatePricedOrder(
     .select('sent_at')
     .eq('po_id', poId)
     .maybeSingle<{ sent_at: string | null }>()
-  const documentDate = supplierDocumentDate(manufacturing.data?.sent_at, new Date())
+  const documentDate = supplierDocumentDate(manufacturing.data?.sent_at, po.created_at)
 
   const number = sroDocumentNumber(group?.po_number, 'Accounting') ?? po.po_number
   const packing = await specSavedPacking(poId)

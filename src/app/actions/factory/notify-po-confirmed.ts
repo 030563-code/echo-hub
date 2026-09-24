@@ -8,10 +8,12 @@ import 'server-only'
  * should remind them and the hub should also make this clear."
  *
  * So it does two jobs. It is their receipt, quoting their own dates back so a
- * mistyped year is caught by the person who typed it. And it is where the
- * invoice rule is written down: we cannot pay an invoice for an order that is
- * not marked finished in the Hub, and the place that gets read months later is
- * an email, not a screen they visited once.
+ * mistyped year is caught by the person who typed it. And it reminds them of
+ * the last step, pressing Manufacturing finished once the whole order is
+ * manufactured and packed, because the place that gets read months later is an
+ * email, not a screen they visited once. The wording is composed in n8n. It
+ * used to say we could only pay their invoice after that press, which was never
+ * true: nothing reads finished_at before a supplier invoice is paid.
  *
  * It goes to them with us in copy, through the same webhook the order
  * notification uses, because it is the same conversation about the same order

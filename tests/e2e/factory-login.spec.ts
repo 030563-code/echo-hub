@@ -206,7 +206,7 @@ test('Confirm needs both dates, then records the confirmation and emails it', as
   await expect(confirm).toBeDisabled()
 
   // Manufacturing finished is not offered until the order is confirmed.
-  await expect(page.getByText('Confirm the purchase order first, with your estimated dates.')).toBeVisible()
+  await expect(page.getByText('Confirm the purchase order first.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Manufacturing finished' })).toHaveCount(0)
 
   await page.locator('input[type="date"]').nth(1).fill('2026-10-04')
@@ -227,15 +227,13 @@ test('Confirm needs both dates, then records the confirmation and emails it', as
   expect(row!.confirmation_emailed_at).not.toBeNull()
 })
 
-test('Manufacturing finished is one press, and it is what tells us to pay', async ({ page }) => {
+test('Manufacturing finished is one press, pressed once the whole order is packed', async ({ page }) => {
   test.setTimeout(90_000)
   await loginFactory(page)
   await page.goto(`/factory/${orderId}`)
 
-  // The reason it matters is on the button, not buried.
-  await expect(
-    page.getByText('We can only pay an invoice once its order is marked finished here'),
-  ).toBeVisible({ timeout: 20_000 })
+  // When to press it is on the button's card, not buried.
+  await expect(page.getByText('the whole order is manufactured and packed')).toBeVisible({ timeout: 20_000 })
 
   await page.getByRole('button', { name: 'Manufacturing finished' }).click()
   await page.getByRole('button', { name: 'Yes, it is finished' }).click()

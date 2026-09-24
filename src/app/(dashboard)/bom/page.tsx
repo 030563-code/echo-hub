@@ -1,5 +1,13 @@
 import { requireCapability } from "@/lib/authz";
-import { loadSroPoBoms, loadBomMaster, loadMaterials, loadManufacturingPoNumbers, loadProductCodes } from "@/lib/bom";
+import {
+  loadSroPoBoms,
+  loadBomMaster,
+  loadMaterials,
+  loadManufacturingDocumentDates,
+  loadManufacturingPoNumbers,
+  loadProductCodes,
+} from "@/lib/bom";
+import { supplierDocumentDate } from "@/lib/supplier-document-date";
 import { productModelRows } from "@/lib/sku-model";
 import { getSupplierByCode } from "@/lib/suppliers";
 import { specSavedPackingBySroOrder } from "@/lib/po-spec-store";
@@ -40,19 +48,22 @@ export default async function BomPage() {
   // The document is numbered after the manufacturing order raised under each
   // SRO order. An order fulfilled from stock has no such child, so it keeps its
   // own number rather than showing an EBSRO<n>-1 nobody ever raised.
-  const today = new Date().toISOString().slice(0, 10);
   // The packing somebody signed on each manufacturing order's specification,
   // so this tab and the -3 download never state different pallet counts.
   const ids = orders.pos.map((p) => p.id);
-  // And the priced order somebody saved on it, which is what the -3 prints.
-  const [mfgNumbers, packingBySro, pricedBySro] = await Promise.all([
+  // And the priced order somebody saved on it, which is what the -3 prints, and
+  // the date the -3 prints: the send, or the day it was raised, never today.
+  const [mfgNumbers, packingBySro, pricedBySro, datesBySro] = await Promise.all([
     loadManufacturingPoNumbers(ids),
     specSavedPackingBySroOrder(ids),
     pricedDraftsBySroOrder(ids),
+    loadManufacturingDocumentDates(ids),
   ]);
   const bamidaByPo: Record<string, BamidaPo> = {};
   for (const po of orders.pos) {
-    const generated = buildBamidaPo(po, today, bamidaSupplier, mfgNumbers[po.id], packingBySro[po.id] ?? null);
+    // An order fulfilled from stock has no manufacturing order, so it is dated by its own creation.
+    const date = datesBySro[po.id] ?? supplierDocumentDate(null, po.created_at);
+    const generated = buildBamidaPo(po, date, bamidaSupplier, mfgNumbers[po.id], packingBySro[po.id] ?? null);
     const savedDraft = pricedBySro[po.id];
     const bp = savedDraft ? pricedFromDraft(generated, savedDraft) : generated;
     bamidaByPo[po.id] = canViewCost ? bp : stripBamidaPo(bp);

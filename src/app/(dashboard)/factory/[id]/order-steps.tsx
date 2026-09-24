@@ -22,12 +22,12 @@ import { saveFactoryPdf } from '@/lib/factory/save-pdf'
 /**
  * The three steps, in the order Dean set out on 16 Sep 2026: download the
  * purchase order, confirm it with both estimated dates, and press Manufacturing
- * finished when the invoice goes out.
+ * finished once the whole order is manufactured and packed.
  *
- * Numbered because the order matters and the third one has a consequence for
- * them: "they need to press [it] upon invoicing otherwise we wont know if
- * manufacturing is finished to pay the invoice." That sentence is on the button
- * card, not buried in a paragraph.
+ * Numbered because the order matters and the third one cannot be undone: it
+ * tells us the barriers are ready so we can arrange the collection. The card
+ * used to say we could only pay their invoice once it was pressed. That was
+ * never true, the factory called it out, and it must not come back.
  *
  * Every refusal here is also enforced server-side. The disabled Confirm button
  * is a courtesy; the action refuses without both dates whatever the browser

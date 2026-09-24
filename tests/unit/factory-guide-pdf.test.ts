@@ -46,16 +46,16 @@ const COPY = {
     tagline: 'Ako pracovať s objednávkou: stiahnuť, potvrdiť, dokončiť',
     changedTitle: 'Čo sa zmenilo',
     changed:
-      'Objednávky vám už neposielame ako prílohu e-mailu. Každá objednávka má teraz svoju stránku v Echo Barrier Hube, kde si ju stiahnete, potvrdíte s vašimi termínmi a po fakturácii označíte ako dokončenú. E-mail vás na novú objednávku iba upozorní a odkáže na túto stránku.',
+      'Objednávky vám už neposielame ako prílohu e-mailu. Každá objednávka má teraz svoju stránku v Echo Barrier Hube, kde si ju stiahnete, potvrdíte s vašimi termínmi a keď bude celá vyrobená a zabalená, stlačíte Výroba dokončená. E-mail vás na novú objednávku iba upozorní a odkáže na túto stránku.',
     threeTitle: 'Tri kroky pri každej objednávke',
     three: [
       'Stiahnite si objednávku. Je to dokument, podľa ktorého vyrábate.',
       'Potvrďte objednávku. Zadajte predpokladaný začiatok a ukončenie výroby. Oba termíny sú povinné, plánujeme podľa nich prepravu.',
-      'Výroba dokončená. Stlačte, keď nám pošlete faktúru za objednávku.',
+      'Výroba dokončená. Stlačte, keď je celá objednávka vyrobená a zabalená, aby sme mohli zorganizovať jej vyzdvihnutie.',
     ],
     importantLabel: 'DÔLEŽITÉ',
     important:
-      'Faktúru môžeme uhradiť až vtedy, keď je jej objednávka v Hube označená ako dokončená. Takto vieme, že bariéry sú hotové a je možné ich vyzdvihnúť.',
+      'Tlačidlo Výroba dokončená stlačte až vtedy, keď je vyrobená a zabalená celá objednávka, nie iba jej časť. Stlačiť sa dá iba raz a nedá sa vrátiť späť.',
     footer: 'Echo Barrier Hub. Návod pre výrobu',
     page: (a: number, b: number) => `Strana ${a} z ${b}`,
     pages: [
@@ -88,8 +88,8 @@ const COPY = {
       { heading: 'Krok 3: výroba dokončená',
         intro: 'Objednávka je potvrdená. Tretí krok sa sprístupní až teraz.',
         shot: '05-confirmed',
-        steps: [[5, 'Keď nám pošlete faktúru za túto objednávku, stlačte Výroba dokončená.']],
-        note: 'Faktúru môžeme uhradiť až vtedy, keď je jej objednávka tu označená ako dokončená. Takto vieme, že bariéry sú hotové a je možné ich vyzdvihnúť.' },
+        steps: [[5, 'Keď je celá objednávka vyrobená a zabalená, stlačte Výroba dokončená.']],
+        note: 'Tak budeme vedieť, že bariéry sú pripravené, a zorganizujeme ich vyzdvihnutie.' },
       { heading: 'Hotovo',
         intro: 'Objednávka je označená ako dokončená a my o tom vieme. Ďalej už nič robiť netreba.',
         shot: '06-finished', steps: [],
@@ -116,16 +116,16 @@ const COPY = {
     tagline: 'How to work an order: download it, confirm it, finish it',
     changedTitle: 'What changed',
     changed:
-      'Purchase orders are no longer attached to an email. Every order now has its own page in the Echo Barrier Hub, where you download it, confirm it with your dates, and mark it finished when you invoice. The email only tells you a new order has arrived and links you to that page.',
+      'Purchase orders are no longer attached to an email. Every order now has its own page in the Echo Barrier Hub, where you download it, confirm it with your dates, and press Manufacturing finished once the whole order is manufactured and packed. The email only tells you a new order has arrived and links you to that page.',
     threeTitle: 'Three steps on every order',
     three: [
       'Download the purchase order. It is the document you build from.',
       'Confirm the order. Enter the estimated start and finish of manufacturing. Both dates are required: we plan the transport around them.',
-      'Manufacturing finished. Press it when you send us your invoice for the order.',
+      'Manufacturing finished. Press it when the whole order is manufactured and packed, so we can arrange the collection.',
     ],
     importantLabel: 'IMPORTANT',
     important:
-      'We can only pay an invoice once its order is marked finished in the Hub. That is how we know the barriers are done and can be collected.',
+      'Press Manufacturing finished only when the whole order is manufactured and packed, not just part of it. It can only be pressed once and cannot be undone.',
     footer: 'Echo Barrier Hub. Manufacturing guide',
     page: (a: number, b: number) => `Page ${a} of ${b}`,
     pages: [
@@ -158,8 +158,8 @@ const COPY = {
       { heading: 'Step 3: manufacturing finished',
         intro: 'The order is confirmed. Only now does the third step become available.',
         shot: '05-confirmed',
-        steps: [[5, 'When you send us your invoice for this order, press Manufacturing finished.']],
-        note: 'We can only pay an invoice once its order is marked finished here. That is how we know the barriers are done and can be collected.' },
+        steps: [[5, 'When the whole order is manufactured and packed, press Manufacturing finished.']],
+        note: 'That tells us the barriers are ready, so we can arrange the collection.' },
       { heading: 'Done',
         intro: 'The order is marked finished and we know about it. There is nothing else to do.',
         shot: '06-finished', steps: [],

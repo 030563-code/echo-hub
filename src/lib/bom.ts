@@ -6,6 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createMfgClient } from '@/lib/supabase/mfg'
 import { bamidaLabour, num, round2, priceComponents, recomputeTotals, type HubBamidaPrice } from '@/lib/bom-calc'
 import type { BomComponent, BomMasterRow, MaterialPrice, SroPoBom, SroPoBomLine } from '@/lib/erp-types'
+import { supplierDocumentDate } from '@/lib/supplier-document-date'
 
 const mfgConfigured = () =>
   Boolean(process.env.MFG_SUPABASE_URL && process.env.MFG_SUPABASE_SERVICE_ROLE_KEY)
@@ -327,6 +328,44 @@ export async function loadManufacturingPoNumbers(sroPoIds: string[]): Promise<Re
   const out: Record<string, string> = {}
   for (const row of (data ?? []) as { parent_po_id: string | null; po_number: string | null }[]) {
     if (row.parent_po_id && row.po_number) out[row.parent_po_id] = row.po_number
+  }
+  return out
+}
+
+/**
+ * The date the priced document prints for each SRO order on the bill of materials tab: the day
+ * its manufacturing order was sent, or the day that order was raised if it has not been sent.
+ * The same rule, from the same stored fields, as the -1 and -3 downloads (supplierDocumentDate),
+ * so this tab and the order page never print two dates for one order. It used to print today.
+ *
+ * An SRO order with no manufacturing order under it is absent; the page dates it by its own
+ * creation. po_manufacturing is not reachable by anon or authenticated at all, so the send dates
+ * are read with the service-role client, one column, for orders the caller could already read.
+ */
+export async function loadManufacturingDocumentDates(sroPoIds: string[]): Promise<Record<string, string>> {
+  if (sroPoIds.length === 0) return {}
+  const supabase = await createServerClient()
+  const { data, error } = await supabase
+    .from('purchase_orders')
+    .select('id, parent_po_id, created_at')
+    .eq('leg', 'SRO_TO_SUPPLIER')
+    .in('parent_po_id', sroPoIds)
+  if (error) console.error('Could not read the manufacturing orders for these SRO orders:', error.message)
+  const orders = (data ?? []) as { id: string; parent_po_id: string | null; created_at: string | null }[]
+  if (orders.length === 0) return {}
+
+  // A failure here prints the raised date instead of the send date: still fixed, still the
+  // order's own, but not the one the factory holds, so it is loud in the log.
+  const { data: sends, error: sendError } = await createAdminClient()
+    .from('po_manufacturing')
+    .select('po_id, sent_at')
+    .in('po_id', orders.map((o) => o.id))
+  if (sendError) console.error('Could not read when these manufacturing orders were sent:', sendError.message)
+  const sentAt = new Map(((sends ?? []) as { po_id: string; sent_at: string | null }[]).map((s) => [s.po_id, s.sent_at]))
+
+  const out: Record<string, string> = {}
+  for (const order of orders) {
+    if (order.parent_po_id) out[order.parent_po_id] = supplierDocumentDate(sentAt.get(order.id), order.created_at)
   }
   return out
 }
