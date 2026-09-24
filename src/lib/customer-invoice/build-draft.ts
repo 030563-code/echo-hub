@@ -8,8 +8,8 @@ import { roundCents, toMoney } from '@/lib/quote-math'
 import {
   FITTING_KIT_COMPONENTS,
   FITTING_KIT_PRODUCT_IDS,
-  KIT_SHIP_FROM,
   SHIPPING_SKUS,
+  kitShipFrom,
   type InvoiceDepot,
 } from '@/lib/customer-invoice/constants'
 
@@ -35,8 +35,8 @@ export interface RawDealLine {
    *  line as already split. */
   kit_parent_line_key?: string
   origin?: string
-  /** Kit components carry their own dispatch depot (Baltimore), which is not
-   *  necessarily the deal's. */
+  /** Kit components carry their own dispatch depot (Baltimore on a US deal),
+   *  which is not necessarily the deal's. */
   ship_from_depot?: string
 }
 
@@ -114,7 +114,8 @@ export function computeDraftLineTotal(quantity: number, unitPrice: number, disco
  * Build editable draft-invoice lines from a deal's raw quote lines.
  *
  * - Fitting-kit lines split into 1 hook and 2 bungees per kit, the money going
- *   75% to the hook and 12.5% to each bungee, both locked to Baltimore. Since
+ *   75% to the hook and 12.5% to each bungee, both locked to the kit depot
+ *   (Baltimore on a US deal, the deal's own depot elsewhere). Since
  *   migration 20260904110000 Supabase does this on the way into deals_registry,
  *   so in practice this branch now only runs for rows written before it; lines
  *   already split arrive carrying kit_parent_line_key and are passed through as
@@ -130,6 +131,7 @@ export function computeDraftLineTotal(quantity: number, unitPrice: number, disco
 export function buildDraftLines(rawLines: readonly RawDealLine[] | null | undefined, dealDepot: InvoiceDepot): DraftLineInput[] {
   const out: DraftLineInput[] = []
   const lines = Array.isArray(rawLines) ? rawLines : []
+  const kitDepot = kitShipFrom(dealDepot)
 
   lines.forEach((raw, index) => {
     const baseKey = `L${index + 1}`
@@ -166,7 +168,7 @@ export function buildDraftLines(rawLines: readonly RawDealLine[] | null | undefi
           discount_percentage: discount,
           line_total: computeDraftLineTotal(componentQty, componentPrice, discount),
           is_shipping: false,
-          ship_from_depot: KIT_SHIP_FROM,
+          ship_from_depot: kitDepot,
           ship_from_locked: true,
         })
       })
@@ -174,8 +176,8 @@ export function buildDraftLines(rawLines: readonly RawDealLine[] | null | undefi
     }
 
     // A component Supabase already split out arrives here as an ordinary line.
-    // It still has to behave like a kit component in the editor: pinned to
-    // Baltimore, so its tax is calculated from the depot it actually ships
+    // It still has to behave like a kit component in the editor: pinned to the
+    // kit depot, so its tax is calculated from the depot it actually ships
     // from, and flagged kit_split so save-draft keeps that pin.
     const kitComponent = isKitComponentLine(raw)
     const isShipping = sku !== null && SHIPPING_SKUS.has(sku)
@@ -196,7 +198,7 @@ export function buildDraftLines(rawLines: readonly RawDealLine[] | null | undefi
       discount_percentage: discount,
       line_total: computeDraftLineTotal(quantity, unitPrice, discount),
       is_shipping: isShipping,
-      ship_from_depot: kitComponent ? KIT_SHIP_FROM : dealDepot,
+      ship_from_depot: kitComponent ? kitDepot : dealDepot,
       ship_from_locked: kitComponent,
     })
   })

@@ -15,7 +15,9 @@ records completed orders for filing. The Hub builds and owns the draft invoice.
    requires: an associated company, a deal probability, and a full US delivery address
    (street, city, state, zip, validated and sanitized in `src/lib/us-address.ts`).
    Captured in the Change Stage dialog, written to `deals_registry` BEFORE the HubSpot
-   PATCH. Canada and EU acceptances keep the old depot-only requirement.
+   PATCH. France (since 22 Sep 2026) and Canada (CA-HAM, since 24 Sep 2026) are held
+   to the same gate in their own address shape (`src/lib/delivery-address.ts`); the
+   other depots keep the old depot-only requirement.
 2. **Queue** (`/invoicing/accepted`). Derived at read time: `deals_registry` rows at
    stage `1170409275` with a US depot, whose acceptance (dated from
    `deal_stage_history`, NOT from `deals_registry.updated_at`, which does not move when

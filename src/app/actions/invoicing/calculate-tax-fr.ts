@@ -62,6 +62,10 @@ export async function calculateInvoiceTaxXero(input: { invoiceId: string }): Pro
   if (!profile || profile.taxEngine !== 'xero_draft') {
     return { success: false, error: `${orgLabel(invoice.organisation_code)} does not price its tax through a Xero draft.` }
   }
+  // Canada prices its tax this way too, but its Xero leg does not exist yet.
+  // Refused before anything is written, so a press of the button leaves the
+  // invoice exactly as it was.
+  if (profile.xeroNotConnected) return { success: false, error: profile.xeroNotConnected }
 
   if (invoice.status !== 'draft' && invoice.status !== 'tax_calculated') {
     return { success: false, error: `Tax can only be calculated on a draft (this invoice is ${invoice.status}).` }

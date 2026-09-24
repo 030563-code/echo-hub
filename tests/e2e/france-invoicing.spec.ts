@@ -7,8 +7,9 @@ import { adminCreds, login } from './helpers'
  * Until today the Accepted Quotes queue told every organisation but the USA
  * "Invoicing for X is not set up in the Hub yet." France now has an invoicing
  * profile (EUR, a Xero draft where TaxJar stands), so its queue is live and its
- * numbering tab is named for what that step does. Canada is unchanged and
- * still says so, which is the control.
+ * numbering tab is named for what that step does. Canada has a profile too
+ * since 24 Sep 2026, with its Xero leg not connected, so its queue says where
+ * its invoices stop rather than that it is not set up.
  *
  * Read only: switching organisation sets a cookie and nothing else, and no
  * invoice is opened. The queue is empty for France today (no EURO deal has
@@ -38,11 +39,25 @@ test.describe('France invoicing is live in the Hub', () => {
     await expect(nav.getByRole('link', { name: 'TaxJar order transaction created' })).toHaveCount(0)
   })
 
-  test('Canada is unchanged: still for reference only, still says so', async ({ page }) => {
+  test('Canada opens up to the tax step, and says where it stops', async ({ page }) => {
     await page.goto('/invoicing/accepted')
     await page.locator('aside').getByRole('link', { name: 'Canada', exact: true }).click()
     await expect(page.getByTestId('active-organisation')).toHaveText(/Canada/)
-    await expect(page.getByText('Invoicing for Canada is not set up in the Hub yet.')).toBeVisible()
+    await expect(page.getByText('Invoicing for Canada is not set up in the Hub yet.')).toHaveCount(0)
+    await expect(
+      page.getByText('Canadian tax is worked out by Xero. That step is not connected to the Hub yet.'),
+    ).toBeVisible()
+    // The numbering tab is named for Canada's step, never for TaxJar.
+    const nav = page.getByRole('navigation', { name: 'Invoicing' })
+    await expect(nav.getByRole('link', { name: 'TaxJar order transaction created' })).toHaveCount(0)
+
+    // Tax Setup showed Canada the USA's TaxJar states until 24 Sep 2026.
+    await page.goto('/invoicing/tax-setup')
+    await expect(page.getByRole('heading', { name: 'Tax Setup' })).toBeVisible()
+    await expect(
+      page.getByText('Canadian tax is worked out by Xero. That step is not connected to the Hub yet.'),
+    ).toBeVisible()
+    await expect(page.getByText('Sales tax states')).toHaveCount(0)
   })
 
   test('the USA is unchanged: TaxJar wording on the tab, no banner', async ({ page }) => {

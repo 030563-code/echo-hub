@@ -17,9 +17,9 @@ import { depotShipments, filingTransactionId } from '@/lib/customer-invoice/tax-
 const read = (file: string) => readFileSync(join(process.cwd(), file), 'utf8')
 
 describe('the invoicing profile is the one place the module asks who is invoicing', () => {
-  it('knows the USA and France, and nobody else, and never defaults', () => {
-    expect(INVOICING_LIVE_ORGS).toEqual(['EB-USA', 'EB-FRANCE'])
-    expect(invoicingProfile('EB-CANADA')).toBeNull()
+  it('knows the USA, Canada and France, and nobody else, and never defaults', () => {
+    // Canada joined on 24 Sep 2026, up to its tax step: canada-invoicing.test.ts.
+    expect(INVOICING_LIVE_ORGS).toEqual(['EB-USA', 'EB-CANADA', 'EB-FRANCE'])
     expect(invoicingProfile('EB-SRO')).toBeNull()
     expect(invoicingProfile('')).toBeNull()
     expect(invoicingProfile(null)).toBeNull()

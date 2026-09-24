@@ -24,7 +24,8 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { xeroFindContact } from '@/lib/xero-hub'
-import type { OrgCode } from '@/lib/organisations'
+import { orgLabel, type OrgCode } from '@/lib/organisations'
+import { invoicingProfile } from '@/lib/customer-invoice/invoicing-profile'
 import { dueDateFromTerms, describeTerms } from '@/lib/customer-invoice/payment-terms'
 import {
   requireInvoicingManage,
@@ -51,6 +52,18 @@ export async function sendOrderToTaxJar(input: { invoiceId: string }): Promise<R
   const loaded = await loadInvoiceWithLines(invoiceId, gate.auth.profile.organisations)
   if (!loaded.ok) return { success: false, error: loaded.error }
   const { invoice, lines } = loaded
+
+  // Only an organisation TaxJar prices is filed with TaxJar. This step used to
+  // take any invoice at tax_calculated, so a French or Canadian one posted here
+  // directly had its dates stamped and a gapless number taken before the US
+  // filing refused it. Refused now before either.
+  const profile = invoicingProfile(invoice.organisation_code)
+  if (!profile || profile.taxEngine !== 'taxjar') {
+    return {
+      success: false,
+      error: profile?.xeroNotConnected ?? `${orgLabel(invoice.organisation_code)} files nothing with TaxJar.`,
+    }
+  }
 
   // `filed` is allowed so a failed filing can be retried without the number
   // being allocated twice.

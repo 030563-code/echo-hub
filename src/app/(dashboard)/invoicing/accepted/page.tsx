@@ -41,8 +41,9 @@ export default async function AcceptedQueuePage() {
 
   // The organisation being looked at decides the depots, and the depots go
   // into the query. Dean, 15 Sep 2026: every organisation is listed; the ones
-  // with an invoicing profile (the USA, and France since 22 Sep 2026) can
-  // create an invoice here, the others see their queue and cannot yet.
+  // with an invoicing profile (the USA, France since 22 Sep 2026, and Canada
+  // since 24 Sep 2026 up to the tax step) can create an invoice here, the
+  // others see their queue and cannot yet.
   const org = await activeOrganisation(auth)
   if (!org) return <NoOrganisationCard title="Accepted Quotes" what="accepted quotes" />
   const depots = depotsForOrg(org)
@@ -174,6 +175,19 @@ export default async function AcceptedQueuePage() {
           <p className="mt-1">
             The queue is here for reference. Until {orgLabel(org)}&apos;s tax and Xero flow is built, its
             invoices are raised outside the Hub.
+          </p>
+        </div>
+      )}
+
+      {/* Canada, 24 Sep 2026: invoices open and edit here, and the tax step
+          is not built yet. Said up front so nobody reviews an invoice
+          expecting to finish it in the Hub. */}
+      {profile?.xeroNotConnected && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="font-semibold">{profile.xeroNotConnected}</p>
+          <p className="mt-1">
+            You can open, edit and save an invoice here, but it stops before the tax step. Until that step
+            is connected, {orgLabel(org)}&apos;s invoices are raised outside the Hub.
           </p>
         </div>
       )}

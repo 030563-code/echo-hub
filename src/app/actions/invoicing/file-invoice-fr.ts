@@ -56,6 +56,9 @@ export async function fileInvoiceXeroDraft(input: { invoiceId: string }): Promis
   if (!profile || profile.taxEngine !== 'xero_draft') {
     return { success: false, error: `${orgLabel(invoice.organisation_code)} files through TaxJar, not this step.` }
   }
+  // Numbering follows the Xero draft, and an organisation with no Xero leg has
+  // no draft to follow. Refused before a number could be taken.
+  if (profile.xeroNotConnected) return { success: false, error: profile.xeroNotConnected }
 
   // `filed` is allowed so a failure after the number was taken can be retried
   // without allocating a second one.
