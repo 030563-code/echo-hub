@@ -6,7 +6,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { customsPackageSchema, customsChargeOf, type CustomsPackage } from '@/lib/customs/nippon-invoice'
 import { matchShipment, type ShipmentKeys } from '@/lib/customs/match'
 import { buildXeroBill, type GroupBill } from '@/lib/customs/xero-bill'
-import { holdsDraftBack } from '@/lib/customs/checks'
+import { checkPackage, holdsDraftBack } from '@/lib/customs/checks'
+import { checksFingerprint } from '@/lib/customs/view'
 import { callCustomsWebhook, type XeroBillLineOut } from '@/lib/customs/n8n.server'
 
 /**
@@ -59,6 +60,14 @@ export interface CustomsBillRow {
   xero_error: string | null
   approved_by_uid: string | null
   approved_at: string | null
+  /** What Claude read, kept the first time Dave corrected the reading. */
+  extraction_original?: unknown
+  edited_by_uid?: string | null
+  edited_at?: string | null
+  reviewed_by_uid?: string | null
+  reviewed_at?: string | null
+  review_note?: string | null
+  reviewed_checks?: string | null
   created_at: string
   updated_at: string
 }
@@ -470,4 +479,97 @@ export async function authoriseInXero(
     })
     .eq('id', row.id)
   return { ok: true, status }
+}
+
+// ---------------------------------------------------------------------------
+// Dave's corrections
+// ---------------------------------------------------------------------------
+
+/**
+ * Dave has looked at what is flagged and is content with it. The sign-off carries the checks it
+ * was given against, so it lapses by itself if the reading changes and the checks with it.
+ */
+export async function markChecked(
+  billId: string,
+  uid: string,
+  note: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const row = await loadCustomsBill(billId)
+  if (!row) return { ok: false, error: 'No such customs bill.' }
+  const pkg = packageOf(row)
+  if (row.ocr_status !== 'done' || !pkg) return { ok: false, error: 'Claude has not read this PDF yet.' }
+  const check = checkPackage(pkg)
+  if (check.worst === 'ok') return { ok: false, error: 'Nothing on this bill is flagged.' }
+  const { error } = await createAdminClient()
+    .from('customs_bills')
+    .update({
+      reviewed_by_uid: uid,
+      reviewed_at: new Date().toISOString(),
+      review_note: note,
+      reviewed_checks: checksFingerprint(check),
+    })
+    .eq('id', row.id)
+  if (error) return { ok: false, error: 'The check could not be saved.' }
+  return { ok: true }
+}
+
+export async function clearChecked(billId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { error } = await createAdminClient()
+    .from('customs_bills')
+    .update({ reviewed_by_uid: null, reviewed_at: null, review_note: null, reviewed_checks: null })
+    .eq('id', billId)
+  if (error) return { ok: false, error: 'The check could not be undone.' }
+  return { ok: true }
+}
+
+/**
+ * The reading put right by hand: a misread figure, or the entry summary typed from a 7501 that
+ * came on its own. Claude's reading is kept the first time. Everything worked from the reading
+ * follows it: the checks, the shipment it links to, the Xero draft not yet made and the landed
+ * cost. A draft already in Xero is not changed by this.
+ */
+export async function saveEditedReading(
+  billId: string,
+  pkg: CustomsPackage,
+  uid: string,
+): Promise<{ ok: true; spotId: string | null } | { ok: false; error: string }> {
+  const row = await loadCustomsBill(billId)
+  if (!row) return { ok: false, error: 'No such customs bill.' }
+  if (row.ocr_status !== 'done') return { ok: false, error: 'Claude has not read this PDF yet. Read it first, then correct it.' }
+  const admin = createAdminClient()
+
+  if (pkg.invoice.invoice_number !== row.invoice_number && !row.duplicate_of) {
+    const { data: other } = await admin
+      .from('customs_bills')
+      .select('id')
+      .eq('invoice_number', pkg.invoice.invoice_number)
+      .is('duplicate_of', null)
+      .neq('id', row.id)
+      .maybeSingle()
+    if (other) return { ok: false, error: `Another bill in the Hub is already ${pkg.invoice.invoice_number}.` }
+  }
+
+  const match = matchShipment(pkg, await shipmentCandidates())
+  const { error } = await admin
+    .from('customs_bills')
+    .update({
+      extraction: pkg,
+      extraction_original: row.extraction_original ?? row.extraction,
+      edited_by_uid: uid,
+      edited_at: new Date().toISOString(),
+      invoice_number: pkg.invoice.invoice_number,
+      invoice_date: pkg.invoice.invoice_date,
+      invoice_total: pkg.invoice.total,
+      entry_number: pkg.entry?.entry_number ?? null,
+      entry_date: pkg.entry?.entry_date ?? null,
+      customs_total: pkg.entry?.total ?? customsChargeOf(pkg.invoice)?.amount ?? null,
+      spot_id: match?.spotId ?? null,
+      match_method: match?.method ?? null,
+    })
+    .eq('id', row.id)
+  if (error) {
+    if (error.code === '23505') return { ok: false, error: `Another bill in the Hub is already ${pkg.invoice.invoice_number}.` }
+    return { ok: false, error: 'The reading could not be saved.' }
+  }
+  return { ok: true, spotId: match?.spotId ?? null }
 }
