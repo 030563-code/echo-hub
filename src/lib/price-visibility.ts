@@ -58,6 +58,10 @@ export function stripBomMasterCosts(rows: BomMasterRow[], canViewCost: boolean):
     // The pre-edit snapshot total is still a EUR cost — null it too, or it leaks
     // into the RSC payload for a bom.view viewer without cost.view.
     original_bom_total_eur: null,
+    // The sheet's Bamida prices, shown beside the Hub's: the same money.
+    sheet_man_eur: null,
+    sheet_print_eur: null,
+    hub_price: null,
     fx_gbp_eur: null,
     bom_change_pct: null,
     component_detail: r.component_detail.map((c) => ({ ...c, unit_cost_eur: 0, extended_eur: 0 })),

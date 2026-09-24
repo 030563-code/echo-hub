@@ -21,7 +21,7 @@ import { loadSpecDocument } from '@/lib/po-spec-store'
 import { getSupplierByCode } from '@/lib/suppliers'
 import { DEFAULT_SUPPLIER } from '@/lib/bamida-po'
 import { entityLabel } from '@/lib/depot-constants'
-import { modelForSku, modelMaps } from '@/lib/sku-model'
+import { chosenModels, lineModels, modelMaps } from '@/lib/sku-model'
 import { orgForDepot } from '@/lib/organisations'
 import type { PackingListParty, PackingListVariant } from '@/lib/despatch/packing-list'
 import { buildPackingListPdf } from '@/lib/despatch/packing-list-pdf'
@@ -51,14 +51,20 @@ export interface PackingListContext {
   spec: { saved: boolean; confirmedAt: string | null }
 }
 
-/** The order's SKUs to their models, through both tables (sku-model.ts). */
+/**
+ * The order's SKUs to their models, through both tables (sku-model.ts): the
+ * product model the specification names each product by, which is what
+ * lineModels gives the -1 as well.
+ */
 function modelBySkuFor(
   skus: readonly string[],
   catalogueRows: readonly { sku: string; bom_model_code: string | null }[],
   masterRows: readonly { internal_sku: string; bom_model_code: string | null }[],
+  chosenRows: readonly { sku: string; model_code: string }[],
 ): Map<string, string | null> {
   const maps = modelMaps(catalogueRows, masterRows)
-  return new Map(skus.map((sku) => [sku, modelForSku(sku, maps.catalogue, maps.master)]))
+  const chosen = chosenModels(chosenRows)
+  return new Map(skus.map((sku) => [sku, lineModels(sku, maps.catalogue, maps.master, chosen).model]))
 }
 
 type Row = {
@@ -91,10 +97,11 @@ export async function loadPackingListContext(poId: string): Promise<PackingListC
   const spec = await loadSpecDocument(poId, destination)
   if (!spec || spec.draft.products.length === 0) return null
 
-  const [{ data: lines }, { data: catalog }, { data: master }, supplierRow, { data: manufacturing }] = await Promise.all([
+  const [{ data: lines }, { data: catalog }, { data: master }, { data: chosen }, supplierRow, { data: manufacturing }] = await Promise.all([
     admin.from('purchase_order_lines').select('sku, hs_code').eq('po_id', poId),
     admin.from('po_product_catalog').select('sku, bom_model_code'),
     admin.from('product_code_master').select('internal_sku, bom_model_code'),
+    admin.from('bom_product_model').select('sku, model_code'),
     getSupplierByCode('BAMIDA, s.r.o.', admin).catch(() => null),
     admin.from('po_manufacturing').select('est_finish').eq('po_id', poId).maybeSingle<{ est_finish: string | null }>(),
   ])
@@ -136,6 +143,7 @@ export async function loadPackingListContext(poId: string): Promise<PackingListC
         orderLines.map((l) => l.sku),
         (catalog ?? []) as { sku: string; bom_model_code: string | null }[],
         (master ?? []) as { internal_sku: string; bom_model_code: string | null }[],
+        (chosen ?? []) as { sku: string; model_code: string }[],
       ),
       hsBySku: new Map(
         ((hsRows ?? []) as { sku: string; hs_code: string | null }[])

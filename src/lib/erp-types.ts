@@ -245,6 +245,11 @@ export interface BomMasterRow {
   bom_change_pct: number | null;
   /** The synced snapshot's bom_total (the Sheet baseline) — for the Δ-vs-snapshot change view. */
   original_bom_total_eur?: number | null;
+  /** The sheet's Bamida prices, shown beside a price set in the Hub. */
+  sheet_man_eur?: number | null;
+  sheet_print_eur?: number | null;
+  /** Which of the two Bamida prices were set in the Hub, by whom and when. Null when the sheet's apply. */
+  hub_price?: { manufacturing: boolean; printing: boolean; by: string | null; at: string } | null;
   component_detail: BomComponent[];
 }
 
@@ -265,6 +270,12 @@ export interface SroPoBomLine {
   product_name: string | null;
   quantity: number;
   model_code: string | null;
+  /**
+   * The model the line was costed as (bom_weekly_snapshot.model_code), which is
+   * model_code unless a different one was chosen under BOM. Absent on costs
+   * frozen before 24 Sep 2026.
+   */
+  bom_model_code?: string | null;
   has_bom: boolean;
   components: (BomComponent & { line_qty: number; line_extended_eur: number })[];
   bamida_man_eur: number;
@@ -291,6 +302,8 @@ export interface SroPoBom {
   /** True when these figures are the cost FROZEN at approval (authoritative), not a live re-explosion. */
   cost_frozen?: boolean;
   cost_snapshot_at?: string | null;
+  /** The order's status as read, never frozen. */
+  status?: string;
 }
 
 export interface Deal {

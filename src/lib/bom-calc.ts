@@ -29,6 +29,34 @@ export function priceComponents(detail: BomComponent[], priceMap: Map<string, nu
   })
 }
 
+/** A Bamida price set in the Hub (bom_bamida_price). A null part means the sheet's. */
+export interface HubBamidaPrice {
+  manufacturing_eur: number | null
+  printing_eur: number | null
+}
+
+export interface BamidaLabour {
+  man: number
+  print: number
+  manFromHub: boolean
+  printFromHub: boolean
+}
+
+/**
+ * Bamida's manufacturing and printing price for one barrier: the Hub's where
+ * somebody set one under BOM, the sheet's otherwise. The weekly sync rewrites
+ * the sheet's every Monday, which is why the Hub's lives in a table of its own.
+ * Each part stands alone, so a corrected manufacturing price leaves the sheet in
+ * charge of printing.
+ */
+export function bamidaLabour(sheetMan: unknown, sheetPrint: unknown, hub?: HubBamidaPrice | null): BamidaLabour {
+  const pick = (set: number | null | undefined, sheet: unknown) =>
+    set != null && Number.isFinite(set) ? { value: set, fromHub: true } : { value: num(sheet), fromHub: false }
+  const man = pick(hub?.manufacturing_eur, sheetMan)
+  const print = pick(hub?.printing_eur, sheetPrint)
+  return { man: man.value, print: print.value, manFromHub: man.fromHub, printFromHub: print.fromHub }
+}
+
 export interface BomTotals {
   sro_components_eur: number
   sro_duty_8pct_eur: number

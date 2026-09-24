@@ -98,6 +98,27 @@ export function parseMaterialPriceDraft(raw: unknown): MaterialPriceDraft | null
   return parsed.success ? parsed.data : null
 }
 
+export const BOM_BAMIDA_PRICES_KEY = 'bom:bamida-prices'
+
+export const bamidaPriceDraftSchema = z.object({
+  v: z.literal(1),
+  /**
+   * Model to what was typed for each part, as typed. Null is "use the sheet's
+   * price", which is a change of its own and not the same as nothing typed.
+   */
+  prices: z.record(
+    z.string(),
+    z.object({ man: z.string().nullable().optional(), print: z.string().nullable().optional() }),
+  ),
+})
+
+export type BamidaPriceDraft = z.infer<typeof bamidaPriceDraftSchema>
+
+export function parseBamidaPriceDraft(raw: unknown): BamidaPriceDraft | null {
+  const parsed = bamidaPriceDraftSchema.safeParse(raw)
+  return parsed.success ? parsed.data : null
+}
+
 // ---------------------------------------------------------------------------
 // View state: filters, search boxes, tabs, sorts.
 //
@@ -172,7 +193,7 @@ export function parseStockBoardView(raw: unknown): StockBoardView | null {
 /** The BOM page: which tab, and its search box. */
 export const bomViewSchema = z.object({
   v: z.literal(1),
-  tab: z.enum(['orders', 'materials', 'master']),
+  tab: z.enum(['orders', 'materials', 'master', 'products']),
   q: z.string().max(200),
 })
 export type BomView = z.infer<typeof bomViewSchema>
