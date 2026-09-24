@@ -2,7 +2,7 @@ import { requireCapability } from '@/lib/authz'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createServerClient } from '@/lib/supabase/server'
 import { INVOICE_LEGS, isInvoiceLeg, type InvoiceLeg } from '@/lib/invoice-legs'
-import HsCodesClient, { type HsCodeProduct } from './hs-codes-client'
+import HsCodesClient, { type HsCodeInUse, type HsCodeProduct } from './hs-codes-client'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,12 +35,19 @@ export default async function HsCodesPage() {
   // invoice.view check.
   const admin = createAdminClient()
 
-  const [{ data: priceRows, error: priceErr }, { data: catalogRows, error: catalogErr }, { data: hsRows, error: hsErr }] =
-    await Promise.all([
-      admin.from('intercompany_prices').select('sku, leg, active'),
-      supabase.from('po_product_catalog').select('sku, product_name, active'),
-      supabase.from('product_hs_codes').select('sku, leg, hs_code'),
-    ])
+  const [
+    { data: priceRows, error: priceErr },
+    { data: catalogRows, error: catalogErr },
+    { data: hsRows, error: hsErr },
+    { data: inUseRows },
+  ] = await Promise.all([
+    admin.from('intercompany_prices').select('sku, leg, active'),
+    supabase.from('po_product_catalog').select('sku, product_name, active'),
+    supabase.from('product_hs_codes').select('sku, leg, hs_code'),
+    // The codes Echo Barrier's goods are actually entered under (po_hs_codes), offered as each
+    // box is typed in. Dean, 24 Sep 2026: "there is only really 4 hs codes".
+    supabase.from('po_hs_codes').select('code, description').eq('active', true).order('code'),
+  ])
 
   const loadError =
     priceErr || catalogErr || hsErr ? 'Could not load the products or their HS codes. Reload the page to try again.' : null
@@ -75,7 +82,14 @@ export default async function HsCodesPage() {
     pricedLegs: INVOICE_LEGS.filter((leg) => pricedLegsBySku.get(sku)?.includes(leg)),
   }))
 
-  return <HsCodesClient products={loadError ? [] : products} canEdit={canEdit} loadError={loadError} />
+  return (
+    <HsCodesClient
+      products={loadError ? [] : products}
+      canEdit={canEdit}
+      loadError={loadError}
+      codesInUse={(inUseRows ?? []) as HsCodeInUse[]}
+    />
+  )
 }
 
 function emptyCodes(): Record<InvoiceLeg, string> {

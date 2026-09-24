@@ -30,7 +30,8 @@ function rowFor(page: Page, sku: string): Locator {
 }
 
 function codeInput(row: Locator): Locator {
-  return row.getByRole('textbox', { name: new RegExp(`^${LEG_LABEL} HS code for `) })
+  // A combobox, not a textbox: each box offers the codes in use (a datalist) as it is typed in.
+  return row.getByRole('combobox', { name: new RegExp(`^${LEG_LABEL} HS code for `) })
 }
 
 /**
@@ -58,6 +59,8 @@ test.describe('HS codes screen', () => {
     await expect(page.getByRole('heading', { name: 'HS codes' })).toBeVisible({ timeout: NAV_MS })
     await expect(page.getByRole('link', { name: 'Commercial invoices' })).toBeVisible()
     await expect(page.getByTestId('hs-codes-summary')).toBeVisible({ timeout: STEP_MS })
+    // The codes in use (po_hs_codes) are offered in every box.
+    await expect(page.locator('datalist#hs-codes-in-use option')).not.toHaveCount(0, { timeout: STEP_MS })
 
     const firstRow = page.locator('tr[data-sku]').first()
     await expect(firstRow).toBeVisible({ timeout: STEP_MS })
