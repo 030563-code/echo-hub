@@ -107,7 +107,11 @@ test.describe('Quotes: the past-close banner, as Claire', () => {
     const first = banner.getByRole('listitem').first()
     await expect(first).toBeVisible()
     await expect(first.getByRole('link').first()).toHaveAttribute('href', /^\/quotes\/deals\/\d+$/)
-    await expect(first.getByRole('link', { name: /Change the date in HubSpot/ })).toHaveAttribute('href', /app\.hubspot\.com\/contacts\/\d+\/record\/0-3\/\d+$/)
+    await expect(first.getByRole('link', { name: /HubSpot/ })).toHaveAttribute('href', /app\.hubspot\.com\/contacts\/\d+\/record\/0-3\/\d+$/)
+    // She can change deals, so each row also takes a new close date right there (24 Sep 2026).
+    // Looked at only: nothing is typed, so no deal's date moves.
+    await expect(first.getByLabel('New close date')).toBeVisible()
+    await expect(first.getByRole('button', { name: 'Save date' })).toBeDisabled()
     await page.screenshot({ path: test.info().outputPath('claire-sent-banner-open.png'), fullPage: false })
 
     // A deal page is not a tab: the banner steps aside there.

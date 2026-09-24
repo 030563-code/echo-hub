@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import {
   Building2, UserRound, FileText, Search, Check, ChevronLeft, ChevronRight,
   ExternalLink, Coins, AlertTriangle,
+  CalendarDays,
 } from 'lucide-react'
 import { hubspotRecordUrl } from '@/lib/hubspot-links'
 import { ConfirmPanel } from '@/components/ui/confirm-panel'
@@ -31,6 +32,8 @@ interface CompanyResult {
 }
 
 import { createHubSpotDeal } from '@/app/actions/hubspot/createDeal'
+import { closeDayProblem, todayUtc } from '@/lib/close-date'
+import { formatDate } from '@/lib/utils'
 import { usePageState } from '@/hooks/use-page-state'
 import { DraftStrip } from '@/components/page-state/draft-strip'
 import {
@@ -98,6 +101,8 @@ export default function CreateManualRequestForm({
   const [dealName, setDealName] = useState('')
   const [description, setDescription] = useState('')
   const [currency, setCurrency] = useState(defaultCurrency)
+  const [closeDay, setCloseDay] = useState('')
+  const [today] = useState(() => todayUtc(Date.now()))
 
   // Keep the timer-visible refs in step with the current render.
   useEffect(() => {
@@ -238,6 +243,7 @@ export default function CreateManualRequestForm({
     dealName,
     description,
     currency,
+    closeDay,
   })
   const seedDraftJson = JSON.stringify(emptyDealWizardDraft(defaultCurrency))
 
@@ -254,6 +260,7 @@ export default function CreateManualRequestForm({
     setDealName(draft.dealName)
     setDescription(draft.description)
     setCurrency(draft.currency)
+    setCloseDay(draft.closeDay ?? '')
 
     // Landing back on the contacts step needs the list itself, which is not
     // stored. Claiming the company id first stops enterContactsStep's
@@ -298,6 +305,7 @@ export default function CreateManualRequestForm({
     dealName,
     description,
     currency,
+    closeDay,
   ])
 
   /** Throw the draft away and start the wizard from an empty step 1. */
@@ -426,6 +434,11 @@ export default function CreateManualRequestForm({
       toast.error('Please enter a deal name.')
       return
     }
+    const closeProblem = closeDay ? closeDayProblem(closeDay, Date.now()) : null
+    if (closeProblem) {
+      toast.error(closeProblem)
+      return
+    }
     inFlightRef.current = true
     setIsSubmitting(true)
     let createdDealId: string | null = null
@@ -454,6 +467,7 @@ export default function CreateManualRequestForm({
         companyId: finalCompanyId,
         contactId: finalContactId,
         currency,
+        closeDay: closeDay || undefined,
       })
 
       if (result.success && result.dealId) {
@@ -874,6 +888,24 @@ export default function CreateManualRequestForm({
               </div>
 
               <div className="space-y-2">
+                <Label className="text-gray-700 flex items-center gap-1.5" htmlFor="deal-close-date">
+                  <CalendarDays className="w-3.5 h-3.5 text-gray-400" />
+                  Expected close date
+                </Label>
+                <Input
+                  id="deal-close-date"
+                  type="date"
+                  min={today}
+                  className="bg-white border-gray-300 text-gray-900 focus:ring-echo-yellow w-full sm:w-56"
+                  value={closeDay}
+                  onChange={(e) => setCloseDay(e.target.value)}
+                />
+                <p className="text-xs text-gray-500">
+                  Optional. When you expect it to be won; it can be changed later on the deal.
+                </p>
+              </div>
+
+              <div className="space-y-2">
                 <Label className="text-gray-700">Description</Label>
                 <textarea
                   className="flex min-h-[100px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base sm:text-sm text-gray-900 ring-offset-background placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-echo-yellow focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
@@ -906,6 +938,10 @@ export default function CreateManualRequestForm({
                     <dd className="font-medium text-gray-900 inline-flex items-center gap-1.5">
                       {CURRENCY_FLAG[currency] ? <FlagIcon code={CURRENCY_FLAG[currency]} /> : null}
                       {currency}
+                    </dd>
+                    <dt className="text-gray-500">Close date</dt>
+                    <dd className="font-medium text-gray-900">
+                      {closeDay ? formatDate(closeDay) : <span className="italic font-normal text-gray-400">not set</span>}
                     </dd>
                     <dt className="text-gray-500">Description</dt>
                     <dd className="text-gray-700 break-words">

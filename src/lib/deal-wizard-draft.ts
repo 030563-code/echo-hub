@@ -38,6 +38,8 @@ export const dealWizardDraftSchema = z.object({
   dealName: z.string(),
   description: z.string(),
   currency: z.string(),
+  /** The expected close date, "2026-10-31", or empty. Optional so drafts saved before it still load. */
+  closeDay: z.string().optional(),
 })
 
 export type DealWizardDraft = z.infer<typeof dealWizardDraftSchema>
@@ -63,5 +65,6 @@ export function emptyDealWizardDraft(defaultCurrency: string): DealWizardDraft {
     dealName: '',
     description: '',
     currency: defaultCurrency,
+    closeDay: '',
   }
 }
