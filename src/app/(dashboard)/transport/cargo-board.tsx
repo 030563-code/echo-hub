@@ -9,7 +9,7 @@ import { toast } from 'sonner'
 import { usePersistedView } from '@/hooks/use-page-state'
 import { depotLabel } from '@/lib/depot-constants'
 import { syncCargo } from '@/app/actions/cargo/sync-cargo'
-import type { CargoBoardRow } from '@/lib/cargo/store'
+import type { BoardItem } from '@/lib/transport/board'
 import { matchesSearch } from '@/lib/cargo/references'
 import AddShipment from './add-shipment'
 
@@ -60,7 +60,16 @@ function daysUntil(iso: string | null, today: string): number | null {
   return Number.isFinite(a) && Number.isFinite(b) ? Math.round((b - a) / 86_400_000) : null
 }
 
-export default function CargoBoard({ rows, today }: { rows: CargoBoardRow[]; today: string }) {
+export default function CargoBoard({
+  rows,
+  today,
+  handDepots,
+}: {
+  rows: BoardItem[]
+  today: string
+  /** Where the caller may keep a shipment by hand. */
+  handDepots: string[]
+}) {
   // The tab and the search box come back; nothing else does. Which container
   // somebody had open is deliberately forgotten: a container arrives while you
   // are away, and reopening a card onto a shipment that has moved on is worse
@@ -135,7 +144,7 @@ export default function CargoBoard({ rows, today }: { rows: CargoBoardRow[]; tod
           <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
           {syncing ? 'Refreshing' : 'Refresh from Cargo Partner'}
         </button>
-        <AddShipment />
+        <AddShipment handDepots={handDepots} />
         {lastSync && <span className="text-xs text-gray-400">Refreshed {lastSync}</span>}
       </div>
 
@@ -154,18 +163,27 @@ export default function CargoBoard({ rows, today }: { rows: CargoBoardRow[]; tod
             const due = daysUntil(r.eta, today)
             const late = r.slipDays != null && r.slipDays >= 1
             return (
-              <li key={r.spotId}>
+              <li key={r.key}>
                 <Link
-                  href={`/transport/${r.spotId}`}
+                  href={`/transport/${r.key}`}
                   className="block rounded-xl border border-gray-200 bg-white p-4 transition-colors hover:border-gray-300 hover:bg-gray-50"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-gray-900">
                         {/* Dean, 23 Sep 2026: the SPOT id first, the container next to it. */}
-                        <span className="tabular-nums">SPOT {r.spotId}</span>
+                        {r.spotId ? (
+                          <span className="tabular-nums">SPOT {r.spotId}</span>
+                        ) : (
+                          <span className="tabular-nums">{r.references.join(', ') || 'New shipment'}</span>
+                        )}
                         {r.containerNumbers.length > 0 && (
                           <span className="font-normal tabular-nums text-gray-600">{r.containerNumbers.join(', ')}</span>
+                        )}
+                        {r.byHand && (
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+                            Kept by hand
+                          </span>
                         )}
                         {r.isComplete ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
@@ -180,16 +198,23 @@ export default function CargoBoard({ rows, today }: { rows: CargoBoardRow[]; tod
                         )}
                       </p>
                       <p className="mt-0.5 truncate text-sm text-gray-600">
-                        {r.originCity ?? '—'} to {r.destinationCity ?? '—'}
-                        {r.destinationDepot ? ` (${depotLabel(r.destinationDepot)})` : ''}
+                        {r.byHand ? (
+                          `To ${depotLabel(r.destinationDepot)}`
+                        ) : (
+                          <>
+                            {r.originCity ?? '—'} to {r.destinationCity ?? '—'}
+                            {r.destinationDepot ? ` (${depotLabel(r.destinationDepot)})` : ''}
+                          </>
+                        )}
                       </p>
                       <p className="mt-1 text-xs text-gray-500">
                         {[
-                          r.cargoDescription,
-                          r.totalPieces ? `${r.totalPieces} pieces` : null,
+                          r.contents,
+                          r.contents ? null : r.cargoDescription,
+                          r.contents ? null : r.totalPieces ? `${r.totalPieces} pieces` : null,
                           r.vesselName,
                           r.generalReference,
-                          ...r.references.filter((ref) => ref !== r.generalReference),
+                          ...(r.spotId ? r.references.filter((ref) => ref !== r.generalReference) : []),
                         ]
                           .filter(Boolean)
                           .join(' · ')}

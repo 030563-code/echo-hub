@@ -46,6 +46,8 @@ const LIST_PAGES: Record<string, string[]> = {
     'transportSeesAll(org) ? null : depotsForOrg(org)',
   ],
   'src/lib/cargo/store.ts': ["query.in('destination_depot', [...depots])"],
+  // Dean, 24 Sep 2026: shipments kept by hand, under the same scope as the booked ones.
+  'src/lib/transport/shipments.server.ts': ["query.in('destination_depot', [...depots])"],
   'src/app/(dashboard)/invoices/page.tsx': ['activeOrganisation(', 'seller_entity_code.eq.', 'buyer_entity_code.eq.'],
 }
 
@@ -62,6 +64,12 @@ const RECORD_PAGES: Record<string, string[]> = {
   // A container bound for a depot the caller's organisation does not hold is
   // NOT FOUND, rather than hidden by a filter somebody could take off.
   'src/app/(dashboard)/transport/[spotId]/page.tsx': [
+    'transportSeesAll(org)',
+    'depotsForOrg(org)',
+    'notFound()',
+  ],
+  // The same for a shipment kept by hand, by the depot typed on it.
+  'src/app/(dashboard)/transport/[spotId]/hand-shipment-view.tsx': [
     'transportSeesAll(org)',
     'depotsForOrg(org)',
     'notFound()',
@@ -87,6 +95,7 @@ const WRITE_GATES: Record<string, string> = {
   'src/app/actions/purchase-orders/download-packing-list.ts': 'poChainHeldBy(parsed.data.poId, auth.profile.organisations)',
   'src/app/actions/purchase-orders/priced-document.ts': 'poChainHeldBy(',
   'src/app/actions/cargo/share-link.ts': 'shipmentInScope(',
+  'src/app/actions/transport/shipments.ts': 'hubShipmentInScope(',
   'src/app/(dashboard)/stock/actions.ts': 'warehouseHeld(',
   'src/app/(dashboard)/transport/actions.ts': 'depotsForOrgs(held).includes(d.depot_destination)',
   'src/app/actions/invoices/generate-commercial-invoice.ts': 'holdsOrganisation(held, cfg.seller)',
