@@ -127,6 +127,45 @@ export async function sheetReferencesBySpot(spotIds: readonly string[]): Promise
   return bySpot
 }
 
+/**
+ * What Dave's sheet says is on each shipment: one row per barrier type, with its count and order
+ * numbers. Read to offer as a starting point for the Hub's own contents, never written.
+ */
+export async function sheetRowsBySpot(
+  spotIds: readonly string[],
+): Promise<Map<string, { barrierType: string | null; quantity: number | null; orderNo: string | null; orderNoLocal: string | null }[]>> {
+  const bySpot = new Map<string, { barrierType: string | null; quantity: number | null; orderNo: string | null; orderNoLocal: string | null }[]>()
+  if (!spotIds.length) return bySpot
+  try {
+    const { data } = await createOperationsClient()
+      .from('shipments')
+      .select('id, spot_id, barrier_type, no_of_barriers, order_no, order_no_local')
+      .in('spot_id', [...spotIds])
+      .order('id')
+    for (const r of (data ?? []) as {
+      spot_id: string | null
+      barrier_type: string | null
+      no_of_barriers: number | string | null
+      order_no: string | null
+      order_no_local: string | null
+    }[]) {
+      const id = String(r.spot_id ?? '').trim()
+      if (!id) continue
+      const list = bySpot.get(id) ?? []
+      list.push({
+        barrierType: r.barrier_type,
+        quantity: r.no_of_barriers == null ? null : Number(r.no_of_barriers),
+        orderNo: r.order_no,
+        orderNoLocal: r.order_no_local,
+      })
+      bySpot.set(id, list)
+    }
+  } catch {
+    // Somebody else's schema: nothing to offer rather than no page.
+  }
+  return bySpot
+}
+
 /** The whole response, unparsed. The stored copy is the raw one. */
 async function fetchRawShipment(token: string, spotId: string): Promise<unknown | null> {
   const res = await fetch(

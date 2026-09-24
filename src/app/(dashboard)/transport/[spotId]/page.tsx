@@ -6,12 +6,17 @@ import { activeOrganisation } from '@/lib/active-organisation.server'
 import { depotsForOrg, transportSeesAll } from '@/lib/organisations'
 import { depotLabel } from '@/lib/depot-constants'
 import { loadCargoShipment } from '@/lib/cargo/store'
+import { sheetRowsBySpot } from '@/lib/cargo/sync'
+import { depotProducts, loadHubShipmentBySpot } from '@/lib/transport/shipments.server'
+import { linesFromSheet, localOrderLabel } from '@/lib/transport/shipment'
 import { listCargoShareLinks } from '@/app/actions/cargo/share-link'
 import CargoTimeline from '@/components/cargo/cargo-timeline'
 import ShareLinkCard from './share-link-card'
 import CargoEventList from './cargo-event-list'
 import { CustomsCard } from './customs-card'
 import ShipmentReferences from './shipment-references'
+import ShipmentContents from './shipment-contents'
+import HandShipmentView from './hand-shipment-view'
 
 /**
  * One container: where it is, how it got there, and a link to send somebody.
@@ -22,6 +27,9 @@ import ShipmentReferences from './shipment-references'
  */
 
 export const dynamic = 'force-dynamic'
+
+/** The Hub's own id, which is what a shipment kept by hand is found by until it has a SPOT ID. */
+const HUB_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function fullDate(iso: string | null): string {
   if (!iso) return '—'
@@ -47,6 +55,8 @@ export default async function CargoShipmentPage({ params }: { params: Promise<{ 
   const org = await activeOrganisation(auth)
   if (!org) redirect('/transport')
 
+  if (HUB_ID.test(spotId)) return <HandShipmentView id={spotId} org={org} />
+
   const today = new Date().toISOString().slice(0, 10)
   const shipment = await loadCargoShipment(spotId, today)
   if (!shipment) notFound()
@@ -57,7 +67,12 @@ export default async function CargoShipmentPage({ params }: { params: Promise<{ 
     if (!shipment.destinationDepot || !held.includes(shipment.destinationDepot)) notFound()
   }
 
-  const links = await listCargoShareLinks(spotId)
+  const [links, hub, products, sheet] = await Promise.all([
+    listCargoShareLinks(spotId),
+    loadHubShipmentBySpot(spotId),
+    depotProducts(shipment.destinationDepot),
+    sheetRowsBySpot([spotId]),
+  ])
   const late = shipment.slipDays != null && shipment.slipDays >= 1
 
   return (
@@ -172,6 +187,15 @@ export default async function CargoShipmentPage({ params }: { params: Promise<{ 
           canShare={links.ok}
         />
       </div>
+
+      <ShipmentContents
+        target={{ spotId: shipment.spotId }}
+        depotName={depotLabel(shipment.destinationDepot)}
+        localOrderLabel={localOrderLabel(shipment.destinationDepot)}
+        lines={hub?.lines ?? []}
+        products={products}
+        fromSheet={linesFromSheet(sheet.get(spotId) ?? [], shipment.destinationDepot, products)}
+      />
 
       {auth.capabilities.has('customs.manage') && (
         <CustomsCard

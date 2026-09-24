@@ -4,6 +4,9 @@ import { activeOrganisation } from '@/lib/active-organisation.server'
 import { depotsForOrg, transportSeesAll } from '@/lib/organisations'
 import { NoOrganisationCard } from '@/components/organisations/no-organisation-card'
 import { loadCargoBoard } from '@/lib/cargo/store'
+import { loadHubBoard } from '@/lib/transport/shipments.server'
+import { boardItems } from '@/lib/transport/board'
+import { SHIPMENT_DEPOTS } from '@/lib/transport/shipment'
 import CargoBoard from './cargo-board'
 
 /**
@@ -21,6 +24,10 @@ import CargoBoard from './cargo-board'
  * Scope is in the query, not in a check. Every container leaves s.r.o. and
  * belongs to Group on the way, so those two see all of them; a depot's
  * organisation sees what is bound for its own depots.
+ *
+ * Dean, 24 Sep 2026: shipments not booked with Cargo Partner are kept by hand
+ * beside them, under the same scope, so Dave's sheet is no longer the only
+ * place they live.
  */
 
 export const dynamic = 'force-dynamic'
@@ -32,8 +39,14 @@ export default async function TransportPage() {
   const org = await activeOrganisation(auth)
   if (!org) return <NoOrganisationCard title="Logistics & Shipping" what="shipments" />
 
-  const rows = await loadCargoBoard(transportSeesAll(org) ? null : depotsForOrg(org))
+  const depots = transportSeesAll(org) ? null : depotsForOrg(org)
+  const booked = await loadCargoBoard(depots)
+  const { hand, linesBySpot } = await loadHubBoard(depots, booked.map((r) => r.spotId))
+  const rows = boardItems(booked, linesBySpot, hand)
   const today = new Date().toISOString().slice(0, 10)
+  // Where this organisation may keep a shipment by hand: its own depots, or any of them for the
+  // two organisations every container passes through.
+  const handDepots = (depots ?? SHIPMENT_DEPOTS).filter((d) => (SHIPMENT_DEPOTS as readonly string[]).includes(d))
 
   const inTransit = rows.filter((r) => !r.isComplete)
   const onWater = inTransit.filter((r) => r.departedOn && !r.currentStatus?.startsWith('Unloaded')).length
@@ -49,7 +62,7 @@ export default async function TransportPage() {
           Logistics &amp; Shipping
         </h1>
         <p className="mt-1 text-sm text-gray-500">
-          Live from Cargo Partner. Open a container to see its route and send a tracking link.
+          Live from Cargo Partner, with the shipments not booked yet kept by hand. Open one to see what is on it.
         </p>
       </div>
 
@@ -67,7 +80,7 @@ export default async function TransportPage() {
         ))}
       </div>
 
-      <CargoBoard rows={rows} today={today} />
+      <CargoBoard rows={rows} today={today} handDepots={handDepots} />
     </div>
   )
 }

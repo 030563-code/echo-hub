@@ -37,7 +37,8 @@ export function spotIdsToRefresh(known: readonly string[], finished: ReadonlySet
 /** Whether a board row answers what was typed in the search box. */
 export function matchesSearch(
   row: {
-    spotId: string
+    /** Null for a shipment kept by hand until Cargo Partner books it. */
+    spotId: string | null
     generalReference: string | null
     vesselName: string | null
     oceanCarrier: string | null
@@ -46,6 +47,8 @@ export function matchesSearch(
     cargoDescription: string | null
     containerNumbers: readonly string[]
     references: readonly string[]
+    /** What is on it ("560 × H10HERCB"), so a product code finds the containers carrying it. */
+    contents?: string | null
   },
   needle: string,
 ): boolean {
@@ -61,6 +64,7 @@ export function matchesSearch(
     row.cargoDescription,
     ...row.containerNumbers,
     ...row.references,
+    row.contents,
   ]
     .filter(Boolean)
     .some((v) => String(v).toLowerCase().includes(n))
