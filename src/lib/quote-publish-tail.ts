@@ -2,7 +2,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { hubspotFetch } from '@/lib/hubspot-client'
-import { quoteTemplateIdFor, QUOTE_BRANDING } from '@/lib/pipeline-config'
+import { quoteTemplateIdFor, quoteTemplateLabel, QUOTE_BRANDING } from '@/lib/pipeline-config'
 import {
   buildQuoteCreateBody,
   buildQuoteLineItemInputs,
@@ -362,7 +362,7 @@ export async function runQuotePipeline(ctx: PublishQuoteContext): Promise<Publis
   if (!templateId) {
     return {
       success: false,
-      error: `No HubSpot quote template is set up for "${ctx.templateKey}", so the quote cannot be branded or published. Ask for one to be mapped.`,
+      error: `No HubSpot quote template is set up for "${quoteTemplateLabel(ctx.templateKey)}", so the quote cannot be branded or published. Ask for one to be mapped.`,
     }
   }
 

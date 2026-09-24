@@ -11,7 +11,7 @@ import { parseWinProbability, validateLineItems } from '@/lib/quote-math'
 import { priceCart, toRegistryLine } from '@/lib/quote-pricing'
 import { runQuotePipeline, type AgentQuoteStamp, type PublishedQuote } from '@/lib/quote-publish-tail'
 import { nextQuoteNumber } from '@/lib/hubspot-quote'
-import { quoteTemplateIdFor } from '@/lib/pipeline-config'
+import { quoteTemplateIdFor, quoteTemplateLabel } from '@/lib/pipeline-config'
 import { splitFullName } from '@/lib/name'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { loadPricingForQuote } from '@/app/actions/pricing/get-pricing'
@@ -331,7 +331,7 @@ export async function createQuote(params: CreateQuoteParams) {
   if (!quoteTemplateId) {
     return {
       success: false,
-      error: `No HubSpot quote template is mapped to "${params.template || 'none'}", so a quote cannot be branded or published. Choose the US or Canada template in Quote Setup, or ask for this one to be mapped. Nothing has been changed.`,
+      error: `No HubSpot quote template is mapped to "${quoteTemplateLabel(params.template) || 'none'}", so a quote cannot be branded or published. Choose the US or Canada template in Quote Setup, or ask for this one to be mapped. Nothing has been changed.`,
     }
   }
 

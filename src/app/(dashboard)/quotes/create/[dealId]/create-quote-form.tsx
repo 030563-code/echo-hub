@@ -26,6 +26,7 @@ import { getMappedSkus } from '@/app/actions/sales/get-mapped-skus'
 import { getWinProbabilityOptions } from '@/app/actions/hubspot/getDealProperties'
 import { updateDealProperties } from '@/app/actions/hubspot/updateDealProperties'
 import { depotLabel } from '@/lib/depot-constants'
+import { quoteTemplateLabel } from '@/lib/pipeline-config'
 import { WIN_PROBABILITY_VALUES, roundCents, validateLineItems } from '@/lib/quote-math'
 import { applyTypedPrice, priceCart, type CartLine } from '@/lib/quote-pricing'
 import type { EditableCartLine } from '@/lib/quote-edit'
@@ -901,7 +902,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                 <SelectContent className="bg-white border-gray-200 text-gray-900">
                   {settings.allowed_quote_templates.length > 0 ? (
                     settings.allowed_quote_templates.map((t) => (
-                      <SelectItem key={t} value={t} className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">{t}</SelectItem>
+                      <SelectItem key={t} value={t} className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">{quoteTemplateLabel(t)}</SelectItem>
                     ))
                   ) : (
                     <SelectItem value="default" className="py-3 sm:py-1.5 hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">Standard Quote Template</SelectItem>
@@ -1017,7 +1018,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
             <span className="font-medium text-gray-900">
               {isDistributorSelected ? distributor : depot ? depotLabel(depot) : '—'}
             </span>{' '}
-            · template {template || '—'} · {winProbability || '—'} to close
+            · {quoteTemplateLabel(template)} template · {winProbability} to close
             {!isDistributorSelected && isCollection ? ' · Will Call' : ''}
           </span>
           <button
@@ -1321,7 +1322,7 @@ export default function CreateQuoteForm({ dealId, dealName, settings, products, 
                 ) : (
                   <div className="flex justify-between items-center">
                     <span className="text-gray-500">Template</span>
-                    <span className="font-medium text-gray-900 text-right">{template}</span>
+                    <span className="font-medium text-gray-900 text-right">{quoteTemplateLabel(template)}</span>
                   </div>
                 )}
               </div>

@@ -5,7 +5,9 @@ import {
   teamsForPipeline,
   allowedCurrenciesForPipeline,
   quoteTemplateIdFor,
+  quoteTemplateLabel,
   QUOTE_TEMPLATE_IDS,
+  QUOTE_TEMPLATE_LABELS,
 } from '@/lib/pipeline-config'
 import { DEPOT_MAPPING } from '@/lib/depot-constants'
 
@@ -124,6 +126,65 @@ describe('quote template ids', () => {
     expect(quoteTemplateIdFor('default')).toBeNull()
     expect(quoteTemplateIdFor('')).toBeNull()
     expect(quoteTemplateIdFor(null)).toBeNull()
+  })
+})
+
+/**
+ * The template picker printed the stored code as its own label, so the France
+ * rep chose between FR, FR-EN, ES, DE and PT, and the US rep between US and
+ * CAN. The label is the template's language (and country where the code names
+ * one), read off each HubSpot template; the stored value never changes.
+ */
+describe('quote template labels', () => {
+  it('names the five France templates by language', () => {
+    expect(['FR', 'FR-EN', 'ES', 'DE', 'PT'].map(quoteTemplateLabel)).toEqual([
+      'French',
+      'English (France)',
+      'Spanish',
+      'German',
+      'Portuguese',
+    ])
+  })
+
+  it('names the US and Canada templates by language and country', () => {
+    expect(quoteTemplateLabel('US')).toBe('English (USA)')
+    expect(quoteTemplateLabel('CAN')).toBe('English (Canada)')
+  })
+
+  it('shows an unknown value as itself, exactly as stored', () => {
+    // 'default' sits on a live profile beside US and CAN, and AU has no
+    // template yet: neither has a label, so both still read as they did.
+    expect(quoteTemplateLabel('default')).toBe('default')
+    expect(quoteTemplateLabel('AU')).toBe('AU')
+    expect(quoteTemplateLabel('XX-NEW')).toBe('XX-NEW')
+    expect(quoteTemplateLabel('')).toBe('')
+  })
+
+  it('reads nothing as nothing rather than throwing, like the id lookup', () => {
+    // createQuote names the template in its refusal with whatever the caller
+    // sent, and a server action can be called with the field missing.
+    expect(quoteTemplateLabel(null)).toBe('')
+    expect(quoteTemplateLabel(undefined)).toBe('')
+  })
+
+  it('is as forgiving about how the value is typed as the id lookup is', () => {
+    expect(quoteTemplateLabel(' fr-en ')).toBe('English (France)')
+    expect(quoteTemplateLabel('us')).toBe('English (USA)')
+  })
+
+  it('does not treat an object property name as a template', () => {
+    expect(quoteTemplateLabel('constructor')).toBe('constructor')
+    expect(quoteTemplateLabel('toString')).toBe('toString')
+  })
+
+  it('labels every template the Hub can publish under, so a new id cannot ship as a bare code', () => {
+    const withIds = Object.entries(QUOTE_TEMPLATE_IDS).filter(([, id]) => id !== null).map(([code]) => code)
+    expect(Object.keys(QUOTE_TEMPLATE_LABELS).sort()).toEqual(withIds.sort())
+  })
+
+  it('never offers two templates under the same words', () => {
+    const labels = Object.values(QUOTE_TEMPLATE_LABELS)
+    expect(new Set(labels).size).toBe(labels.length)
   })
 })
 
