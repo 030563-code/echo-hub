@@ -1,6 +1,9 @@
 import { HMF_RATE, roundCents, wholeDollars } from '@/lib/customs/fees'
 import { allocate } from '@/lib/customs/xero-bill'
-import { customsChargeOf, serviceChargesOf, type CustomsPackage } from '@/lib/customs/nippon-invoice'
+import { isChapter99 } from '@/lib/customs/duty'
+import { customsChargeOf, serviceChargesOf, type CustomsPackage, type EntryLine } from '@/lib/customs/nippon-invoice'
+import { normaliseHsCode } from '@/lib/hs-codes'
+import { applyComposition, type ApplyCompositionCtx } from '@/lib/invoice-composition'
 
 /**
  * What each product on a shipment cost to land, and so what one barrier cost.
@@ -18,10 +21,14 @@ import { customsChargeOf, serviceChargesOf, type CustomsPackage } from '@/lib/cu
  *    that invoice by pallets, which is why two products of four pallets each show the same figure.
  *    An invoice in euros is converted at the rate Xero holds for the bill: "1 USD = 0.85 EUR"
  *    means dollars are euros divided by 0.85, each amount rounded to the cent.
- *  - CBP's entry summary gives one line per Group invoice, with its own duty and processing fee,
- *    and the harbour fee is 0.125% of each line's value. So those three follow the invoice they
- *    were charged on; inside an invoice with several products, and for anything typed by hand,
- *    they go by value (the barriers plus their palletising, which is what duty is charged on).
+ *  - CBP's entry summary gives one line per Group invoice and goods heading, with its own duty and
+ *    processing fee, and the harbour fee is 0.125% of each line's value. So those three follow the
+ *    invoice they were charged on. Inside an invoice, each heading's duty and processing fee go to
+ *    the products entered under it, by value: a cutting station's frames pay 55.7%, far more than
+ *    the barriers beside them, so one rate across the invoice would put frame duty on the
+ *    barriers. The harbour fee (given only in total), anything typed by hand, and an invoice whose
+ *    codes do not line up go by value across the invoice (the barriers plus their palletising,
+ *    which is what duty is charged on), and the card says why.
  *  - Nippon's "duty disbursement" (Dave's deferment fee, 3% of what CBP charged) follows the duty
  *    and fees. Nippon's other charges and the container's delivery to the depot go by pallets.
  *  - The unit cost is the total over the quantity. A Xero PO line carries it to four decimals
@@ -75,6 +82,12 @@ export interface CostInvoice {
   otherAmount: number
 }
 
+/** An HS code a product is entered under, and the share of its value entered under it. */
+export interface HsShare {
+  code: string
+  share: number
+}
+
 export interface CostLine {
   id: string
   productCode: string
@@ -83,6 +96,27 @@ export interface CostLine {
   invoiceId: string | null
   /** The line's amount on its commercial invoice, in that invoice's currency. */
   goodsAmount: number | null
+  /**
+   * The HS codes the product is entered under on the leg into its depot: one for a barrier, the
+   * frame and the body for a compact cutting station. Empty when it has none. Left out when the
+   * depot's leg has no codes to look up, and then duty goes by value as it always has.
+   */
+  hsCodes?: readonly HsShare[]
+}
+
+/**
+ * One line of CBP's entry summary as the landed cost uses it: the Group invoice it covers, the
+ * heading its goods were entered under, and its share of the entry's duty and processing fee. The
+ * 9903 rows printed on the line (Section 122, 232, 301) are extra duty on those same goods, so
+ * their duty counts under its heading.
+ */
+export interface EntryCharge {
+  invoiceNumber: string
+  /** As printed ("7610.90.0080"). Null when the line has no single heading outside Chapter 99. */
+  code: string | null
+  duty: number
+  /** Null when the entry prints no processing fee on this line. */
+  mpf: number | null
 }
 
 /** One local cost: its total and, from an entry summary, how much of it each Group invoice carries. */
@@ -99,6 +133,8 @@ export interface LandedLine {
   quantity: number
   pallets: number | null
   parts: Record<PartKey, number>
+  /** The headings its duty was charged under on the entry. Empty when it was shared by value. */
+  dutyCodes: string[]
   total: number
   /** Null until the line's commercial invoice amount is known. */
   unitCost: number | null
@@ -159,14 +195,99 @@ function addShares(target: Record<PartKey, number>[], indexes: readonly number[]
   })
 }
 
+/** An HS code by its digits, so "3925.90.0000" and "3925900000" are the same heading. */
+const digitsOf = (code: string) => code.replace(/\D/g, '')
+
+interface CodeGroup {
+  /** The heading as the entry prints it. */
+  code: string
+  digits: string
+  /** Positions among the invoice's products of those entered under it, and their weights. */
+  at: number[]
+  weights: number[]
+}
+
+type CodePlan = { ok: true; groups: CodeGroup[] } | { ok: false; reason: string }
+
+/**
+ * How one Group invoice's duty follows the HS codes on its entry lines: for each heading, the
+ * products on the invoice entered under it, weighted by `base` (their value) times the share of the
+ * product under that heading. A reason instead when the codes do not line up, and null when the
+ * products' codes were not looked up, so the invoice goes by value the way it always has.
+ *
+ * A product whose code is not on the entry is a mismatch too: CBP entered its value under some
+ * other heading, so giving it none of the duty would be wrong.
+ */
+function codePlan(charges: readonly EntryCharge[], products: readonly CostLine[], base: readonly number[]): CodePlan | null {
+  if (!charges.length || products.some((p) => p.hsCodes === undefined)) return null
+  const coded = products.map((p) => p.hsCodes ?? [])
+  if (charges.some((c) => c.code == null)) return { ok: false, reason: 'an entry line for it has no single HS code for the goods' }
+  const bare = coded.findIndex((codes) => !codes.length)
+  if (bare >= 0) return { ok: false, reason: `${products[bare].productCode} has no HS code` }
+
+  // Each product's share of its value under each heading, the parts of a split added together.
+  const shares = coded.map((codes) => {
+    const whole = codes.reduce((sum, s) => sum + s.share, 0)
+    const by = new Map<string, number>()
+    for (const s of codes) by.set(digitsOf(s.code), (by.get(digitsOf(s.code)) ?? 0) + (whole > 0 ? s.share / whole : 0))
+    return by
+  })
+  const headings = new Map<string, string>()
+  for (const c of charges) if (c.code && !headings.has(digitsOf(c.code))) headings.set(digitsOf(c.code), c.code)
+  for (const [digits, code] of headings) {
+    if (!shares.some((s) => s.has(digits))) return { ok: false, reason: `no product on it is entered under ${code}` }
+  }
+  for (const [j, codes] of coded.entries()) {
+    const off = codes.find((s) => !headings.has(digitsOf(s.code)))
+    if (off) return { ok: false, reason: `the entry has no ${off.code} line for ${products[j].productCode}` }
+  }
+  return {
+    ok: true,
+    groups: [...headings].map(([digits, code]) => {
+      const at = shares.flatMap((s, j) => (s.has(digits) ? [j] : []))
+      return { code, digits, at, weights: at.map((j) => base[j] * (shares[j].get(digits) ?? 0)) }
+    }),
+  }
+}
+
+/**
+ * What the entry charged under each heading for one invoice: its duty, or its processing fee when
+ * every line of it prints one. Null for a fee the entry gives only in total, which goes by value.
+ */
+function chargedUnder(charges: readonly EntryCharge[], key: 'duty' | 'mpf'): Map<string, number> | null {
+  if (key === 'mpf' && charges.some((c) => c.mpf == null)) return null
+  const by = new Map<string, number>()
+  for (const c of charges) {
+    const digits = digitsOf(c.code ?? '')
+    by.set(digits, roundCents((by.get(digits) ?? 0) + (key === 'duty' ? c.duty : (c.mpf ?? 0))))
+  }
+  return by
+}
+
+/**
+ * Whether sharing a shipment's duty by value can put it where the HS codes would not: two products
+ * or more, and one of them with no code or more than one heading among them. Products all under one
+ * heading share its duty by value either way.
+ */
+function codesDiffer(lines: readonly CostLine[]): boolean {
+  if (lines.length < 2 || lines.some((l) => l.hsCodes === undefined)) return false
+  if (lines.some((l) => !l.hsCodes?.length)) return true
+  return new Set(lines.flatMap((l) => (l.hsCodes ?? []).map((s) => digitsOf(s.code)))).size > 1
+}
+
 export function landedCost(input: {
   currency: string
   lines: readonly CostLine[]
   invoices: readonly CostInvoice[]
   local: LocalCosts
+  /** The entry summaries' lines from Nippon's bills, which let duty follow the HS codes. */
+  entryLines?: readonly EntryCharge[]
+  /** Where the duty came from, so a split by value can say why. */
+  dutySource?: LocalSource
 }): LandedResult {
-  const { currency, lines, invoices, local } = input
+  const { currency, lines, invoices, local, entryLines = [], dutySource = null } = input
   const parts = lines.map(zeroParts)
+  const dutyCodes = lines.map((): string[] => [])
   const missing: string[] = []
   const notes: string[] = []
   const labelOf = (key: PartKey) => PARTS.find((p) => p.key === key)!.label.toLowerCase()
@@ -219,6 +340,14 @@ export function landedCost(input: {
     return valueKnown && weights.some((w) => w > 0) ? weights : palletWeights(indexes.map((i) => lines[i])).weights
   }
 
+  // Inside a Group invoice, duty and the processing fee follow the HS codes on its entry lines.
+  // Worked once an invoice, since both use the same lines and the same products.
+  const plans = new Map<string, CodePlan | null>()
+  const planOf = (invoiceNumber: string, charges: readonly EntryCharge[], on: readonly number[]) => {
+    if (!plans.has(invoiceNumber)) plans.set(invoiceNumber, codePlan(charges, on.map((i) => lines[i]), byValue(on)))
+    return plans.get(invoiceNumber) ?? null
+  }
+
   // Duty and the two fees: each Group invoice's share from the entry, the rest by value.
   for (const key of ['duty', 'mpf', 'hmf'] as const) {
     const part = local[key]
@@ -227,15 +356,33 @@ export function landedCost(input: {
     for (const share of part.byInvoice ?? []) {
       const invoice = invoices.find((inv) => sameInvoice(inv.number, share.invoiceNumber))
       const on = invoice ? all.filter((i) => lines[i].invoiceId === invoice.id) : []
-      if (!on.length) {
+      if (!invoice || !on.length) {
         notes.push(`The entry charges ${key === 'duty' ? 'duty' : labelOf(key)} on ${share.invoiceNumber}, which none of these products is on, so that part is shared across every product by value.`)
         continue
       }
-      addShares(parts, on, key, allocate(share.amount, byValue(on)))
+      const charges = entryLines.filter((c) => c.invoiceNumber === share.invoiceNumber)
+      // The harbour fee is given only for the whole entry, so it goes by value.
+      const plan = key === 'hmf' ? null : planOf(share.invoiceNumber, charges, on)
+      const under = plan?.ok && key !== 'hmf' ? chargedUnder(charges, key) : null
+      if (plan?.ok && under) {
+        for (const group of plan.groups) {
+          const at = group.at.map((j) => on[j])
+          addShares(parts, at, key, allocate(under.get(group.digits) ?? 0, group.weights))
+          if (key === 'duty') for (const i of at) if (!dutyCodes[i].includes(group.code)) dutyCodes[i].push(group.code)
+        }
+      } else {
+        if (key === 'duty' && plan && !plan.ok) notes.push(`Duty on ${invoice.number} is shared by value, not by HS code: ${plan.reason}.`)
+        addShares(parts, on, key, allocate(share.amount, byValue(on)))
+      }
       remaining -= share.amount
     }
     remaining = roundCents(remaining)
     if (remaining !== 0) addShares(parts, all, key, allocate(remaining, byValue(all)))
+    // No entry line to follow: typed by hand, or a bill without its entry summary.
+    if (key === 'duty' && !part.byInvoice?.length && codesDiffer(lines)) {
+      if (dutySource === 'typed') notes.push('Duty typed by hand is shared by value, not by HS code.')
+      if (dutySource === 'bill') notes.push("Nippon's bill has no entry summary, so duty is shared by value, not by HS code.")
+    }
   }
   if (!valueKnown && (['duty', 'mpf', 'hmf'] as const).some((k) => local[k]?.total)) {
     notes.push('Until every product has its invoice amount, the duty and fees are shared by pallets.')
@@ -268,6 +415,7 @@ export function landedCost(input: {
       quantity: l.quantity,
       pallets: l.pallets,
       parts: parts[i],
+      dutyCodes: dutyCodes[i],
       total,
       unitCost,
       xeroUnit,
@@ -300,7 +448,15 @@ export interface BillCosts {
   local: LocalCosts
   /** An entry summary was read, so duty and the fees are CBP's own figures. */
   hasEntry: boolean
+  /** Every line of the entry summaries, so duty can follow the HS codes inside an invoice. */
+  entryLines: EntryCharge[]
   notes: string[]
+}
+
+/** The heading a line's goods were entered under: its one row outside Chapter 99. */
+function goodsHeadingOf(line: EntryLine): string | null {
+  const goods = line.hts.filter((row) => !isChapter99(row.code))
+  return goods.length === 1 ? goods[0].code.trim() : null
 }
 
 /**
@@ -311,6 +467,7 @@ export function costsFromBills(pkgs: readonly CustomsPackage[]): BillCosts | nul
   if (!pkgs.length) return null
   const shares: Record<'duty' | 'mpf' | 'hmf', Map<string, number>> = { duty: new Map(), mpf: new Map(), hmf: new Map() }
   const totals: Record<LocalKey, number> = { duty: 0, mpf: 0, hmf: 0, disbursement: 0, clearance: 0, containerDelivery: 0, other: 0 }
+  const entryLines: EntryCharge[] = []
   const notes: string[] = []
   let hasEntry = false
 
@@ -327,17 +484,28 @@ export function costsFromBills(pkgs: readonly CustomsPackage[]): BillCosts | nul
 
       const duties = entry.lines.map((l) => roundCents(l.hts.reduce((sum, row) => sum + row.amount, 0)))
       const duty = roundCents(entry.duty_total + (entry.tax_total ?? 0))
-      allocate(duty, duties.some((d) => d > 0) ? duties : evs).forEach((a, i) => add('duty', numberOf(i), a))
+      const dutyByLine = allocate(duty, duties.some((d) => d > 0) ? duties : evs)
+      dutyByLine.forEach((a, i) => add('duty', numberOf(i), a))
       totals.duty = roundCents(totals.duty + duty)
 
       const lineMpfs = entry.lines.map((l) => l.mpf ?? 0)
       const mpf = entry.mpf_total ?? roundCents(lineMpfs.reduce((a, b) => a + b, 0))
-      if (mpf) allocate(mpf, lineMpfs.some((m) => m > 0) ? lineMpfs : evs).forEach((a, i) => add('mpf', numberOf(i), a))
+      const mpfByLine = mpf ? allocate(mpf, lineMpfs.some((m) => m > 0) ? lineMpfs : evs) : lineMpfs.map(() => 0)
+      if (mpf) mpfByLine.forEach((a, i) => add('mpf', numberOf(i), a))
       totals.mpf = roundCents(totals.mpf + mpf)
 
       const hmf = entry.hmf_total ?? roundCents(evs.reduce((sum, ev) => sum + roundCents(ev * HMF_RATE), 0))
       if (hmf) allocate(hmf, evs.map((ev) => roundCents(ev * HMF_RATE))).forEach((a, i) => add('hmf', numberOf(i), a))
       totals.hmf = roundCents(totals.hmf + hmf)
+
+      entry.lines.forEach((line, i) =>
+        entryLines.push({
+          invoiceNumber: numberOf(i),
+          code: goodsHeadingOf(line),
+          duty: dutyByLine[i],
+          mpf: line.mpf == null ? null : mpfByLine[i],
+        }),
+      )
     } else {
       const customs = customsChargeOf(pkg.invoice)
       if (customs) {
@@ -364,6 +532,7 @@ export function costsFromBills(pkgs: readonly CustomsPackage[]): BillCosts | nul
   return {
     local: Object.fromEntries(LOCAL_KEYS.map((k) => [k, part(k)])) as LocalCosts,
     hasEntry,
+    entryLines,
     notes,
   }
 }
@@ -398,4 +567,30 @@ export function effectiveLocalCosts(
     source[key] = value != null ? 'typed' : null
   }
   return { local, source }
+}
+
+// ---------------------------------------------------------------------------
+// What each product is entered under
+// ---------------------------------------------------------------------------
+
+/**
+ * The HS codes a product is entered under on a leg, and the share of its value under each: what
+ * its commercial invoice carries, worked by the same rules on one unit of it. A split rule gives
+ * its parts (the compact cutting station's frame and body at their shares); otherwise it is the
+ * product's own code for the leg on the HS codes tab.
+ *
+ * `skus` are the products a depot's Xero item stands for. Empty when any part has no code, or when
+ * those products are entered differently, since then nobody can say which one this is.
+ */
+export function hsSharesOf(skus: readonly string[], ctx: ApplyCompositionCtx): HsShare[] {
+  const each = [...new Set(skus)].map((sku) =>
+    applyComposition([{ sku, product_name: sku, qty: 1, unit_value: 1, hs_code: null }], ctx).lines.map((l) => ({
+      code: normaliseHsCode(l.hs_code),
+      share: l.unit_value,
+    })),
+  )
+  if (!each.length || each.some((shares) => !shares.length || shares.some((s) => !s.code))) return []
+  const same = (a: readonly HsShare[], b: readonly HsShare[]) =>
+    a.length === b.length && a.every((s, i) => digitsOf(s.code) === digitsOf(b[i].code) && Math.abs(s.share - b[i].share) < 1e-9)
+  return each.every((shares) => same(shares, each[0])) ? each[0] : []
 }

@@ -83,4 +83,36 @@ test.describe('Transport, the landed cost, as Dave', () => {
     await page.getByRole('button', { name: 'Delete this shipment' }).click()
     await page.waitForURL(/\/transport$/)
   })
+
+  test('says typed duty cannot follow the HS codes when barriers travel with a cutting station', async ({ page }) => {
+    page.on('dialog', (d) => d.accept())
+
+    await page.goto('/transport')
+    await page.getByRole('button', { name: 'Add a shipment' }).click()
+    await page.getByRole('button', { name: 'Not booked yet? Keep it by hand' }).click()
+    await page.getByLabel('Going to').selectOption('US-BAL')
+    await page.getByRole('button', { name: 'Keep it by hand', exact: true }).click()
+    await page.waitForURL(/\/transport\/[0-9a-f-]{36}$/)
+
+    // The barriers' code comes from the HS codes tab and the compact cutting station's frame and
+    // body from its split rule, both for Group to USA: the line below shows only when they differ.
+    await page.getByRole('button', { name: 'Add what is on it' }).click()
+    await page.getByLabel('Line 1 product').fill('H9BALT')
+    await page.getByLabel('Line 1 quantity').fill('140')
+    await page.getByRole('button', { name: 'Add a line' }).click()
+    await page.getByLabel('Line 2 product').fill('CSSBALT')
+    await page.getByLabel('Line 2 quantity').fill('2')
+    await page.getByLabel('Line 2 pallets').fill('1')
+    await page.getByRole('button', { name: 'Save contents' }).click()
+    await expect(page.getByText('140 × H9BALT, 2 × CSSBALT on 3 pallets').first()).toBeVisible({ timeout: 15_000 })
+
+    const card = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Landed cost' }) })
+    await card.getByRole('button', { name: 'Edit the customs and delivery costs' }).click()
+    await card.getByLabel('Duty', { exact: true }).fill('1000')
+    await card.getByRole('button', { name: 'Save costs' }).click()
+    await expect(card.getByText('Duty typed by hand is shared by value, not by HS code.')).toBeVisible({ timeout: 15_000 })
+
+    await page.getByRole('button', { name: 'Delete this shipment' }).click()
+    await page.waitForURL(/\/transport$/)
+  })
 })
