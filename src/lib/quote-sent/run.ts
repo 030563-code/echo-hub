@@ -24,8 +24,15 @@ export type QuoteSentMode = 'move' | 'report' | 'backfill'
 export const OVERLAP_MS = 60 * 60 * 1000
 /** How far back the very first scheduled run looks. */
 export const FIRST_RUN_MS = 60 * 60 * 1000
-/** The longest window one run reads, so a run stays well inside a function's time limit. */
+/** How far back a scheduled run ever reaches, and the longest window a report may ask for. */
 export const MAX_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+/**
+ * The most one scheduled run reads when it is catching up. A full 7 days took 7.7 seconds on the
+ * live site on 24 Sep 2026, close to a function's time limit, and a run cut off there would start
+ * again from the same place every half hour. Twelve hours at a time always finishes, and each run
+ * moves the chain on, so an outage of days is caught up within a few hours.
+ */
+export const MAX_STEP_MS = 12 * 60 * 60 * 1000
 
 export interface QuoteSentHubSpot {
   pipelines(): Promise<Pipeline[]>
@@ -120,8 +127,9 @@ export async function runQuoteSentCheck(
   }
   if (opts.mode === 'backfill' && !opts.from) throw new Error('a backfill run needs a window')
 
-  const to = opts.to ?? deps.now()
+  let to = opts.to ?? deps.now()
   let from = opts.from ?? null
+  const chained = !from
   if (!from) {
     const last = opts.mode === 'move' ? await deps.store.lastCleanMoveRunEnd() : null
     from = last ? new Date(last.getTime() - OVERLAP_MS) : new Date(to.getTime() - FIRST_RUN_MS)
@@ -129,6 +137,11 @@ export async function runQuoteSentCheck(
   if (opts.mode !== 'backfill' && to.getTime() - from.getTime() > MAX_WINDOW_MS) {
     from = new Date(to.getTime() - MAX_WINDOW_MS)
     notes.push('window capped at 7 days')
+  }
+  // A scheduled run that is behind reads the oldest twelve hours and leaves the rest to the next.
+  if (chained && opts.mode === 'move' && to.getTime() - from.getTime() > MAX_STEP_MS) {
+    to = new Date(from.getTime() + MAX_STEP_MS)
+    notes.push('catching up: read 12 hours, the next run reads on')
   }
   if (from.getTime() >= to.getTime()) throw new Error('the window ends before it starts')
 
