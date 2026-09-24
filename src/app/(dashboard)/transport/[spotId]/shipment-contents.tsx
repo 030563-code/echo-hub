@@ -159,7 +159,7 @@ export default function ShipmentContents({
   const sheetSummary = contentsSummary(fromSheet.map((l) => ({ productCode: l.productCode, quantity: l.quantity, pallets: l.pallets })))
 
   return (
-    <section className="mt-5 rounded-xl border border-gray-200 bg-white p-5">
+    <section id="contents" className="mt-5 scroll-mt-4 rounded-xl border border-gray-200 bg-white p-5">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-gray-900" style={{ fontFamily: 'Varela Round, sans-serif' }}>

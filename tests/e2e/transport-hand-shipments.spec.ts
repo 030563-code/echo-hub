@@ -55,7 +55,7 @@ test.describe('Transport, a shipment kept by hand, as Dave', () => {
     await expect(row.getByText('140 × H9BALT on 2 pallets')).toBeVisible()
 
     await page.goto(shipmentUrl)
-    await page.getByRole('button', { name: 'Delete', exact: true }).click()
+    await page.getByRole('button', { name: 'Delete this shipment' }).click()
     await page.waitForURL(/\/transport$/)
     await page.getByPlaceholder('SPOT ID, container or reference').fill(order)
     await expect(page.getByRole('link').filter({ hasText: order })).toHaveCount(0)
@@ -76,7 +76,7 @@ test.describe('Transport, a shipment kept by hand, as Dave', () => {
     await page.getByRole('button', { name: 'Save', exact: true }).click()
     await expect(page.getByText('nope is not a container number')).toBeVisible({ timeout: 15_000 })
 
-    await page.getByRole('button', { name: 'Delete', exact: true }).click()
+    await page.getByRole('button', { name: 'Delete this shipment' }).click()
     await page.waitForURL(/\/transport$/)
   })
 })

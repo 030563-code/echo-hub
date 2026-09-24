@@ -182,13 +182,15 @@ export default function HandShipmentDetails({ shipment, depots }: { shipment: Hu
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
+        {/* Dean, 24 Sep 2026: "i also cant delete a shipment if I make one by accident". It was grey
+            text in a corner; it is a button that says what it does. */}
         <button
           type="button"
           onClick={remove}
           disabled={pending}
-          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-gray-500 transition-colors hover:bg-red-50 hover:text-red-700"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:opacity-60"
         >
-          <Trash2 className="h-4 w-4" /> Delete
+          <Trash2 className="h-4 w-4" /> Delete this shipment
         </button>
         <span className="flex-1" />
         <button

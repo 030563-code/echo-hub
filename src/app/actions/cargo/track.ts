@@ -25,6 +25,7 @@ const ReferenceSchema = z.object({
   reference: z.string().max(200),
 })
 const RemoveSchema = z.object({ id: z.string().uuid() })
+const SpotSchema = z.object({ spotId: z.string().trim().regex(/^[0-9]{6,12}$/) })
 
 const listOf = (ids: string[]) => ids.map((id) => `SPOT ${id}`).join(', ')
 
@@ -88,4 +89,41 @@ export async function removeShipmentReference(input: unknown): Promise<Result> {
   revalidatePath('/transport')
   revalidatePath(`/transport/${found.spot_id}`)
   return { success: true, message: `Removed ${found.reference}.` }
+}
+
+/** Why a SPOT stays on the board, in words (cargo_remove_hand_added_spot's reasons). */
+const STAYS: Record<string, string> = {
+  not_hand_added: "It was not added by hand: it comes from Dave's sheet or a purchase order.",
+  in_sheet: "Dave's sheet lists it, so the next refresh would bring it back. It comes off when it is out of his sheet.",
+  on_order: 'A purchase order in the Hub is shipped on it.',
+  customs_bill: 'A Nippon customs bill is matched to it.',
+  commercial_invoice: 'A commercial invoice names it.',
+  in_transit_stock: 'The stock plan counts it as stock on its way.',
+  lead_time: 'The lead time figures were worked out from it.',
+  shared: 'A customer tracking link for it still works. Revoke the link first.',
+}
+
+/**
+ * Take a shipment added by mistake back off the board.
+ *
+ * Dean, 24 Sep 2026: "i also cant delete a shipment if I make one by accident." Only a SPOT that
+ * was added by hand and that nothing else knows, which the database function decides under one
+ * lock; it removes the Hub's copy and everything typed on it, and never tells Cargo Partner.
+ */
+export async function removeHandAddedShipment(input: unknown): Promise<Result> {
+  const scope = await transportScope()
+  if (!scope.ok) return { success: false, error: scope.error }
+  const parsed = SpotSchema.safeParse(input)
+  if (!parsed.success) return { success: false, error: 'No such shipment.' }
+  const { spotId } = parsed.data
+  if (!(await shipmentInScope(spotId, scope.depots))) return { success: false, error: 'No such shipment.' }
+
+  const { data, error } = await createAdminClient().rpc('cargo_remove_hand_added_spot', { p_spot_id: spotId })
+  if (error) return { success: false, error: 'The shipment could not be removed.' }
+  if (data !== 'removed') {
+    return { success: false, error: `SPOT ${spotId} stays on the board. ${STAYS[String(data)] ?? ''}`.trim() }
+  }
+  revalidatePath('/transport')
+  revalidatePath(`/transport/${spotId}`)
+  return { success: true, message: `SPOT ${spotId} is off the board.` }
 }

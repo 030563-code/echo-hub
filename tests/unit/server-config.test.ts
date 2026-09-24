@@ -85,7 +85,7 @@ describe('server config reports presence, never a value', () => {
     const entries = serverConfig().map((e) => ({ ...e, present: false }))
     const missing = missingRequired(entries)
     expect(missing.every((e) => e.required)).toBe(true)
-    expect(missing.some((e) => e.name === 'BAMIDA_PASSWORD')).toBe(false)
+    expect(missing.some((e) => e.name === 'BAMIDA_PO_BCC')).toBe(false)
   })
 })
 
