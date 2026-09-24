@@ -4,6 +4,7 @@ import { getAuthorizedUser } from '@/lib/authz'
 import { externalCallsDisabled, STAGING_SKIP_NOTE } from '@/lib/env'
 import { HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
 import { allowedCurrenciesForPipeline } from '@/lib/pipeline-config'
+import { closeDateForHubSpot, closeDayProblem } from '@/lib/close-date'
 
 interface CreateDealParams {
   dealName: string
@@ -13,6 +14,8 @@ interface CreateDealParams {
   pipelineId?: string
   currency?: string
   winProbability?: string
+  /** The expected close date, "2026-10-31". Optional: without it HubSpot gets none, as before. */
+  closeDay?: string
 }
 
 export async function createHubSpotDeal(params: CreateDealParams): Promise<{ success: boolean; dealId?: string; error?: string }> {
@@ -26,6 +29,11 @@ export async function createHubSpotDeal(params: CreateDealParams): Promise<{ suc
   const { user, profile } = auth
 
   if (externalCallsDisabled()) return { success: false, error: STAGING_SKIP_NOTE }
+
+  // Checked here as well as in the form: this is a public endpoint like every 'use server' export.
+  const closeDay = String(params.closeDay ?? '').trim()
+  const closeProblem = closeDay ? closeDayProblem(closeDay, Date.now()) : null
+  if (closeProblem) return { success: false, error: closeProblem }
 
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN
   if (!accessToken) return { success: false, error: 'Token Missing' }
@@ -168,6 +176,7 @@ export async function createHubSpotDeal(params: CreateDealParams): Promise<{ suc
           hubspot_owner_id: ownerId, // Assign owner to set team
           deal_currency_code: currency,
           ...(params.winProbability ? { win_probability: params.winProbability } : {}),
+          ...(closeDay ? { closedate: closeDateForHubSpot(closeDay) } : {}),
         },
         associations: [
           ...(params.companyId ? [{

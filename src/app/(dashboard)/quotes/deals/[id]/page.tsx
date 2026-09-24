@@ -6,6 +6,7 @@ import { readPageState } from '@/lib/page-state-server'
 import { quoteBuilderKey } from '@/lib/quote-builder-draft'
 import { DealQuotesCard, type DealQuoteRow } from '@/components/quotes/deal-quotes-card'
 import { RepAgentSelect } from '@/components/quotes/rep-agent-select'
+import { CloseDateField } from '@/components/quotes/close-date-field'
 import { REP_AGENT_LABEL, REP_AGENT_PROPERTY } from '@/lib/deal-properties'
 import { formatDate } from '@/lib/utils'
 import { AssignContractorDialog } from '@/components/quotes/assign-contractor-dialog'
@@ -263,6 +264,19 @@ export default async function QuoteRequestDetailsPage(props: {
                 <label className="text-xs uppercase text-gray-500 font-bold">Deal Probability</label>
                 <div className="mt-1 text-xl font-mono font-medium text-gray-900">
                   {dealProbability != null ? `${dealProbability}%` : 'N/A'}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs uppercase text-gray-500 font-bold">Close date</label>
+                <div className="mt-1 text-sm">
+                  {/* Changed here and written to HubSpot, while the deal is open. A won or lost
+                      deal's close date is when it closed, so it reads only. */}
+                  <CloseDateField
+                    dealId={deal.id}
+                    closedate={deal.properties.closedate}
+                    canEdit={canChangeStage && !dealIsClosed}
+                    openDeal={!dealIsClosed}
+                  />
                 </div>
               </div>
               <div>

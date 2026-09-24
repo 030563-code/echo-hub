@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { AlertTriangle, ExternalLink } from 'lucide-react'
+import { getAuthorizedUser } from '@/lib/authz'
 import { pastCloseDealsForViewer, type PastCloseSummary } from '@/lib/past-close.server'
+import { CloseDateField } from '@/components/quotes/close-date-field'
 import { hubspotRecordUrl } from '@/lib/hubspot-links'
 import { formatDate, formatMoney } from '@/lib/utils'
 
@@ -24,16 +26,20 @@ function headline({ scope, organisation, total }: PastCloseSummary): string {
  * never disagree about which ones need a decision. A salesperson sees their own; an admin sees
  * every rep's in the organisation they are looking at, with whose each one is.
  *
- * Each deal opens in the Hub, where it can be closed won or lost, and in HubSpot, where the close
- * date is edited: the Hub has no close date field. The list is folded away so it does not push the
- * tab down; a native details element, so its open state survives moving between tabs without any
- * client state.
+ * Each deal opens in the Hub, where it can be closed won or lost, and its close date can be moved
+ * right on its row (Dean, 24 Sep 2026: "add a close date field in the Hub"), for anyone who can
+ * change deals. Anyone else gets the link to HubSpot. The list is folded away so it does not push
+ * the tab down; a native details element, so its open state survives moving between tabs without
+ * any client state.
  *
  * Renders nothing when there is nothing to fix, and nothing when HubSpot could not be read.
  */
 export async function PastCloseBanner() {
   const summary = await pastCloseDealsForViewer()
   if (!summary || summary.total === 0) return null
+  // The same capability updateDealCloseDate checks; getAuthorizedUser is cached per request.
+  const auth = await getAuthorizedUser()
+  const canEdit = auth.ok && auth.capabilities.has('quotes.create')
 
   const { total, deals } = summary
   const one = total === 1
@@ -78,6 +84,9 @@ export async function PastCloseBanner() {
                         Close date {formatDate(deal.closeDay)}, {deal.daysPast} {deal.daysPast === 1 ? 'day' : 'days'} ago
                       </span>
                       {deal.amount !== null && <span>{formatMoney(deal.amount, deal.currency)}</span>}
+                      {canEdit && (
+                        <CloseDateField dealId={deal.id} closedate={deal.closeDay} canEdit variant="banner" />
+                      )}
                       {hubspot && (
                         <a
                           href={hubspot}
@@ -85,7 +94,7 @@ export async function PastCloseBanner() {
                           rel="noreferrer"
                           className="inline-flex items-center gap-0.5 font-medium text-red-800 hover:text-red-950 hover:underline"
                         >
-                          Change the date in HubSpot
+                          {canEdit ? 'HubSpot' : 'Change the date in HubSpot'}
                           <ExternalLink className="h-3 w-3" aria-hidden="true" />
                         </a>
                       )}
