@@ -126,6 +126,10 @@ export default function LandedCostCard({
                     {result.lines.map((l) => (
                       <td key={l.lineId} className="py-1.5 pr-4 text-right text-gray-900">
                         {money(l.parts[p.key])}
+                        {/* Where the duty came from: the entry lines it was charged under. */}
+                        {p.key === 'duty' && l.dutyCodes.length > 0 && (
+                          <span className="block text-[11px] leading-tight text-gray-400">HS {l.dutyCodes.join(', ')}</span>
+                        )}
                       </td>
                     ))}
                     {result.lines.length > 1 && <td className="py-1.5 text-right text-gray-700">{money(result.totals[p.key])}</td>}

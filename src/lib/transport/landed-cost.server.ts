@@ -4,15 +4,18 @@ import { getAuthorizedUser } from '@/lib/authz'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { packageFrom } from '@/lib/customs/view'
 import type { CustomsPackage } from '@/lib/customs/nippon-invoice'
+import type { CompositionRule, HsCodeEntry } from '@/lib/invoice-composition'
 import { ensureHubShipmentForSpot } from './shipments.server'
-import { landedCostAllowed, landedCurrency } from './cost-access'
+import { landedCostAllowed, landedCurrency, landedLeg } from './cost-access'
 import {
   LOCAL_KEYS,
   costsFromBills,
   effectiveLocalCosts,
+  hsSharesOf,
   landedCost,
   type CostInvoice,
   type CostLine,
+  type HsShare,
   type LandedResult,
   type LocalKey,
   type LocalSource,
@@ -89,6 +92,40 @@ async function billsFor(spotId: string | null, containers: readonly string[]) {
   return [...found.values()].sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')))
 }
 
+/**
+ * The HS codes each product on a shipment is entered under, on the leg its goods come in on: the
+ * depot's Xero item (H9BALT) is the product its invoices carry (EBH9NA), whose code is on the HS
+ * codes tab, or split by its composition rule. Null when the depot has no such leg or a table could
+ * not be read, so duty goes by value, as it did before, rather than by codes that may be wrong.
+ */
+async function hsCodesFor(depot: string | null, productCodes: readonly string[]): Promise<Map<string, HsShare[]> | null> {
+  const leg = landedLeg(depot)
+  if (!depot || !leg || !productCodes.length) return null
+  const admin = createAdminClient()
+  const [mapping, hsRows, ruleRows] = await Promise.all([
+    admin.from('product_depot_mapping').select('xero_item_code, hubspot_sku_code, is_active').eq('depot_code', depot),
+    admin.from('product_hs_codes').select('sku, leg, hs_code').eq('leg', leg),
+    admin.from('invoice_composition_rules').select('id, active, country, leg, rule_type, source_sku, config, priority').eq('active', true),
+  ])
+  if (mapping.error || hsRows.error || ruleRows.error) return null
+
+  const skusOf = new Map<string, string[]>()
+  for (const r of (mapping.data ?? []) as any[]) {
+    const item = String(r.xero_item_code ?? '').trim().toUpperCase()
+    const sku = String(r.hubspot_sku_code ?? '').trim()
+    if (!item || !sku || r.is_active === false) continue
+    skusOf.set(item, [...(skusOf.get(item) ?? []), sku])
+  }
+  // A country's own rule (Brazil's bundling) is for a customer's invoice, not stock for a depot.
+  const ctx = {
+    leg,
+    country: null,
+    rules: (ruleRows.data ?? []) as unknown as CompositionRule[],
+    hsCodes: (hsRows.data ?? []) as unknown as HsCodeEntry[],
+  }
+  return new Map(productCodes.map((code) => [code, hsSharesOf(skusOf.get(code.trim().toUpperCase()) ?? [], ctx)]))
+}
+
 export async function loadLandedCost(shipment: {
   hubId: string | null
   spotId: string | null
@@ -99,7 +136,7 @@ export async function loadLandedCost(shipment: {
   const admin = createAdminClient()
   const currency = landedCurrency(shipment.depot)
 
-  const [invoiceRows, moneyRows, costRow, bills] = await Promise.all([
+  const [invoiceRows, moneyRows, costRow, bills, hsCodes] = await Promise.all([
     shipment.hubId
       ? admin.from('transport_shipment_invoice').select('*').eq('shipment_id', shipment.hubId).order('created_at')
       : Promise.resolve({ data: [] as any[] }),
@@ -110,6 +147,7 @@ export async function loadLandedCost(shipment: {
       ? admin.from('transport_shipment_cost').select('*').eq('shipment_id', shipment.hubId).maybeSingle()
       : Promise.resolve({ data: null }),
     billsFor(shipment.spotId, shipment.containers),
+    hsCodesFor(shipment.depot, [...new Set(shipment.lines.map((l) => l.productCode))]),
   ])
 
   const invoices: LandedInvoice[] = ((invoiceRows.data ?? []) as any[]).map((r) => ({
@@ -156,6 +194,7 @@ export async function loadLandedCost(shipment: {
     pallets: l.pallets,
     invoiceId: moneyBy.get(l.id)?.invoiceId ?? null,
     goodsAmount: moneyBy.get(l.id)?.goodsAmount ?? null,
+    ...(hsCodes ? { hsCodes: hsCodes.get(l.productCode) ?? [] } : {}),
   }))
 
   const billTotals: Partial<Record<LocalKey, number>> = {}
@@ -173,7 +212,7 @@ export async function loadLandedCost(shipment: {
     source,
     billTotals,
     billNotes: fromBills?.notes ?? [],
-    result: landedCost({ currency, lines, invoices, local }),
+    result: landedCost({ currency, lines, invoices, local, entryLines: fromBills?.entryLines, dutySource: source.duty }),
   }
 }
 
