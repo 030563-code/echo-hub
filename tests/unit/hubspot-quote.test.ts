@@ -170,7 +170,7 @@ describe('buildQuoteCreateBody', () => {
     expirationDate: '2026-11-02',
     quoteNumber: 'EBUS26123',
     comments: 'In stock in Baltimore',
-    sender: { firstname: 'Jillian', lastname: 'Rocco', email: 'jillian.rocco@echobarrier.com', phone: '+13122785759' },
+    sender: { firstname: 'Jillian', lastname: 'Rocco', email: 'jillian.rocco@echobarrier.com', phone: '+15555550100' },
     templateId: '454422093232',
     dealId: '64568716933',
     contactId: '12388',

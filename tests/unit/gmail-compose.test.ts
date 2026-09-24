@@ -58,7 +58,7 @@ describe('buildQuoteEmail', () => {
     quoteLink: 'https://info.echobarrier.com/ETfdAWvCLmudHmrfNe',
     expiresOn: '1 November 2026',
     repName: 'Jillian Rocco',
-    repPhone: '+1 312 278 5759',
+    repPhone: '+1 555 555 0100',
   }
 
   it('names the quote and the deal in the subject', () => {
