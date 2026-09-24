@@ -12,9 +12,11 @@ import { Button } from '@/components/ui/button'
 import { SearchBox } from '@/components/ui/search-box'
 import StatusBadge from "@/components/board/StatusBadge"
 import { usePersistedView } from '@/hooks/use-page-state'
+import { useViewerTimeZone } from '@/hooks/use-viewer-time-zone'
 import { parseCallsView, type CallsView } from '@/lib/page-drafts'
 import { MISSED_REASONS } from '@/lib/calls/missed-reasons'
 import { LINK_REASON_LABELS } from '@/lib/calls/link-state'
+import { callDate, callTime, callWhen } from '@/lib/calls/call-time'
 import type { CallListItem } from '@/lib/calls/board-data'
 import { recordMissedReason, setCallLinkState } from '../actions'
 import { LinkContactDialog } from '../link-contact-dialog'
@@ -24,20 +26,6 @@ const FILTERS = [
   { key: 'all', label: 'All calls' },
   { key: 'linked', label: 'Linked' },
 ] as const
-
-/** The day a call came in, and the time, as two lines. "15 Sept, 10:08" alone
- *  left a reader guessing at the year on anything older than a week. */
-function callDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-}
-
-function callTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-}
-
-function when(iso: string): string {
-  return `${callDate(iso)}, ${callTime(iso)}`
-}
 
 function duration(seconds: number | null): string {
   if (!seconds) return '—'
@@ -55,6 +43,7 @@ export function CallLogClient({ calls, canSeeNothing }: { calls: CallListItem[];
   const [view, setView] = usePersistedView<CallsView>('calls:log', { v: 1, filter: 'needs_link', q: '' }, parseCallsView)
   const [openCall, setOpenCall] = useState<string | null>(null)
   const [linking, setLinking] = useState<CallListItem | null>(null)
+  const timeZone = useViewerTimeZone()
 
   const shown = useMemo(() => {
     const needle = view.q.trim().toLowerCase()
@@ -138,6 +127,7 @@ export function CallLogClient({ calls, canSeeNothing }: { calls: CallListItem[];
                   <CallRow
                     key={call.id}
                     call={call}
+                    timeZone={timeZone}
                     open={openCall === call.id}
                     onToggle={() => setOpenCall(openCall === call.id ? null : call.id)}
                     onLink={() => setLinking(call)}
@@ -154,7 +144,7 @@ export function CallLogClient({ calls, canSeeNothing }: { calls: CallListItem[];
         open={linking !== null}
         onClose={() => setLinking(null)}
         callId={linking?.id}
-        subject={linking ? `${caller(linking)}, ${linking.office}, ${when(linking.call_at)}` : ''}
+        subject={linking ? `${caller(linking)}, ${linking.office}, ${callWhen(linking.call_at, timeZone)}` : ''}
       />
     </div>
   )
@@ -162,11 +152,14 @@ export function CallLogClient({ calls, canSeeNothing }: { calls: CallListItem[];
 
 function CallRow({
   call,
+  timeZone,
   open,
   onToggle,
   onLink,
 }: {
   call: CallListItem
+  /** The reader's zone, null until the page has hydrated. */
+  timeZone: string | null
   open: boolean
   onToggle: () => void
   onLink: () => void
@@ -207,8 +200,10 @@ function CallRow({
         onClick={onToggle}
       >
         <td className="px-4 py-2.5 whitespace-nowrap">
-          <span className="block text-gray-900">{callDate(call.call_at)}</span>
-          <span className="block text-xs tabular-nums text-gray-500">{callTime(call.call_at)}</span>
+          <time dateTime={call.call_at}>
+            <span className="block text-gray-900">{callDate(call.call_at, timeZone)}</span>
+            <span className="block text-xs tabular-nums text-gray-500">{callTime(call.call_at, timeZone)}</span>
+          </time>
         </td>
         <td className="px-3 py-2.5 text-gray-700">{call.office}</td>
         <td className="px-3 py-2.5 font-mono text-xs text-gray-700">{caller(call)}</td>
@@ -297,7 +292,7 @@ function CallRow({
                     </div>
                     {call.missed_reason && (
                       <p className="mt-2 text-xs text-gray-500">
-                        Recorded{call.missed_reason_at ? ` ${when(call.missed_reason_at)}` : ''}.
+                        Recorded{call.missed_reason_at ? ` ${callWhen(call.missed_reason_at, timeZone)}` : ''}.
                       </p>
                     )}
                   </div>

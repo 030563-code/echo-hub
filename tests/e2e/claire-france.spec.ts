@@ -131,6 +131,37 @@ test.describe("Claire's Hub: France only, invoicing live, nothing else", () => {
     }
   })
 
+  // The walk-through above runs in the machine's time zone, which only shows
+  // this bug when it differs from the server's. The live server runs in UTC and
+  // her browser in Paris: the Calls page formatted each call's time on both, got
+  // two different texts, and React threw its hydration error (418) at her on
+  // every first load. So the Calls tabs are also read from her zone, and from a
+  // US one as the US office would read them. Each has to hydrate without that
+  // error (the afterEach above) and then show the reader's own clock.
+  for (const timezoneId of ['Europe/Paris', 'America/New_York']) {
+    test.describe(`Calls read from ${timezoneId}`, () => {
+      test.use({ timezoneId })
+
+      test("the Calls tabs hydrate cleanly and show each call at the reader's own time", async ({ page }) => {
+        await page.goto('/calls/log')
+        await page.waitForLoadState('networkidle')
+        const times = page.locator('main table time')
+        const count = await times.count()
+        test.info().annotations.push({ type: 'calls checked', description: String(count) })
+        for (let i = 0; i < count; i++) {
+          const time = times.nth(i)
+          const iso = (await time.getAttribute('datetime')) ?? ''
+          const clock = new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: timezoneId })
+          await expect(time.locator('span').last(), iso).toHaveText(clock)
+        }
+
+        await page.goto('/calls/contacts')
+        await page.waitForLoadState('networkidle')
+        await expect(page.getByRole('heading', { name: 'Calls', level: 1 })).toBeVisible()
+      })
+    })
+  }
+
   test('the modules she does not hold send her home', async ({ page }) => {
     for (const path of ['/purchase-orders', '/transport', '/mrp', '/bom', '/stock', '/invoices', '/factory']) {
       await page.goto(path)
