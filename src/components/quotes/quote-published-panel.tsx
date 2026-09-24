@@ -197,9 +197,10 @@ export function QuotePublishedPanel({
           </Button>
         )}
         {/* Outside the email block on purpose: a rep who copied the link, or
-            sent the quote from their own mail client, still has to be able to
-            say so. Generating the quote no longer moves the deal, so this is
-            the only thing that does. */}
+            sent the quote from their own mail client, can still say so. It is
+            the immediate way. Since 24 Sep 2026 the Hub also moves the deal
+            itself once HubSpot logs an email carrying the link
+            (src/lib/quote-sent), so a rep who forgets is caught. */}
         {sentState === 'done' ? (
           <span className="inline-flex items-center gap-1.5 text-xs font-medium text-green-800">
             <Check className="h-4 w-4" />
@@ -233,7 +234,8 @@ export function QuotePublishedPanel({
           </div>
           <p className="text-xs text-gray-500">
             Opens Gmail in a new tab. Nothing is sent until you press Send there.
-            HubSpot logs it against the contact, its company and this deal on its own.
+            HubSpot logs it against the contact, its company and this deal on its own,
+            and once it has, the Hub moves the deal to Quotation sent within half an hour.
           </p>
           <Button size="sm" onClick={openGmail} disabled={!to.trim()}>
             <Mail className="mr-1.5 h-4 w-4" />
