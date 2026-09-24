@@ -206,7 +206,7 @@ test('Confirm needs both dates, then records the confirmation and emails it', as
   await expect(confirm).toBeDisabled()
 
   // Manufacturing finished is not offered until the order is confirmed.
-  await expect(page.getByText('Confirm the purchase order first, with your estimated dates.')).toBeVisible()
+  await expect(page.getByText('Confirm the purchase order first.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Manufacturing finished' })).toHaveCount(0)
 
   await page.locator('input[type="date"]').nth(1).fill('2026-10-04')
