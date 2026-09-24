@@ -173,9 +173,9 @@ describe('a coloured fabric starts from the standing colour, and the sheet print
   it('the PDF adds a colour column only when a material on the product carries one', () => {
     const pdf = readFileSync(join(process.cwd(), 'src/lib/supplier-spec-pdf.ts'), 'utf8')
     expect(pdf).toContain('const coloured = product.materials.some((m) => m.colour)')
-    expect(pdf).toContain("'Colour (farba)'")
-    // The uncoloured table is the one that always printed, byte for byte.
-    expect(pdf).toContain("[['Code', 'Material', right('Per barrier'), right('Total')]]")
+    expect(pdf).toContain("'Farba'")
+    // The uncoloured table keeps the four columns it always had, in Slovak since 24 Sep 2026.
+    expect(pdf).toContain("[['Kód', 'Materiál', right('Na kus'), right('Spolu')]]")
   })
 })
 
@@ -229,7 +229,7 @@ describe('guard: the specification document tells the truth about itself', () =>
       'Pallet type', 'Pallet height', 'Pack (balenie)', 'Include (pribaliť)']) {
       expect(lib).toContain(label)
     }
-    expect(pdf).toContain('Specific requirements')
+    expect(pdf).toContain('Špecifické požiadavky')
   })
 
   it('only imports the specification type, never the server-only module, into the pure builder', () => {
@@ -282,11 +282,11 @@ describe('the page is ordered the way the factory reads it', () => {
    * most likely to undo by putting it back where it looks like it belongs.
    */
   it('puts the summary first, packing under it, then the detail', () => {
-    expect(at("head: [['Model', 'Product', right('Quantity')]]")).toBeLessThan(
-      at("head: [['Packing and finishing', '']]"),
+    expect(at("head: [['Model', 'Produkt', right('Množstvo')]]")).toBeLessThan(
+      at("head: [['Balenie', '']]"),
     )
-    expect(at("head: [['Packing and finishing', '']]")).toBeLessThan(at("write('Detailed specification'"))
-    expect(at("write('Detailed specification'")).toBeLessThan(at('for (const product of spec.products) {'))
+    expect(at("head: [['Balenie', '']]")).toBeLessThan(at("write('Podrobná špecifikácia'"))
+    expect(at("write('Podrobná špecifikácia'")).toBeLessThan(at('for (const product of spec.products) {'))
   })
 
   it('counts the whole order once, from the same products it lists', () => {
@@ -304,23 +304,23 @@ describe('the page is ordered the way the factory reads it', () => {
    */
   it('states the pallet count once, from the block somebody approved', () => {
     expect(pdf).not.toContain('a + p.pallets')
-    expect(pdf).not.toContain("'Pallets']]")
+    expect(pdf).not.toContain("'Palety']]")
     // The packing block is still the one that says it.
-    expect(pdf).toContain("['Pallets', qty(spec.packing.pallets)]")
+    expect(pdf).toContain("['Palety', qty(spec.packing.pallets)]")
     // And the per-product line still carries its own, next to its own materials.
-    expect(pdf).toContain('${product.pallets} pallet')
+    expect(pdf).toContain('${product.pallets} ${paliet(product.pallets)}')
   })
 
   it('aligns a numeric heading over its own figures', () => {
     // columnStyles reach the BODY only in jspdf-autotable, so a right-aligned
     // column with a plain string heading prints the heading on the left.
     expect(pdf).toContain("const right = (content: string) => ({ content, styles: { halign: 'right' as const } })")
-    expect(pdf).toContain("right('Quantity')")
-    expect(pdf).toContain("right('Per barrier'), right('Total')")
+    expect(pdf).toContain("right('Množstvo')")
+    expect(pdf).toContain("right('Na kus'), right('Spolu')")
   })
 
   it('states the packing figures once, not once here and once at the foot', () => {
-    expect(pdf.split("head: [['Packing and finishing', '']]")).toHaveLength(2)
+    expect(pdf.split("head: [['Balenie', '']]")).toHaveLength(2)
   })
 })
 

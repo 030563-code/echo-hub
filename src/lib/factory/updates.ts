@@ -19,6 +19,12 @@ import 'server-only'
  * dates ... Then the next button is the manufacturing finished button which
  * they need to press upon invoicing otherwise we wont know if manufacturing is
  * finished to pay the invoice."
+ *
+ * The payment half of that was never true: nothing in the Hub, Supabase or n8n
+ * reads finished_at before a supplier invoice is paid. The factory said so on
+ * 18 Sep 2026, and since 24 Sep the screens say only what the button does:
+ * press it when the whole order is manufactured and packed, so we can arrange
+ * the collection.
  */
 
 import { revalidatePath } from 'next/cache'
@@ -151,7 +157,8 @@ export async function confirmManufacturingOrder(
  * double press, a retry or a refresh cannot stamp it twice. This timestamp is
  * what the Cargo Partner shipment request is hung on, and that request is what
  * asks a freight forwarder to move a container, which is exactly why this may
- * only ever happen once. It is also what lets us pay their invoice.
+ * only ever happen once. Paying their invoice does not wait on it, so no screen
+ * or email may say that it does.
  *
  * Refused before the order is confirmed: the two steps are a sequence, and a
  * finish with no confirmation would leave us with no dates and no acceptance.

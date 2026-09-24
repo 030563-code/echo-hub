@@ -227,15 +227,13 @@ test('Confirm needs both dates, then records the confirmation and emails it', as
   expect(row!.confirmation_emailed_at).not.toBeNull()
 })
 
-test('Manufacturing finished is one press, and it is what tells us to pay', async ({ page }) => {
+test('Manufacturing finished is one press, pressed once the whole order is packed', async ({ page }) => {
   test.setTimeout(90_000)
   await loginFactory(page)
   await page.goto(`/factory/${orderId}`)
 
-  // The reason it matters is on the button, not buried.
-  await expect(
-    page.getByText('We can only pay an invoice once its order is marked finished here'),
-  ).toBeVisible({ timeout: 20_000 })
+  // When to press it is on the button's card, not buried.
+  await expect(page.getByText('the whole order is manufactured and packed')).toBeVisible({ timeout: 20_000 })
 
   await page.getByRole('button', { name: 'Manufacturing finished' }).click()
   await page.getByRole('button', { name: 'Yes, it is finished' }).click()

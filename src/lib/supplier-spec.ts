@@ -176,6 +176,40 @@ export function specificationRows(s: ModelSpec): SupplierSpecRow[] {
   return rows
 }
 
+/**
+ * What each label above prints as on the sheet, in the factory's own words from its order
+ * templates.
+ *
+ * The office edits in English and every saved document stores the English label it was saved
+ * with, so the translation happens at print time rather than in the data: documents already
+ * confirmed print in Slovak without anybody re-signing them, and nothing signed changes but the
+ * language of its labels. A label somebody typed by hand is not in here and prints exactly as
+ * typed. A Map, not an object, so a hand-typed "constructor" prints as itself.
+ */
+const SPEC_ROW_LABEL_SK: ReadonlyMap<string, string> = new Map([
+  ['Dimensions', 'Rozmery'],
+  ['PVC', 'PVC'],
+  ['Mesh (sieťka)', 'Sieťka'],
+  ['Goretex', 'Goretex'],
+  ['Infill (materiál výplne)', 'Materiál výplne'],
+  ['Thread (nite)', 'Nite'],
+  ['Reflective strips', 'Reflexné pásy'],
+  ['Rings (krúžky)', 'Krúžky'],
+  ['Buckles (pracky)', 'Pracky'],
+  ['Graphics', 'Grafika'],
+  ['Graphics with logo', 'Grafika s logom'],
+  ['Pallet type', 'Typ palety'],
+  ['Frame (konštrukcia)', 'Konštrukcia'],
+  ['Pallet height', 'Výška palety'],
+  ['Pack (balenie)', 'Balenie'],
+  ['Include (pribaliť)', 'Pribaliť'],
+])
+
+/** The Slovak a specification row prints under. */
+export function specRowLabelSk(label: string): string {
+  return SPEC_ROW_LABEL_SK.get(label) ?? label
+}
+
 /** Graphics notes first, then the standing requirements, as the templates read. */
 export function specificationBullets(s: ModelSpec): string[] {
   return [...s.graphicsNotes, ...s.specificRequirements].map((b) => b.trim()).filter(Boolean)

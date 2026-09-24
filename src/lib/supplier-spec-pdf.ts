@@ -27,13 +27,21 @@
  * asked for it through Martin, and he is right. The document used to open on a
  * material table for the first model and put the pallet count on the last page,
  * so nobody could see what the whole order was without reading all of it.
+ *
+ * IN SLOVAK, every heading and label, since 24 Sep 2026. The masthead always
+ * was, but the rest put English headings over Slovak values, and the factory
+ * found the sheet unclear. The words are the ones the factory's own order
+ * templates use; the values are exactly what they were.
  */
 
-import type { SupplierSpec } from '@/lib/supplier-spec'
+import { specRowLabelSk, type SupplierSpec } from '@/lib/supplier-spec'
 import { registerUnicodeFont } from '@/lib/pdf-font'
 import { drawEbLogo } from '@/lib/eb-logo'
 
 const qty = (v: number) => (Number.isInteger(v) ? String(v) : String(Number(v.toFixed(3))))
+
+/** Slovak counts pallets three ways: 1 paleta, 2 to 4 palety, 0 and 5 or more paliet. */
+const paliet = (n: number) => (n === 1 ? 'paleta' : n >= 2 && n <= 4 ? 'palety' : 'paliet')
 
 /** A4 in millimetres, and the frame every element is laid out inside. */
 const MARGIN = 14
@@ -92,7 +100,7 @@ export async function buildSupplierSpecPdf(spec: SupplierSpec): Promise<import('
   set(16, 'bold')
   doc.text('OBJEDNÁVKOVÝ LIST', PAGE_W / 2, 16, { align: 'center', maxWidth: CONTENT_W })
   set(10, 'bold')
-  doc.text(`MANUFACTURING SPECIFICATION ${spec.specNumber}`, PAGE_W / 2, 22, {
+  doc.text(`VÝROBNÁ ŠPECIFIKÁCIA ${spec.specNumber}`, PAGE_W / 2, 22, {
     align: 'center',
     maxWidth: CONTENT_W,
   })
@@ -102,23 +110,24 @@ export async function buildSupplierSpecPdf(spec: SupplierSpec): Promise<import('
   const colW = CONTENT_W / 2 - 4
   const rightX = MARGIN + CONTENT_W / 2 + 4
   set(9, 'bold')
-  doc.text('Supplier', MARGIN, 34)
-  doc.text('Buyer', rightX, 34)
+  doc.text('Dodávateľ', MARGIN, 34)
+  doc.text('Odberateľ', rightX, 34)
   set(9, 'normal')
   const supplierLines = doc.splitTextToSize(
     [spec.supplier.name, ...spec.supplier.address].join('\n'),
     colW,
   ) as string[]
+  // The buyer's tax number is its Slovak VAT number, which a Slovak order calls IČ DPH.
   const buyerLines = doc.splitTextToSize(
-    [spec.buyer.name, ...spec.buyer.address, `Tax: ${spec.buyer.taxNumber}`].join('\n'),
+    [spec.buyer.name, ...spec.buyer.address, `IČ DPH: ${spec.buyer.taxNumber}`].join('\n'),
     colW,
   ) as string[]
   doc.text(supplierLines, MARGIN, 39)
   doc.text(buyerLines, rightX, 39)
 
   y = 39 + Math.max(supplierLines.length, buyerLines.length) * 4 + 5
-  write(`Date: ${spec.date}`, 9)
-  if (spec.destination) write(`Destination: ${spec.destination}`, 9)
+  write(`Dátum: ${spec.date}`, 9)
+  if (spec.destination) write(`Miesto určenia: ${spec.destination}`, 9)
   y += 6
 
   // ---------------------------------------------------------------- summary
@@ -144,9 +153,9 @@ export async function buildSupplierSpecPdf(spec: SupplierSpec): Promise<import('
   autoTable(doc, {
     startY: y,
     margin: { left: MARGIN, right: MARGIN },
-    head: [['Model', 'Product', right('Quantity')]],
-    body: spec.products.map((p) => [p.model, p.name, `${qty(p.quantity)} pcs`]),
-    foot: spec.products.length > 1 ? [['', 'Total', right(`${qty(totalUnits)} pcs`)]] : undefined,
+    head: [['Model', 'Produkt', right('Množstvo')]],
+    body: spec.products.map((p) => [p.model, p.name, `${qty(p.quantity)} ks`]),
+    foot: spec.products.length > 1 ? [['', 'Spolu', right(`${qty(totalUnits)} ks`)]] : undefined,
     styles: { font, fontSize: 10, overflow: 'linebreak' },
     headStyles: { font, fontStyle: 'bold', fillColor: [40, 40, 40] },
     footStyles: { font, fontStyle: 'bold', fillColor: [235, 235, 235], textColor: [0, 0, 0] },
@@ -165,16 +174,18 @@ export async function buildSupplierSpecPdf(spec: SupplierSpec): Promise<import('
   autoTable(doc, {
     startY: y,
     margin: { left: MARGIN, right: MARGIN },
-    head: [['Packing and finishing', '']],
+    // Balenie is what the factory's own templates call this block. "Packing and
+    // finishing" had no Slovak that would not read as Výroba dokončená.
+    head: [['Balenie', '']],
     body: [
-      ['Pallets', qty(spec.packing.pallets)],
-      ['Pallet covers', qty(spec.packing.palletCovers)],
-      ['Metal frames for pallets', qty(spec.packing.metalFrames)],
+      ['Palety', qty(spec.packing.pallets)],
+      ['Kryty na palety', qty(spec.packing.palletCovers)],
+      ['Kovové rámy na palety', qty(spec.packing.metalFrames)],
       // Only shown when NO product carried a specification. Where a spec exists
       // its own Graphics row says what is printed, and repeating "Standard"
       // underneath would contradict it.
       ...(spec.products.every((p) => p.specRows.length === 0)
-        ? ([['Printing', spec.printing]] as [string, string][])
+        ? ([['Potlač', spec.printing]] as [string, string][])
         : []),
     ],
     styles: { font, fontSize: 9, overflow: 'linebreak' },
@@ -186,17 +197,17 @@ export async function buildSupplierSpecPdf(spec: SupplierSpec): Promise<import('
   // ---------------------------------------------------------------- products
   // The detail, under a heading of its own so the summary above plainly ends.
   flow(14)
-  write('Detailed specification', 12, 'bold')
+  write('Podrobná špecifikácia', 12, 'bold')
   y += 3
 
   for (const product of spec.products) {
     // Keep the heading with at least the first rows of its table rather than
     // stranding a product name alone at the foot of a page.
     flow(30)
-    write(`${product.name}  ${qty(product.quantity)} units`, 11, 'bold')
+    write(`${product.name}  ${qty(product.quantity)} ks`, 11, 'bold')
     y += 1
     write(
-      `Model ${product.model} · ${product.packSize} per pallet · ${product.pallets} pallet${product.pallets === 1 ? '' : 's'}`,
+      `Model ${product.model} · ${product.packSize} ks na paletu · ${product.pallets} ${paliet(product.pallets)}`,
       9,
     )
     y += 3
@@ -211,8 +222,8 @@ export async function buildSupplierSpecPdf(spec: SupplierSpec): Promise<import('
         startY: y,
         margin: { left: MARGIN, right: MARGIN },
         head: coloured
-          ? [['Code', 'Material', 'Colour (farba)', right('Per barrier'), right('Total')]]
-          : [['Code', 'Material', right('Per barrier'), right('Total')]],
+          ? [['Kód', 'Materiál', 'Farba', right('Na kus'), right('Spolu')]]
+          : [['Kód', 'Materiál', right('Na kus'), right('Spolu')]],
         body: product.materials.map((m) =>
           coloured
             ? [m.code, m.description, m.colour ?? '', qty(m.perUnit), qty(m.total)]
@@ -245,8 +256,8 @@ export async function buildSupplierSpecPdf(spec: SupplierSpec): Promise<import('
       autoTable(doc, {
         startY: y,
         margin: { left: MARGIN, right: MARGIN },
-        head: [[`Specification: ${product.model}`, '']],
-        body: product.specRows.map((r) => [r.label, r.value]),
+        head: [[`Špecifikácia: ${product.model}`, '']],
+        body: product.specRows.map((r) => [specRowLabelSk(r.label), r.value]),
         styles: { font, fontSize: 8, cellPadding: 1.4, overflow: 'linebreak' },
         headStyles: { font, fontStyle: 'bold', fillColor: [90, 90, 90] },
         columnStyles: { 0: { cellWidth: SPEC_LABEL_W }, 1: { cellWidth: SPEC_VALUE_W } },
@@ -258,7 +269,7 @@ export async function buildSupplierSpecPdf(spec: SupplierSpec): Promise<import('
       autoTable(doc, {
         startY: y,
         margin: { left: MARGIN, right: MARGIN },
-        head: [['Specific requirements']],
+        head: [['Špecifické požiadavky']],
         body: product.bullets.map((b) => [`•  ${b}`]),
         styles: { font, fontSize: 8, cellPadding: 1.4, overflow: 'linebreak' },
         headStyles: { font, fontStyle: 'bold', fillColor: [90, 90, 90] },
@@ -286,7 +297,7 @@ export async function buildSupplierSpecPdf(spec: SupplierSpec): Promise<import('
     set(7.5, 'normal')
     doc.setTextColor(120, 120, 120)
     doc.text(`${spec.specNumber}`, MARGIN, PAGE_H - 10)
-    doc.text(`Page ${page} of ${pages}`, PAGE_W - MARGIN, PAGE_H - 10, { align: 'right' })
+    doc.text(`Strana ${page} z ${pages}`, PAGE_W - MARGIN, PAGE_H - 10, { align: 'right' })
     doc.setTextColor(0, 0, 0)
   }
 

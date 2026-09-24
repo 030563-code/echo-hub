@@ -2,30 +2,32 @@ import { describe, it, expect } from 'vitest'
 import { supplierDocumentDate } from '@/lib/supplier-document-date'
 
 /**
- * The date on a supplier document is the day the order was SENT, not the day
- * somebody downloaded it. Dean, 18 Sep 2026, after the factory's first order
- * read a different date every time it was opened.
+ * The date on a supplier document belongs to the order: the day it was SENT, or
+ * before that the day it was raised. Never the day somebody downloaded it. The
+ * factory's first order read a different date every time it was opened, and an
+ * unsent preview kept doing the same until the fallback stopped being today.
  */
 describe('supplierDocumentDate', () => {
-  const now = new Date('2026-09-18T09:30:00Z')
+  const raised = '2026-03-09T16:40:00Z'
 
   it('prints the send date once the order has been sent', () => {
-    expect(supplierDocumentDate('2026-09-17T15:10:54.213+00:00', now)).toBe('2026-09-17')
+    expect(supplierDocumentDate('2026-03-10T09:15:27.481+00:00', raised)).toBe('2026-03-10')
   })
 
   it('keeps the calendar day of the send, whatever the hour', () => {
-    // The live order went at 15:10 UTC; a download the next morning must not move it.
-    expect(supplierDocumentDate('2026-09-17T23:59:59Z', now)).toBe('2026-09-17')
-    expect(supplierDocumentDate('2026-09-17T00:00:00Z', now)).toBe('2026-09-17')
+    expect(supplierDocumentDate('2026-03-10T23:59:59Z', raised)).toBe('2026-03-10')
+    expect(supplierDocumentDate('2026-03-10T00:00:00Z', raised)).toBe('2026-03-10')
   })
 
-  it('falls back to today for an order nobody has sent yet, which is what a preview is', () => {
-    expect(supplierDocumentDate(null, now)).toBe('2026-09-18')
-    expect(supplierDocumentDate(undefined, now)).toBe('2026-09-18')
-    expect(supplierDocumentDate('', now)).toBe('2026-09-18')
+  it('prints the day the order was raised while nobody has sent it', () => {
+    expect(supplierDocumentDate(null, raised)).toBe('2026-03-09')
+    expect(supplierDocumentDate(undefined, raised)).toBe('2026-03-09')
+    expect(supplierDocumentDate('', raised)).toBe('2026-03-09')
   })
 
-  it('never prints Invalid Date', () => {
-    expect(supplierDocumentDate('not a date', now)).toBe('2026-09-18')
+  it('never prints Invalid Date, and never falls back to the clock', () => {
+    expect(supplierDocumentDate('not a date', raised)).toBe('2026-03-09')
+    expect(supplierDocumentDate(null, 'not a date either')).toBe('')
+    expect(supplierDocumentDate(null, null)).toBe('')
   })
 })
