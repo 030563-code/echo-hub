@@ -39,8 +39,6 @@ const SPEC: Array<Omit<ConfigEntry, 'present' | 'host'> & { url?: boolean }> = [
     breaks: 'Send to Bamida refuses with "The Bamida webhook is not configured on the server."' },
   { name: 'N8N_BAMIDA_PO_WEBHOOK_SECRET', group: 'Manufacturing', required: false,
     breaks: 'n8n answers 401 and the send hands its claim back, so the order can be sent again.' },
-  { name: 'BAMIDA_PASSWORD', group: 'Manufacturing', required: false,
-    breaks: 'The factory emails go out without the sign-in block. Everything else is unchanged.' },
   { name: 'BAMIDA_PO_BCC', group: 'Manufacturing', required: false,
     breaks: 'Nobody is blind copied on an order. Optional by design.' },
 

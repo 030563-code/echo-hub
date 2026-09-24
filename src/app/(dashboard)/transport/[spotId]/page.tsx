@@ -8,7 +8,8 @@ import { depotLabel } from '@/lib/depot-constants'
 import { loadCargoShipment } from '@/lib/cargo/store'
 import { sheetRowsBySpot } from '@/lib/cargo/sync'
 import { depotProducts, loadHubShipmentBySpot } from '@/lib/transport/shipments.server'
-import { linesFromSheet, localOrderLabel } from '@/lib/transport/shipment'
+import { contentsSummary, linesFromSheet, localOrderLabel } from '@/lib/transport/shipment'
+import { isHandAddedSpot } from '@/lib/cargo/scope.server'
 import { landedCostAllowed } from '@/lib/transport/cost-access'
 import { loadLandedCost } from '@/lib/transport/landed-cost.server'
 import { listCargoShareLinks } from '@/app/actions/cargo/share-link'
@@ -20,6 +21,7 @@ import ShipmentReferences from './shipment-references'
 import ShipmentContents from './shipment-contents'
 import HandShipmentView from './hand-shipment-view'
 import LandedCostCard from './landed-cost-card'
+import RemoveShipmentButton from './remove-shipment-button'
 
 /**
  * One container: where it is, how it got there, and a link to send somebody.
@@ -73,12 +75,14 @@ export default async function CargoShipmentPage({ params }: { params: Promise<{ 
     if (!shipment.destinationDepot || !held.includes(shipment.destinationDepot)) notFound()
   }
 
-  const [links, hub, products, sheet] = await Promise.all([
+  const [links, hub, products, sheet, handAdded] = await Promise.all([
     listCargoShareLinks(spotId),
     loadHubShipmentBySpot(spotId),
     depotProducts(shipment.destinationDepot),
     sheetRowsBySpot([spotId]),
+    isHandAddedSpot(spotId),
   ])
+  const fromSheet = linesFromSheet(sheet.get(spotId) ?? [], shipment.destinationDepot, products)
   const late = shipment.slipDays != null && shipment.slipDays >= 1
   const landed = landedCostAllowed(who, shipment.destinationDepot)
     ? await loadLandedCost({
@@ -112,9 +116,18 @@ export default async function CargoShipmentPage({ params }: { params: Promise<{ 
             {shipment.generalReference ? ` · ${shipment.generalReference}` : ''}
           </p>
         </div>
-        <div className="text-right">
-          <p className="text-xs text-gray-500">{shipment.isComplete ? 'Arrived' : 'Expected'}</p>
-          <p className="text-lg font-semibold tabular-nums text-gray-900">{fullDate(shipment.eta)}</p>
+        <div className="flex flex-col items-end gap-2 text-right">
+          <div>
+            <p className="text-xs text-gray-500">{shipment.isComplete ? 'Arrived' : 'Expected'}</p>
+            <p className="text-lg font-semibold tabular-nums text-gray-900">{fullDate(shipment.eta)}</p>
+          </div>
+          {/* Only a SPOT somebody added by hand can come off: the sheet and the POs would put any other back. */}
+          {handAdded && (
+            <RemoveShipmentButton
+              spotId={shipment.spotId}
+              typed={hub?.lines.length ? `the contents (${contentsSummary(hub.lines)}) and any costs typed for them` : null}
+            />
+          )}
         </div>
       </div>
 
@@ -209,10 +222,17 @@ export default async function CargoShipmentPage({ params }: { params: Promise<{ 
         localOrderLabel={localOrderLabel(shipment.destinationDepot)}
         lines={hub?.lines ?? []}
         products={products}
-        fromSheet={linesFromSheet(sheet.get(spotId) ?? [], shipment.destinationDepot, products)}
+        fromSheet={fromSheet}
       />
 
-      {landed && <LandedCostCard target={{ spotId: shipment.spotId }} lines={hub?.lines ?? []} view={landed} />}
+      {landed && (
+        <LandedCostCard
+          target={{ spotId: shipment.spotId }}
+          lines={hub?.lines ?? []}
+          view={landed}
+          sheetContents={contentsSummary(fromSheet)}
+        />
+      )}
 
       {auth.capabilities.has('customs.manage') && (
         <CustomsCard

@@ -37,3 +37,12 @@ export async function shipmentInScope(spotId: string, depots: readonly string[] 
   const depot = (data as { destination_depot: string | null }).destination_depot
   return Boolean(depot && depots.includes(depot))
 }
+
+/**
+ * Whether a SPOT is on the board only because somebody added it by hand, which is when it can be
+ * taken back off (cargo_remove_hand_added_spot decides the rest, under its lock).
+ */
+export async function isHandAddedSpot(spotId: string): Promise<boolean> {
+  const { data } = await createAdminClient().from('cargo_tracked_spot').select('spot_id').eq('spot_id', spotId).maybeSingle()
+  return Boolean(data)
+}

@@ -84,7 +84,7 @@ vi.mock('@/lib/factory/updates', () => ({
 }))
 vi.mock('@/app/actions/factory/notify-po-confirmed', () => ({ notifyPoConfirmed: async () => undefined }))
 vi.mock('@/lib/bamida-po-document', () => ({ renderSupplierDocument: async () => ({ ok: false }) }))
-vi.mock('@/lib/send-contacts', () => ({ factoryLogin: async () => null, loadSendContacts: async () => [] }))
+vi.mock('@/lib/send-contacts', () => ({ loadSendContacts: async () => [] }))
 vi.mock('@/lib/factory-guide', () => ({ factoryGuideAttachment: async () => null }))
 
 const { getFactoryDocumentUrl } = await import('@/app/actions/factory/orders')

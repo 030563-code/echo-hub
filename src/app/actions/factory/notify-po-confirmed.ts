@@ -43,8 +43,6 @@ export interface PoConfirmedMeta {
   lines: Array<{ product_name: string | null; quantity: number | null }>
   /** The manufacturer's own addresses, as the purchase order was addressed. */
   to: string[]
-  /** Sign-in details to print, or null when no password is configured. */
-  login?: { email: string; password: string } | null
   /** The Slovak guide, or null when it could not be read. */
   attachment?: { filename: string; content_base64: string } | null
   /** Any further manufacturer contacts copied on the purchase order. */
@@ -73,17 +71,10 @@ export function buildPoConfirmedPayload(meta: PoConfirmedMeta, recipients: Resol
     est_finish: meta.estFinish,
 
     /**
-     * 🔴 The sign-in, password included, on Dean's instruction of 17 Sep 2026.
-     * See the note on the same field in send-manufacturing-po.ts: I argued
-     * against it twice and he decided, and the consequence is that anybody
-     * holding or forwarded one of these emails can sign in as the factory.
-     *
-     * It is on the CONFIRMATION as well as the order because this is the email
-     * that asks them to come back and press Manufacturing finished, and "later"
-     * is exactly when they will have lost the password. Null when
-     * BAMIDA_PASSWORD is unset, and the composer then prints nothing.
+     * No sign-in block, as on the order email: removed on 24 Sep 2026 once
+     * Bamida had saved the login. Null is what the composer prints nothing for.
      */
-    login: meta.login ?? null,
+    login: null,
 
     /** The same guide as the order email. Best effort: null simply prints no attachment. */
     attachment: meta.attachment ?? null,

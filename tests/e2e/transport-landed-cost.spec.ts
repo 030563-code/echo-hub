@@ -44,7 +44,7 @@ test.describe('Transport, the landed cost, as Dave', () => {
     const card = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Landed cost' }) })
     await expect(card.getByText('Waiting for figures')).toBeVisible()
 
-    await card.getByRole('button', { name: 'Add a commercial invoice' }).click()
+    await card.getByRole('button', { name: "Add Group's commercial invoice" }).click()
     await card.getByLabel('Invoice 1 number').fill('TEST-INV-1')
     await card.getByLabel('Invoice 1 currency').selectOption('EUR')
     await card.getByLabel('Invoice 1 rate').fill('0.8')
@@ -80,7 +80,7 @@ test.describe('Transport, the landed cost, as Dave', () => {
     await expect(perBarrier).toContainText('118.1615')
     await expect(card.getByRole('row').filter({ hasText: /^Total/ })).toContainText('73,580.06')
 
-    await page.getByRole('button', { name: 'Delete', exact: true }).click()
+    await page.getByRole('button', { name: 'Delete this shipment' }).click()
     await page.waitForURL(/\/transport$/)
   })
 })

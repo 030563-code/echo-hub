@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolveSelection, type SendContact } from '@/lib/send-contacts'
 
@@ -140,38 +140,43 @@ describe('guard: the book is the authority, not the browser', () => {
   })
 })
 
-describe('the sign-in block in the factory emails', () => {
-  const lib = readFileSync(join(process.cwd(), 'src/lib/send-contacts.ts'), 'utf8')
-  const send = readFileSync(
-    join(process.cwd(), 'src/app/actions/purchase-orders/send-manufacturing-po.ts'),
-    'utf8',
-  )
-  const confirm = readFileSync(
-    join(process.cwd(), 'src/app/actions/factory/notify-po-confirmed.ts'),
-    'utf8',
-  )
+describe('the factory emails carry no sign-in', () => {
+  // Dean, 24 Sep 2026, once Bamida had saved the login: "please remove the email and password for
+  // hub login section". From 17 Sep the password went out in every order email and confirmation,
+  // and sat in the n8n execution data. It no longer leaves the Hub.
+  const read = (f: string) => readFileSync(join(process.cwd(), f), 'utf8')
+  const code = (f: string) =>
+    read(f)
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1')
+  const files = {
+    send: 'src/app/actions/purchase-orders/send-manufacturing-po.ts',
+    confirm: 'src/app/actions/factory/notify-po-confirmed.ts',
+    orders: 'src/app/actions/factory/orders.ts',
+    contacts: 'src/lib/send-contacts.ts',
+  }
 
-  it('is off unless BAMIDA_PASSWORD is set, so removing it needs no deploy', () => {
-    // 🔴 Dean, 17 Sep 2026: "better to include the password in that email everytime I will inject
-    // it as a netlify variable called BAMIDA_PASSWORD". I argued against emailing a password twice
-    // and he decided. The one thing that keeps it reversible is that an unset variable prints
-    // nothing at all.
-    expect(lib).toContain("String(process.env.BAMIDA_PASSWORD ?? '').trim()")
-    expect(lib).toContain('if (!password) return null')
+  it('sends null for the login on the order email and on the confirmation, which prints nothing', () => {
+    expect(code(files.send)).toContain('login: null,')
+    expect(code(files.confirm)).toContain('login: null,')
   })
 
-  it('takes the login address from the book, so it cannot drift from the recipient', () => {
-    expect(lib).toContain("contacts.find((c) => c.field === 'to' && c.isRequired)?.address")
+  it('reads no password, so none can be put in an email', () => {
+    for (const [name, file] of Object.entries(files)) {
+      const src = code(file)
+      expect(src, name).not.toMatch(/password/i)
+      expect(src, name).not.toContain('factoryLogin')
+    }
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(join(dir, e.name)) : /\.(ts|tsx)$/.test(e.name) ? [join(dir, e.name)] : [],
+      )
+    const readers = walk(join(process.cwd(), 'src')).filter((f) => readFileSync(f, 'utf8').includes('BAMIDA_PASSWORD'))
+    expect(readers).toEqual([])
   })
 
-  it('goes on the order email AND the confirmation', () => {
-    // The confirmation is the one that asks them to come back later and press finished, which is
-    // exactly when the password will have been lost.
-    expect(send).toContain('login,')
-    expect(confirm).toContain('login: meta.login ?? null')
-  })
-
-  it('is not in the send preview, which is about recipients and contents', () => {
+  it('is not in the send preview either, which is about recipients and contents', () => {
+    const send = read(files.send)
     const preview = send.slice(send.indexOf('export async function previewManufacturingPoSend'))
     expect(preview.slice(0, 1200)).not.toContain('login')
   })

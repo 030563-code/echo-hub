@@ -3,7 +3,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Pencil, Receipt } from 'lucide-react'
+import { Pencil, Plus, Receipt } from 'lucide-react'
 import { PARTS, formatMoney as money, formatUnit as unit, type LocalKey } from '@/lib/transport/landed-cost'
 import type { LandedView } from '@/lib/transport/landed-cost.server'
 import type { ShipmentLine } from '@/lib/transport/shipment'
@@ -44,10 +44,13 @@ export default function LandedCostCard({
   target,
   lines,
   view,
+  sheetContents = null,
 }: {
   target: Target
   lines: ShipmentLine[]
   view: LandedView
+  /** What Dave's sheet lists on this shipment, when the Hub has nothing listed yet. */
+  sheetContents?: string | null
 }) {
   const [editing, setEditing] = useState<'none' | 'invoices' | 'local'>('none')
   const { result, currency } = view
@@ -71,7 +74,32 @@ export default function LandedCostCard({
       </div>
 
       {lines.length === 0 ? (
-        <p className="text-sm text-gray-500">List what is on the shipment above, then its costs can be worked out here.</p>
+        // Dean, 24 Sep 2026: "I still dont see the cost per barrier calculations." There is nothing to
+        // divide until the Hub knows what is on the shipment and what Group charged for it, so say
+        // exactly those two things, in order, and where each one is done.
+        <div className="rounded-lg border border-gray-100 bg-gray-50/60 px-4 py-3 text-sm text-gray-700">
+          <p className="font-medium text-gray-900">The cost per barrier is worked out here once the Hub has two things:</p>
+          <ol className="mt-2 list-decimal space-y-1 pl-5">
+            <li>
+              What is on the shipment.{' '}
+              {sheetContents ? (
+                <>
+                  Dave&apos;s sheet lists {sheetContents}:{' '}
+                  <a href="#contents" className="font-medium text-[#025945] hover:underline">
+                    Start from the sheet under Contents
+                  </a>{' '}
+                  and save.
+                </>
+              ) : (
+                <a href="#contents" className="font-medium text-[#025945] hover:underline">
+                  List it under Contents
+                </a>
+              )}
+            </li>
+            <li>Group&apos;s commercial invoice: the barrier cost, palletising, delivery and insurance, added here.</li>
+          </ol>
+          <p className="mt-2 text-gray-500">Duty and the other customs costs come from Nippon&apos;s bill, or can be typed until it arrives.</p>
+        </div>
       ) : (
         <>
           <div className="overflow-x-auto">
@@ -159,14 +187,14 @@ export default function LandedCostCard({
         <div className={`rounded-lg border border-gray-100 p-4 ${editing === 'invoices' ? 'lg:col-span-2' : ''}`}>
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Commercial invoices</p>
-            {editing !== 'invoices' && lines.length > 0 && (
+            {editing !== 'invoices' && lines.length > 0 && view.invoices.length > 0 && (
               <button
                 type="button"
                 onClick={() => setEditing('invoices')}
-                aria-label={view.invoices.length ? 'Edit the commercial invoices' : 'Add a commercial invoice'}
+                aria-label="Edit the commercial invoices"
                 className="inline-flex items-center gap-1 text-sm font-medium text-[#025945] hover:underline"
               >
-                <Pencil className="h-3.5 w-3.5" /> {view.invoices.length ? 'Edit' : 'Add'}
+                <Pencil className="h-3.5 w-3.5" /> Edit
               </button>
             )}
           </div>
@@ -180,7 +208,21 @@ export default function LandedCostCard({
               onDone={() => setEditing('none')}
             />
           ) : view.invoices.length === 0 ? (
-            <p className="text-sm text-gray-500">None yet. Add Group&apos;s invoice to put the barrier cost, palletising, delivery and insurance in.</p>
+            <>
+              <p className="text-sm text-gray-500">
+                None yet. Group&apos;s invoice holds the barrier cost, palletising, delivery and insurance, which the cost per
+                barrier is worked from.
+              </p>
+              {lines.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setEditing('invoices')}
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[#025945] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[#03674f]"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add Group&apos;s commercial invoice
+                </button>
+              )}
+            </>
           ) : (
             <ul className="space-y-3">
               {view.invoices.map((inv) => {
@@ -241,8 +283,9 @@ export default function LandedCostCard({
           ) : (
             <>
               {view.bills.length > 0 ? (
-                <p className="mb-2 flex flex-wrap items-center gap-1 text-sm text-gray-600">
-                  <Receipt className="h-3.5 w-3.5 text-[#025945]" /> From Nippon&apos;s bill
+                <p className="mb-2 text-sm text-gray-600">
+                  <Receipt className="mr-1 inline h-3.5 w-3.5 align-[-2px] text-[#025945]" />
+                  From Nippon&apos;s bill
                   {view.bills.length > 1 ? 's' : ''}{' '}
                   {view.bills.map((b, i) => (
                     <span key={b.id}>
