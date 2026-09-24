@@ -7,6 +7,7 @@ import { quoteBuilderKey } from '@/lib/quote-builder-draft'
 import { DealQuotesCard, type DealQuoteRow } from '@/components/quotes/deal-quotes-card'
 import { RepAgentSelect } from '@/components/quotes/rep-agent-select'
 import { CloseDateField } from '@/components/quotes/close-date-field'
+import { latestQuoteSentMove } from '@/lib/quote-sent/store.server'
 import { REP_AGENT_LABEL, REP_AGENT_PROPERTY } from '@/lib/deal-properties'
 import { formatDate } from '@/lib/utils'
 import { AssignContractorDialog } from '@/components/quotes/assign-contractor-dialog'
@@ -117,6 +118,9 @@ export default async function QuoteRequestDetailsPage(props: {
     .order('created_at', { ascending: false })
   // A published quote whose public link HubSpot handed back late gets it here.
   const dealQuotes = await backfillQuoteLinks(admin, (dealQuoteRows ?? []) as DealQuoteRow[])
+  // When the Hub moved this deal to Quotation sent itself, the rep sees why (service role only,
+  // like deal_quotes, and the same scope check above covers it).
+  const autoSent = await latestQuoteSentMove(admin, params.id)
 
   const supabase = await createServerClient()
   const { data: registryEntry } = await supabase
@@ -285,6 +289,12 @@ export default async function QuoteRequestDetailsPage(props: {
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${stageChipClass(deal.properties.dealstage)}`}>
                     {STAGE_LABELS_BY_ID[deal.properties.dealstage] ?? 'Unknown stage'}
                   </span>
+                  {autoSent && autoSent.toStage === deal.properties.dealstage && (
+                    <p className="mt-1.5 text-xs text-gray-600">
+                      Moved here by the Hub on {formatDate(autoSent.movedAt)}, after the quote link went out in an
+                      email on {formatDate(autoSent.emailSentAt)}.
+                    </p>
+                  )}
                   {/* Why it closed, which for a contractor handover is the only
                       place the detail lives outside the HubSpot timeline. */}
                   {dealIsClosed && deal.properties.closed_lost_reason && (

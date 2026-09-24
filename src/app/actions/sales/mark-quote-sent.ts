@@ -10,43 +10,29 @@
  * from the other side: "once the deal is made it says that the quote has been
  * sent but it hasn't".
  *
- * The Hub genuinely cannot detect the send. It opens a prefilled Gmail compose
- * window and nothing leaves until the rep presses Send there, in another tab.
- * So the honest trigger is the rep telling us, which is what this is.
+ * The Hub cannot see the send when it happens. It opens a prefilled Gmail
+ * compose window and nothing leaves until the rep presses Send there, in
+ * another tab. So the rep can say so here, straight away. Since 24 Sep 2026 the
+ * Hub also finds the send afterwards, once HubSpot has logged the email with the
+ * quote link in it (src/lib/quote-sent), and moves the deal itself.
  */
 
 import { z } from 'zod'
 import { assertDealAccess } from '@/lib/authz'
 import { externalCallsDisabled, STAGING_SKIP_NOTE } from '@/lib/env'
 import {
-  HUBSPOT_PIPELINES,
   QUOTATION_SENT_STAGES,
   QUOTATION_ACCEPTED_STAGES,
   CLOSED_WON_STAGES,
   CLOSED_LOST_STAGES,
 } from '@/lib/hubspot-constants'
+import { quotationSentStageFor } from '@/lib/quote-sent/stage'
 
 const Input = z.object({ dealId: z.string().min(1).max(64) })
 
 export type MarkQuoteSentResult =
   | { success: true; alreadyBeyond?: boolean }
   | { success: false; error: string }
-
-/** The Quotation sent stage for a pipeline, by the same rule createQuote used:
- *  a stage key naming QUOTATION_SENT, or QUOTATION_RECEIVED where a pipeline
- *  calls it that. Null when the pipeline has neither, which is refused rather
- *  than guessed: HubSpot answers an unknown stage id with a 400. */
-function quotationSentStageFor(pipelineId: string): string | null {
-  for (const key in HUBSPOT_PIPELINES) {
-    const pipeline = HUBSPOT_PIPELINES[key as keyof typeof HUBSPOT_PIPELINES]
-    if (pipeline.id !== pipelineId) continue
-    const stageKey = Object.keys(pipeline.stages).find(
-      (k) => k.includes('QUOTATION_SENT') || k.includes('QUOTATION_RECEIVED'),
-    )
-    return stageKey ? (pipeline.stages[stageKey as keyof typeof pipeline.stages] as string) : null
-  }
-  return null
-}
 
 export async function markQuoteSent(input: { dealId: string }): Promise<MarkQuoteSentResult> {
   const parsed = Input.safeParse(input)
