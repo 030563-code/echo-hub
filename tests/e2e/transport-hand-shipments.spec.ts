@@ -59,6 +59,9 @@ test.describe('Transport, a shipment kept by hand, as Dave', () => {
     await page.waitForURL(/\/transport$/)
     await page.getByPlaceholder('SPOT ID, container or reference').fill(order)
     await expect(page.getByRole('link').filter({ hasText: order })).toHaveCount(0)
+    // The search box is remembered per user, and this is Dave's real account: leave it empty.
+    await page.getByPlaceholder('SPOT ID, container or reference').fill('')
+    await page.waitForTimeout(1500)
   })
 
   test('a container number that is not one is refused by name', async ({ page }) => {
