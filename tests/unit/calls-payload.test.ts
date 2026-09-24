@@ -17,7 +17,7 @@ const FRANCE_ANSWERED = {
   call_sid: 'CA6aadba4ea187ad98f857ea15dcdae9eb',
   recording_sid: 'REcbc7ae9a77db57f3f80e45c19e96fe45',
   caller_phone: 'anonymous',
-  called_phone: '+33978467888',
+  called_phone: '+33199007888',
   diverted_to: '+33 7 53 11 27 16',
   recording_url: 'https://api.twilio.com/2010-04-01/Accounts/ACxxx/Recordings/RExxx.mp3',
   duration_seconds: 8,
@@ -38,7 +38,7 @@ const FRANCE_ANSWERED = {
 const USA_ANSWERED = {
   ...FRANCE_ANSWERED,
   call_sid: 'CAusa0000000000000000000000000001',
-  caller_phone: '+16043999640',
+  caller_phone: '+16045550140',
   office: 'USA',
   language: 'en',
   formatted_transcript_html: '<p>Agent: hello</p>',
@@ -51,7 +51,7 @@ const USA_ANSWERED = {
 /** A voicemail: no duration, nobody answered. */
 const UK_VOICEMAIL = {
   call_sid: 'CAuk00000000000000000000000000001',
-  caller_phone: '+441173250027',
+  caller_phone: '+441174960027',
   office: 'UK',
   department: 'sales',
   call_type: 'voicemail',
@@ -66,8 +66,8 @@ const UK_VOICEMAIL = {
  *  contact id, which is what the brief got wrong. */
 const UK_DEPARTMENT = {
   call_sid: 'CAuk00000000000000000000000000002',
-  caller_phone: '+441173250027',
-  called_phone: '+441173250000',
+  caller_phone: '+441174960027',
+  called_phone: '+441174960000',
   department: 'accounts',
   office: 'UK',
   call_type: 'department_notification',
@@ -158,8 +158,8 @@ describe('the caller number', () => {
   })
 
   it('normalises a real number to E.164', () => {
-    expect(toE164('+44 117 325 0027')).toBe('+441173250027')
-    expect(toE164('(604) 399-9640')).toBe('+6043999640')
+    expect(toE164('+44 117 496 0027')).toBe('+441174960027')
+    expect(toE164('(604) 555-0140')).toBe('+6045550140')
   })
 
   it('refuses something too short to be a number', () => {
@@ -203,7 +203,7 @@ describe('the link state a call starts in', () => {
   it('is unreviewed when a real contact with an email answered a real number', () => {
     const row = toCallRow(
       callPayloadSchema.parse({ ...UK_VOICEMAIL, hubspot_match_source: 'matched' }),
-      { now: NOW, contact: { firstname: 'Bob', lastname: 'Meyer', email: 'bob@acme.com', phone: '+441173250027' } },
+      { now: NOW, contact: { firstname: 'Bob', lastname: 'Meyer', email: 'bob@acme.com', phone: '+441174960027' } },
     )
     expect(row.link_state).toBe('unreviewed')
   })
