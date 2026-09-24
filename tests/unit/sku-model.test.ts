@@ -45,12 +45,14 @@ describe('modelForSku', () => {
     expect(modelForSku(' EBH9NA ', maps.catalogue, maps.master)).toBe('H9')
   })
 
-  it('is used by the bill of materials and the packing list', () => {
+  it('is used by the bill of materials and the packing list, with the model chosen under BOM', () => {
     for (const file of ['src/lib/bom.ts', 'src/lib/despatch/packing-list-store.ts']) {
       const src = readFileSync(join(process.cwd(), file), 'utf8')
       expect(src, file).toContain("from('product_code_master').select('internal_sku, bom_model_code')")
-      expect(src, file).toContain('modelForSku(')
+      expect(src, file).toContain('lineModels(')
     }
+    // lineModels is the one place modelForSku is called from outside this module's tests.
+    expect(readFileSync(join(process.cwd(), 'src/lib/sku-model.ts'), 'utf8')).toContain('const model = modelForSku(sku, catalogue, master)')
   })
 })
 

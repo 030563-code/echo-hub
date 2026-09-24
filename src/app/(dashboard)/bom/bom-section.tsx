@@ -3,14 +3,18 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, ChevronRight, Loader2, PackageOpen, FileText } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, PackageOpen, FileText, RefreshCw } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SearchBox } from "@/components/ui/search-box";
 import { updateMaterialPrices } from "@/app/actions/bom/update-material-price";
+import { recostSroOrder } from "@/app/actions/bom/recost-sro-order";
 import BamidaPoModal from "./bamida-po-modal";
+import BomPricesTab from "./bom-prices-tab";
+import ProductCodesTab from "./product-codes-tab";
 import { entityLabel } from "@/lib/depot-constants";
 import type { BamidaPo } from "@/lib/bamida-po";
 import type { BomMasterRow, MaterialPrice, SroPoBom, SroPoBomLine } from "@/lib/erp-types";
+import type { ProductModelRow } from "@/lib/sku-model";
 import { usePersistedView, usePageState } from "@/hooks/use-page-state";
 import { DraftStrip } from "@/components/page-state/draft-strip";
 import {
@@ -42,6 +46,12 @@ interface Props {
   canEdit: boolean;
   canViewCost: boolean;
   bamidaByPo: Record<string, BamidaPo>;
+  products: ProductModelRow[];
+  productsError?: string;
+  /** Every model in the latest week of the bill of materials, for the Product codes tab. */
+  bomModels: string[];
+  /** Orders that can still be re-costed: approved, with no manufacturing order raised under them. */
+  recostableIds: string[];
 }
 
 export default function BomSection({
@@ -55,6 +65,10 @@ export default function BomSection({
   canEdit,
   canViewCost,
   bamidaByPo,
+  products,
+  productsError,
+  bomModels,
+  recostableIds,
 }: Props) {
   // Which tab, remembered. The materials search box below has its OWN key
   // because it lives inside MaterialsTab: one row per call site, or the two
@@ -65,7 +79,7 @@ export default function BomSection({
     parseBomView,
   );
   const tab = bomView.tab;
-  const setTab = (next: "orders" | "materials" | "master") => setBomView({ ...bomView, tab: next });
+  const setTab = (next: BomView["tab"]) => setBomView({ ...bomView, tab: next });
 
   return (
     <div>
@@ -75,6 +89,7 @@ export default function BomSection({
           // Materials + BOM Prices are pricing views — cost.view only.
           ...(canViewCost ? [["materials", `Materials${materials.length ? ` (${materials.length})` : ""}`] as const] : []),
           ...(canViewCost ? [["master", "BOM Prices"] as const] : []),
+          ["products", `Product codes${products.some((p) => !p.hasBom) ? ` (${products.filter((p) => !p.hasBom).length} to look at)` : ""}`] as const,
         ]).map(([k, label]) => (
           <button
             key={k}
@@ -90,19 +105,38 @@ export default function BomSection({
       </div>
 
       {tab === "orders" && (
-        <OrdersTab orders={orders} error={ordersError} canViewCost={canViewCost} bamidaByPo={bamidaByPo} />
+        <OrdersTab
+          orders={orders}
+          error={ordersError}
+          canViewCost={canViewCost}
+          bamidaByPo={bamidaByPo}
+          recostable={canEdit ? new Set(recostableIds) : new Set()}
+        />
       )}
       {tab === "materials" && canViewCost && (
         <MaterialsTab materials={materials} week={masterWeek} error={materialsError} canEdit={canEdit} />
       )}
-      {tab === "master" && canViewCost && <MasterTab rows={master} week={masterWeek} error={masterError} />}
+      {tab === "master" && canViewCost && <BomPricesTab rows={master} week={masterWeek} error={masterError} canEdit={canEdit} />}
+      {tab === "products" && <ProductCodesTab rows={products} bomModels={bomModels} error={productsError} canEdit={canEdit} />}
     </div>
   );
 }
 
 /* ----------------------------- Orders tab ------------------------------- */
 
-function OrdersTab({ orders, error, canViewCost, bamidaByPo }: { orders: SroPoBom[]; error?: string; canViewCost: boolean; bamidaByPo: Record<string, BamidaPo> }) {
+function OrdersTab({
+  orders,
+  error,
+  canViewCost,
+  bamidaByPo,
+  recostable,
+}: {
+  orders: SroPoBom[];
+  error?: string;
+  canViewCost: boolean;
+  bamidaByPo: Record<string, BamidaPo>;
+  recostable: ReadonlySet<string>;
+}) {
   if (error) return <Empty>{error}</Empty>;
   if (orders.length === 0) {
     return (
@@ -116,15 +150,37 @@ function OrdersTab({ orders, error, canViewCost, bamidaByPo }: { orders: SroPoBo
   return (
     <div className="space-y-3">
       {orders.map((po) => (
-        <OrderCard key={po.id} po={po} canViewCost={canViewCost} bamida={bamidaByPo[po.id]} />
+        <OrderCard key={po.id} po={po} canViewCost={canViewCost} bamida={bamidaByPo[po.id]} recostable={recostable.has(po.id)} />
       ))}
     </div>
   );
 }
 
-function OrderCard({ po, canViewCost, bamida }: { po: SroPoBom; canViewCost: boolean; bamida: BamidaPo }) {
+function OrderCard({ po, canViewCost, bamida, recostable }: { po: SroPoBom; canViewCost: boolean; bamida: BamidaPo; recostable: boolean }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [showBamida, setShowBamida] = useState(false);
+  const [recosting, startRecost] = useTransition();
+  const uncosted = po.lines.filter((l) => !l.has_bom).length;
+
+  function recost() {
+    if (
+      !window.confirm(
+        `Re-cost ${po.po_number} from today's bill of materials and Bamida prices?\n\n` +
+          `The cost it froze at approval is replaced. Nothing is sent to Xero or the factory.`,
+      )
+    )
+      return;
+    startRecost(async () => {
+      const res = await recostSroOrder({ poId: po.id });
+      if (!res.success) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(`${res.poNumber} re-costed`);
+      router.refresh();
+    });
+  }
   return (
     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
       <div className="w-full flex items-center justify-between gap-4 px-5 py-4">
@@ -136,6 +192,12 @@ function OrderCard({ po, canViewCost, bamida }: { po: SroPoBom; canViewCost: boo
               <span>{entityLabel(po.from_entity)}</span> → <span>{entityLabel(po.to_entity)}</span>
               {po.master_ref && <span className="text-gray-400"> · {po.master_ref}</span>}
             </p>
+            {uncosted > 0 && (
+              <p className="text-[10px] text-amber-700 mt-0.5">
+                {uncosted} line{uncosted === 1 ? "" : "s"} had no bill of materials when this was costed
+                {recostable ? ": re-cost to try again with today's product codes" : ""}
+              </p>
+            )}
           </div>
         </button>
         <div className="flex items-center gap-5 flex-shrink-0 pl-7 sm:pl-0 text-left sm:text-right">
@@ -155,6 +217,16 @@ function OrderCard({ po, canViewCost, bamida }: { po: SroPoBom; canViewCost: boo
                 <p className="text-sm tabular-nums text-gray-600">{eur(po.sro_total)}</p>
               </div>
             </>
+          )}
+          {recostable && (
+            <button
+              onClick={recost}
+              disabled={recosting}
+              title="Freeze this order's cost again from today's bill of materials and Bamida prices"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-300 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {recosting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Re-cost
+            </button>
           )}
           <button
             onClick={() => setShowBamida(true)}
@@ -190,6 +262,11 @@ function LineExplosion({ line, canViewCost }: { line: SroPoBomLine; canViewCost:
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-800 font-mono">{line.model_code}</span>
           ) : (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700">no BOM mapping</span>
+          )}
+          {line.bom_model_code && line.bom_model_code !== line.model_code && (
+            <span className="text-[10px] text-gray-500">
+              costed as <span className="font-mono text-gray-700">{line.bom_model_code}</span>
+            </span>
           )}
         </div>
       </div>
@@ -234,7 +311,11 @@ function LineExplosion({ line, canViewCost }: { line: SroPoBomLine; canViewCost:
           )}
         </>
       ) : (
-        <p className="text-xs text-gray-400">This SKU has no mapped BOM model (accessory or unmapped) — it carries no exploded components.</p>
+        <p className="text-xs text-gray-400">
+          No bill of materials{(line.bom_model_code ?? line.model_code) ? ` for ${line.bom_model_code ?? line.model_code}` : ""} when this cost was
+          worked out, so the line carries no materials{canViewCost ? " and no Bamida prices" : ""}. The Product codes tab says what each code is
+          costed as.
+        </p>
       )}
     </div>
   );
@@ -460,71 +541,6 @@ function MaterialsTab({ materials, week, error, canEdit }: { materials: Material
           </button>
         </div>
       )}
-    </>
-  );
-}
-
-/* --------------------------- BOM Prices tab (view) ----------------------- */
-
-function MasterTab({ rows, week, error }: { rows: BomMasterRow[]; week: string | null; error?: string }) {
-  if (error) return <Empty>{error}</Empty>;
-  if (rows.length === 0)
-    return (
-      <EmptyState
-        icon={<PackageOpen className="w-7 h-7" />}
-        title="No BOM rows"
-        description="No BOM rows for the latest week."
-      />
-    );
-
-  return (
-    <>
-      <p className="text-xs text-gray-500 mb-3">
-        Per-product BOM totals priced from the material master. <span className="text-gray-600">Δ vs sheet</span> shows the change since the last synced snapshot — i.e. the effect of your material-price edits.
-      </p>
-      <div className="rounded-xl border border-gray-200 overflow-x-auto">
-        <table className="w-full min-w-[640px] text-sm">
-          <thead>
-            <tr className="bg-gray-50 text-[10px] uppercase tracking-wider text-gray-500">
-              <th className="text-left font-medium px-4 py-2">Model</th>
-              <th className="text-left font-medium px-4 py-2">Line</th>
-              <th className="text-right font-medium px-4 py-2">Components</th>
-              <th className="text-right font-medium px-4 py-2">Bamida €</th>
-              <th className="text-right font-medium px-4 py-2">SRO €</th>
-              <th className="text-right font-medium px-4 py-2">BOM Total €</th>
-              <th className="text-right font-medium px-4 py-2">Δ vs sheet</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => {
-              const delta = r.original_bom_total_eur != null && r.bom_total_eur != null ? r.bom_total_eur - r.original_bom_total_eur : null;
-              return (
-                <tr key={r.model_code} className="border-t border-gray-100 hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-2 font-mono text-xs text-echo-orange font-medium">{r.model_code}</td>
-                  <td className="px-4 py-2 text-xs text-gray-600">{r.product_line ?? "—"}</td>
-                  <td className="px-4 py-2 text-right tabular-nums text-gray-500">{r.component_detail.length}</td>
-                  <td className="px-4 py-2 text-right tabular-nums text-gray-900">{eur(r.bamida_total_eur)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums text-gray-900">{eur(r.sro_total_eur)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums font-bold text-echo-orange">{eur(r.bom_total_eur)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">
-                    {delta == null || Math.abs(delta) < 0.005 ? (
-                      <span className="text-gray-400">—</span>
-                    ) : (
-                      <span className={delta > 0 ? "text-red-700" : "text-green-700"}>
-                        {delta > 0 ? "+" : ""}
-                        {delta.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <p className="text-[10px] text-gray-400 mt-2">
-        Prices come from the Hub material master (week of {week ?? "—"}); the SRO PO explosions read it live.
-      </p>
     </>
   );
 }

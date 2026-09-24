@@ -1,5 +1,6 @@
 import { requireCapability } from "@/lib/authz";
-import { loadSroPoBoms, loadBomMaster, loadMaterials, loadManufacturingPoNumbers } from "@/lib/bom";
+import { loadSroPoBoms, loadBomMaster, loadMaterials, loadManufacturingPoNumbers, loadProductCodes } from "@/lib/bom";
+import { productModelRows } from "@/lib/sku-model";
 import { getSupplierByCode } from "@/lib/suppliers";
 import { specSavedPackingBySroOrder } from "@/lib/po-spec-store";
 import { pricedDraftsBySroOrder } from "@/lib/po-priced-store";
@@ -15,13 +16,14 @@ export default async function BomPage() {
   const canEdit = auth.capabilities.has("bom.edit");
   const canViewCost = auth.capabilities.has("cost.view");
 
-  const [orders, master, materials, supplierRow] = await Promise.all([
+  const [orders, master, materials, supplierRow, productCodes] = await Promise.all([
     loadSroPoBoms(),
     loadBomMaster(),
     // Materials master = a pricing view; only load it for cost.view holders.
     canViewCost ? loadMaterials() : Promise.resolve({ materials: [], week: null, error: undefined }),
     // Secondary, with a built-in default — never let it crash the BOM page.
     getSupplierByCode("BAMIDA, s.r.o.").catch(() => null),
+    loadProductCodes(),
   ]);
 
   // Only override the hardcoded default when we have a real address; an
@@ -56,6 +58,13 @@ export default async function BomPage() {
     bamidaByPo[po.id] = canViewCost ? bp : stripBamidaPo(bp);
   }
 
+  // What each product code is costed as, against this week's bill of materials.
+  const bomModels = [...new Set(master.rows.map((r) => r.model_code))].sort((a, b) => a.localeCompare(b));
+  // Without the bill of materials every code would read as missing one, so show none.
+  const products = master.error ? [] : productModelRows({ ...productCodes, bomModels: new Set(bomModels) });
+  // An order can be re-costed until a manufacturing order is raised under it.
+  const recostableIds = orders.pos.filter((p) => p.status === "approved" && !mfgNumbers[p.id]).map((p) => p.id);
+
   // Strip the explosion + master costs for the same viewers.
   const pos = canViewCost ? orders.pos : orders.pos.map((p) => stripSroPoBomCosts(p, false));
   const masterRows = canViewCost ? master.rows : stripBomMasterCosts(master.rows, false);
@@ -83,6 +92,10 @@ export default async function BomPage() {
         canEdit={canEdit}
         canViewCost={canViewCost}
         bamidaByPo={bamidaByPo}
+        products={products}
+        productsError={productCodes.error ?? (master.error ? "The bill of materials could not be read, so no product code can be checked against it." : undefined)}
+        bomModels={bomModels}
+        recostableIds={recostableIds}
       />
     </div>
   );

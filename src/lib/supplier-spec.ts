@@ -181,6 +181,36 @@ export function specificationBullets(s: ModelSpec): string[] {
   return [...s.graphicsNotes, ...s.specificRequirements].map((b) => b.trim()).filter(Boolean)
 }
 
+/**
+ * model_spec is keyed on the model families of Bamida's own templates, which is
+ * coarser than the bill of materials in two places: the two H9X rows are one
+ * barrier cut from a 2.1 m or a 1.5 m PC350FR roll, and NDS200 is the Noise
+ * Defender RS-200 that the NDS template describes.
+ */
+const SPEC_FAMILY: ReadonlyMap<string, string> = new Map([
+  ['H9X 2.1W', 'H9X'],
+  ['H9X 1.5W', 'H9X'],
+  ['NDS200', 'NDS'],
+])
+
+/**
+ * The standing specification for a line: under its own model, then under the
+ * model it is costed as, then under either's template family. Null when none of
+ * them has one, which is what the editor then asks somebody to fill in.
+ */
+export function specFor(
+  specs: ReadonlyMap<string, ModelSpec>,
+  model: string | null,
+  bomModel?: string | null,
+): ModelSpec | null {
+  const keys = [model, bomModel, model && SPEC_FAMILY.get(model), bomModel && SPEC_FAMILY.get(bomModel)]
+  for (const key of keys) {
+    const spec = key ? specs.get(key) : undefined
+    if (spec) return spec
+  }
+  return null
+}
+
 export function buildSupplierSpec(
   po: SroPoBom,
   isoDate: string,
@@ -205,7 +235,7 @@ export function buildSupplierSpec(
 
   for (const line of po.lines) {
     if (!line.model_code) continue
-    const model = specs.get(line.model_code) ?? null
+    const model = specFor(specs, line.model_code, line.bom_model_code)
     const packSize = packSizeFor(line.model_code)
     const linePallets = Math.ceil(line.quantity / packSize)
     pallets += linePallets

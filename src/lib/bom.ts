@@ -1,10 +1,10 @@
-import { modelForSku, modelMaps } from '@/lib/sku-model'
+import { chosenModels, lineModels, modelMaps, type LineModels, type ModelBySku } from '@/lib/sku-model'
 import 'server-only'
 
 import { createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createMfgClient } from '@/lib/supabase/mfg'
-import { num, round2, priceComponents, recomputeTotals } from '@/lib/bom-calc'
+import { bamidaLabour, num, round2, priceComponents, recomputeTotals, type HubBamidaPrice } from '@/lib/bom-calc'
 import type { BomComponent, BomMasterRow, MaterialPrice, SroPoBom, SroPoBomLine } from '@/lib/erp-types'
 
 const mfgConfigured = () =>
@@ -55,6 +55,103 @@ interface MfgBomRow {
   sro_admin_eur: string | number | null
 }
 
+// ---------------------------------------------------------------------------
+// What the s.r.o. set under BOM: the model a product code is costed as
+// (bom_product_model) and Bamida's prices (bom_bamida_price). Both tables are
+// service role only; every caller here sits behind a page or action gate.
+// ---------------------------------------------------------------------------
+
+type HubPrice = HubBamidaPrice & { by: string | null; at: string }
+
+const priceOrNull = (v: unknown): number | null => {
+  if (v == null) return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+/**
+ * Throws rather than answering without them: a cost frozen from the sheet's
+ * price when the Hub holds a corrected one is exactly the silent wrong these
+ * tables exist to stop.
+ */
+async function loadHubBomChoices(): Promise<{ chosen: ModelBySku; prices: Map<string, HubPrice> }> {
+  const admin = createAdminClient()
+  const [models, prices] = await Promise.all([
+    admin.from('bom_product_model').select('sku, model_code'),
+    admin.from('bom_bamida_price').select('model_code, manufacturing_eur, printing_eur, updated_by_label, updated_at'),
+  ])
+  if (models.error) throw new Error(`Could not read the product models chosen under BOM: ${models.error.message}`)
+  if (prices.error) throw new Error(`Could not read the Bamida prices set in the Hub: ${prices.error.message}`)
+  const byModel = new Map<string, HubPrice>()
+  for (const r of (prices.data ?? []) as { model_code: string; manufacturing_eur: unknown; printing_eur: unknown; updated_by_label: string | null; updated_at: string }[]) {
+    byModel.set(r.model_code, {
+      manufacturing_eur: priceOrNull(r.manufacturing_eur),
+      printing_eur: priceOrNull(r.printing_eur),
+      by: r.updated_by_label,
+      at: r.updated_at,
+    })
+  }
+  return { chosen: chosenModels((models.data ?? []) as { sku: string; model_code: string }[]), prices: byModel }
+}
+
+/** The models in the latest week of the bill of materials: what a product code can be costed as. */
+export async function latestBomModels(): Promise<{ week: string | null; models: Set<string> }> {
+  if (!mfgConfigured()) throw new Error('Manufacturing data source not configured (MFG_SUPABASE_* env).')
+  const mfg = createMfgClient()
+  const week = await latestWeek(mfg)
+  if (!week) return { week: null, models: new Set() }
+  const { data, error } = await mfg.from('bom_weekly_snapshot').select('model_code').eq('week_start_date', week)
+  if (error) throw new Error(`Could not read the bill of materials: ${error.message}`)
+  return { week, models: new Set(((data ?? []) as { model_code: string }[]).map((r) => r.model_code)) }
+}
+
+/** The rows the Product codes tab is built from (sku-model.ts productModelRows). */
+export async function loadProductCodes() {
+  const admin = createAdminClient()
+  const [catalogue, master, chosen] = await Promise.all([
+    admin.from('po_product_catalog').select('sku, product_name, bom_model_code, region, product_family, active'),
+    admin.from('product_code_master').select('internal_sku, product_name, bom_model_code, product_family, is_active'),
+    admin.from('bom_product_model').select('sku, model_code, updated_by_label, updated_at'),
+  ])
+  const error = catalogue.error ?? master.error ?? chosen.error
+  if (error) {
+    console.error('Could not read the product codes for the BOM page:', error.message)
+    return { catalogue: [], master: [], chosen: [], error: 'Could not read the product codes.' }
+  }
+  return {
+    catalogue: (catalogue.data ?? []) as { sku: string; product_name: string | null; bom_model_code: string | null; region: string | null; product_family: string | null; active: boolean | null }[],
+    master: (master.data ?? []) as { internal_sku: string; product_name: string | null; bom_model_code: string | null; product_family: string | null; is_active: boolean | null }[],
+    chosen: (chosen.data ?? []) as { sku: string; model_code: string; updated_by_label: string | null; updated_at: string }[],
+    error: undefined as string | undefined,
+  }
+}
+
+/** A code France, the UK, Group, North America or Japan orders under. */
+export async function isKnownProductCode(sku: string): Promise<boolean> {
+  const admin = createAdminClient()
+  const [catalogue, master] = await Promise.all([
+    admin.from('po_product_catalog').select('sku').eq('sku', sku).limit(1),
+    admin.from('product_code_master').select('internal_sku').eq('internal_sku', sku).limit(1),
+  ])
+  if (catalogue.error || master.error) throw new Error('Could not read the product codes.')
+  return (catalogue.data?.length ?? 0) + (master.data?.length ?? 0) > 0
+}
+
+/** What a product code is costed as today, and whether anybody chose it: for the audit trail. */
+export async function currentProductModel(sku: string): Promise<{ chosen: string | null; listed: string | null }> {
+  const admin = createAdminClient()
+  const [chosen, catalogue, master] = await Promise.all([
+    admin.from('bom_product_model').select('model_code').eq('sku', sku).maybeSingle<{ model_code: string }>(),
+    admin.from('po_product_catalog').select('bom_model_code').eq('sku', sku).maybeSingle<{ bom_model_code: string | null }>(),
+    admin.from('product_code_master').select('bom_model_code').eq('internal_sku', sku).maybeSingle<{ bom_model_code: string | null }>(),
+  ])
+  if (chosen.error) throw new Error(`Could not read the product model: ${chosen.error.message}`)
+  return {
+    chosen: chosen.data?.model_code ?? null,
+    listed: catalogue.data?.bom_model_code || master.data?.bom_model_code || null,
+  }
+}
+
 interface PoForExplode {
   id: string
   po_number: string
@@ -67,24 +164,24 @@ interface PoForExplode {
 }
 
 interface ExplodeCtx {
-  skuToModel: Map<string, string | null>
+  skuModels: Map<string, LineModels>
   bomByModel: Map<string, MfgBomRow>
   priceMap: Map<string, number>
+  hubPrices: Map<string, HubPrice>
 }
 
 /** Explode ONE SRO PO into its BOM using a prepared context (pure given the ctx). */
 function explodePo(po: PoForExplode, ctx: ExplodeCtx): SroPoBom {
   const lines: SroPoBomLine[] = (po.lines ?? []).map((l) => {
-    const model = ctx.skuToModel.get(l.sku) ?? null
-    const bom = model ? ctx.bomByModel.get(model) : undefined
+    const { model, bomModel } = ctx.skuModels.get(l.sku) ?? { model: null, bomModel: null }
+    const bom = bomModel ? ctx.bomByModel.get(bomModel) : undefined
     const priced = priceComponents(bom?.component_detail ?? [], ctx.priceMap)
     const components = priced.map((c) => ({
       ...c,
       line_qty: round2(num(c.qty) * l.quantity),
       line_extended_eur: round2(num(c.extended_eur) * l.quantity),
     }))
-    const man = num(bom?.bamida_man_eur)
-    const print = num(bom?.bamida_print_eur)
+    const { man, print } = bamidaLabour(bom?.bamida_man_eur, bom?.bamida_print_eur, bomModel ? ctx.hubPrices.get(bomModel) : null)
     const admin = num(bom?.sro_admin_eur)
     const t = recomputeTotals(priced, man, print, admin)
     const componentsUnit = t.sro_components_eur
@@ -95,6 +192,7 @@ function explodePo(po: PoForExplode, ctx: ExplodeCtx): SroPoBom {
       product_name: l.product_name,
       quantity: l.quantity,
       model_code: model,
+      bom_model_code: bomModel,
       has_bom: Boolean(bom),
       components,
       bamida_man_eur: man,
@@ -126,26 +224,25 @@ async function buildExplodeCtx(
 ): Promise<{ ctx: ExplodeCtx; week: string | null }> {
   // Two tables know a SKU's model: the catalogue for the North American and
   // Japan SKUs, the code master for the internal SKUs France, the UK and Group
-  // order under (sku-model.ts).
-  const [{ data: catalog }, { data: master }] = await Promise.all([
+  // order under (sku-model.ts). The model chosen under BOM wins for the costing.
+  const [{ data: catalog }, { data: master }, hub] = await Promise.all([
     ops.from('po_product_catalog').select('sku, bom_model_code'),
     ops.from('product_code_master').select('internal_sku, bom_model_code'),
+    loadHubBomChoices(),
   ])
   const maps = modelMaps(
     (catalog ?? []) as { sku: string; bom_model_code: string | null }[],
     (master ?? []) as { internal_sku: string; bom_model_code: string | null }[],
   )
   const skus = [...new Set(pos.flatMap((p) => (p.lines ?? []).map((l) => l.sku)))]
-  const skuToModel = new Map<string, string | null>(
-    skus.map((sku) => [sku, modelForSku(sku, maps.catalogue, maps.master)]),
+  const skuModels = new Map<string, LineModels>(
+    skus.map((sku) => [sku, lineModels(sku, maps.catalogue, maps.master, hub.chosen)]),
   )
   const week = await latestWeek(mfg)
   const priceMap = await loadMaterialPriceMap(mfg)
   const bomByModel = new Map<string, MfgBomRow>()
   if (week) {
-    const models = [
-      ...new Set(pos.flatMap((p) => (p.lines ?? []).map((l) => skuToModel.get(l.sku)).filter((m): m is string => Boolean(m)))),
-    ]
+    const models = [...new Set([...skuModels.values()].map((m) => m.bomModel).filter((m): m is string => Boolean(m)))]
     if (models.length) {
       const { data: boms } = await mfg
         .from('bom_weekly_snapshot')
@@ -155,7 +252,7 @@ async function buildExplodeCtx(
       for (const b of (boms ?? []) as MfgBomRow[]) bomByModel.set(b.model_code, b)
     }
   }
-  return { ctx: { skuToModel, bomByModel, priceMap }, week }
+  return { ctx: { skuModels, bomByModel, priceMap, hubPrices: hub.prices }, week }
 }
 
 /**
@@ -169,7 +266,7 @@ export async function loadSroPoBoms(): Promise<{ pos: SroPoBom[]; week: string |
   const { data: pos } = await supabase
     .from('purchase_orders')
     .select(
-      'id, po_number, master_ref, from_entity, to_entity, approved_at, created_at, cost_snapshot, cost_snapshot_at, lines:purchase_order_lines(sku, product_name, quantity)'
+      'id, po_number, master_ref, from_entity, to_entity, approved_at, created_at, status, cost_snapshot, cost_snapshot_at, lines:purchase_order_lines(sku, product_name, quantity)'
     )
     .eq('leg', 'EB_GROUP_TO_SRO')
     // 'approved' alone used to be right, when the SRO leg never left that
@@ -196,10 +293,11 @@ export async function loadSroPoBoms(): Promise<{ pos: SroPoBom[]; week: string |
 
   const out: SroPoBom[] = pos.map((po) => {
     const snap = (po as { cost_snapshot?: unknown }).cost_snapshot
+    const status = (po as { status: string }).status
     if (snap) {
-      return { ...(snap as SroPoBom), cost_frozen: true, cost_snapshot_at: (po as { cost_snapshot_at?: string | null }).cost_snapshot_at ?? null }
+      return { ...(snap as SroPoBom), cost_frozen: true, cost_snapshot_at: (po as { cost_snapshot_at?: string | null }).cost_snapshot_at ?? null, status }
     }
-    return explodePo(po as unknown as PoForExplode, ctx as ExplodeCtx)
+    return { ...explodePo(po as unknown as PoForExplode, ctx as ExplodeCtx), status }
   })
   return { pos: out, week }
 }
@@ -280,24 +378,7 @@ export async function loadSroPoBom(
  */
 export async function snapshotSroPoCost(poId: string): Promise<{ ok: boolean; sro_total?: number }> {
   try {
-    if (!mfgConfigured()) return { ok: false }
-    const admin = createAdminClient()
-    const { data: po } = await admin
-      .from('purchase_orders')
-      .select('id, po_number, master_ref, from_entity, to_entity, approved_at, created_at, lines:purchase_order_lines(sku, product_name, quantity)')
-      .eq('id', poId)
-      .maybeSingle()
-    if (!po) return { ok: false }
-    const { ctx } = await buildExplodeCtx(
-      admin as unknown as Parameters<typeof buildExplodeCtx>[0],
-      createMfgClient(),
-      [po as unknown as PoForExplode]
-    )
-    const snap = explodePo(po as unknown as PoForExplode, ctx)
-    await admin
-      .from('purchase_orders')
-      .update({ cost_snapshot: snap, sro_cost_snapshot_eur: snap.sro_total, cost_snapshot_at: new Date().toISOString() })
-      .eq('id', poId)
+    const snap = await freezeSroPoCost(poId)
     return { ok: true, sro_total: snap.sro_total }
   } catch (e) {
     console.error('snapshotSroPoCost failed', poId, e)
@@ -305,10 +386,90 @@ export async function snapshotSroPoCost(poId: string): Promise<{ ok: boolean; sr
   }
 }
 
+/**
+ * Explode one SRO order from today's bill of materials and write it as the
+ * frozen cost. Throws on any failure, including a write that matched no row.
+ * `whileStatus` makes the write conditional, so an order that moved on in the
+ * meantime keeps the cost it had.
+ */
+async function freezeSroPoCost(poId: string, whileStatus?: string): Promise<SroPoBom> {
+  if (!mfgConfigured()) throw new Error('Manufacturing data source not configured (MFG_SUPABASE_* env).')
+  const admin = createAdminClient()
+  const { data: po, error } = await admin
+    .from('purchase_orders')
+    .select('id, po_number, master_ref, from_entity, to_entity, approved_at, created_at, lines:purchase_order_lines(sku, product_name, quantity)')
+    .eq('id', poId)
+    .maybeSingle()
+  if (error) throw new Error(`Could not read the order: ${error.message}`)
+  if (!po) throw new Error('No such order.')
+  const { ctx } = await buildExplodeCtx(
+    admin as unknown as Parameters<typeof buildExplodeCtx>[0],
+    createMfgClient(),
+    [po as unknown as PoForExplode]
+  )
+  const snap = explodePo(po as unknown as PoForExplode, ctx)
+  let write = admin
+    .from('purchase_orders')
+    .update({ cost_snapshot: snap, sro_cost_snapshot_eur: snap.sro_total, cost_snapshot_at: new Date().toISOString() })
+    .eq('id', poId)
+  if (whileStatus) write = write.eq('status', whileStatus)
+  const { data: written, error: writeError } = await write.select('id')
+  if (writeError) throw new Error(`Could not save the cost: ${writeError.message}`)
+  if (!written?.length) throw new Error('The order moved on before its cost was saved.')
+  return snap
+}
+
+export type RecostResult =
+  | { ok: true; poNumber: string; before: SroPoBom | null; after: SroPoBom }
+  | { ok: false; error: string }
+
+/**
+ * Freeze an SRO order's cost again from today's bill of materials, for an order
+ * approved before its product had a bill of materials or before a price was
+ * put right. Only while no manufacturing order has been raised under it: from
+ * then on the -1 and the -3 are documents somebody works from, and the priced
+ * order editor is where a price is changed.
+ *
+ * The caller gates. Nothing here reaches Xero, which was given the order's own
+ * line prices at approval and never this cost.
+ */
+export async function recostSroPo(poId: string): Promise<RecostResult> {
+  const admin = createAdminClient()
+  const [order, children] = await Promise.all([
+    admin
+      .from('purchase_orders')
+      .select('id, po_number, leg, status, cost_snapshot')
+      .eq('id', poId)
+      .maybeSingle<{ id: string; po_number: string; leg: string; status: string; cost_snapshot: SroPoBom | null }>(),
+    admin.from('purchase_orders').select('id', { count: 'exact', head: true }).eq('parent_po_id', poId).eq('leg', 'SRO_TO_SUPPLIER'),
+  ])
+  if (order.error || children.error) return { ok: false, error: 'Could not read the order.' }
+  const po = order.data
+  if (!po || po.leg !== 'EB_GROUP_TO_SRO') return { ok: false, error: 'That is not an order to the s.r.o.' }
+  if (po.status !== 'approved') return { ok: false, error: `${po.po_number} is ${po.status.replace(/_/g, ' ')}, so its cost stays as it is.` }
+  if ((children.count ?? 0) > 0) {
+    return { ok: false, error: `A manufacturing order has been raised under ${po.po_number}, so its cost stays as it is. Change a price on its priced order instead.` }
+  }
+  try {
+    const after = await freezeSroPoCost(poId, 'approved')
+    return { ok: true, poNumber: po.po_number, before: po.cost_snapshot, after }
+  } catch (e) {
+    console.error('recostSroPo failed', poId, e)
+    return { ok: false, error: e instanceof Error ? e.message : 'Could not re-cost the order.' }
+  }
+}
+
 /** Master BOM rows for the latest week, PRICED from material_prices + a Δ vs the synced snapshot total. */
 export async function loadBomMaster(): Promise<{ rows: BomMasterRow[]; week: string | null; error?: string }> {
   if (!mfgConfigured()) {
     return { rows: [], week: null, error: 'Manufacturing data source not configured (MFG_SUPABASE_* env).' }
+  }
+  let hub: Awaited<ReturnType<typeof loadHubBomChoices>>
+  try {
+    hub = await loadHubBomChoices()
+  } catch (e) {
+    console.error('loadBomMaster could not read the Hub prices', e)
+    return { rows: [], week: null, error: 'Could not read the Bamida prices set in the Hub.' }
   }
   try {
     const mfg = createMfgClient()
@@ -327,8 +488,8 @@ export async function loadBomMaster(): Promise<{ rows: BomMasterRow[]; week: str
     if (error) return { rows: [], week, error: 'Failed to load BOM master.' }
 
     const rows: BomMasterRow[] = (data ?? []).map((r) => {
-      const man = r.bamida_man_eur == null ? 0 : num(r.bamida_man_eur)
-      const print = r.bamida_print_eur == null ? 0 : num(r.bamida_print_eur)
+      const set = hub.prices.get(r.model_code)
+      const { man, print, manFromHub, printFromHub } = bamidaLabour(r.bamida_man_eur, r.bamida_print_eur, set)
       const admin = r.sro_admin_eur == null ? 0 : num(r.sro_admin_eur)
       const priced = priceComponents((r.component_detail ?? []) as BomComponent[], priceMap)
       const t = recomputeTotals(priced, man, print, admin)
@@ -348,6 +509,9 @@ export async function loadBomMaster(): Promise<{ rows: BomMasterRow[]; week: str
         fx_gbp_eur: r.fx_gbp_eur == null ? null : num(r.fx_gbp_eur),
         bom_change_pct: r.bom_change_pct == null ? null : num(r.bom_change_pct),
         original_bom_total_eur: originalBomTotal,
+        sheet_man_eur: r.bamida_man_eur == null ? null : num(r.bamida_man_eur),
+        sheet_print_eur: r.bamida_print_eur == null ? null : num(r.bamida_print_eur),
+        hub_price: set ? { manufacturing: manFromHub, printing: printFromHub, by: set.by, at: set.at } : null,
         component_detail: priced,
       }
     })

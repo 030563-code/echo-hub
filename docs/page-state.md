@@ -107,6 +107,7 @@ at its defaults, or merely opening a screen will offer to resume nothing.
 | `commercial-invoice:{invoiceId}` | draft | the commercial invoice line editor |
 | `invoices:hs-codes` | draft | Invoices, the HS codes typed but not saved yet |
 | `bom:material-prices` | draft | BOM, typed material prices |
+| `bom:bamida-prices` | draft | BOM, typed Bamida manufacturing and printing prices |
 | `profile:details` | draft | Your profile, the job title and bio |
 | `quotes:filters` | view | the six quotes list routes |
 | `po-board` | view | the purchase-order board |

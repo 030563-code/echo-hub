@@ -31,6 +31,20 @@ export function daveCreds(): Creds | null {
   return email && password ? { email, password } : null
 }
 
+/** Juraj at the s.r.o.: bom.edit and cost.view as real rows, no super admin. JURAJ_EMAIL/JURAJ_PASSWORD. */
+export function jurajCreds(): Creds | null {
+  const email = process.env.JURAJ_EMAIL
+  const password = process.env.JURAJ_PASSWORD
+  return email && password ? { email, password } : null
+}
+
+/** Martin, the s.r.o.'s operations login: the same capabilities as Juraj. MARTIN_EMAIL/MARTIN_PASSWORD. */
+export function martinCreds(): Creds | null {
+  const email = process.env.MARTIN_EMAIL
+  const password = process.env.MARTIN_PASSWORD
+  return email && password ? { email, password } : null
+}
+
 /** Any usable login — prefers admin, falls back to the scoped user. */
 export function anyCreds(): Creds | null {
   return adminCreds() ?? limitedCreds()
