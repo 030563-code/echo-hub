@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { HUBSPOT_PIPELINES } from '@/lib/hubspot-constants'
 import {
   FIRST_RUN_MS,
+  MAX_STEP_MS,
   MAX_WINDOW_MS,
   OVERLAP_MS,
   runQuoteSentCheck,
@@ -103,11 +104,34 @@ describe('runQuoteSentCheck', () => {
     expect(runs[0].from.getTime()).toBe(NOW.getTime() - FIRST_RUN_MS)
   })
 
-  it('caps a window that grew past 7 days and says so', async () => {
+  it('caps a window that grew past 7 days, reads its oldest 12 hours, and says both', async () => {
     const { deps, runs } = setup({ lastEnd: new Date('2026-08-01T00:00:00Z') })
     const summary = await runQuoteSentCheck(deps, { mode: 'move' })
     expect(runs[0].from.getTime()).toBe(NOW.getTime() - MAX_WINDOW_MS)
-    expect(summary.notes).toContain('window capped at 7 days')
+    expect(runs[0].to.getTime()).toBe(NOW.getTime() - MAX_WINDOW_MS + MAX_STEP_MS)
+    expect(summary.notes).toEqual(['window capped at 7 days', 'catching up: read 12 hours, the next run reads on'])
+  })
+
+  it('catches up twelve hours at a time, each run starting where the last ended', async () => {
+    // A day and a half behind: this run reads 12 hours, and the next starts from its end.
+    const lastEnd = new Date(NOW.getTime() - 36 * 60 * 60 * 1000)
+    const first = setup({ lastEnd })
+    const summary = await runQuoteSentCheck(first.deps, { mode: 'move' })
+    const from = lastEnd.getTime() - OVERLAP_MS
+    expect(first.runs[0].from.getTime()).toBe(from)
+    expect(first.runs[0].to.getTime()).toBe(from + MAX_STEP_MS)
+    expect(summary.notes).toEqual(['catching up: read 12 hours, the next run reads on'])
+
+    const next = setup({ lastEnd: first.runs[0].to })
+    await runQuoteSentCheck(next.deps, { mode: 'move' })
+    expect(next.runs[0].from.getTime()).toBe(from + MAX_STEP_MS - OVERLAP_MS)
+  })
+
+  it('never steps a report, whose window its caller chose', async () => {
+    const { deps, runs } = setup()
+    const from = new Date(NOW.getTime() - 3 * 24 * 60 * 60 * 1000)
+    await runQuoteSentCheck(deps, { mode: 'report', from, to: NOW })
+    expect(runs[0]).toMatchObject({ from, to: NOW })
   })
 
   it('in a report run, decides the same way and moves nothing', async () => {
