@@ -5,6 +5,7 @@ import {
   decide,
   isInternal,
   linkKey,
+  parseAddresses,
   stagesBeforeSent,
   type DealFacts,
   type EmailFacts,
@@ -137,7 +138,7 @@ describe('decide: when a deal moves to Quotation sent', () => {
     })
   })
 
-  it('respects a rep who moved the deal back: only an email since then counts', () => {
+  it('respects a rep who moved the deal back: only a new quote, sent since then, counts', () => {
     const movedBack = deal({
       stageHistory: [
         { stageId: S.QUOTE_REQUEST, at: '2026-09-22T12:00:00Z' },
@@ -146,7 +147,19 @@ describe('decide: when a deal moves to Quotation sent', () => {
       ],
     })
     expect(run({ deal: movedBack })).toEqual({ move: false, reason: 'email_before_move_back' })
-    expect(run({ deal: movedBack, emails: [email({ sentAt: '2026-09-23T09:30:00Z' })] }).move).toBe(true)
+    // A reply after the move-back still quotes the old link below it: that proves nothing new.
+    expect(run({ deal: movedBack, emails: [email({ sentAt: '2026-09-23T09:30:00Z' })] })).toEqual({
+      move: false,
+      reason: 'quote_before_move_back',
+    })
+    // A quote made after the move-back and sent after it does.
+    const fresh: QuoteFacts = { id: 'q-2', link: 'https://quotes.example.com/ef56-gh78', createdAt: '2026-09-22T15:00:00Z' }
+    const decision = run({
+      deal: movedBack,
+      quotes: [quote, fresh],
+      emails: [email({ sentAt: '2026-09-23T09:30:00Z', body: `Old: ${LINK}\nNew: ${fresh.link}` })],
+    })
+    expect(decision).toMatchObject({ move: true, quoteId: 'q-2' })
   })
 
   it('dates the move by the first email that sent the link', () => {
@@ -186,6 +199,27 @@ describe('carriesLink and linkKey', () => {
   it('never matches on a bare domain', () => {
     expect(linkKey('https://quotes.example.com/')).toBeNull()
     expect(carriesLink('visit quotes.example.com today', 'https://quotes.example.com')).toBe(false)
+  })
+})
+
+describe('parseAddresses', () => {
+  it('reads the bare semicolon list HubSpot stores, and a display-name form too', () => {
+    expect(parseAddresses('buyer@customer.example;Rep.One@EchoBarrier.com', null)).toEqual([
+      'buyer@customer.example',
+      'rep.one@echobarrier.com',
+    ])
+    expect(parseAddresses('"Rep One" <rep.one@echobarrier.com>, Buyer <buyer@customer.example>')).toEqual([
+      'rep.one@echobarrier.com',
+      'buyer@customer.example',
+    ])
+    expect(parseAddresses('', undefined, 'no address here')).toEqual([])
+  })
+
+  it('so a quote forwarded to a colleague by display name never counts as sent', () => {
+    expect(run({ emails: [email({ recipients: parseAddresses('Rep One <rep.one@echobarrier.com>') })] })).toEqual({
+      move: false,
+      reason: 'no_outside_recipient',
+    })
   })
 })
 

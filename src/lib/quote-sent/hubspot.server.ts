@@ -2,7 +2,7 @@ import 'server-only'
 
 import { hubspotFetch } from '@/lib/hubspot-client'
 import type { QuoteSentHubSpot } from './run'
-import type { DealFacts, EmailFacts, Pipeline, QuoteFacts } from './rule'
+import { parseAddresses, type DealFacts, type EmailFacts, type Pipeline, type QuoteFacts } from './rule'
 
 /**
  * The quote-sent check's reads of HubSpot, and its one write (dealstage).
@@ -65,13 +65,6 @@ function toDeal(row: DealRow): DealFacts {
 }
 
 const DEAL_PROPERTIES = ['dealstage', 'pipeline', 'hs_is_closed']
-
-function addresses(...fields: (string | null | undefined)[]): string[] {
-  return fields
-    .flatMap((f) => String(f ?? '').split(/[;,\s]+/))
-    .map((a) => a.trim().toLowerCase())
-    .filter((a) => a.includes('@'))
-}
 
 export const hubspotQuoteSentPort: QuoteSentHubSpot = {
   async pipelines(): Promise<Pipeline[]> {
@@ -184,7 +177,7 @@ export const hubspotQuoteSentPort: QuoteSentHubSpot = {
           direction: p.hs_email_direction ?? null,
           sentAt: p.hs_timestamp ?? null,
           body: `${p.hs_email_text ?? ''}\n${p.hs_email_html ?? ''}`,
-          recipients: addresses(p.hs_email_to_email, p.hs_email_cc_email),
+          recipients: parseAddresses(p.hs_email_to_email, p.hs_email_cc_email),
         })
       }
     }

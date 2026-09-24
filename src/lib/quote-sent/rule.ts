@@ -70,6 +70,8 @@ export type SkipReason =
   | 'email_before_quote'
   /** A rep moved the deal back from Quotation sent after this email. */
   | 'email_before_move_back'
+  /** A rep moved the deal back, and the link is a quote's from before that. */
+  | 'quote_before_move_back'
 
 export type Decision =
   | { move: true; toStageId: string; quoteId: string; emailId: string; emailSentAt: string }
@@ -108,6 +110,12 @@ export function carriesLink(body: string, link: string): boolean {
   return false
 }
 
+/** Every address in HubSpot's To and Cc fields. They are stored as bare addresses separated by
+ *  semicolons (checked on 100 logged emails, 24 Sep 2026); a "Name <address>" form is read too. */
+export function parseAddresses(...fields: (string | null | undefined)[]): string[] {
+  return fields.flatMap((f) => String(f ?? '').toLowerCase().match(/[^\s<>;,"'()]+@[^\s<>;,"'()]+/g) ?? [])
+}
+
 /** Echo Barrier's own addresses: any address a HubSpot user signs in with, and its domains. */
 export function isInternal(address: string, userEmails: ReadonlySet<string>): boolean {
   const a = address.trim().toLowerCase()
@@ -124,6 +132,7 @@ const CLOSENESS: SkipReason[] = [
   'no_outside_recipient',
   'email_before_quote',
   'email_before_move_back',
+  'quote_before_move_back',
 ]
 
 export function decide(input: {
@@ -144,7 +153,8 @@ export function decide(input: {
   if (published.length === 0) return { move: false, reason: 'no_published_quote' }
 
   // A deal a rep moved back from Quotation sent was moved back on purpose (a fresh request, say), so
-  // only an email sent since then counts. An older one would drag it straight forward again.
+  // only an email sent since then counts, and only for a quote made since then. Every reply in the
+  // old thread still quotes the old link below it, so an old quote's link proves nothing new.
   const wasSent = deal.stageHistory.some((h) => h.stageId === sentStageId)
   const notBefore = wasSent ? (deal.stageHistory[0]?.at ?? null) : null
 
@@ -172,6 +182,10 @@ export function decide(input: {
       }
       if (notBefore && ms(email.sentAt) < ms(notBefore)) {
         closer('email_before_move_back')
+        continue
+      }
+      if (notBefore && (!quote.createdAt || ms(quote.createdAt) < ms(notBefore))) {
+        closer('quote_before_move_back')
         continue
       }
       // The first email that sent it is when it went out.
