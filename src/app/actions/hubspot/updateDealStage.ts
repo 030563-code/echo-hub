@@ -15,7 +15,8 @@ export interface AcceptanceExtras {
   winProbability?: string
   /** Delivery (ship-to) address, captured at acceptance in the invoicing
    *  organisation's own country shape: a US one for TaxJar, a French one for
-   *  the invoice document and the TVA case. */
+   *  the invoice document and the TVA case, a Canadian one whose province
+   *  decides the Canadian tax. */
   delivery?: DeliveryAddressInput
   /**
    * Will Call. When true the delivery address is neither required nor written:
@@ -133,14 +134,16 @@ export async function updateDealStage(dealId: string, pipelineId: string, stageI
 
   // Invoicing acceptance gate: a dispatch depot belonging to an organisation
   // that invoices through the Hub (the USA since September 2026, France since
-  // 22 Sep 2026) means this deal enters that flow, so a complete delivery
-  // address in that country's shape, a probability of close, and an associated
-  // company are mandatory BEFORE the stage moves. Keyed on the depot, not the
-  // pipeline: CA-HAM and EU-SK acceptances keep the depot-only requirement
-  // above until their organisations invoice here too. The registry write
-  // happens BEFORE the HubSpot PATCH so the row is already complete when the
-  // acceptance echoes back into the admin queue (and a failed PATCH leaves
-  // nothing worse than a saved address).
+  // 22 Sep 2026, Canada since 24 Sep 2026) means this deal enters that flow, so
+  // a complete delivery address in that country's shape, a probability of
+  // close, and an associated company are mandatory BEFORE the stage moves.
+  // Canada is held to it before its tax step exists, on Dean's decision: the
+  // province decides Canadian tax, and a Canadian acceptance used to arrive with
+  // no address at all. Keyed on the depot, not the pipeline: EU-SK and the
+  // others keep the depot-only requirement above until their organisations
+  // invoice here too. The registry write happens BEFORE the HubSpot PATCH so the
+  // row is already complete when the acceptance echoes back into the admin
+  // queue (and a failed PATCH leaves nothing worse than a saved address).
   const parsedProbability = parseWinProbability(acceptance?.winProbability)
   const invoicing = QUOTATION_ACCEPTED_STAGES.includes(stageId) ? invoicingProfileForDepot(sendingDepot) : null
   if (invoicing) {

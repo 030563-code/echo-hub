@@ -12,13 +12,13 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { computeDraftLineTotal } from '@/lib/customer-invoice/build-draft'
-import { INVOICE_DEPOTS, KIT_SHIP_FROM } from '@/lib/customer-invoice/constants'
+import { INVOICE_DEPOTS, kitShipFrom } from '@/lib/customer-invoice/constants'
 import { invoicingProfile } from '@/lib/customer-invoice/invoicing-profile'
-import { hasStateField } from '@/lib/delivery-address'
 import { orgLabel } from '@/lib/organisations'
 import { MAX_TRACKING_PER_LINE } from '@/lib/customer-invoice/tracking'
 import { linesHash } from '@/lib/customer-invoice/hash'
 import { US_STATE_CODES } from '@/lib/us-address'
+import { CA_PROVINCE_CODES, normalizeCAPostalCode } from '@/lib/ca-address'
 import { roundCents } from '@/lib/quote-math'
 import {
   requireInvoicingManage,
@@ -124,22 +124,38 @@ export async function saveInvoiceDraft(input: z.infer<typeof Input>): Promise<Sa
 
   // The address fields are checked for FORMAT, not presence: a draft may be
   // saved half-filled and calculated later, which is when presence is enforced.
+  // Each country's rule matches the database CHECK for that country, so the
+  // reviewer gets a sentence here instead of a constraint name there.
   const state = header.delivery_state?.trim().toUpperCase() || null
-  const zip = header.delivery_zip?.replace(/ /g, '') || null
-  if (hasStateField(profile.country)) {
-    if (state !== null && !US_STATE_CODES.includes(state)) {
-      return { success: false, error: 'Delivery state must be a 2-letter US state code.' }
-    }
-    if (zip !== null && !/^\d{5}(-\d{4})?$/.test(zip)) {
-      return { success: false, error: 'Delivery zip must be 5 digits or ZIP+4.' }
-    }
-  } else {
-    // 🔴 The database refuses a state on a French row. Refusing here as well
-    // gives the reviewer a sentence instead of a constraint name.
-    if (state !== null) return { success: false, error: `A ${orgLabel(profile.org)} delivery address has no state field.` }
-    if (zip !== null && !/^\d{5}$/.test(zip)) {
-      return { success: false, error: 'Delivery postcode must be 5 digits (e.g. 75008).' }
-    }
+  let zip = header.delivery_zip?.replace(/ /g, '') || null
+  switch (profile.country) {
+    case 'US':
+      if (state !== null && !US_STATE_CODES.includes(state)) {
+        return { success: false, error: 'Delivery state must be a 2-letter US state code.' }
+      }
+      if (zip !== null && !/^\d{5}(-\d{4})?$/.test(zip)) {
+        return { success: false, error: 'Delivery zip must be 5 digits or ZIP+4.' }
+      }
+      break
+    case 'FR':
+      // 🔴 The database refuses a state on a French row.
+      if (state !== null) return { success: false, error: `A ${orgLabel(profile.org)} delivery address has no state field.` }
+      if (zip !== null && !/^\d{5}$/.test(zip)) {
+        return { success: false, error: 'Delivery postcode must be 5 digits (e.g. 75008).' }
+      }
+      break
+    case 'CA':
+      if (state !== null && !CA_PROVINCE_CODES.includes(state)) {
+        return { success: false, error: 'Delivery province must be a 2-letter Canadian province or territory code.' }
+      }
+      if (zip !== null) {
+        // Stored the way Canada Post prints it, capitals and one space, which
+        // is also the only form the database accepts on a Canadian row.
+        const postal = normalizeCAPostalCode(zip)
+        if (!postal) return { success: false, error: 'Delivery postal code must be in the form A1A 1A1.' }
+        zip = postal
+      }
+      break
   }
   const normalizedHeader = { ...header, delivery_state: state, delivery_zip: zip }
 
@@ -149,10 +165,15 @@ export async function saveInvoiceDraft(input: z.infer<typeof Input>): Promise<Sa
   // the case this catches.
   const allowedDepots = new Set<string>(profile.depots)
 
-  // Kit components stay pinned to Baltimore. The pin is decided from the
-  // STORED line (matched by line_key), never from the client-supplied origin:
-  // a crafted payload could otherwise relabel a kit component as 'manual' and
-  // have its tax calculated from the wrong dispatch state.
+  // Kit components stay pinned to the organisation's kit depot: Baltimore for
+  // the USA, the organisation's own depot elsewhere, exactly as the database
+  // splits kits (kitShipFrom). Every depot of one organisation shares it.
+  const kitDepot = kitShipFrom(profile.depots[0])
+
+  // Whether a line is a kit component is decided from the STORED line (matched
+  // by line_key), never from the client-supplied origin: a crafted payload
+  // could otherwise relabel a kit component as 'manual' and have its tax
+  // calculated from the wrong dispatch state.
   const storedByKey = new Map(storedLines.map((l) => [l.line_key, l]))
   const normalized = lines.map((l) => {
     const stored = storedByKey.get(l.line_key)
@@ -170,7 +191,7 @@ export async function saveInvoiceDraft(input: z.infer<typeof Input>): Promise<Sa
     // on every rebuild, so the STORED value wins there: a crafted payload
     // cannot relabel goods as freight, or freight as goods, to move the tax.
     is_shipping: origin === 'manual' ? l.is_shipping : (stored?.is_shipping ?? l.is_shipping),
-    ship_from_depot: isKitComponent ? KIT_SHIP_FROM : l.ship_from_depot,
+    ship_from_depot: isKitComponent ? kitDepot : l.ship_from_depot,
     ship_from_locked: isKitComponent,
     quantity: roundCents(l.quantity),
     unit_price: roundCents(l.unit_price),

@@ -48,6 +48,9 @@ export type XeroCall<T> = { ok: true; data: T } | { ok: false; error: string }
 export function xeroWebhookFor(org: OrgCode): { ok: true; url: string; secret: string | null } | { ok: false; error: string } {
   const profile = invoicingProfile(org)
   if (!profile) return { ok: false, error: `${orgLabel(org)} does not invoice through the Hub.` }
+  // Before the environment is read at all. An organisation whose Xero leg is
+  // not built yet (Canada) must not reach Xero because somebody set a URL.
+  if (profile.xeroNotConnected) return { ok: false, error: `${orgLabel(org)}'s Xero is not connected to the Hub yet.` }
   const url = String(process.env[profile.webhookUrlEnv] ?? '').trim()
   if (!url) return { ok: false, error: `The ${orgLabel(org)} invoice webhook is not configured on the server (${profile.webhookUrlEnv}).` }
   const secret = String(process.env[profile.webhookSecretEnv] ?? '').trim() || null
@@ -223,8 +226,9 @@ export interface XeroDraftInput {
   date: string
   due_date: string | null
   /** The Xero TaxType every line is posted with. Xero computes the tax from it;
-   *  no tax amount is sent, by design. */
-  tax_type: string
+   *  no tax amount is sent, by design. Null only for an organisation whose
+   *  profile names none (Canada, which posts nothing yet). */
+  tax_type: string | null
   lines: XeroDraftLineInput[]
   shipping_lines: XeroDraftLineInput[]
 }

@@ -24,6 +24,8 @@ import { linesHash } from '@/lib/customer-invoice/hash'
 import { roundCents } from '@/lib/quote-math'
 import { taxjarCalculateTax, taxjarNexusRegions, TaxJarError, TaxJarConfigError } from '@/lib/taxjar'
 import { US_REGISTERED_STATES, isUSDepot, type USDepot } from '@/lib/customer-invoice/constants'
+import { invoicingProfile } from '@/lib/customer-invoice/invoicing-profile'
+import { orgLabel } from '@/lib/organisations'
 import {
   requireInvoicingManage,
   loadInvoiceWithLines,
@@ -47,6 +49,17 @@ export async function calculateInvoiceTax(input: { invoiceId: string }): Promise
   const loaded = await loadInvoiceWithLines(invoiceId, gate.auth.profile.organisations)
   if (!loaded.ok) return { success: false, error: loaded.error }
   const { invoice, lines } = loaded
+
+  // TaxJar prices US sales tax and nothing else. Any organisation priced some
+  // other way is refused here, before a single TaxJar call, and a Canadian
+  // invoice gets its own sentence rather than a US currency error.
+  const profile = invoicingProfile(invoice.organisation_code)
+  if (!profile || profile.taxEngine !== 'taxjar') {
+    return {
+      success: false,
+      error: profile?.xeroNotConnected ?? `${orgLabel(invoice.organisation_code)} does not price its tax with TaxJar.`,
+    }
+  }
 
   if (invoice.status !== 'draft' && invoice.status !== 'tax_calculated') {
     return { success: false, error: `Tax can only be calculated on a draft (this invoice is ${invoice.status}).` }

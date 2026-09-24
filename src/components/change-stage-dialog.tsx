@@ -20,8 +20,14 @@ import {
 import { depotLabel } from '@/lib/depot-constants'
 import { WIN_PROBABILITY_VALUES } from '@/lib/quote-math'
 import { invoicingProfileForDepot } from '@/lib/customer-invoice/invoicing-profile'
-import { US_STATE_CODES } from '@/lib/us-address'
-import { acceptanceComplete, hasStateField, postcodeLabel } from '@/lib/delivery-address'
+import {
+  acceptanceComplete,
+  hasStateField,
+  postcodeLabel,
+  postcodeProblem,
+  stateLabel,
+  stateOptionsFor,
+} from '@/lib/delivery-address'
 import { lookupZipJurisdiction } from '@/app/actions/tax/lookup-zip'
 import { useRouter } from 'next/navigation'
 import { ArrowRightLeft, Loader2, MapPin } from 'lucide-react'
@@ -46,7 +52,7 @@ interface ChangeStageDialogProps {
    * A stage to preselect, and open on. This is how a drop on the deals board
    * arrives: the board navigates here with ?stage= rather than PATCHing HubSpot
    * itself, so every guard in this dialog still runs, including the depot rule
-   * at Quotation Accepted and the US delivery address.
+   * at Quotation Accepted and the delivery address.
    */
   initialStageId?: string | null
 }
@@ -323,14 +329,16 @@ export default function ChangeStageDialog({
                     />
                     <div className={needsState ? 'grid grid-cols-2 gap-2' : ''}>
                       {/* A French address has no state, so the field is not
-                          offered rather than offered and refused. */}
+                          offered rather than offered and refused. The list is
+                          the country's own: US states, or Canadian provinces
+                          and territories. */}
                       {needsState && (
                         <Select value={stateCode} onValueChange={setStateCode}>
                           <SelectTrigger className="h-11 sm:h-10 bg-white border-gray-300 text-gray-900">
-                            <SelectValue placeholder="State" />
+                            <SelectValue placeholder={stateLabel(acceptanceCountry)} />
                           </SelectTrigger>
                           <SelectContent className="bg-white border-gray-200 text-gray-900 max-h-64">
-                            {US_STATE_CODES.map((code) => (
+                            {stateOptionsFor(acceptanceCountry).map(({ code }) => (
                               <SelectItem key={code} value={code} className="hover:bg-gray-100 focus:bg-gray-100 cursor-pointer">
                                 {code}
                               </SelectItem>
@@ -342,17 +350,15 @@ export default function ChangeStageDialog({
                         placeholder={postcodeLabel(acceptanceCountry)}
                         value={zip}
                         onChange={(e) => setZip(e.target.value)}
-                        // TaxJar's zip lookup knows US zips only.
-                        onBlur={(e) => (needsState ? resolveZip(e.target.value) : undefined)}
+                        // TaxJar's zip lookup knows US zips only. A Canadian
+                        // postal code must never be sent to it.
+                        onBlur={(e) => (acceptanceCountry === 'US' ? resolveZip(e.target.value) : undefined)}
                         className="bg-white border-gray-300 text-gray-900"
                       />
                     </div>
                   </div>
-                  {zip.trim() !== '' && needsState && !ZIP_RE.test(zip.trim()) && (
-                    <p className="text-xs text-red-600">Zip must be 5 digits (or ZIP+4, e.g. 20794-1234).</p>
-                  )}
-                  {zip.trim() !== '' && !needsState && !/^\d{5}$/.test(zip.trim()) && (
-                    <p className="text-xs text-red-600">Postcode must be 5 digits (e.g. 75008).</p>
+                  {postcodeProblem(acceptanceCountry, zip) && (
+                    <p className="text-xs text-red-600">{postcodeProblem(acceptanceCountry, zip)}</p>
                   )}
                   {zipLookup.status === 'loading' && (
                     <p className="flex items-center gap-1.5 text-xs text-gray-500">
@@ -381,9 +387,7 @@ export default function ChangeStageDialog({
                   {zipLookup.status === 'error' && (
                     <p className="text-xs text-amber-700">{zipLookup.message}</p>
                   )}
-                  <p className="text-xs text-gray-500">
-                    Used to calculate US sales tax: the ship-to address, not the billing address.
-                  </p>
+                  <p className="text-xs text-gray-500">{acceptanceProfile?.deliveryAddressUse}</p>
                 </div>
                 )}
               </>

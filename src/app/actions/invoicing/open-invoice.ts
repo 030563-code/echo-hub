@@ -19,6 +19,7 @@ import { fetchHubSpotLineDescriptions } from '@/lib/customer-invoice/line-descri
 import { isInvoiceDepot } from '@/lib/customer-invoice/constants'
 import { depotCode } from '@/lib/depot-constants'
 import { invoicingProfile } from '@/lib/customer-invoice/invoicing-profile'
+import { hasStateField } from '@/lib/delivery-address'
 import { linesHash } from '@/lib/customer-invoice/hash'
 import { holdsOrganisation, orgForDepot, orgLabel } from '@/lib/organisations'
 import { xeroItemAccounts } from '@/lib/xero-hub'
@@ -98,9 +99,9 @@ export async function openInvoiceForDeal(input: {
 
   // The deal's depot says which organisation invoices it. That organisation
   // has to be one the caller holds, and has to have an invoicing profile: the
-  // USA since September 2026, France since Dean's decision of 22 Sep 2026.
-  // Each of the others is its own follow-up, and until then the queue shows
-  // the deal and this is the answer.
+  // USA since September 2026, France since Dean's decision of 22 Sep 2026, and
+  // Canada since 24 Sep 2026 up to the tax step. Each of the others is its own
+  // follow-up, and until then the queue shows the deal and this is the answer.
   // Whichever spelling the sync wrote: the code, or HubSpot's internal value
   // for it ('EU-France' for EU-FR). A depot the Hub does not know is refused
   // by the name the record actually carries.
@@ -129,20 +130,26 @@ export async function openInvoiceForDeal(input: {
       error: `${orgLabel(org)} invoicing handles ${profile.depots.join(' and ')} deals; this deal's depot is ${depot}.`,
     }
   }
-  // The invoice is in the ORGANISATION's currency. For the USA the registry's
-  // currency is checked against it, because a genuinely Canadian deal landing
-  // here is the mistake that check exists to catch. For every other
-  // organisation the registry column is not trusted: n8n's EURO sync never
-  // wrote it, so all 63 French deals carry 'USD', the column default. Refusing
-  // on that would refuse every French invoice for a value nobody chose.
+  // The invoice is in the ORGANISATION's currency. Where the registry's
+  // currency is trustworthy (the USA SALES sync writes it, for the USA and for
+  // Canada) it is checked against that, because a deal priced in the other
+  // country's currency is the mistake this exists to catch: invoicing it would
+  // print the quote's numbers under the wrong currency. France is not held to
+  // it: n8n's EURO sync never wrote the column, so all 63 French deals carry
+  // 'USD', the column default, and refusing on that would refuse every French
+  // invoice for a value nobody chose.
   const registryCurrency = String(deal.currency ?? '').trim().toUpperCase()
-  if (org === 'EB-USA' && registryCurrency && registryCurrency !== profile.currency) {
+  if (profile.checksRegistryCurrency && registryCurrency && registryCurrency !== profile.currency) {
     return {
       success: false,
       error:
-        `This deal is in ${registryCurrency}. US invoicing is USD only, because the TaxJar and Xero ` +
-        `flow behind it is a US sales-tax flow. Invoice a ${registryCurrency} deal through the Canadian ` +
-        `process instead, or correct the deal's currency in HubSpot if ${registryCurrency} is wrong.`,
+        org === 'EB-USA'
+          ? `This deal is in ${registryCurrency}. US invoicing is USD only, because the TaxJar and Xero ` +
+            `flow behind it is a US sales-tax flow. Invoice a ${registryCurrency} deal through the Canadian ` +
+            `process instead, or correct the deal's currency in HubSpot if ${registryCurrency} is wrong.`
+          : `This deal is in ${registryCurrency}, and ${orgLabel(org)} invoices in ${profile.currency} only. ` +
+            `Correct the deal's currency in HubSpot if ${registryCurrency} is wrong, or give the deal the ` +
+            `depot of the organisation that sells in ${registryCurrency}.`,
     }
   }
   const currency = profile.currency
@@ -215,8 +222,9 @@ export async function openInvoiceForDeal(input: {
   }
 
   // A French address has no state, and the database refuses one on a French
-  // row. Whatever the registry holds there is not carried over.
-  const deliveryState = profile.country === 'US' ? (deal.delivery_state ?? null) : null
+  // row. Whatever the registry holds there is not carried over. A US state and
+  // a Canadian province both are.
+  const deliveryState = hasStateField(profile.country) ? (deal.delivery_state ?? null) : null
 
   const header = {
     hubspot_deal_id: dealId,

@@ -56,8 +56,74 @@ export default async function TaxSetupPage() {
   // gets TaxJar's, which is what this page always was.
   const org = await activeOrganisation(auth)
   const profile = org ? invoicingProfile(org) : null
+  // Checked first: Canada's tax will come from a Xero draft, but France's page
+  // describes a tax type and EU cases that are France's alone, and TaxJar's
+  // lists US states. Until 24 Sep 2026 Canada was shown the USA's.
+  if (profile?.xeroNotConnected) return <NotConnectedTaxSetup profile={profile} />
   if (profile?.taxEngine === 'xero_draft') return <XeroDraftTaxSetup profile={profile} />
   return <TaxJarTaxSetup />
+}
+
+/** An organisation whose invoices open in the Hub but whose tax step does not
+ *  exist yet. It says so, and shows the one thing already decided. */
+function NotConnectedTaxSetup({ profile }: { profile: InvoicingProfile }) {
+  const label = orgLabel(profile.org)
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Tax Setup</h1>
+        <p className="text-gray-500 text-sm mt-1">How {label}&apos;s tax is priced, and where its invoices dispatch from.</p>
+      </div>
+
+      <Card className="bg-white border-gray-200 p-4 sm:p-6">
+        <div className="flex items-start gap-2 text-sm text-gray-700">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+          <div className="space-y-1">
+            <p className="font-medium text-gray-900">{profile.xeroNotConnected}</p>
+            <p>
+              Invoices open, edit and save in the Hub, and stop before the tax step. The Xero organisation is{' '}
+              {organisation(profile.org).legalName}.
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="bg-white border-gray-200 p-0 overflow-hidden">
+        <div className="border-b border-gray-200 px-4 py-3">
+          <h2 className="text-sm font-semibold text-gray-900">Dispatch addresses</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Printed on the invoice as where the goods left from.</p>
+        </div>
+        <table className="w-full text-sm">
+          <tbody>
+            {profile.depots.map((depot) => {
+              const address = DEPOT_FROM_ADDRESSES[depot]
+              return (
+                <tr key={depot} className="border-b border-gray-100 last:border-0">
+                  <td className="px-4 py-3 align-top w-48">
+                    <span className="font-medium text-gray-900">{depotLabel(depot)}</span>
+                    <span className="block text-xs text-gray-400">{depot}</span>
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {address ? (
+                      <>
+                        {address.street}
+                        <span className="block">
+                          {address.city}
+                          {address.state ? `, ${address.state}` : ''} {address.zip}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-amber-700">Not configured yet.</span>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  )
 }
 
 /**

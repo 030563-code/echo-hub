@@ -3,6 +3,8 @@
  * Xero). Pure data, safe on both client and server.
  */
 
+import { depotsForOrg, type OrgCode } from '@/lib/organisations'
+
 /**
  * HubSpot product ids that mean "Fitting Kit" (the catalogue holds duplicates,
  * none carrying an hs_sku). A kit line on a quote becomes two invoice lines:
@@ -98,9 +100,34 @@ export function isInvoiceDepot(value: unknown): value is InvoiceDepot {
   return isUSDepot(value) || isCADepot(value) || isFRDepot(value)
 }
 
-/** Fitting kits (and their split components) always dispatch from Baltimore,
- *  regardless of where the barriers ship from. */
+/**
+ * The depots an organisation invoices from.
+ *
+ * Read from the organisation registry (depotsForOrg) rather than restated here,
+ * so the invoicing module and every other module can never disagree about which
+ * company a depot belongs to. Only depots this module can raise an invoice from
+ * survive the filter.
+ */
+export function invoiceDepotsForOrg(org: OrgCode): readonly InvoiceDepot[] {
+  return depotsForOrg(org).filter(isInvoiceDepot)
+}
+
+/** A US deal's fitting kits dispatch from Baltimore, whichever US depot the
+ *  barriers leave from. */
 export const KIT_SHIP_FROM: USDepot = 'US-BAL'
+
+/**
+ * Where a deal's fitting-kit hooks and bungees dispatch from.
+ *
+ * Mirrors public.split_fitting_kit_lines() in Supabase, which already decides
+ * this on the way into deals_registry: Baltimore for a US deal, the deal's own
+ * depot for anyone else. Hamilton stocks hooks and bungees under its own Xero
+ * items, so pinning a Canadian kit to Baltimore put a US depot on a Canadian
+ * invoice, and the draft save then refused that invoice outright.
+ */
+export function kitShipFrom(dealDepot: InvoiceDepot): InvoiceDepot {
+  return isUSDepot(dealDepot) ? KIT_SHIP_FROM : dealDepot
+}
 
 export interface DepotFromAddress {
   street: string
