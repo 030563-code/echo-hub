@@ -2,11 +2,15 @@ import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { depotsForOrg, transportSeesAll, type OrgCode } from '@/lib/organisations'
+import type { CapabilityKey } from '@/lib/capabilities'
+import { landedCostAllowed } from '@/lib/transport/cost-access'
+import { loadLandedCost } from '@/lib/transport/landed-cost.server'
 import { depotLabel } from '@/lib/depot-constants'
 import { depotProducts, loadHubShipment } from '@/lib/transport/shipments.server'
 import { SHIPMENT_DEPOTS, contentsSummary, handProgress, lineReferences, localOrderLabel } from '@/lib/transport/shipment'
 import HandShipmentDetails from './hand-shipment-details'
 import ShipmentContents from './shipment-contents'
+import LandedCostCard from './landed-cost-card'
 
 /**
  * A shipment kept by hand: one Cargo Partner has not booked, or that was booked some other way.
@@ -22,7 +26,15 @@ function fullDate(iso: string | null): string {
   return `${Number(d)} ${months[Number(m) - 1] ?? m} ${y}`
 }
 
-export default async function HandShipmentView({ id, org }: { id: string; org: OrgCode }) {
+export default async function HandShipmentView({
+  id,
+  org,
+  who,
+}: {
+  id: string
+  org: OrgCode
+  who: { capabilities: ReadonlySet<CapabilityKey>; organisations: readonly OrgCode[] }
+}) {
   const shipment = await loadHubShipment(id)
   if (!shipment) notFound()
   // Booked since: its page is the Cargo Partner one, which carries everything typed here.
@@ -33,7 +45,18 @@ export default async function HandShipmentView({ id, org }: { id: string; org: O
     if (!shipment.depot || !held.includes(shipment.depot)) notFound()
   }
 
-  const products = await depotProducts(shipment.depot)
+  const [products, landed] = await Promise.all([
+    depotProducts(shipment.depot),
+    landedCostAllowed(who, shipment.depot)
+      ? loadLandedCost({
+          hubId: shipment.id,
+          spotId: null,
+          depot: shipment.depot,
+          containers: shipment.containers,
+          lines: shipment.lines,
+        })
+      : Promise.resolve(null),
+  ])
   const progress = handProgress(shipment)
   const depots = (transportSeesAll(org) ? [...SHIPMENT_DEPOTS] : depotsForOrg(org)).filter((d) =>
     (SHIPMENT_DEPOTS as readonly string[]).includes(d),
@@ -86,6 +109,8 @@ export default async function HandShipmentView({ id, org }: { id: string; org: O
         products={products}
         fromSheet={[]}
       />
+
+      {landed && <LandedCostCard target={{ id: shipment.id }} lines={shipment.lines} view={landed} />}
     </div>
   )
 }

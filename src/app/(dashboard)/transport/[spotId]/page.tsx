@@ -9,6 +9,8 @@ import { loadCargoShipment } from '@/lib/cargo/store'
 import { sheetRowsBySpot } from '@/lib/cargo/sync'
 import { depotProducts, loadHubShipmentBySpot } from '@/lib/transport/shipments.server'
 import { linesFromSheet, localOrderLabel } from '@/lib/transport/shipment'
+import { landedCostAllowed } from '@/lib/transport/cost-access'
+import { loadLandedCost } from '@/lib/transport/landed-cost.server'
 import { listCargoShareLinks } from '@/app/actions/cargo/share-link'
 import CargoTimeline from '@/components/cargo/cargo-timeline'
 import ShareLinkCard from './share-link-card'
@@ -17,6 +19,7 @@ import { CustomsCard } from './customs-card'
 import ShipmentReferences from './shipment-references'
 import ShipmentContents from './shipment-contents'
 import HandShipmentView from './hand-shipment-view'
+import LandedCostCard from './landed-cost-card'
 
 /**
  * One container: where it is, how it got there, and a link to send somebody.
@@ -55,7 +58,10 @@ export default async function CargoShipmentPage({ params }: { params: Promise<{ 
   const org = await activeOrganisation(auth)
   if (!org) redirect('/transport')
 
-  if (HUB_ID.test(spotId)) return <HandShipmentView id={spotId} org={org} />
+  // Costs are the depot's own books: cost.view, and the shipment's organisation or Group.
+  const who = { capabilities: auth.capabilities, organisations: auth.profile.organisations }
+
+  if (HUB_ID.test(spotId)) return <HandShipmentView id={spotId} org={org} who={who} />
 
   const today = new Date().toISOString().slice(0, 10)
   const shipment = await loadCargoShipment(spotId, today)
@@ -74,6 +80,15 @@ export default async function CargoShipmentPage({ params }: { params: Promise<{ 
     sheetRowsBySpot([spotId]),
   ])
   const late = shipment.slipDays != null && shipment.slipDays >= 1
+  const landed = landedCostAllowed(who, shipment.destinationDepot)
+    ? await loadLandedCost({
+        hubId: hub?.id ?? null,
+        spotId,
+        depot: shipment.destinationDepot,
+        containers: shipment.containerNumbers,
+        lines: hub?.lines ?? [],
+      })
+    : null
 
   return (
     <div className="p-6">
@@ -196,6 +211,8 @@ export default async function CargoShipmentPage({ params }: { params: Promise<{ 
         products={products}
         fromSheet={linesFromSheet(sheet.get(spotId) ?? [], shipment.destinationDepot, products)}
       />
+
+      {landed && <LandedCostCard target={{ spotId: shipment.spotId }} lines={hub?.lines ?? []} view={landed} />}
 
       {auth.capabilities.has('customs.manage') && (
         <CustomsCard
