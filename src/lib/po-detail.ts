@@ -18,6 +18,8 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { stripPurchaseOrderCosts } from '@/lib/price-visibility'
 import { getPoPdfData, type PoPdfData } from '@/lib/po-pdf-data'
+import { sendsToXero, unpricedLines, type UnpricedLine } from '@/lib/po-xero-send'
+import { loadXeroSendRecords, withXeroSendViews } from '@/lib/po-xero-send.server'
 import type { PurchaseOrder, PoAttachment, PoShipment } from '@/lib/erp-types'
 
 /**
@@ -62,12 +64,19 @@ export type PurchaseOrderDetail = {
   pdf: PoPdfData
   /** Null on any leg that is not a Bamida order, or one never sent. */
   manufacturing: ManufacturingProgress | null
+  /**
+   * The lines Xero would receive at 0, on a leg that goes to Xero. Worked out before prices are
+   * stripped, because an approver without cost.view still has to be shown them to confirm them.
+   * It says which lines have no price and never what any price is.
+   */
+  unpriced: UnpricedLine[]
 }
 
 /** Null when the order does not exist, so the caller can notFound(). */
 export async function loadPurchaseOrderDetail(
   id: string,
-  canViewCost: boolean
+  canViewCost: boolean,
+  nowMs = Date.now(),
 ): Promise<PurchaseOrderDetail | null> {
   const supabase = await createServerClient()
 
@@ -78,10 +87,15 @@ export async function loadPurchaseOrderDetail(
     .maybeSingle<PurchaseOrder>()
   if (!order) return null
 
+  const unpriced = sendsToXero(order.leg) ? unpricedLines(order.lines ?? []) : []
+
   // This is the security point of the module. unit_price is nulled server-side
   // before the order leaves here, so a viewer without cost.view cannot receive
   // it in an RSC payload even when the screen renders no price column.
   const [po] = stripPurchaseOrderCosts([order], canViewCost)
+
+  // Whether it made it into Xero. The record is service-role only, so it is read here.
+  withXeroSendViews([po], await loadXeroSendRecords([po.id]), nowMs)
 
   // Received totals per line (partial-delivery progress).
   const lineIds = (po.lines ?? []).map((l) => l.id)
@@ -182,5 +196,5 @@ export async function loadPurchaseOrderDetail(
   // From/To party addresses + weekly FX for the branded PO PDF.
   const pdf = await getPoPdfData(supabase)
 
-  return { po, chain, pdf, manufacturing }
+  return { po, chain, pdf, manufacturing, unpriced }
 }

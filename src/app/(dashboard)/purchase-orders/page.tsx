@@ -10,6 +10,8 @@ import { NoOrganisationCard } from "@/components/organisations/no-organisation-c
 import { stripPurchaseOrderCosts } from "@/lib/price-visibility";
 import { effectiveStage } from "@/lib/po-lifecycle";
 import { getPoPdfData } from "@/lib/po-pdf-data";
+import { XERO_SEND_COLUMNS, type XeroSendRecord } from "@/lib/po-xero-send";
+import { withXeroSendViews } from "@/lib/po-xero-send.server";
 import PurchasingClient from "./purchasing-client";
 import type { PurchaseOrder, PoAttachment, PoShipment, PoManufacturing } from "@/lib/erp-types";
 
@@ -59,7 +61,7 @@ export default async function PurchasingPage() {
   // sequence were still five, and the PDF data never needed the orders at all.
   const lineIds = all.flatMap((o) => (o.lines ?? []).map((l) => l.id));
   const poIds = all.map((o) => o.id);
-  const [receiptsRes, attsRes, shipRes, mfgRes, poPdfData] = await Promise.all([
+  const [receiptsRes, attsRes, shipRes, mfgRes, sendsRes, poPdfData] = await Promise.all([
     lineIds.length
       ? supabase.from("po_line_receipts").select("po_line_id, qty_received").in("po_line_id", lineIds)
       : Promise.resolve({ data: [] as Array<{ po_line_id: string; qty_received: number }> }),
@@ -81,6 +83,11 @@ export default async function PurchasingPage() {
           .select("po_id, sent_at, sent_was_test, est_start, est_finish, finished_at")
           .in("po_id", poIds)
       : Promise.resolve({ data: [] as Array<{ po_id: string; sent_at: string | null; sent_was_test: boolean | null; est_start: string | null; est_finish: string | null; finished_at: string | null }> }),
+    // The Hub's record of each leg's hand-off to Xero. Service role, because the
+    // table is closed to everyone else; only the words a card shows go on.
+    poIds.length
+      ? createAdminClient().from("po_xero_sends").select(XERO_SEND_COLUMNS).in("po_id", poIds)
+      : Promise.resolve({ data: [] as XeroSendRecord[] }),
     // From/To party addresses + weekly FX for the branded PO PDF.
     getPoPdfData(supabase),
   ]);
@@ -119,6 +126,9 @@ export default async function PurchasingPage() {
     });
   }
   for (const o of all) o.manufacturing = mfgByPo.get(o.id) ?? null;
+
+  // An approved Depot or Group leg that should be in Xero and is not, said on its card.
+  withXeroSendViews(all, (sendsRes.data ?? []) as XeroSendRecord[]);
 
   return (
     <div className="p-6">

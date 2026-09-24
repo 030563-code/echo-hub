@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { SearchBox } from "@/components/ui/search-box";
 import PoPurposeTag from "@/components/po/po-purpose-tag";
 import type { PurchaseOrder } from "@/lib/erp-types";
+import type { UnpricedLine } from "@/lib/po-xero-send";
 import { usePersistedView } from "@/hooks/use-page-state";
 import { parseSearchView, type SearchView } from "@/lib/page-drafts";
 
@@ -26,13 +27,24 @@ const TIERS: { leg: PurchaseOrder["leg"]; n: number; title: string; route: strin
   { leg: "SRO_TO_SUPPLIER", n: 3, title: "SRO", route: "EB SRO → Supplier" },
 ];
 
-export default function ApprovalsClient({ orders, canViewCost }: { orders: PurchaseOrder[]; canViewCost: boolean }) {
+export default function ApprovalsClient({
+  orders,
+  canViewCost,
+  unpricedByPo,
+}: {
+  orders: PurchaseOrder[];
+  canViewCost: boolean;
+  /** Per order, the lines Xero would receive at 0. Worked out on the server before prices are stripped. */
+  unpricedByPo: Record<string, UnpricedLine[]>;
+}) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const [notice, setNotice] = useState<{ kind: "success" | "warn" | "error"; text: string } | null>(null);
   const [rejectTarget, setRejectTarget] = useState<PurchaseOrder | null>(null);
   const [rejectNote, setRejectNote] = useState("");
+  // An order with unpriced lines is approved only through this confirmation.
+  const [zeroTarget, setZeroTarget] = useState<{ po: PurchaseOrder; lines: UnpricedLine[] } | null>(null);
   // Approvals is a queue people filter and step away from, so the box survives the trip.
   const [qView, setQView] = usePersistedView<SearchView>(
     "po-approvals",
@@ -57,13 +69,28 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
     [filtered]
   );
 
-  function approve(po: PurchaseOrder) {
+  /** Approve, or ask first when Xero would receive lines at 0. */
+  function requestApprove(po: PurchaseOrder) {
+    const lines = unpricedByPo[po.id] ?? [];
+    if (lines.length > 0) setZeroTarget({ po, lines });
+    else approve(po);
+  }
+
+  function approve(po: PurchaseOrder, zeroPriceLineIds?: string[]) {
     setNotice(null);
     setBusyId(po.id);
+    setZeroTarget(null);
     startTransition(async () => {
-      const res = await decidePurchaseOrder({ poId: po.id, decision: "approve" });
+      const res = await decidePurchaseOrder({
+        poId: po.id,
+        decision: "approve",
+        ...(zeroPriceLineIds ? { zeroPriceLineIds } : {}),
+      });
       setBusyId(null);
-      if (!res.success) {
+      if (!res.success && res.unpricedLines?.length) {
+        // The order has unpriced lines this page did not know about. Ask about the real ones.
+        setZeroTarget({ po, lines: res.unpricedLines });
+      } else if (!res.success) {
         setNotice({ kind: "error", text: res.error });
         toast.error(res.error);
       } else if (res.warning) {
@@ -202,7 +229,7 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
                         Reject
                       </button>
                       <button
-                        onClick={() => approve(po)}
+                        onClick={() => requestApprove(po)}
                         disabled={busy}
                         className="inline-flex items-center gap-1.5 px-3 py-3 sm:py-1.5 text-sm text-white bg-green-700/80 hover:bg-green-600 rounded-lg transition-colors disabled:opacity-50"
                       >
@@ -242,6 +269,15 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
                     </table>
                   </div>
 
+                  {(unpricedByPo[po.id]?.length ?? 0) > 0 && (
+                    <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-800">
+                      <AlertTriangle className="w-3.5 h-3.5 mt-px flex-shrink-0" />
+                      {unpricedByPo[po.id].length === 1
+                        ? "1 line has no unit price, so Xero would receive it at 0."
+                        : `${unpricedByPo[po.id].length} lines have no unit price, so Xero would receive them at 0.`}
+                    </p>
+                  )}
+
                   {(po.delivery_address || po.notes) && (
                     <div className="mt-3 space-y-1">
                       {po.delivery_address && (
@@ -262,6 +298,41 @@ export default function ApprovalsClient({ orders, canViewCost }: { orders: Purch
           </div>
         </div>
       ))}
+
+      <Dialog.Root open={zeroTarget !== null} onOpenChange={(o) => !o && setZeroTarget(null)}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[calc(100%-2rem)] sm:w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto bg-white border border-gray-200 rounded-2xl p-6 shadow-2xl">
+            <Dialog.Title className="text-lg font-semibold text-gray-900" style={{ fontFamily: "Varela Round, sans-serif" }}>
+              Approve {zeroTarget ? displayPoNumber(zeroTarget.po.po_number) : ""} with unpriced lines
+            </Dialog.Title>
+            <Dialog.Description className="text-sm text-gray-600 mt-1">
+              {zeroTarget?.lines.length === 1 ? "This line has" : "These lines have"} no unit price, so Xero will receive{" "}
+              {zeroTarget?.lines.length === 1 ? "it" : "them"} at 0. The Hub cannot add a price to an order once it is raised.
+            </Dialog.Description>
+            <ul className="mt-3 space-y-1 text-sm text-gray-900 list-disc pl-5">
+              {zeroTarget?.lines.map((line) => (
+                <li key={line.id}>
+                  {line.product_name ?? line.sku} <span className="font-mono text-xs text-gray-500">({line.sku})</span>
+                </li>
+              ))}
+            </ul>
+            <div className="flex flex-wrap justify-end gap-2 mt-5">
+              <Dialog.Close className="px-4 py-2 text-sm text-gray-700 hover:text-gray-900 transition-colors rounded-lg hover:bg-gray-100">
+                Leave it
+              </Dialog.Close>
+              <button
+                onClick={() => zeroTarget && approve(zeroTarget.po, zeroTarget.lines.map((l) => l.id))}
+                disabled={busyId === zeroTarget?.po.id}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-700/80 hover:bg-green-600 rounded-lg transition-colors disabled:opacity-60"
+              >
+                {busyId === zeroTarget?.po.id && <Loader2 className="w-4 h-4 animate-spin" />}
+                Approve with these lines at 0 in Xero
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       <Dialog.Root open={rejectTarget !== null} onOpenChange={(o) => !o && setRejectTarget(null)}>
         <Dialog.Portal>

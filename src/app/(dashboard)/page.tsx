@@ -1,9 +1,11 @@
+import { Suspense } from 'react'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { ArrowRight } from 'lucide-react'
 import { getAuthorizedUser } from '@/lib/authz'
 import { navSections, type CapabilityKey } from '@/lib/capabilities'
 import { NAV_ICONS } from '@/lib/nav-icons'
+import { XeroSendBanner } from '@/components/po/xero-send-banner'
 
 export default async function DashboardHome() {
   const auth = await getAuthorizedUser()
@@ -27,6 +29,14 @@ export default async function DashboardHome() {
     <div>
       <h1 className="text-2xl font-bold text-gray-900 mb-1">Welcome to the Echo Barrier Hub</h1>
       <p className="text-gray-600 mb-8">Your workstreams, gated by what you’re authorised to do.</p>
+
+      {/* Approved purchase orders that never reached Xero, for the people who can send them
+          again. Its own boundary with no fallback, so the page never waits for it. */}
+      {caps.has('po.approve') && (
+        <Suspense fallback={null}>
+          <XeroSendBanner />
+        </Suspense>
+      )}
 
       {sections.length === 0 ? (
         <div className="rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center text-gray-500 max-w-2xl">

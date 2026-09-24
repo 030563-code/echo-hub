@@ -30,6 +30,11 @@ const LIST_PAGES: Record<string, string[]> = {
   'src/app/(dashboard)/calls/contacts/page.tsx': ['activeOrganisation(', 'officesForOrg(org)'],
   'src/app/(dashboard)/purchase-orders/page.tsx': ['activeOrganisation(', 'chainsForOrg(supabase, org)', '.or(filter)'],
   'src/app/(dashboard)/purchase-orders/approvals/page.tsx': ['activeOrganisation(', 'chainsForOrg(supabase, org)', '.or(filter)'],
+  // 24 Sep 2026: approved orders that never reached Xero, on the dashboard and the
+  // approvals page. The banner finds the organisation's chains, and the loader
+  // puts them in the query.
+  'src/components/po/xero-send-banner.tsx': ['activeOrganisation(', 'chainsForOrg(supabase, org)', 'loadXeroSendFailures(supabase, filter)'],
+  'src/lib/po-xero-send.server.ts': ['.or(filter)'],
   // Dean, 21 Sep 2026: in UK mode the raise page offers the UK depot, the UK
   // delivery address and the UK line items only.
   'src/app/(dashboard)/purchase-orders/create/page.tsx': ['activeOrganisation(', 'p.org === org', 'partiesForOrg(org)'],
@@ -86,6 +91,7 @@ const WRITE_GATES: Record<string, string> = {
   'src/app/actions/purchase-orders/attachments.ts': 'poChainHeldBy(',
   'src/app/actions/purchase-orders/cargo-request.ts': 'poChainHeldBy(',
   'src/app/actions/purchase-orders/decide-po.ts': 'poChainHeldBy(',
+  'src/app/actions/purchase-orders/send-to-xero-again.ts': 'poChainHeldBy(',
   'src/app/actions/purchase-orders/fulfil-from-stock.ts': 'poChainHeldBy(',
   'src/app/actions/purchase-orders/raise-manufacturing-po.ts': 'poChainHeldBy(',
   'src/app/actions/purchase-orders/po-shipments.ts': 'poChainHeldBy(',

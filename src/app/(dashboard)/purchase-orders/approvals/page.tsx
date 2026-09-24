@@ -6,6 +6,9 @@ import { chainFilter, chainsForOrg } from "@/lib/po-organisations";
 import { NoOrganisationCard } from "@/components/organisations/no-organisation-card";
 import { createServerClient } from "@/lib/supabase/server";
 import { stripPurchaseOrderCosts } from "@/lib/price-visibility";
+import { sendsToXero, unpricedLines, type UnpricedLine } from "@/lib/po-xero-send";
+import { loadXeroSendFailures } from "@/lib/po-xero-send.server";
+import XeroSendFailures from "@/components/po/xero-send-failures";
 import ApprovalsClient from "./approvals-client";
 import type { PurchaseOrder } from "@/lib/erp-types";
 
@@ -23,19 +26,30 @@ export default async function ApprovalsPage() {
 
   // All Hub-raised legs still awaiting approval, across the three tiers
   // (Depot → Group → SRO). n8n-raised rows (source='n8n') keep their own Slack
-  // gate and never appear here.
-  const { data: pending } =
+  // gate and never appear here. Alongside them, the approved legs whose send to
+  // Xero failed, because approvers are the people who can send them again.
+  const [{ data: pending }, failures] = await Promise.all([
     filter === null
-      ? { data: [] as PurchaseOrder[] }
-      : await supabase
+      ? Promise.resolve({ data: [] as PurchaseOrder[] })
+      : supabase
           .from("purchase_orders")
           .select("*, lines:purchase_order_lines(*)")
           .or(filter)
           .eq("source", "hub")
           .eq("status", "requested")
-          .order("created_at", { ascending: true });
+          .order("created_at", { ascending: true }),
+    loadXeroSendFailures(supabase, filter),
+  ]);
 
-  const orders = stripPurchaseOrderCosts((pending ?? []) as PurchaseOrder[], canViewCost);
+  // Which lines Xero would receive at 0, worked out before prices are stripped:
+  // an approver without cost.view still has to be shown them to confirm them.
+  const rows = (pending ?? []) as PurchaseOrder[];
+  const unpricedByPo: Record<string, UnpricedLine[]> = {};
+  for (const order of rows) {
+    const lines = sendsToXero(order.leg) ? unpricedLines(order.lines ?? []) : [];
+    if (lines.length > 0) unpricedByPo[order.id] = lines;
+  }
+  const orders = stripPurchaseOrderCosts(rows, canViewCost);
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -56,7 +70,13 @@ export default async function ApprovalsPage() {
         </p>
       </div>
 
-      <ApprovalsClient orders={orders} canViewCost={canViewCost} />
+      {failures.length > 0 && (
+        <div className="mb-6">
+          <XeroSendFailures failures={failures} />
+        </div>
+      )}
+
+      <ApprovalsClient orders={orders} canViewCost={canViewCost} unpricedByPo={unpricedByPo} />
     </div>
   );
 }

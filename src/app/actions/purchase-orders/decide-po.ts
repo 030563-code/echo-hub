@@ -8,9 +8,9 @@ import { poChainHeldBy } from "@/lib/po-organisations";
 import { externalCallsDisabled } from "@/lib/env";
 import { entityLabel } from "@/lib/depot-constants";
 import { snapshotSroPoCost } from "@/lib/bom";
-import { renderApprovalAttachment } from "@/lib/xero/attach-po-pdf";
+import { sendsToXero, unpricedLines, unpricedRefusal, type UnpricedLine } from "@/lib/po-xero-send";
 import { notifySroPoReady } from "./notify-sro";
-import { DEPOT_MAPPING_COLUMNS, raisingParty, xeroItemCodeFor, type DepotProduct } from "@/lib/po-raising";
+import { handOffApprovedLeg, recordSandboxApproval } from "./xero-handoff";
 import type { PurchaseOrderLine } from "@/lib/erp-types";
 
 // ---------------------------------------------------------------------------
@@ -37,6 +37,12 @@ const DecideSchema = z.object({
   poId: z.string().uuid("Invalid PO id"),
   decision: z.enum(["approve", "reject"]),
   note: z.string().trim().max(2000).optional(),
+  /**
+   * The lines with no unit price the approver saw and agreed to send to Xero at 0. Checked
+   * against the order's own lines here, so a stale page or a hand-made request cannot approve a
+   * line nobody was shown.
+   */
+  zeroPriceLineIds: z.array(z.string().uuid()).max(100).optional(),
 });
 
 export type DecidePOInput = z.infer<typeof DecideSchema>;
@@ -51,7 +57,8 @@ export type DecidePOResult =
       awaitingFulfilment?: boolean;
       warning?: string;
     }
-  | { success: false; error: string };
+  /** `unpricedLines` is set when the refusal is the unpriced lines, so a screen can ask. */
+  | { success: false; error: string; unpricedLines?: UnpricedLine[] };
 
 type Leg = "DEPOT_TO_EB_GROUP" | "EB_GROUP_TO_SRO" | "SRO_TO_SUPPLIER";
 
@@ -95,7 +102,7 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { poId, decision, note } = parsed.data;
+  const { poId, decision, note, zeroPriceLineIds } = parsed.data;
   const { user } = auth;
 
   const supabase = await createServerClient();
@@ -153,6 +160,21 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
     return { success: true, status: "rejected", tier };
   }
 
+  // ----- UNPRICED LINES ---------------------------------------------------
+  // n8n builds each Xero line as `UnitAmount: l.unit_price || 0`, so a line with no price used
+  // to reach Xero at 0 with nobody told. A price can only be entered when an order is raised
+  // (nothing in the Hub adds one later), and on 24 Sep 2026 every approved Depot and Group leg
+  // had none, so refusing outright would strand every order. Instead the approver is shown the
+  // lines and confirms them, and the confirmation is checked here against the order's own lines.
+  // Only the legs n8n puts in Xero; the manufacturing leg never goes there.
+  if (sendsToXero(po.leg)) {
+    const unpriced = unpricedLines(po.lines ?? []);
+    const confirmed = new Set(zeroPriceLineIds ?? []);
+    if (unpriced.some((line) => !confirmed.has(line.id))) {
+      return { success: false, error: unpricedRefusal(po.po_number, unpriced), unpricedLines: unpriced };
+    }
+  }
+
   // ----- APPROVE (atomic) -------------------------------------------------
   // One RPC does it all under a row lock: guard status='requested' → approve →
   // raise the next leg with reference_po_number = THIS leg's po_number → copy the
@@ -196,97 +218,26 @@ export async function decidePurchaseOrder(input: DecidePOInput): Promise<DecideP
   let warning: string | undefined;
   const nextPoNumber = result.child_po_number ?? undefined;
 
-  // Fire n8n for the APPROVED leg → create its Xero PO in that tier's account and
-  // write the real Xero PO# back. Best-effort (the Hub record is already saved).
-  const webhookUrl = process.env.N8N_PO_APPROVED_WEBHOOK_URL;
+  // Hand the APPROVED leg to n8n, which creates its Xero PO in that tier's account and writes
+  // the Xero id back. Best effort: the Hub record is already saved. Since 24 Sep 2026 every
+  // outcome is recorded on the leg (public.po_xero_sends), a missing webhook counts as a
+  // failure rather than an expected quiet, and a failed leg can be sent again from its page.
   if (externalCallsDisabled()) {
-    // Staging sandbox: never hand off to n8n/Xero, even if a URL is configured.
-    warning = warning ?? `Sandbox: ${tier} PO approved and saved in the Hub — the Xero hand-off is disabled in staging.`;
-  } else if (webhookUrl) {
-    try {
-      // The purchase order document travels WITH the approval, so the same n8n
-      // run that creates the Xero purchase order attaches it the moment the id
-      // comes back. Dean, 16 Sep 2026: "The attach pdf to Xero should happen
-      // after the PO is created in the same execution not seperate workflows."
-      // Best effort by construction: renderApprovalAttachment returns null
-      // rather than throwing, so a document that will not render costs us the
-      // PDF and never the order.
-      const attachment = await renderApprovalAttachment(po.id);
-
-      // 🔴 THE HUB DECIDES THE XERO ORGANISATION AND THE ITEM CODES, not n8n.
-      //
-      // n8n Fz7xXgifva5n548u chose the item code column with
-      // `let codeCol = "code_usa_balt"` and three ifs, and the tenant with
-      // `from_entity === 'CA-HAM' ? Canada : USA`. EU-FR already had a number
-      // series, so the first French order would have been created in the UNITED
-      // STATES organisation carrying US Baltimore codes, silently. Rather than
-      // sync a fourth copy of the map, the payload now carries the answers and
-      // n8n's own lookup becomes a fallback that nothing reaches.
-      //
-      // The party is read from from_entity, which is a depot on the depot leg,
-      // EB-GROUP on the Group leg and EB-SRO on the manufacturing leg. All
-      // three are in the registry with their own code column.
-      const party = raisingParty(po.from_entity);
-      const [{ data: tenantRow }, { data: mapping }] = await Promise.all([
-        supabase.from("entities").select("xero_tenant_id").eq("code", party?.org ?? "").maybeSingle(),
-        // The party's own rows of product_depot_mapping: the code ITS Xero
-        // organisation knows the line under. Dean, 22 Sep 2026.
-        supabase
-          .from("product_depot_mapping")
-          .select(DEPOT_MAPPING_COLUMNS)
-          .eq("depot_code", party?.code ?? "")
-          .eq("is_active", true),
-      ]);
-      const codeFor = (sku: string): string | null =>
-        party ? xeroItemCodeFor(party, sku, (mapping ?? []) as DepotProduct[]) : null;
-      const res = await fetch(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(process.env.N8N_PO_APPROVED_WEBHOOK_SECRET
-            ? { "x-hub-secret": process.env.N8N_PO_APPROVED_WEBHOOK_SECRET }
-            : {}),
-        },
-        body: JSON.stringify({
-          po_id: po.id,
-          po_number: po.po_number,
-          master_ref: po.master_ref,
-          reference_po_number: po.reference_po_number,
-          leg: po.leg,
-          tier,
-          from_entity: po.from_entity,
-          to_entity: po.to_entity,
-          parent_po_id: po.parent_po_id,
-          delivery_address: po.delivery_address,
-          approved_by: label,
-          approved_by_uid: user.id,
-          /** The Xero organisation this order belongs in. Null only when the
-           *  party is unmapped, which create-po refuses, so n8n falling back
-           *  should never happen and is worth an execution log if it does. */
-          xero_tenant_id: (tenantRow as { xero_tenant_id?: string | null } | null)?.xero_tenant_id ?? null,
-          raising_party: party?.code ?? null,
-          lines: (po.lines ?? []).map((l) => ({
-            sku: l.sku,
-            product_name: l.product_name,
-            quantity: l.quantity,
-            hs_code: l.hs_code,
-            unit_price: l.unit_price,
-            /** The ItemCode Xero must receive for THIS party. */
-            xero_item_code: codeFor(l.sku),
-          })),
-          /** null = render failed; n8n creates the order and skips the attach. */
-          attachment,
-        }),
-        cache: "no-store",
-      });
-      if (!res.ok) {
-        warning = warning ?? `Approved + saved, but the ${tier} Xero hand-off (n8n) did not confirm.`;
-      }
-    } catch {
-      warning = warning ?? `Approved + saved, but the ${tier} Xero hand-off (n8n) could not be reached.`;
+    // Staging sandbox: never hand off to n8n/Xero, even if a URL is configured. Staging shares
+    // the live database, so the leg is marked, or the live Hub would offer to send it for real.
+    if (sendsToXero(po.leg)) await recordSandboxApproval(po.id);
+    warning = `Sandbox: ${tier} PO approved and saved in the Hub. The Xero hand-off is disabled in staging.`;
+  } else {
+    const handoff = await handOffApprovedLeg(supabase, po, { label, uid: user.id }, user.id);
+    if (!handoff.sent && handoff.reason !== "staging") {
+      warning =
+        handoff.reason === "timed_out"
+          ? `Approved and saved, but the ${tier} order may not be in Xero yet. ${handoff.error} Its page shows whether the Xero purchase order comes back.`
+          : sendsToXero(po.leg)
+            ? `Approved and saved, but the ${tier} order is NOT in Xero. ${handoff.error} Open the order to send it to Xero again.`
+            : `Approved and saved, but n8n did not take the ${tier} hand-off. ${handoff.error}`;
     }
   }
-  // No webhook configured yet = expected (n8n not wired); not a warning.
 
   // The order has just landed at SRO: tell whoever the Hub names that a decision
   // is waiting on them.

@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { decidePurchaseOrder } from '@/app/actions/purchase-orders/decide-po'
 import { displayPoNumber } from '@/lib/po-number'
+import type { UnpricedLine } from '@/lib/po-xero-send'
 
 const inputCls =
   'w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-echo-orange transition-colors'
@@ -23,7 +24,11 @@ function consequences(leg: string, tier: string): string[] {
   // URL is set and external calls are not disabled, and treats a refusal as a
   // warning on an otherwise successful approval. A confirm that promises a Xero
   // purchase order is worse than none when staging never creates one.
-  out.push(`The ${tier} purchase order is handed to n8n to create in Xero. If that hand-off is off or fails, you are told, and the approval still stands.`)
+  out.push(
+    leg === 'DEPOT_TO_EB_GROUP' || leg === 'EB_GROUP_TO_SRO'
+      ? `The ${tier} purchase order is handed to n8n to create in Xero. If that fails, you are told, the approval still stands, and the order can be sent to Xero again from its page.`
+      : `The ${tier} purchase order is handed to n8n to create in Xero. If that hand-off is off or fails, you are told, and the approval still stands.`,
+  )
   if (leg === 'EB_GROUP_TO_SRO') {
     out.push('The order sits with SRO, and an email tells them a fulfilment decision is waiting.')
   }
@@ -51,6 +56,7 @@ export default function ApprovalCard({
   status,
   source,
   canApprove,
+  unpriced,
 }: {
   poId: string
   poNumber: string | null
@@ -60,6 +66,11 @@ export default function ApprovalCard({
   status: string
   source: string
   canApprove: boolean
+  /**
+   * Lines Xero would receive at 0. Nothing in the Hub can price a raised order, so these are
+   * shown and confirmed rather than refused, and decide-po checks the confirmation.
+   */
+  unpriced: UnpricedLine[]
 }) {
 
   const router = useRouter()
@@ -77,7 +88,12 @@ export default function ApprovalCard({
   function approve() {
     setConfirmingApprove(false)
     startTransition(async () => {
-      const res = await decidePurchaseOrder({ poId, decision: 'approve' })
+      const res = await decidePurchaseOrder({
+        poId,
+        decision: 'approve',
+        // Exactly the lines this card showed. The server refuses if the order has another.
+        ...(unpriced.length > 0 ? { zeroPriceLineIds: unpriced.map((l) => l.id) } : {}),
+      })
       if (!res.success) {
         toast.error(res.error)
       } else {
@@ -89,8 +105,9 @@ export default function ApprovalCard({
               : `${res.tier} approved. Final tier, the chain is complete.`,
         )
         // A warning rides alongside success (the Xero hand-off or the SRO email
-        // not confirming), and it is the half nobody else will tell them about.
-        if (res.warning) toast.warning(res.warning)
+        // not confirming), and it is the half nobody else will tell them about,
+        // so it stays until it is dismissed.
+        if (res.warning) toast.warning(res.warning, { duration: Infinity })
       }
       router.refresh()
     })
@@ -147,13 +164,29 @@ export default function ApprovalCard({
                   <li key={line}>{line}</li>
                 ))}
               </ul>
-              <div className="mt-3 flex gap-2">
+              {unpriced.length > 0 && (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-sm text-amber-900">
+                    {unpriced.length === 1 ? 'This line has' : 'These lines have'} no unit price, so Xero will
+                    receive {unpriced.length === 1 ? 'it' : 'them'} at 0:
+                  </p>
+                  <ul className="mt-1.5 space-y-0.5 text-sm text-amber-900 list-disc pl-5">
+                    {unpriced.map((line) => (
+                      <li key={line.id}>
+                        {line.product_name ?? line.sku} <span className="font-mono text-xs">({line.sku})</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-1.5 text-xs text-amber-800">The Hub cannot add a price to an order once it is raised.</p>
+                </div>
+              )}
+              <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   onClick={approve}
                   disabled={pending}
                   className="px-5 py-2 bg-echo-orange hover:bg-echo-orange-hover text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-colors"
                 >
-                  {pending ? 'Approving...' : 'Approve it'}
+                  {pending ? 'Approving...' : unpriced.length > 0 ? 'Approve with these lines at 0 in Xero' : 'Approve it'}
                 </button>
                 <button
                   onClick={() => setConfirmingApprove(false)}
