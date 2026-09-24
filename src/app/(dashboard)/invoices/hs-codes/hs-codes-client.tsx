@@ -26,6 +26,14 @@ import { isValidHsCode, normaliseHsCode } from '@/lib/hs-codes'
 import { saveHsCodes } from '@/app/actions/invoices/save-hs-codes'
 import { cn } from '@/lib/utils'
 
+/** A code Echo Barrier's goods are entered under, from the po_hs_codes picklist. */
+export interface HsCodeInUse {
+  code: string
+  description: string | null
+}
+
+const IN_USE_LIST = 'hs-codes-in-use'
+
 export interface HsCodeProduct {
   sku: string
   product_name: string | null
@@ -53,10 +61,12 @@ export default function HsCodesClient({
   products,
   canEdit,
   loadError,
+  codesInUse = [],
 }: {
   products: HsCodeProduct[]
   canEdit: boolean
   loadError: string | null
+  codesInUse?: HsCodeInUse[]
 }) {
   const [view, setView] = usePersistedView<SearchView>('commercial-invoices:hs-codes', { v: 1, q: '' }, parseSearchView)
   const q = view.q
@@ -232,6 +242,28 @@ export default function HsCodesClient({
             The code printed on each commercial invoice line, for each leg. An invoice with a blank code cannot be issued. Type the
             code as it should print, for example 3926.90 or 3926 90 97. Clearing a box removes that code.
           </p>
+          {codesInUse.length > 0 && (
+            <div className="mt-2 max-w-3xl text-xs text-gray-500">
+              <p>The codes on Echo Barrier&apos;s US customs entries, offered in every box as you type:</p>
+              <ul className="mt-1 space-y-0.5">
+                {codesInUse.map((c) => (
+                  <li key={c.code}>
+                    <span className="font-mono text-gray-800">{c.code}</span>
+                    {c.description ? ` ${c.description}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {canEdit && codesInUse.length > 0 && (
+            <datalist id={IN_USE_LIST}>
+              {codesInUse.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.description ?? ''}
+                </option>
+              ))}
+            </datalist>
+          )}
         </div>
         {products.length > 0 && (
           <SearchBox value={q} onChange={setQ} placeholder="Search product or SKU…" className="w-full sm:w-64 shrink-0" />
@@ -428,6 +460,7 @@ function HsCodeRow({
                 if (e.key === 'Enter') save()
               }}
               placeholder={s.counted ? 'Not set' : notCountedNote}
+              list={IN_USE_LIST}
               aria-label={`${LEG_CONFIG[s.leg].label} HS code for ${label}`}
               aria-invalid={s.shown || undefined}
               aria-describedby={s.shown ? errorId : undefined}
