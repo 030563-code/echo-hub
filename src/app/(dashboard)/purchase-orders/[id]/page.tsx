@@ -14,6 +14,7 @@ import { loadCargoRequest, type CargoRequestRow } from '@/lib/cargo-request-stor
 import { specActorNames, specDocumentStatus } from '@/lib/po-spec-store'
 import { pricedDocumentStatus } from '@/lib/po-priced-store'
 import { loadSendContacts } from '@/lib/send-contacts'
+import { xeroOrganisationName } from '@/lib/po-xero-send'
 import DownloadPoPdfButton from '@/components/po/download-po-pdf-button'
 import AttachPoPdfButton from '@/components/po/attach-po-pdf-button'
 import PackingListCard from '@/components/po/packing-list-card'
@@ -32,6 +33,7 @@ import CargoRequestCard from './cargo-request-card'
 import ApprovalCard from './approval-card'
 import StageControl from './stage-control'
 import ReceiveButton from './receive-button'
+import XeroSendCard from './xero-send-card'
 
 export const dynamic = 'force-dynamic'
 
@@ -85,7 +87,7 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
   // An order from a chain none of this person's organisations has a leg in
   // answers exactly as a missing one: whether it exists is not their business.
   if (!(await poChainHeldBy(id, auth.profile.organisations))) notFound()
-  const { po, chain, pdf, manufacturing } = detail
+  const { po, chain, pdf, manufacturing, unpriced } = detail
 
   // Exactly the conditions the rest of the Hub already uses, so this page and the
   // board can never disagree about what an order is waiting on.
@@ -249,6 +251,18 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
         </div>
       </div>
 
+      {/* An approved leg that should be in Xero and is not. First, because nothing else on the
+          page matters as much to whoever is reading it, and nothing will fix it by itself. */}
+      {po.xero_send && (
+        <XeroSendCard
+          poId={po.id}
+          poNumber={po.po_number}
+          view={po.xero_send}
+          xeroOrganisation={xeroOrganisationName(po)}
+          canApprove={canApprove}
+        />
+      )}
+
       {/* The other legs of the same order. Three purchase orders is the chain by
           design, and until now the only way to see the others was the board. */}
       {chain.length > 1 && (
@@ -358,6 +372,7 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
             status={po.status}
             source={po.source}
             canApprove={canApprove}
+            unpriced={unpriced}
           />
         </div>
       )}

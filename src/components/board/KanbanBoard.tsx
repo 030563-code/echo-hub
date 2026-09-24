@@ -6,6 +6,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronUp, Package, Clock, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import StatusBadge from "./StatusBadge";
+import XeroSendNotice from "@/components/po/xero-send-notice";
 import { displayPoNumber, legLabel } from "@/lib/po-number";
 import { LIFECYCLE_STAGES, effectiveStage, poCardNumber, stageLabel, type LifecycleStage } from "@/lib/po-lifecycle";
 import type { PurchaseOrder } from "@/lib/erp-types";
@@ -193,6 +194,14 @@ function POCard({
         <div className="mb-2 flex flex-wrap items-center gap-1">
           {approvedSro && <StatusBadge status="approved" />}
           {fulfilment && <StatusBadge status={fulfilment} />}
+        </div>
+      )}
+
+      {/* Approved, but not in Xero, and nothing will put it there by itself. Only the
+          failed state: a send still on its way is said on the order page. */}
+      {order.xero_send?.kind === "failed" && (
+        <div className="mb-2">
+          <XeroSendNotice view={order.xero_send} small />
         </div>
       )}
 

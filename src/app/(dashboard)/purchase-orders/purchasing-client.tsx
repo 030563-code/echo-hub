@@ -14,6 +14,7 @@ import DownloadPoPdfButton from "@/components/po/download-po-pdf-button";
 import ReceiveModal from "@/components/po/receive-modal";
 import ShipmentSection from "@/components/po/shipment-section";
 import TimelineItem from "@/components/po/timeline-item";
+import XeroSendNotice from "@/components/po/xero-send-notice";
 import { EmptyState } from "@/components/ui/empty-state";
 import PoFilterBar from "@/components/po/po-filter-bar";
 import { applyPoFilters, type PoFilters } from "@/lib/po-filters";
@@ -308,6 +309,22 @@ export default function PurchasingClient({ orders, canReceive, canManageAttachme
             <DetailSection label="Status">
               <StatusBadge status={selected.status} />
             </DetailSection>
+
+            {/* The same words as the card, and the way to the one page that can send it again. */}
+            {selected.xero_send && (
+              <div className="space-y-2">
+                <XeroSendNotice view={selected.xero_send} />
+                {selected.xero_send.kind === "failed" && (
+                  <Link
+                    href={`/purchase-orders/${selected.id}`}
+                    className="flex items-center justify-between gap-2 w-full px-4 py-2.5 text-sm text-gray-900 bg-white hover:bg-gray-100 border border-gray-300 rounded-lg transition-colors"
+                  >
+                    Open the order to send it to Xero again
+                    <ArrowRight className="w-3.5 h-3.5 text-gray-500" />
+                  </Link>
+                )}
+              </div>
+            )}
 
             {/* Where the decisions live: choose stock or manufacture on an
                 approved SRO leg, send a manufacturing order to Bamida. Reachable

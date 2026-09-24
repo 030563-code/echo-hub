@@ -19,6 +19,9 @@ const code = (f: string) =>
 const LIB = 'src/lib/xero/attach-po-pdf.ts'
 const ACTION = 'src/app/actions/purchase-orders/attach-po-pdf.ts'
 const DECIDE = 'src/app/actions/purchase-orders/decide-po.ts'
+/** Where the approval's post to n8n lives since 24 Sep 2026, shared by decide-po and the retry. */
+const HANDOFF = 'src/app/actions/purchase-orders/xero-handoff.ts'
+const RETRY = 'src/app/actions/purchase-orders/send-to-xero-again.ts'
 
 /** The body of one exported function, so a later export cannot answer for it. */
 const fn = (src: string, name: string) => {
@@ -95,17 +98,28 @@ describe('the purchase order PDF renders on the server as well as the browser', 
 
 describe('the document goes on in the same run that creates the order', () => {
   const decide = code(DECIDE)
+  const handoff = code(HANDOFF)
+  const retry = code(RETRY)
   const lib = code(LIB)
 
   it('approval carries the document, so n8n needs no second call', () => {
-    expect(decide).toContain('renderApprovalAttachment(po.id)')
-    expect(decide).toContain('attachment,')
+    // Built in the hand-off, which the approval and "Send to Xero again" share,
+    // so a retry carries the same document the approval did.
+    expect(handoff).toContain('renderApprovalAttachment(po.id)')
+    expect(handoff).toContain('attachment,')
   })
 
   it('renders only after the approval is committed, never before', () => {
     const approved = decide.indexOf('hub_approve_po_leg')
     expect(approved).toBeGreaterThan(-1)
-    expect(approved).toBeLessThan(decide.indexOf('renderApprovalAttachment(po.id)'))
+    expect(approved).toBeLessThan(decide.indexOf('handOffApprovedLeg('))
+  })
+
+  it('sending again re-posts the approval and never approves again', () => {
+    // Approving raises the next leg and freezes the cost. A retry must do neither.
+    expect(retry).toContain('handOffApprovedLeg(')
+    expect(retry).not.toContain('hub_approve_po_leg')
+    expect(retry).not.toContain('snapshotSroPoCost')
   })
 
   it('a document that will not render costs the PDF, never the order', () => {
@@ -117,8 +131,11 @@ describe('the document goes on in the same run that creates the order', () => {
   })
 
   it('approving still posts to exactly one webhook, the one that creates the order', () => {
-    expect(decide.match(/process\.env\.N8N_[A-Z_]*_URL/g) ?? []).toEqual([
+    expect(handoff.match(/process\.env\.N8N_[A-Z_]*_URL/g) ?? []).toEqual([
       'process.env.N8N_PO_APPROVED_WEBHOOK_URL',
     ])
+    // Neither caller posts anywhere of its own.
+    expect(decide.match(/process\.env\.N8N_[A-Z_]*_URL/g) ?? []).toEqual([])
+    expect(retry.match(/process\.env\.N8N_[A-Z_]*_URL/g) ?? []).toEqual([])
   })
 })

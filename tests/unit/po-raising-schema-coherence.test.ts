@@ -243,7 +243,9 @@ describe('the depot-specific line items come from product_depot_mapping', () => 
     for (const file of [
       'src/app/(dashboard)/purchase-orders/create/page.tsx',
       'src/app/actions/purchase-orders/create-po.ts',
-      'src/app/actions/purchase-orders/decide-po.ts',
+      // The Xero payload moved here from decide-po on 24 Sep 2026, so the
+      // approval and "Send to Xero again" build it in one place.
+      'src/app/actions/purchase-orders/xero-handoff.ts',
     ]) {
       const src = codeOnly(read(file))
       expect(src, file).toContain('from("product_depot_mapping")')
@@ -425,7 +427,9 @@ describe('the raising rollback', () => {
 })
 
 describe('what the Hub hands n8n', () => {
-  const decide = read('src/app/actions/purchase-orders/decide-po.ts')
+  // Built in the hand-off module since 24 Sep 2026: decide-po and the retry
+  // action both call it, so neither can drift from what the other sends.
+  const decide = read('src/app/actions/purchase-orders/xero-handoff.ts')
   /** Without the comments, so the prose explaining the old fault cannot satisfy
    *  or trip an assertion about the code. */
   const code = codeOnly(decide)

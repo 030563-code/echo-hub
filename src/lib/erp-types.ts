@@ -1,4 +1,5 @@
 import type { InvoiceLeg } from "@/lib/invoice-legs";
+import type { XeroSendView } from "@/lib/po-xero-send";
 
 export interface PurchaseOrder {
   id: string;
@@ -59,6 +60,11 @@ export interface PurchaseOrder {
   shipment?: PoShipment | null;
   /** Manufacturing progress, on SRO_TO_SUPPLIER orders that have been sent. */
   manufacturing?: PoManufacturing | null;
+  /**
+   * Whether an approved Depot or Group leg made it into Xero, worked out on the server
+   * (src/lib/po-xero-send.ts). Null when there is nothing to say, including once it is in Xero.
+   */
+  xero_send?: XeroSendView | null;
 }
 
 /**

@@ -34,11 +34,13 @@ describe('one session lookup per request', () => {
 describe('the purchase orders page fetches its follow-ups in one round', () => {
   const src = code('src/app/(dashboard)/purchase-orders/page.tsx')
 
-  it('runs receipts, attachments, shipments, manufacturing and PDF data in one Promise.all', () => {
-    const start = src.indexOf('const [receiptsRes, attsRes, shipRes, mfgRes, poPdfData] = await Promise.all([')
+  it('runs receipts, attachments, shipments, manufacturing, Xero sends and PDF data in one Promise.all', () => {
+    // The Xero send records joined the same round on 24 Sep 2026 rather than
+    // becoming a sixth hop of their own.
+    const start = src.indexOf('const [receiptsRes, attsRes, shipRes, mfgRes, sendsRes, poPdfData] = await Promise.all([')
     expect(start).toBeGreaterThan(-1)
     const block = src.slice(start, src.indexOf(']);', start))
-    for (const table of ['po_line_receipts', 'po_attachments', 'po_shipments', 'po_manufacturing']) {
+    for (const table of ['po_line_receipts', 'po_attachments', 'po_shipments', 'po_manufacturing', 'po_xero_sends']) {
       expect(block, table).toContain(`"${table}"`)
     }
     expect(block).toContain('getPoPdfData(supabase)')
