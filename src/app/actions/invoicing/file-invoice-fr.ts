@@ -31,6 +31,7 @@ import {
   requireInvoicingManage,
   loadInvoiceWithLines,
   logInvoiceEvent,
+  rememberXeroAccountNumber,
   snapshotBillingContact,
 } from '@/app/actions/invoicing/shared'
 
@@ -140,6 +141,18 @@ export async function fileInvoiceXeroDraft(input: { invoiceId: string }): Promis
     engine: 'xero_draft',
     xero_draft_invoice_id: invoice.xero_draft_invoice_id,
   })
+
+  // --- 4. The company keeps the account number, for its next invoice ---
+  // Numbering is the moment it is settled: the Xero draft behind the tax
+  // already hangs off that contact, and the invoice now carries its number
+  // for good.
+  if (await rememberXeroAccountNumber(profile.accountCodeColumn, invoice.hubspot_company_id, invoice.taxjar_customer_id)) {
+    await logInvoiceEvent(invoiceId, 'account_number_remembered', gate.auth.user.id, {
+      column: profile.accountCodeColumn,
+      hubspot_company_id: invoice.hubspot_company_id,
+      account_number: invoice.taxjar_customer_id,
+    })
+  }
 
   revalidatePath('/invoicing/tax-calculated')
   revalidatePath('/invoicing/filed')

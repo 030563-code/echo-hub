@@ -16,6 +16,7 @@ import { sanitizeUSAddress, normalizeUSState } from '@/lib/us-address'
 import { getAuthorizedUser, type AuthzOk } from '@/lib/authz'
 import { holdsOrganisation, type OrgCode } from '@/lib/organisations'
 import type { CustomerInvoiceStatus } from '@/lib/customer-invoice/constants'
+import type { InvoicingProfile } from '@/lib/customer-invoice/invoicing-profile'
 import type { USDepot, InvoiceDepot } from '@/lib/customer-invoice/constants'
 
 export interface CustomerInvoiceRow {
@@ -372,6 +373,49 @@ export async function snapshotBillingContact(
       .eq('id', invoiceId)
   } catch (error) {
     console.error('snapshotBillingContact failed', error)
+  }
+}
+
+/**
+ * Keep the Xero account number an invoice was numbered under on its company,
+ * so the company's next invoice opens with it already filled in.
+ *
+ * The USA and Canada get a code generated when a deal is accepted
+ * (ensure_company_xero_codes). France has no generator: the code has to be the
+ * contact's own number in Echo Barrier SAS's Xero, and until now a number typed
+ * on one invoice was forgotten with that invoice.
+ *
+ * Only ever fills an EMPTY code. A code already on the company is the
+ * company's, and one invoice billed elsewhere is no reason to change where
+ * every later invoice goes. A company with no registry row is left alone
+ * rather than inserted. Best effort: the invoice is already numbered, and a
+ * failure here only means the next invoice needs the number typed again.
+ */
+export async function rememberXeroAccountNumber(
+  column: InvoicingProfile['accountCodeColumn'],
+  hubspotCompanyId: string | null,
+  accountNumber: string | null,
+): Promise<boolean> {
+  const companyId = String(hubspotCompanyId ?? '').replace(/\D/g, '')
+  const code = String(accountNumber ?? '').trim()
+  if (companyId === '' || code === '') return false
+  try {
+    const admin = createAdminClient()
+    const { data, error } = await admin
+      .from('account_registry')
+      .update({ [column]: code, updated_at: new Date().toISOString() })
+      .eq('hubspot_company_id', Number(companyId))
+      // Empty means NULL or ''. The registry holds thousands of empty strings.
+      .or(`${column}.is.null,${column}.eq.`)
+      .select('hubspot_company_id')
+    if (error) {
+      console.error('rememberXeroAccountNumber failed', error.message)
+      return false
+    }
+    return (data ?? []).length > 0
+  } catch (error) {
+    console.error('rememberXeroAccountNumber threw', error instanceof Error ? error.message : 'unknown')
+    return false
   }
 }
 

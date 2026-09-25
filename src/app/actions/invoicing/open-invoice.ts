@@ -16,6 +16,7 @@ import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildDraftLines, type RawDealLine } from '@/lib/customer-invoice/build-draft'
 import { fetchHubSpotLineDescriptions } from '@/lib/customer-invoice/line-descriptions'
+import { fetchDealCompanyId } from '@/lib/customer-invoice/deal-company'
 import { isInvoiceDepot } from '@/lib/customer-invoice/constants'
 import { depotCode } from '@/lib/depot-constants'
 import { invoicingProfile } from '@/lib/customer-invoice/invoicing-profile'
@@ -165,7 +166,10 @@ export async function openInvoiceForDeal(input: {
   // stored under.
   let companyName: string | null = null
   let xeroAccountCode: string | null = null
-  const companyIdClean = String(deal.hubspot_company_id ?? '').replace(/\D/g, '')
+  let companyIdClean = String(deal.hubspot_company_id ?? '').replace(/\D/g, '')
+  // Most older EURO SALES rows carry no company (deal-company.ts has the
+  // numbers), so HubSpot is asked when the registry cannot say.
+  if (!companyIdClean) companyIdClean = (await fetchDealCompanyId(dealId)) ?? ''
   if (companyIdClean) {
     const { data: account } = await admin
       .from('account_registry')
