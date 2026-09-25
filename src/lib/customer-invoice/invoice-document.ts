@@ -17,6 +17,8 @@ import { FR_DELIVERY_COUNTRIES } from '@/lib/fr-address'
 import { customerPaymentTerms } from './payment-terms'
 import { DEPOT_FROM_ADDRESSES, type InvoiceDepot } from './constants'
 import type { TaxEngine } from './invoicing-profile'
+import { DEFAULT_DOCUMENT_LANGUAGE, type DocumentLanguage } from './document-language'
+import { invoiceLabels, type InvoiceLabels } from './invoice-labels'
 import { depotShipments, filingTransactionId } from './tax-mapping'
 import { summariseTaxResponse, type DepotTaxBreakdown } from './tax-breakdown'
 import type { RemittanceDetails } from './seller'
@@ -142,6 +144,9 @@ export interface InvoiceDocument {
   totalDue: number
   taxDetail: DepotTaxBreakdown[]
   remittance: RemittanceDetails
+  /** The language the labels and dates print in. The invoice's own, stored
+   *  on the row, so every render of one invoice reads the same. */
+  language: DocumentLanguage
 }
 
 /**
@@ -161,12 +166,12 @@ function countryLabel(code: string | null): string {
   return [...DELIVERY_COUNTRIES, ...FR_DELIVERY_COUNTRIES].find((c) => c.value === raw)?.label ?? raw
 }
 
-function shipToLines(header: InvoiceDocumentHeaderRow): string[] {
+function shipToLines(header: InvoiceDocumentHeaderRow, labels: InvoiceLabels): string[] {
   // A collected order still names who asked for it, which is often the only way
   // the yard knows whose pickup it is.
-  const requester = requestedByLine(header.delivery_requested_by)
+  const requester = requestedByLine(header.delivery_requested_by, labels.requestedBy)
   if (header.is_collection) {
-    return ['Collected by the customer', ...(requester ? [requester] : [])]
+    return [labels.collectedByCustomer, ...(requester ? [requester] : [])]
   }
   // Street, then the site label under it, then city/state/zip. Built by the
   // shared formatter so the dropdown label, the PDF and the editor cannot drift.
@@ -249,13 +254,23 @@ function toDocumentLine(row: InvoiceDocumentLineRow): InvoiceDocumentLine {
  * Build everything the invoice document prints.
  *
  * `paymentTerms` is passed in rather than derived: the words live in Xero on
- * the contact, and this module does not reach the network.
+ * the contact, and this module does not reach the network. `language` is the
+ * invoice's stored one; English when absent, which is what every caller before
+ * it printed.
  */
 export function buildInvoiceDocument(
   header: InvoiceDocumentHeaderRow,
   lines: readonly InvoiceDocumentLineRow[],
-  opts: { remittance: RemittanceDetails; paymentTerms?: string | null; taxEngine?: TaxEngine; taxLabel?: string },
+  opts: {
+    remittance: RemittanceDetails
+    paymentTerms?: string | null
+    taxEngine?: TaxEngine
+    taxLabel?: string
+    language?: DocumentLanguage
+  },
 ): InvoiceDocument {
+  const language = opts.language ?? DEFAULT_DOCUMENT_LANGUAGE
+  const labels = invoiceLabels(language)
   // Only the TaxJar engine files anything, so only it has a transaction id to
   // print. Defaults to TaxJar because every caller before France was the USA.
   const filesWithTaxJar = (opts.taxEngine ?? 'taxjar') === 'taxjar'
@@ -310,9 +325,9 @@ export function buildInvoiceDocument(
     issuedOn: header.invoice_date,
     dueOn: header.due_date,
     paymentTerms: customerPaymentTerms(opts.paymentTerms),
-    customerName: header.company_name ?? 'Customer',
+    customerName: header.company_name ?? labels.customer,
     customerPoNumber: header.customer_po_number,
-    shipTo: shipToLines(header),
+    shipTo: shipToLines(header, labels),
     billTo: billToLines(header),
     isCollection: header.is_collection,
     currency: header.currency || 'USD',
@@ -327,5 +342,6 @@ export function buildInvoiceDocument(
     totalDue: roundCents(taxableNet + freight + salesTax),
     taxDetail,
     remittance: opts.remittance,
+    language,
   }
 }

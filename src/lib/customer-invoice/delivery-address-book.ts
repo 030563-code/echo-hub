@@ -137,8 +137,13 @@ export function deliveryAddressLines(address: DeliveryAddressInput): string[] {
   return lines
 }
 
-/** The requester line, or null when nobody was named. */
-export function requestedByLine(requestedBy: string | null | undefined): string | null {
+/** The requester line, or null when nobody was named. `template` is the
+ *  invoice language's wording, with {name} where the name goes. */
+export function requestedByLine(
+  requestedBy: string | null | undefined,
+  template = 'Requested by: {name}',
+): string | null {
   const name = squash(requestedBy)
-  return name === '' ? null : `Requested by: ${name}`
+  // A function replacement, so a name containing "$&" prints as typed.
+  return name === '' ? null : template.replace('{name}', () => name)
 }

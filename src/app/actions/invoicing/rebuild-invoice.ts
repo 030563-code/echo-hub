@@ -15,6 +15,7 @@ import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireInvoicingManage, logInvoiceEvent } from '@/app/actions/invoicing/shared'
 import { openInvoiceForDeal } from '@/app/actions/invoicing/open-invoice'
+import { documentLanguage } from '@/lib/customer-invoice/document-language'
 
 const Input = z.object({ invoiceId: z.string().uuid() })
 
@@ -31,7 +32,7 @@ export async function rebuildInvoiceFromDeal(input: { invoiceId: string }): Prom
   const admin = createAdminClient()
   const { data: invoice } = await admin
     .from('customer_invoices')
-    .select('id, status, hubspot_deal_id, is_collection')
+    .select('id, status, hubspot_deal_id, is_collection, document_language')
     .eq('id', invoiceId)
     .maybeSingle()
   if (!invoice) return { success: false, error: 'Invoice not found.' }
@@ -52,10 +53,13 @@ export async function rebuildInvoiceFromDeal(input: { invoiceId: string }): Prom
 
   // Carry the Will Call flag onto the replacement. Losing it here would
   // silently re-tax a collected order at the customer's own address the next
-  // time Dave calculated, with nothing on screen to show what changed.
+  // time Dave calculated, with nothing on screen to show what changed. The
+  // document's language goes with it, so a reviewer's choice of Spanish is
+  // not quietly put back to the quote's French.
   const opened = await openInvoiceForDeal({
     dealId: invoice.hubspot_deal_id,
     isCollection: invoice.is_collection,
+    documentLanguage: documentLanguage(invoice.document_language),
   })
   if (!opened.success) {
     // Put the reviewed draft back exactly as it was: a refused rebuild must

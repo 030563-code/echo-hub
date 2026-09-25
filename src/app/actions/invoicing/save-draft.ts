@@ -14,6 +14,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { computeDraftLineTotal } from '@/lib/customer-invoice/build-draft'
 import { INVOICE_DEPOTS, kitShipFrom } from '@/lib/customer-invoice/constants'
 import { invoicingProfile } from '@/lib/customer-invoice/invoicing-profile'
+import {
+  DOCUMENT_LANGUAGES,
+  DOCUMENT_LANGUAGE_NAMES,
+  documentLanguage,
+  documentLanguagesFor,
+} from '@/lib/customer-invoice/document-language'
 import { orgLabel } from '@/lib/organisations'
 import { MAX_TRACKING_PER_LINE } from '@/lib/customer-invoice/tracking'
 import { linesHash } from '@/lib/customer-invoice/hash'
@@ -24,6 +30,7 @@ import {
   requireInvoicingManage,
   loadInvoiceWithLines,
   lookupXeroItemCodes,
+  logInvoiceEvent,
 } from '@/app/actions/invoicing/shared'
 
 const LineInput = z.object({
@@ -69,6 +76,10 @@ const Input = z.object({
     due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
     customer_po_number: z.string().max(120).nullable(),
     taxjar_customer_id: z.string().max(64).nullable(),
+    // Optional, unlike is_collection below, because absence is harmless here: a
+    // tab loaded before the choice existed posts without it, and that leaves
+    // the stored language as it is. It prints; it is not a tax input.
+    document_language: z.enum(DOCUMENT_LANGUAGES).optional(),
     delivery_street: z.string().max(255).nullable(),
     delivery_city: z.string().max(100).nullable(),
     // Shape only here. WHICH shape is the invoice's organisation's business,
@@ -207,6 +218,18 @@ export async function saveInvoiceDraft(input: z.infer<typeof Input>): Promise<Sa
     }
   }
 
+  // The document's language, checked against the organisation before anything
+  // is written: a USA invoice is English, whatever a crafted payload asks for.
+  const storedLanguage = documentLanguage(invoice.document_language)
+  const nextLanguage = header.document_language ?? storedLanguage
+  const offeredLanguages = documentLanguagesFor(profile)
+  if (nextLanguage !== storedLanguage && !offeredLanguages.includes(nextLanguage)) {
+    return {
+      success: false,
+      error: `${orgLabel(profile.org)} invoices are written in ${offeredLanguages.map((l) => DOCUMENT_LANGUAGE_NAMES[l]).join(', ')} only.`,
+    }
+  }
+
   // Xero item codes are always re-resolved server-side for the line's own
   // ship-from depot; the client never supplies them.
   const codes = await lookupXeroItemCodes(normalized.map((l) => ({ sku: l.sku, depot: l.ship_from_depot })))
@@ -291,9 +314,36 @@ export async function saveInvoiceDraft(input: z.infer<typeof Input>): Promise<Sa
     return { success: false, error: 'Could not save the invoice.' }
   }
 
+  // save_customer_invoice reads its header keys by name and does not know this
+  // one, so it is written here, straight after, under the same rule: only while
+  // the invoice is editable. Once it is numbered, the language is frozen with
+  // the rest of the document. Not in linesHash, so it never costs a valid tax
+  // calculation.
+  let languageStored = true
+  if (nextLanguage !== storedLanguage) {
+    const { data: moved, error: languageError } = await admin
+      .from('customer_invoices')
+      .update({ document_language: nextLanguage })
+      .eq('id', invoiceId)
+      .in('status', ['draft', 'tax_calculated'])
+      .select('id')
+    if (languageError || !moved || moved.length === 0) {
+      console.error(
+        'saveInvoiceDraft: the document language was not stored:',
+        languageError ? `${languageError.code} ${languageError.message}` : 'the invoice is no longer editable',
+      )
+      languageStored = false
+    } else {
+      await logInvoiceEvent(invoiceId, 'language_changed', gate.auth.user.id, { from: storedLanguage, to: nextLanguage })
+    }
+  }
+
   revalidatePath('/invoicing/accepted')
   revalidatePath('/invoicing/drafts')
   revalidatePath(`/invoicing/${invoice.hubspot_deal_id}`)
+  if (!languageStored) {
+    return { success: false, error: 'The invoice was saved, but its language could not be changed. Save again.' }
+  }
   const result = data as { status: string; tax_invalidated: boolean }
   return { success: true, status: result.status, taxInvalidated: result.tax_invalidated }
 }

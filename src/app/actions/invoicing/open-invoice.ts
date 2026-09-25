@@ -20,6 +20,8 @@ import { isInvoiceDepot } from '@/lib/customer-invoice/constants'
 import { depotCode } from '@/lib/depot-constants'
 import { invoicingProfile } from '@/lib/customer-invoice/invoicing-profile'
 import { hasStateField } from '@/lib/delivery-address'
+import { DOCUMENT_LANGUAGES, type DocumentLanguage } from '@/lib/customer-invoice/document-language'
+import { setOpeningDocumentLanguage } from '@/lib/customer-invoice/document-language.server'
 import { linesHash } from '@/lib/customer-invoice/hash'
 import { holdsOrganisation, orgForDepot, orgLabel } from '@/lib/organisations'
 import { xeroItemAccounts } from '@/lib/xero-hub'
@@ -37,6 +39,9 @@ const Input = z.object({
   // A fresh draft takes its answer from deals_registry.is_collection, given at
   // Quote Setup and confirmed at acceptance.
   isCollection: z.boolean().optional(),
+  // Also set by the rebuild, and for the same reason: the replaced draft's
+  // language is the reviewer's, so it wins over the quote's.
+  documentLanguage: z.enum(DOCUMENT_LANGUAGES).optional(),
 })
 
 export type OpenInvoiceResult =
@@ -46,6 +51,7 @@ export type OpenInvoiceResult =
 export async function openInvoiceForDeal(input: {
   dealId: string
   isCollection?: boolean
+  documentLanguage?: DocumentLanguage
 }): Promise<OpenInvoiceResult> {
   const gate = await requireInvoicingManage()
   if (!gate.ok) return { success: false, error: gate.error }
@@ -274,7 +280,19 @@ export async function openInvoiceForDeal(input: {
     return { success: false, error: 'Could not create the draft invoice.' }
   }
 
+  const invoiceId = (created as { id: string }).id
+  // The language the customer's document is written in, chosen once, here, and
+  // stored, so a reprint never changes it. English for an organisation that
+  // writes in nothing else; otherwise the deal's quote decides.
+  await setOpeningDocumentLanguage({
+    invoiceId,
+    dealId,
+    profile,
+    carriedOver: parsed.data.documentLanguage,
+    actorUid: gate.auth.user.id,
+  })
+
   revalidatePath('/invoicing/accepted')
   revalidatePath('/invoicing/drafts')
-  return { success: true, invoiceId: (created as { id: string }).id, created: true }
+  return { success: true, invoiceId, created: true }
 }

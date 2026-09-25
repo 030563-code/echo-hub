@@ -25,6 +25,7 @@
 
 import { orgForDepot, type OrgCode } from '@/lib/organisations'
 import { invoiceDepotsForOrg, type InvoiceDepot } from './constants'
+import type { DocumentLanguage } from './document-language'
 
 /**
  * Who prices the tax.
@@ -130,8 +131,12 @@ export interface InvoicingProfile {
    *  organisation_code; this is the same word, so a screen can say which
    *  number a step allocates without knowing the USA's. */
   invoiceSeries: string
-  /** BCP 47 locale for money and dates on the customer's document. */
+  /** BCP 47 locale for money on the customer's document, in every language it
+   *  is written in, and for its dates when it is in the organisation's own. */
   locale: string
+  /** The languages the customer's document can be written in, in the order the
+   *  editor offers them. Absent means English only, with no choice shown. */
+  documentLanguages?: readonly DocumentLanguage[]
   /** What the document calls the tax line. */
   taxLabel: string
 }
@@ -209,6 +214,10 @@ const PROFILES: Partial<Record<OrgCode, InvoicingProfile>> = {
     holdingPrefix: 'FRI',
     invoiceSeries: 'EBFR',
     locale: 'fr-FR',
+    // Claire's customers are mostly French and some Spanish, and everyone else
+    // gets English. Her quotes by HubSpot language: fr 404, es 160, the others
+    // a few dozen each.
+    documentLanguages: ['en', 'fr', 'es'],
     taxLabel: 'TVA',
   },
 }

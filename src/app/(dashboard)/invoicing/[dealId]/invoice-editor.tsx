@@ -29,6 +29,12 @@ import {
 } from '@/lib/delivery-address'
 import { invoicingProfile } from '@/lib/customer-invoice/invoicing-profile'
 import { organisation } from '@/lib/organisations'
+import {
+  DOCUMENT_LANGUAGE_NAMES,
+  documentLanguagesFor,
+  invoiceLanguage,
+  isDocumentLanguage,
+} from '@/lib/customer-invoice/document-language'
 import { saveDeliveryAddress } from '@/app/actions/invoicing/delivery-addresses'
 import {
   deliveryAddressLabel,
@@ -154,6 +160,10 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
   // a US depot it was not shipping from.
   const depotChoices = profile?.depots ?? US_DEPOTS
   const money = new Intl.NumberFormat(profile?.locale ?? 'en-US', { style: 'currency', currency: invoice.currency || 'USD' })
+  // The languages this organisation's documents come in, and the one this
+  // invoice prints in. One language means no choice on screen: the USA.
+  const languages = documentLanguagesFor(profile)
+  const storedLanguage = invoiceLanguage(profile, invoice.document_language)
   const [pendingAction, setPendingAction] = useState<string | null>(null)
   const [, startTransition] = useTransition()
 
@@ -164,6 +174,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
     due_date: invoice.due_date ?? '',
     customer_po_number: invoice.customer_po_number ?? '',
     taxjar_customer_id: invoice.taxjar_customer_id ?? '',
+    document_language: storedLanguage,
     delivery_street: invoice.delivery_street ?? '',
     delivery_city: invoice.delivery_city ?? '',
     delivery_state: invoice.delivery_state ?? '',
@@ -178,6 +189,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
     due_date: invoice.due_date ?? '',
     customer_po_number: invoice.customer_po_number ?? '',
     taxjar_customer_id: invoice.taxjar_customer_id ?? '',
+    document_language: storedLanguage,
     delivery_street: invoice.delivery_street ?? '',
     delivery_city: invoice.delivery_city ?? '',
     delivery_state: invoice.delivery_state ?? '',
@@ -384,7 +396,12 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
         void clearDraft()
         return
       }
-      setHeader(restored.data.header)
+      // A draft saved before the language choice existed carries none, and the
+      // invoice keeps its own.
+      setHeader({
+        ...restored.data.header,
+        document_language: restored.data.header.document_language ?? storedLanguage,
+      })
       setRows(restored.data.rows)
     },
   })
@@ -664,6 +681,7 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
       due_date: header.due_date || null,
       customer_po_number: header.customer_po_number || null,
       taxjar_customer_id: header.taxjar_customer_id || null,
+      document_language: header.document_language,
       delivery_street: header.delivery_street || null,
       delivery_city: header.delivery_city || null,
       delivery_state: header.delivery_state || null,
@@ -1040,6 +1058,32 @@ export function InvoiceEditor({ invoice, lines, dealName, quoteReference, linesC
               disabled={!editable}
             />
           </div>
+          {/* Shown only where there is a choice. Frozen with the rest of the
+              document once the invoice is numbered, so a reprint reads the same. */}
+          {languages.length > 1 && (
+            <div>
+              <Label htmlFor="document_language">Invoice language</Label>
+              <select
+                id="document_language"
+                className="flex h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                value={header.document_language}
+                onChange={(e) => {
+                  const next = e.target.value
+                  if (isDocumentLanguage(next)) setHeader({ ...header, document_language: next })
+                }}
+                disabled={!editable}
+              >
+                {languages.map((language) => (
+                  <option key={language} value={language}>
+                    {DOCUMENT_LANGUAGE_NAMES[language]}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                The PDF&apos;s labels and dates. Starts as the language of the deal&apos;s quote in HubSpot, or English.
+              </p>
+            </div>
+          )}
         </div>
       </Card>
 

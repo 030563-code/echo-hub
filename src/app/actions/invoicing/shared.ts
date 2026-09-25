@@ -26,6 +26,10 @@ export interface CustomerInvoiceRow {
   /** Snapshotted at Send to TaxJar. An issued invoice must not change its
    *  printed terms because someone edited the Xero contact afterwards. */
   payment_terms_label: string | null
+  /** The language the PDF's labels and dates print in: 'en', 'fr' or 'es'.
+   *  Chosen when the draft is opened and editable until it is numbered, so
+   *  every render of an issued invoice reads the same. */
+  document_language: string
   pdf_generated_at: string | null
   pdf_sha256: string | null
   xero_attachment_id: string | null
