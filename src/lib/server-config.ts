@@ -81,6 +81,17 @@ const SPEC: Array<Omit<ConfigEntry, 'present' | 'host'> & { url?: boolean }> = [
     breaks: 'French invoices cannot be priced in, or sent to, Xero.' },
   { name: 'N8N_CUSTOMER_INVOICE_WEBHOOK_SECRET_FR', group: 'Invoicing', required: false,
     breaks: 'n8n answers 401 and the French invoice is not sent.' },
+  // Echo Barrier SAS's bank, printed as the payment instructions on every French
+  // invoice. Listed because nothing else shows whether the running server has
+  // them until someone opens a French invoice.
+  { name: 'INVOICE_REMIT_FR_ACCOUNT_NAME', group: 'Invoicing', required: false,
+    breaks: 'French invoices name the account holder "ECHO BARRIER".' },
+  { name: 'INVOICE_REMIT_FR_BANK_NAME', group: 'Invoicing', required: false,
+    breaks: 'A French invoice cannot be emailed: it has no payment instructions on it.' },
+  { name: 'INVOICE_REMIT_FR_IBAN', group: 'Invoicing', required: false,
+    breaks: 'A French invoice prints <IBAN> and cannot be emailed.' },
+  { name: 'INVOICE_REMIT_FR_BIC', group: 'Invoicing', required: false,
+    breaks: 'A French invoice prints <BIC> and cannot be emailed.' },
 
   { name: 'READY_NOTIFY_TO', group: 'Email', required: false,
     breaks: 'Ready-for-shipment falls back to its built-in recipient.' },

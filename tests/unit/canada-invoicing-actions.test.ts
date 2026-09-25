@@ -23,6 +23,15 @@ const db = vi.hoisted(() => ({
   selects: [] as { table: string; cols: string }[],
   writes: [] as { table: string; op: string; payload: unknown }[],
   rpcCalls: [] as { fn: string; args: Record<string, unknown> }[],
+  /** Every .or() and every account_registry .eq(), so a test can say which rows a write was aimed at. */
+  ors: [] as { table: string; expr: string }[],
+  registryEqs: [] as [string, unknown][],
+  /** The rows an account_registry update reports back: none unless a test says one matched. */
+  registryUpdated: [] as Record<string, unknown>[],
+}))
+
+const hubspot = vi.hoisted(() => ({
+  dealCompany: vi.fn(async (): Promise<string | null> => null),
 }))
 
 const taxjar = vi.hoisted(() => ({
@@ -68,6 +77,16 @@ vi.mock('@/lib/customer-invoice/line-descriptions', () => ({
   fetchHubSpotLineDescriptions: vi.fn(async () => new Map()),
 }))
 
+vi.mock('@/lib/customer-invoice/deal-company', () => ({
+  fetchDealCompanyId: hubspot.dealCompany,
+}))
+
+// A French invoice reads its quote's language from HubSpot on opening; that is
+// covered by its own tests, and here it must not reach for the network.
+vi.mock('@/lib/customer-invoice/document-language.server', () => ({
+  setOpeningDocumentLanguage: vi.fn(async () => undefined),
+}))
+
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
     rpc: async (fn: string, args: Record<string, unknown>) => {
@@ -107,6 +126,11 @@ vi.mock('@/lib/supabase/admin', () => ({
         },
         eq: (col: string, value: unknown) => {
           filters[col] = value
+          if (table === 'account_registry') db.registryEqs.push([col, value])
+          return builder
+        },
+        or: (expr: string) => {
+          db.ors.push({ table, expr })
           return builder
         },
         neq: chain,
@@ -126,7 +150,15 @@ vi.mock('@/lib/supabase/admin', () => ({
         },
         maybeSingle: async () => ({ data: single(), error: null }),
         then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
-          Promise.resolve({ data: op === 'select' ? list() : null, error: null }).then(resolve, reject),
+          Promise.resolve({
+            data:
+              op === 'select'
+                ? list()
+                : op === 'update' && table === 'account_registry'
+                  ? db.registryUpdated
+                  : null,
+            error: null,
+          }).then(resolve, reject),
       })
       return builder
     },
@@ -219,6 +251,10 @@ beforeEach(() => {
   db.selects = []
   db.writes = []
   db.rpcCalls = []
+  db.ors = []
+  db.registryEqs = []
+  db.registryUpdated = []
+  hubspot.dealCompany.mockClear()
   taxjar.nexus.mockClear()
   taxjar.calculate.mockClear()
   taxjar.createOrder.mockClear()
@@ -494,6 +530,118 @@ describe('opening a Canadian invoice from an accepted deal', () => {
       error:
         'This deal is in CAD. US invoicing is USD only, because the TaxJar and Xero flow behind it is a US sales-tax flow. ' +
         "Invoice a CAD deal through the Canadian process instead, or correct the deal's currency in HubSpot if CAD is wrong.",
+    })
+  })
+})
+
+describe('a French invoice, its company and its Xero account number', () => {
+  const frenchInvoice = (overrides: Row = {}) =>
+    invoiceRow({
+      organisation_code: 'EB-FRANCE',
+      currency: 'EUR',
+      holding_reference: 'FRI2026-00001',
+      status: 'tax_calculated',
+      xero_draft_invoice_id: 'invented-draft-id',
+      taxjar_customer_id: 'QXZFRA001',
+      delivery_country: 'FR',
+      delivery_state: null,
+      delivery_zip: '75999',
+      ...overrides,
+    })
+  const events = () =>
+    db.writes.filter((w) => w.table === 'customer_invoice_events').map((w) => (w.payload as Row).event)
+
+  it('numbering keeps the account number on a company that had none', async () => {
+    db.invoice = frenchInvoice()
+    db.lines = [lineRow({ ship_from_depot: 'EU-FR', tax_amount: 0 })]
+    db.registryUpdated = [{ hubspot_company_id: 880001 }]
+    expect((await fileInvoiceXeroDraft({ invoiceId: INVOICE_ID })).success).toBe(true)
+
+    expect(db.writes.find((w) => w.table === 'account_registry')).toMatchObject({
+      op: 'update',
+      payload: { france_xero_account_code: 'QXZFRA001' },
+    })
+    // Aimed at this company, and only while its French code is still empty.
+    expect(db.registryEqs).toContainEqual(['hubspot_company_id', 880001])
+    expect(db.ors).toContainEqual({
+      table: 'account_registry',
+      expr: 'france_xero_account_code.is.null,france_xero_account_code.eq.',
+    })
+    expect(events()).toEqual(['numbered', 'account_number_remembered'])
+  })
+
+  it('a company that already has a code keeps it, and nothing is logged as remembered', async () => {
+    db.invoice = frenchInvoice()
+    db.lines = [lineRow({ ship_from_depot: 'EU-FR', tax_amount: 0 })]
+    // The "still empty" filter matches no row.
+    db.registryUpdated = []
+    expect((await fileInvoiceXeroDraft({ invoiceId: INVOICE_ID })).success).toBe(true)
+    expect(events()).toEqual(['numbered'])
+  })
+
+  it('an invoice with no company, or no account number, writes nothing to the registry', async () => {
+    db.lines = [lineRow({ ship_from_depot: 'EU-FR', tax_amount: 0 })]
+    db.invoice = frenchInvoice({ hubspot_company_id: null })
+    expect((await fileInvoiceXeroDraft({ invoiceId: INVOICE_ID })).success).toBe(true)
+    db.invoice = frenchInvoice({ taxjar_customer_id: null })
+    expect((await fileInvoiceXeroDraft({ invoiceId: INVOICE_ID })).success).toBe(true)
+    expect(db.writes.filter((w) => w.table === 'account_registry')).toEqual([])
+  })
+
+  function frenchDeal(overrides: Row = {}): Row {
+    return {
+      hubspot_deal_id: '990001',
+      hubspot_company_id: null,
+      deal_name: 'Invented French Deal',
+      deal_status: '1170409275',
+      depot_code: 'EU-France',
+      currency: 'USD',
+      line_items_raw: [{ name: 'Echo Barrier H9', sku: 'EBH9', quantity: 5, unit_price: 100 }],
+      quote_reference: 'Q-TEST-2',
+      delivery_street: '1 Rue Inventee',
+      delivery_city: 'Villefausse',
+      delivery_state: null,
+      delivery_zip: '75999',
+      is_collection: false,
+      ...overrides,
+    }
+  }
+
+  it('a deal the registry holds no company for takes its primary company from HubSpot', async () => {
+    db.deal = frenchDeal()
+    hubspot.dealCompany.mockResolvedValueOnce('880002')
+    db.account = { hubspot_company_name: 'Invented Client SAS', france_xero_account_code: 'QXZFRA002' }
+    expect(await openInvoiceForDeal({ dealId: '990001' })).toMatchObject({ success: true, created: true })
+
+    expect(hubspot.dealCompany).toHaveBeenCalledWith('990001')
+    expect(db.registryEqs).toContainEqual(['hubspot_company_id', 880002])
+    expect(db.rpcCalls.find((c) => c.fn === 'create_customer_invoice')!.args.p_header).toMatchObject({
+      organisation_code: 'EB-FRANCE',
+      hubspot_company_id: '880002',
+      company_name: 'Invented Client SAS',
+      taxjar_customer_id: 'QXZFRA002',
+    })
+  })
+
+  it('a company the registry does hold wins, and HubSpot is not asked', async () => {
+    db.deal = frenchDeal({ hubspot_company_id: '880001' })
+    db.account = { hubspot_company_name: 'Invented Customer SAS', france_xero_account_code: 'QXZFRA001' }
+    expect((await openInvoiceForDeal({ dealId: '990001' })).success).toBe(true)
+    expect(hubspot.dealCompany).not.toHaveBeenCalled()
+    expect(db.rpcCalls.find((c) => c.fn === 'create_customer_invoice')!.args.p_header).toMatchObject({
+      hubspot_company_id: '880001',
+      taxjar_customer_id: 'QXZFRA001',
+    })
+  })
+
+  it('with no company anywhere the draft still opens, without an account number', async () => {
+    db.deal = frenchDeal()
+    expect((await openInvoiceForDeal({ dealId: '990001' })).success).toBe(true)
+    expect(db.selects.some((s) => s.table === 'account_registry')).toBe(false)
+    expect(db.rpcCalls.find((c) => c.fn === 'create_customer_invoice')!.args.p_header).toMatchObject({
+      hubspot_company_id: null,
+      taxjar_customer_id: null,
+      company_name: 'Invented French Deal',
     })
   })
 })
