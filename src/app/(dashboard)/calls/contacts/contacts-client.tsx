@@ -8,7 +8,9 @@ import { hubspotRecordUrl } from '@/lib/hubspot-links'
 import { Button } from '@/components/ui/button'
 import { SearchBox } from '@/components/ui/search-box'
 import { usePersistedView } from '@/hooks/use-page-state'
+import { useViewerTimeZone } from '@/hooks/use-viewer-time-zone'
 import { parseSearchView, type SearchView } from '@/lib/page-drafts'
+import { callDate } from '@/lib/calls/call-time'
 import type { PlaceholderContact } from '@/lib/calls/placeholders'
 import { LinkContactDialog } from '../link-contact-dialog'
 
@@ -33,6 +35,7 @@ export function PlaceholderContactsClient({
 }) {
   const [view, setView] = usePersistedView<SearchView>('calls:contacts', { v: 1, q: '' }, parseSearchView)
   const [linking, setLinking] = useState<PlaceholderContact | null>(null)
+  const timeZone = useViewerTimeZone()
 
   const shown = useMemo(() => {
     const needle = view.q.trim().toLowerCase()
@@ -97,7 +100,7 @@ export function PlaceholderContactsClient({
                     </td>
                     <td className="px-3 py-2.5 text-gray-700">{c.office ?? c.country ?? '—'}</td>
                     <td className="px-3 py-2.5 text-gray-600">
-                      {c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                      {c.createdAt && <time dateTime={c.createdAt}>{callDate(c.createdAt, timeZone)}</time>}
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <div className="flex items-center justify-end gap-3">

@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import Link from 'next/link'
 import { MoveRight } from 'lucide-react'
-import { formatMoney, formatRelative } from '@/lib/utils'
+import { formatMoney } from '@/lib/utils'
+import { RelativeDate } from '@/components/ui/relative-date'
 import { ownerLabel, teamLabel, type OwnerIndex } from '@/lib/hubspot-owners'
 import { isClosedStage } from '@/lib/deals-board'
 import type { BoardColumn } from '@/lib/deals-board'
@@ -121,7 +122,7 @@ export function DealsBoard({
                           : '—'}
                       </p>
                       <p className="mt-1 text-xs text-gray-400">
-                        {formatRelative(deal.properties.createdate)}
+                        <RelativeDate value={deal.properties.createdate} />
                       </p>
                       {showOwner && owners && (
                         <p className="mt-1 text-xs text-gray-500">

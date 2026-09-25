@@ -204,6 +204,35 @@ export const QUOTE_TEMPLATE_IDS: Record<string, string | null> = {
   AU: null,
 }
 
+/**
+ * What a person reads for each template value, in the picker and wherever else
+ * a template is named. The stored value stays the code: the profile row, the
+ * quote builder's draft, deal_quotes and quoteTemplateIdFor all work in codes,
+ * and only the words on screen change.
+ *
+ * Each label is the template's language, plus its country where the code names
+ * one, read off each template's name and default language in HubSpot on 24 Sep
+ * 2026 (the language is noted beside each). A value with no template has no
+ * label and shows as itself, which is how AU and 'default' still read.
+ */
+export const QUOTE_TEMPLATE_LABELS: Record<string, string> = {
+  US: 'English (USA)', // en, the US template
+  CAN: 'English (Canada)', // en, the CAD template
+  FR: 'French', // fr, Devis France
+  'FR-EN': 'English (France)', // en-gb, Devis France en Anglais
+  ES: 'Spanish', // es, Presupuesto España
+  DE: 'German', // de, Devis Allemagne depuis la France
+  PT: 'Portuguese', // pt, PORTUGAL
+}
+
+/** The words for a template value, or the value itself when it has none. As
+ *  forgiving about its input as quoteTemplateIdFor, because the refusal messages
+ *  that use it are reached with whatever a caller sent. */
+export function quoteTemplateLabel(templateValue: string | null | undefined): string {
+  const value = String(templateValue ?? '')
+  return QUOTE_TEMPLATE_LABELS[value.trim().toUpperCase()] ?? value
+}
+
 /** The template id for a profile's template value, or null when there is none.
  *  Never guesses: publishing under the wrong branding is worse than refusing. */
 /**

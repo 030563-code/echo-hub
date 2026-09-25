@@ -55,10 +55,10 @@ describe('formatDate', () => {
 
 describe('formatRelative', () => {
   it('falls back to the US long form past 30 days', () => {
-    expect(formatRelative('2020-01-15T12:00:00Z')).toBe('January 15, 2020')
+    expect(formatRelative('2020-01-15T12:00:00Z', 'America/Los_Angeles')).toBe('January 15, 2020')
   })
 
   it('still says Today for now', () => {
-    expect(formatRelative(new Date().toISOString())).toBe('Today')
+    expect(formatRelative(new Date().toISOString(), 'America/Los_Angeles')).toBe('Today')
   })
 })

@@ -131,6 +131,43 @@ test.describe("Claire's Hub: France only, invoicing live, nothing else", () => {
     }
   })
 
+  // The walk-through above runs in the machine's time zone, which only shows
+  // these bugs when it differs from the server's. The live server runs in UTC
+  // and her browser in Paris: the Calls page and the Quotes board formatted
+  // times and dates on both, got different texts, and React threw its hydration
+  // error (418) at her on first load. So both are also read from her zone, and
+  // from a US one as the US office would read them. Each has to hydrate without
+  // that error (the afterEach above), and the Calls rows show the reader's clock.
+  for (const timezoneId of ['Europe/Paris', 'America/New_York']) {
+    test.describe(`read from ${timezoneId}`, () => {
+      test.use({ timezoneId })
+
+      test('the Quotes board hydrates cleanly', async ({ page }) => {
+        await page.goto('/quotes/board')
+        await page.waitForLoadState('networkidle')
+        await expect(page.locator('main .animate-pulse'), 'board still loading').toHaveCount(0, { timeout: 20_000 })
+      })
+
+      test("the Calls tabs hydrate cleanly and show each call at the reader's own time", async ({ page }) => {
+        await page.goto('/calls/log')
+        await page.waitForLoadState('networkidle')
+        const times = page.locator('main table time')
+        const count = await times.count()
+        test.info().annotations.push({ type: 'calls checked', description: String(count) })
+        for (let i = 0; i < count; i++) {
+          const time = times.nth(i)
+          const iso = (await time.getAttribute('datetime')) ?? ''
+          const clock = new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: timezoneId })
+          await expect(time.locator('span').last(), iso).toHaveText(clock)
+        }
+
+        await page.goto('/calls/contacts')
+        await page.waitForLoadState('networkidle')
+        await expect(page.getByRole('heading', { name: 'Calls', level: 1 })).toBeVisible()
+      })
+    })
+  }
+
   test('the modules she does not hold send her home', async ({ page }) => {
     for (const path of ['/purchase-orders', '/transport', '/mrp', '/bom', '/stock', '/invoices', '/factory']) {
       await page.goto(path)
