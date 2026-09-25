@@ -18,7 +18,8 @@ import XeroSendNotice from "@/components/po/xero-send-notice";
 import { EmptyState } from "@/components/ui/empty-state";
 import PoFilterBar from "@/components/po/po-filter-bar";
 import { applyPoFilters, type PoFilters } from "@/lib/po-filters";
-import { cn, formatRelative } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { RelativeDate } from "@/components/ui/relative-date";
 import { syncAllPoShipments } from "@/app/actions/purchase-orders/po-shipments";
 import { chainNumber, isFullyReceived, legLabel, displayPoNumber, poOrderNumber } from "@/lib/po-number";
 import type { PdfParty } from "@/lib/po-pdf";
@@ -82,7 +83,7 @@ const TABLE_COLUMNS: ColumnDef<PurchaseOrder, unknown>[] = [
     accessorKey: "created_at",
     header: "Created",
     cell: ({ getValue }) => (
-      <span className="text-xs text-gray-500">{formatRelative(getValue() as string)}</span>
+      <span className="text-xs text-gray-500"><RelativeDate value={getValue() as string} /></span>
     ),
   },
 ];

@@ -10,7 +10,7 @@ import XeroSendNotice from "@/components/po/xero-send-notice";
 import { displayPoNumber, legLabel } from "@/lib/po-number";
 import { LIFECYCLE_STAGES, effectiveStage, poCardNumber, stageLabel, type LifecycleStage } from "@/lib/po-lifecycle";
 import type { PurchaseOrder } from "@/lib/erp-types";
-import { formatRelative } from "@/lib/utils";
+import { RelativeDate } from "@/components/ui/relative-date";
 
 interface KanbanBoardProps {
   orders: PurchaseOrder[];
@@ -265,7 +265,7 @@ function POCard({
       {/* Timestamp */}
       <div className="flex items-center gap-1 mt-2 text-[10px] text-gray-400">
         <Clock className="w-3 h-3" />
-        {formatRelative(order.created_at)}
+        <RelativeDate value={order.created_at} />
       </div>
     </div>
   );

@@ -35,10 +35,12 @@ const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/
  * DATE-ONLY string ("2026-09-05", which is what expires_on, valid_from and
  * week_start_date hold) is parsed by the Date constructor as UTC midnight, so
  * in any America/* zone it renders a day EARLY unless it is formatted in UTC.
- * A TIMESTAMP (created_at) is a real instant and is rendered in the viewer's
- * own zone, as before.
+ * A TIMESTAMP (created_at) is a real instant and is rendered in `timeZone`
+ * when one is given, otherwise in the zone of whatever process runs this. In a
+ * client component that is the server's zone (UTC) on the first render and
+ * the reader's in the browser, so pass one there: see formatRelative.
  */
-export function formatDate(dateStr: string | null | undefined) {
+export function formatDate(dateStr: string | null | undefined, timeZone?: string) {
   if (!dateStr) return "—"
   const trimmed = dateStr.trim()
   const date = new Date(trimmed)
@@ -48,17 +50,30 @@ export function formatDate(dateStr: string | null | undefined) {
     month: "long",
     day: "numeric",
     year: "numeric",
-    ...(DATE_ONLY_RE.test(trimmed) ? { timeZone: "UTC" } : {}),
+    ...(DATE_ONLY_RE.test(trimmed) ? { timeZone: "UTC" } : timeZone ? { timeZone } : {}),
   })
 }
 
-export function formatRelative(dateStr: string | null) {
+/**
+ * How long ago something happened: "Today", "3d ago", "2w ago", then the date.
+ *
+ * This renders on the server and again in the browser, and React requires the
+ * two to match. Reading the clock and the process zone here made them differ:
+ * Netlify renders in UTC and the reader does not, so a date near midnight fell
+ * on a different day on each side and the Quotes board threw React's hydration
+ * error (418). So it takes the reader's zone, and null means that is not known
+ * yet (the server render and the render that hydrates it). With null it reads
+ * neither the clock nor the zone and gives the plain date in UTC, the same on
+ * both sides. <RelativeDate> supplies the zone once the page has hydrated.
+ */
+export function formatRelative(dateStr: string | null, timeZone: string | null) {
   if (!dateStr) return "—"
+  if (timeZone === null) return formatDate(dateStr, "UTC")
   const diff = Date.now() - new Date(dateStr).getTime()
   const days = Math.floor(diff / 86400000)
   if (days === 0) return "Today"
   if (days === 1) return "Yesterday"
   if (days < 7) return `${days}d ago`
   if (days < 30) return `${Math.floor(days / 7)}w ago`
-  return formatDate(dateStr)
+  return formatDate(dateStr, timeZone)
 }

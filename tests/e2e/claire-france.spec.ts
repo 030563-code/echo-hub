@@ -132,15 +132,21 @@ test.describe("Claire's Hub: France only, invoicing live, nothing else", () => {
   })
 
   // The walk-through above runs in the machine's time zone, which only shows
-  // this bug when it differs from the server's. The live server runs in UTC and
-  // her browser in Paris: the Calls page formatted each call's time on both, got
-  // two different texts, and React threw its hydration error (418) at her on
-  // every first load. So the Calls tabs are also read from her zone, and from a
-  // US one as the US office would read them. Each has to hydrate without that
-  // error (the afterEach above) and then show the reader's own clock.
+  // these bugs when it differs from the server's. The live server runs in UTC
+  // and her browser in Paris: the Calls page and the Quotes board formatted
+  // times and dates on both, got different texts, and React threw its hydration
+  // error (418) at her on first load. So both are also read from her zone, and
+  // from a US one as the US office would read them. Each has to hydrate without
+  // that error (the afterEach above), and the Calls rows show the reader's clock.
   for (const timezoneId of ['Europe/Paris', 'America/New_York']) {
-    test.describe(`Calls read from ${timezoneId}`, () => {
+    test.describe(`read from ${timezoneId}`, () => {
       test.use({ timezoneId })
+
+      test('the Quotes board hydrates cleanly', async ({ page }) => {
+        await page.goto('/quotes/board')
+        await page.waitForLoadState('networkidle')
+        await expect(page.locator('main .animate-pulse'), 'board still loading').toHaveCount(0, { timeout: 20_000 })
+      })
 
       test("the Calls tabs hydrate cleanly and show each call at the reader's own time", async ({ page }) => {
         await page.goto('/calls/log')
