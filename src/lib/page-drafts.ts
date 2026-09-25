@@ -15,6 +15,7 @@ import { z } from 'zod'
 import { BIO_MAX, JOB_TITLE_MAX } from '@/lib/profile/avatar'
 import { INVOICE_LEGS } from '@/lib/invoice-legs'
 import { INVOICE_DEPOTS } from '@/lib/customer-invoice/constants'
+import { DOCUMENT_LANGUAGES } from '@/lib/customer-invoice/document-language'
 
 // ---------------------------------------------------------------------------
 // Raise a purchase order
@@ -243,6 +244,9 @@ export const invoiceEditorDraftSchema = z.object({
     due_date: z.string(),
     customer_po_number: z.string(),
     taxjar_customer_id: z.string(),
+    // Optional so a draft saved before the choice existed still restores; the
+    // editor then keeps the invoice's own language.
+    document_language: z.enum(DOCUMENT_LANGUAGES).optional(),
     delivery_street: z.string(),
     delivery_city: z.string(),
     delivery_state: z.string(),

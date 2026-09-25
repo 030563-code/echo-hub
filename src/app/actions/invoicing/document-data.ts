@@ -6,6 +6,7 @@ import { buildInvoiceDocument } from '@/lib/customer-invoice/invoice-document'
 import { buildInvoicePdf, invoicePdfFilename } from '@/lib/customer-invoice/invoice-pdf'
 import { sellerFor, remittanceFromEnv, remittanceIsIncomplete } from '@/lib/customer-invoice/seller'
 import { invoicingProfile } from '@/lib/customer-invoice/invoicing-profile'
+import { invoiceLanguage } from '@/lib/customer-invoice/document-language'
 import type { CustomerInvoiceRow, CustomerInvoiceLineRow } from './shared'
 
 /**
@@ -101,7 +102,16 @@ export async function renderInvoicePdf(
       combined_tax_rate: l.combined_tax_rate === null ? null : Number(l.combined_tax_rate),
       sort_order: l.sort_order,
     })),
-    { remittance, paymentTerms: invoice.payment_terms_label, taxEngine: profile.taxEngine, taxLabel: profile.taxLabel },
+    {
+      remittance,
+      paymentTerms: invoice.payment_terms_label,
+      taxEngine: profile.taxEngine,
+      taxLabel: profile.taxLabel,
+      // The invoice's stored language, never one worked out now: this render is
+      // compared with the hash taken at Generate. An organisation that writes
+      // in English only prints English whatever the column holds.
+      language: invoiceLanguage(profile, invoice.document_language),
+    },
   )
 
   const pdf = await buildInvoicePdf({
