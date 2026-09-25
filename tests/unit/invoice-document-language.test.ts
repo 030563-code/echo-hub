@@ -383,12 +383,22 @@ describe('only the labels change', () => {
  * attachment, so the English output must not move by a byte. If a deliberate
  * change to the renderer moves these, replace them in the same commit and say
  * why: every USA invoice generated before it will then fail that comparison.
+ *
+ * Hashed with the /CreationDate value set aside. jsPDF writes that stamp in the
+ * process's own time zone (D:20260903010000+01'00' in London, 000000-00'00' in
+ * UTC), so raw hashes captured on one machine failed in CI, which runs in UTC as
+ * Netlify does. Every other byte is still compared. Before the stamp was set
+ * aside, the raw hashes matched the old renderer in the zone they were taken in.
  */
 const GOLDEN = {
-  numbered: '454f05b7e69b53fdf02e9a1e622f8cdf08c90e8e215eadae317af04d1207c846',
-  draft: '9430f95d2f9a9e436f0307005df2970db5f3eea0276ff201f22b987f5d54a3ca',
-  splitCollected: '054847d33737536239a77571b0290847bd3bd7867a58d4c12506a8b8ef8c2566',
+  numbered: 'ebf4b6f5ecee346305aa2583d96889849a2d506d51f53239d1979b3072486ebc',
+  draft: 'a832b221b16122124a778107a188d964dec5aed4f0a8e0e6e20f95211b5bac47',
+  splitCollected: 'c65a69fed8538110ef9c087a0cee2e12f43097f4dc1ca5584a59deb9ef196757',
 }
+
+/** The PDF's bytes with the time-zone-dependent creation stamp replaced by a constant. */
+const stampless = (bytes: Buffer) =>
+  Buffer.from(bytes.toString('latin1').replace(/\/CreationDate \(D:[^)]*\)/, '/CreationDate (D:STAMP)'), 'latin1')
 
 const US_REMIT: RemittanceDetails = {
   accountName: 'Echo Barrier USA LLC', bankName: 'A Bank', bankAddress: ['1 Bank St', 'New York'],
@@ -491,7 +501,7 @@ async function renderUsa(
     documentId,
     createdAt: new Date(createdAt),
   })
-  return sha(Buffer.from(pdf.output('arraybuffer')))
+  return sha(stampless(Buffer.from(pdf.output('arraybuffer'))))
 }
 
 describe('an English invoice is byte for byte what it was before', () => {
